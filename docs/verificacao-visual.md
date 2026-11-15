@@ -2,6 +2,8 @@
 
 Este documento especifica o ruler de verificação visual para o sistema `tb verify`. É uma instância do padrão de verificação adversarial aplicado a interfaces de usuário.
 
+**Status Fase 2**: implementado em `tb verify run --ruler visual`. Captura via Chromium/Chrome headless; comparação PNG pixel-a-pixel com padding magenta para tamanhos diferentes; skip gracioso quando browser ou referências estão indisponíveis (`--skip-unavailable`, default true).
+
 ## Visão Geral
 
 O ruler visual compara capturas de tela contra referências de design aprovadas, medindo similaridade pixel-a-pixel e conformidade com padrões de acessibilidade.

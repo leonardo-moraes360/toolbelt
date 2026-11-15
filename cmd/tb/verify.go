@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"time"
@@ -13,57 +14,13 @@ import (
 
 var verifyCmd = &cobra.Command{
 	Use:   "verify",
-	Short: "Verificação adversarial com ruler de testes",
+	Short: "Verificação adversarial com rulers plugáveis",
 }
 
 var verifyRunCmd = &cobra.Command{
 	Use:   "run",
 	Short: "Executa loop de verificação",
-	RunE: func(cmd *cobra.Command, args []string) error {
-		cwd, err := os.Getwd()
-		if err != nil {
-			return err
-		}
-		cfg := verify.DefaultConfig(cwd)
-		if v, _ := cmd.Flags().GetString("base"); v != "" {
-			cfg.BaseRef = v
-		}
-		if v, _ := cmd.Flags().GetString("head"); v != "" {
-			cfg.HeadRef = v
-		}
-		if v, _ := cmd.Flags().GetString("test-cmd"); v != "" {
-			cfg.VisibleTest = v
-		}
-		if v, _ := cmd.Flags().GetInt("max-iter"); v > 0 {
-			cfg.MaxIterations = v
-		}
-		timeout, _ := time.ParseDuration(mustStringFlag(cmd, "timeout", "10m"))
-		cfg.Timeout = timeout
-		ctx := context.Background()
-		res, err := verify.Run(ctx, &cfg)
-		if err != nil {
-			return err
-		}
-		outPath, _ := cmd.Flags().GetString("output")
-		if outPath != "" {
-			data, err := res.JSON()
-			if err != nil {
-				return err
-			}
-			return os.WriteFile(outPath, data, 0o600)
-		}
-		if jsonOutput {
-			data, _ := res.JSON()
-			fmt.Println(string(data))
-		} else {
-			fmt.Printf("Veredicto: %s (iterações: %d)\n", res.Verdict, res.Iterations)
-			fmt.Printf("Visível: %v  Oculto: %v (disponível: %v)\n", res.VisiblePassed, res.HiddenPassed, res.HiddenAvailable)
-		}
-		if res.Verdict != verify.VerdictPass {
-			os.Exit(1)
-		}
-		return nil
-	},
+	RunE:  runVerify,
 }
 
 func init() {
@@ -73,5 +30,136 @@ func init() {
 	verifyRunCmd.Flags().Int("max-iter", 0, "máximo de iterações")
 	verifyRunCmd.Flags().String("timeout", "10m", "timeout")
 	verifyRunCmd.Flags().StringP("output", "o", "", "arquivo JSON")
+	verifyRunCmd.Flags().String("ruler", "tests", "ruler: tests|visual")
+	verifyRunCmd.Flags().String("manifest", "", "manifesto de telas (.toolbelt/screens.yaml)")
+	verifyRunCmd.Flags().Float64("threshold", 0.95, "threshold de similaridade visual")
+	verifyRunCmd.Flags().Bool("skip-unavailable", true, "passa com skip se browser/refs indisponíveis")
 	verifyCmd.AddCommand(verifyRunCmd)
+}
+
+func runVerify(cmd *cobra.Command, args []string) error {
+	ruler, _ := cmd.Flags().GetString("ruler")
+	switch ruler {
+	case "visual":
+		return runVisualVerify(cmd)
+	default:
+		return runTestsVerify(cmd)
+	}
+}
+
+func runTestsVerify(cmd *cobra.Command) error {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+	cfg := verify.DefaultConfig(cwd)
+	if v, _ := cmd.Flags().GetString("base"); v != "" {
+		cfg.BaseRef = v
+	}
+	if v, _ := cmd.Flags().GetString("head"); v != "" {
+		cfg.HeadRef = v
+	}
+	if v, _ := cmd.Flags().GetString("test-cmd"); v != "" {
+		cfg.VisibleTest = v
+	}
+	if v, _ := cmd.Flags().GetInt("max-iter"); v > 0 {
+		cfg.MaxIterations = v
+	}
+	timeout, _ := time.ParseDuration(mustStringFlag(cmd, "timeout", "10m"))
+	cfg.Timeout = timeout
+	res, err := verify.Run(context.Background(), &cfg)
+	if err != nil {
+		return err
+	}
+	return emitVerifyResult(cmd, res.Verdict, res)
+}
+
+func runVisualVerify(cmd *cobra.Command) error {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+	manifest, _ := cmd.Flags().GetString("manifest")
+	threshold, _ := cmd.Flags().GetFloat64("threshold")
+	skipOK, _ := cmd.Flags().GetBool("skip-unavailable")
+	cfg := verify.VisualConfig{
+		Manifest:  manifest,
+		Threshold: threshold,
+		SkipOK:    skipOK,
+	}
+	rep, err := verify.RunVisual(context.Background(), cwd, cfg)
+	if err != nil {
+		return err
+	}
+	if !jsonOutput {
+		printVisualReport(rep)
+	}
+	return emitVerifyResult(cmd, rep.Verdict, rep)
+}
+
+func emitVerifyResult(cmd *cobra.Command, verdict verify.Verdict, payload any) error {
+	outPath, _ := cmd.Flags().GetString("output")
+	if err := writeVerifyPayload(outPath, payload); err != nil {
+		return err
+	}
+	printTestsSummary(payload)
+	if verdict != verify.VerdictPass {
+		os.Exit(1)
+	}
+	return nil
+}
+
+func writeVerifyPayload(outPath string, payload any) error {
+	if outPath == "" && !jsonOutput {
+		return nil
+	}
+	data, err := json.MarshalIndent(payload, "", "  ")
+	if err != nil {
+		return err
+	}
+	if outPath != "" {
+		return os.WriteFile(outPath, data, 0o600)
+	}
+	fmt.Println(string(data))
+	return nil
+}
+
+func printTestsSummary(payload any) {
+	if jsonOutput {
+		return
+	}
+	res, ok := payload.(*verify.Result)
+	if !ok {
+		return
+	}
+	fmt.Printf("Veredicto: %s (iterações: %d)\n", res.Verdict, res.Iterations)
+	fmt.Printf("Visível: %v  Oculto: %v (disponível: %v)\n", res.VisiblePassed, res.HiddenPassed, res.HiddenAvailable)
+}
+
+func printVisualReport(rep *verify.VisualReport) {
+	fmt.Println("═══════════════════════════════════════════════════════════")
+	fmt.Println(" VERIFICAÇÃO VISUAL")
+	fmt.Println("═══════════════════════════════════════════════════════════")
+	if rep.Skipped {
+		fmt.Printf("Skip gracioso: %s\n", rep.SkipReason)
+		fmt.Printf("Veredicto: %s\n", rep.Verdict)
+		return
+	}
+	fmt.Printf("Browser: %s\n", rep.Browser)
+	fmt.Printf("Threshold: %.0f%%\n", rep.Threshold*100)
+	for _, s := range rep.Screens {
+		status := "FAIL"
+		if s.Passed {
+			status = "PASS"
+		}
+		if s.Skipped {
+			status = "SKIP"
+		}
+		fmt.Printf("  [%s] %s/%s similarity=%.1f%% size_match=%v", status, s.Screen, s.Mode, s.Similarity*100, s.SizeMatch)
+		if s.SkipReason != "" {
+			fmt.Printf(" (%s)", s.SkipReason)
+		}
+		fmt.Println()
+	}
+	fmt.Printf("Veredicto: %s\n", rep.Verdict)
 }
