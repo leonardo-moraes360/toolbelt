@@ -13,8 +13,8 @@ tb
 ├── md           TUI para visualização e edição do vault
 ├── agent        Gerencia agentes
 ├── guard        Proteções e verificações de segurança
-├── review       Revisão com contextos frescos (Elephant-Goldfish)
-├── drift        Detecta divergência entre docs e código
+├── review       Revisão fresh-context (✓ Fase 2)
+├── drift        Drift de escopo/base (✓ Fase 2)
 ├── verify       Verificação adversarial (gerador vs discriminador)
 ├── ticket       Gerencia tickets de trabalho
 ├── board        Visualiza e gerencia o board de tarefas
@@ -497,28 +497,25 @@ tb guard audit --since "1h" --action "file:*"
 
 ---
 
-### `tb review` — Revisão com Contextos Frescos
+### `tb review` — Revisão Fresh-Context (✓ Fase 2)
 
-Implementa o padrão Elephant-Goldfish: spawna N revisores em contextos frescos para revisar documentos ou PRs.
+Implementa o padrão Elephant-Goldfish: N goldfish revisam o diff contra
+`ticket/rd.md` e invariantes de `tb mem`, sem herdar contexto do autor.
 
 ```bash
-tb review <target> [flags]
-
-Targets:
-  <path>              Arquivo ou diretório de docs
-  pr:<number>         Pull request por número
-  pr:<url>            Pull request por URL
+tb review [ticket] [flags]
 
 Flags:
-  --reviewers <n>       Número de revisores goldfish (default: 3)
-  --roles <roles>       Roles específicos para revisores (separados por vírgula)
-  --standards <stds>    Padrões de revisão: security,clarity,completeness,consistency
-  --severity <level>    Mínimo de severity para reportar: info,warning,error,critical
-  --output <path>       Arquivo de saída do relatório
+  --base <ref>          Commit base (default: HEAD~1 ou base_commit do ticket)
+  --head <ref>          Commit head (default: HEAD)
+  --ticket <path>       Ticket/rd.md (default: rd.md)
+  --reviewers <n>       Número de goldfish (default: 3)
+  --standards <stds>    scope,invariants,completeness
+  --output <path>       Relatório JSON
   --json                Saída em JSON
-  --resolve             Inicia etapa de resolução interativa após revisão
-  --timeout <dur>       Timeout por revisor (default: 5m)
 ```
+
+Também reporta drift de escopo e commit base. Isolamento fresco é obrigatório.
 
 **Exemplos:**
 
@@ -592,23 +589,20 @@ tb review docs/spec.md --json --output review-results.json
 
 ---
 
-### `tb drift` — Detecção de Divergência
+### `tb drift` — Drift de Escopo/Base (✓ Fase 2)
 
-Compara documentação (vault ou docs) contra o grafo de código e reporta divergências.
+Detecta mudanças fora do scope declarado no ticket/rd.md e divergência
+do commit base (mandate).
 
 ```bash
-tb drift [path] [flags]
-
-Argumentos:
-  [path]               Caminho para analisar (default: todo o vault)
+tb drift [ticket] [flags]
 
 Flags:
-  --against <target>   Comparar contra: code,vault,both (default: code)
-  --depth <level>      Profundidade: shallow,medium,deep (default: medium)
-  --format <fmt>       Formato: table,json,markdown (default: table)
-  --output <path>      Arquivo de saída
-  --ignore <patterns>  Padrões a ignorar (globs)
-  --since <ref>        Comparar desde commit/tag/data
+  --base <ref>     Commit base (default: HEAD~1 ou base_commit do ticket)
+  --head <ref>     Commit head (default: HEAD)
+  --ticket <path>  Ticket/rd.md (default: rd.md)
+  --output <path>  Saída JSON
+  --json           Saída em JSON
 ```
 
 **Exemplos:**

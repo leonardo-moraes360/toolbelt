@@ -1,3 +1,423 @@
-// Package review implements fresh-context review (Elephant-Goldfish pattern).
-// Será implementado na Fase 2.
 package review
+
+import (
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"regexp"
+	"strings"
+
+	"github.com/leonardo-moraes360/toolbelt/internal/mem"
+	"gopkg.in/yaml.v3"
+)
+
+type Severity string
+
+const (
+	SeverityInfo     Severity = "info"
+	SeverityWarning  Severity = "warning"
+	SeverityError    Severity = "error"
+	SeverityCritical Severity = "critical"
+)
+
+type Finding struct {
+	ID        string   `json:"id"`
+	Severity  Severity `json:"severity"`
+	Category  string   `json:"category"`
+	Message   string   `json:"message"`
+	File      string   `json:"file,omitempty"`
+	Reviewer  string   `json:"reviewer"`
+	Agreement int      `json:"agreement"`
+}
+
+type TicketScope struct {
+	Title       string   `yaml:"title" json:"title"`
+	BaseCommit  string   `yaml:"base_commit" json:"base_commit"`
+	Scope       []string `yaml:"scope" json:"scope"`
+	Forbidden   []string `yaml:"forbidden" json:"forbidden"`
+	Acceptance  []string `yaml:"acceptance" json:"acceptance"`
+	Description string   `yaml:"description" json:"description"`
+}
+
+type Config struct {
+	RepoDir    string
+	BaseRef    string
+	HeadRef    string
+	TicketPath string
+	Reviewers  int
+	Standards  []string
+}
+
+type Report struct {
+	Target    string       `json:"target"`
+	BaseRef   string       `json:"base_ref"`
+	HeadRef   string       `json:"head_ref"`
+	Findings  []Finding    `json:"findings"`
+	Drift     *DriftReport `json:"drift,omitempty"`
+	FreshOK   bool         `json:"fresh_context"`
+	Reviewers int          `json:"reviewers"`
+}
+
+type DriftReport struct {
+	OutOfScope   []string `json:"out_of_scope"`
+	ForbiddenHit []string `json:"forbidden_hit"`
+	BaseMismatch bool     `json:"base_mismatch"`
+	DeclaredBase string   `json:"declared_base,omitempty"`
+	ActualBase   string   `json:"actual_base,omitempty"`
+}
+
+func DefaultConfig(repo string) Config {
+	return Config{
+		RepoDir:    repo,
+		BaseRef:    "HEAD~1",
+		HeadRef:    "HEAD",
+		TicketPath: "rd.md",
+		Reviewers:  3,
+		Standards:  []string{"scope", "invariants", "completeness"},
+	}
+}
+
+// Run executa revisão fresh-context (Elephant-Goldfish) sem herdar estado do elephant.
+func Run(cfg *Config) (*Report, error) {
+	if cfg.Reviewers <= 0 {
+		cfg.Reviewers = 3
+	}
+	ticket, err := LoadTicket(cfg.TicketPath)
+	if err != nil && !os.IsNotExist(err) {
+		return nil, err
+	}
+	if ticket != nil && ticket.BaseCommit != "" && cfg.BaseRef == "HEAD~1" {
+		cfg.BaseRef = ticket.BaseCommit
+	}
+
+	changed, err := listChangedFiles(cfg.RepoDir, cfg.BaseRef, cfg.HeadRef)
+	if err != nil {
+		return nil, err
+	}
+	diff, err := gitDiff(cfg.RepoDir, cfg.BaseRef, cfg.HeadRef)
+	if err != nil {
+		return nil, err
+	}
+
+	invariants, _ := loadInvariants(cfg.RepoDir)
+
+	report := &Report{
+		Target:    cfg.TicketPath,
+		BaseRef:   cfg.BaseRef,
+		HeadRef:   cfg.HeadRef,
+		FreshOK:   true,
+		Reviewers: cfg.Reviewers,
+	}
+
+	drift := DetectDrift(ticket, changed, cfg.BaseRef)
+	report.Drift = drift
+
+	// Cada goldfish recebe apenas ticket + diff + invariantes (contexto fresco isolado).
+	var all []Finding
+	for i := 1; i <= cfg.Reviewers; i++ {
+		name := fmt.Sprintf("goldfish-%d", i)
+		ctx := FreshContext{
+			Reviewer:   name,
+			Ticket:     ticket,
+			Diff:       diff,
+			Changed:    changed,
+			Invariants: invariants,
+			Standards:  cfg.Standards,
+		}
+		all = append(all, Fresh(&ctx)...)
+	}
+	report.Findings = aggregateFindings(all)
+	return report, nil
+}
+
+type FreshContext struct {
+	Reviewer   string
+	Ticket     *TicketScope
+	Diff       string
+	Changed    []string
+	Invariants []mem.Invariant
+	Standards  []string
+}
+
+func Fresh(ctx *FreshContext) []Finding {
+	var out []Finding
+	standards := map[string]bool{}
+	for _, s := range ctx.Standards {
+		standards[s] = true
+	}
+	if standards["scope"] || len(standards) == 0 {
+		out = append(out, reviewScope(ctx)...)
+	}
+	if standards["invariants"] || len(standards) == 0 {
+		out = append(out, reviewInvariants(ctx)...)
+	}
+	if standards["completeness"] || len(standards) == 0 {
+		out = append(out, reviewCompleteness(ctx)...)
+	}
+	return out
+}
+
+func reviewScope(ctx *FreshContext) []Finding {
+	if ctx.Ticket == nil || len(ctx.Ticket.Scope) == 0 {
+		return []Finding{{
+			ID: "scope-missing", Severity: SeverityWarning, Category: "scope",
+			Message: "ticket/rd.md sem scope declarado", Reviewer: ctx.Reviewer, Agreement: 1,
+		}}
+	}
+	var out []Finding
+	for _, f := range ctx.Changed {
+		if !inScope(f, ctx.Ticket.Scope) {
+			out = append(out, Finding{
+				ID: "drift-" + f, Severity: SeverityError, Category: "scope",
+				Message: "mudança fora do scope declarado", File: f,
+				Reviewer: ctx.Reviewer, Agreement: 1,
+			})
+		}
+		if hitForbidden(f, ctx.Ticket.Forbidden) {
+			out = append(out, Finding{
+				ID: "forbidden-" + f, Severity: SeverityCritical, Category: "scope",
+				Message: "arquivo proibido pelo mandate foi alterado", File: f,
+				Reviewer: ctx.Reviewer, Agreement: 1,
+			})
+		}
+	}
+	return out
+}
+
+func reviewInvariants(ctx *FreshContext) []Finding {
+	var out []Finding
+	lowerDiff := strings.ToLower(ctx.Diff)
+	for _, inv := range ctx.Invariants {
+		rule := strings.ToLower(inv.Rule)
+		if strings.Contains(rule, "nunca") || strings.Contains(rule, "never") {
+			if suggestsViolation(rule, lowerDiff, ctx.Changed) {
+				out = append(out, Finding{
+					ID: "inv-" + inv.ID, Severity: SeverityCritical, Category: "invariants",
+					Message:  "possível violação de invariante: " + inv.Rule,
+					Reviewer: ctx.Reviewer, Agreement: 1,
+				})
+			}
+		}
+	}
+	return out
+}
+
+func reviewCompleteness(ctx *FreshContext) []Finding {
+	if ctx.Ticket == nil || len(ctx.Ticket.Acceptance) == 0 {
+		return nil
+	}
+	lowerDiff := strings.ToLower(ctx.Diff + " " + strings.Join(ctx.Changed, " "))
+	var out []Finding
+	for i, crit := range ctx.Ticket.Acceptance {
+		key := strings.ToLower(crit)
+		tokens := strings.Fields(key)
+		hit := 0
+		for _, tok := range tokens {
+			if len(tok) < 4 {
+				continue
+			}
+			if strings.Contains(lowerDiff, tok) {
+				hit++
+			}
+		}
+		meaningful := 0
+		for _, tok := range tokens {
+			if len(tok) >= 4 {
+				meaningful++
+			}
+		}
+		if meaningful > 0 && hit*2 < meaningful {
+			out = append(out, Finding{
+				ID: fmt.Sprintf("accept-%d", i), Severity: SeverityWarning, Category: "completeness",
+				Message:  "critério de aceite pouco evidenciado no diff: " + crit,
+				Reviewer: ctx.Reviewer, Agreement: 1,
+			})
+		}
+	}
+	return out
+}
+
+func DetectDrift(ticket *TicketScope, changed []string, actualBase string) *DriftReport {
+	rep := &DriftReport{ActualBase: actualBase}
+	if ticket == nil {
+		return rep
+	}
+	rep.DeclaredBase = ticket.BaseCommit
+	if ticket.BaseCommit != "" && actualBase != "" && ticket.BaseCommit != actualBase {
+		rep.BaseMismatch = true
+	}
+	for _, f := range changed {
+		if len(ticket.Scope) > 0 && !inScope(f, ticket.Scope) {
+			rep.OutOfScope = append(rep.OutOfScope, f)
+		}
+		if hitForbidden(f, ticket.Forbidden) {
+			rep.ForbiddenHit = append(rep.ForbiddenHit, f)
+		}
+	}
+	return rep
+}
+
+func LoadTicket(path string) (*TicketScope, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	text := string(data)
+	ticket, ok, err := parseTicketFrontmatter(text)
+	if err != nil {
+		return nil, err
+	}
+	if ok {
+		return ticket, nil
+	}
+	return parseTicketMarkdown(text), nil
+}
+
+func parseTicketFrontmatter(text string) (*TicketScope, bool, error) {
+	if !strings.HasPrefix(strings.TrimSpace(text), "---") {
+		return nil, false, nil
+	}
+	parts := strings.SplitN(text, "---", 3)
+	if len(parts) < 3 {
+		return nil, false, nil
+	}
+	var t TicketScope
+	if err := yaml.Unmarshal([]byte(parts[1]), &t); err != nil {
+		return nil, false, err
+	}
+	if t.Description == "" {
+		t.Description = strings.TrimSpace(parts[2])
+	}
+	return &t, true, nil
+}
+
+func parseTicketMarkdown(text string) *TicketScope {
+	t := &TicketScope{Description: text}
+	reScope := regexp.MustCompile(`(?mi)^(?:scope|escopo)\s*:\s*(.+)$`)
+	reBase := regexp.MustCompile(`(?mi)^(?:base_commit|base)\s*:\s*(\S+)`)
+	reForbid := regexp.MustCompile(`(?mi)^(?:forbidden|proibido)\s*:\s*(.+)$`)
+	if m := reScope.FindStringSubmatch(text); len(m) > 1 {
+		t.Scope = splitList(m[1])
+	}
+	if m := reBase.FindStringSubmatch(text); len(m) > 1 {
+		t.BaseCommit = strings.TrimSpace(m[1])
+	}
+	if m := reForbid.FindStringSubmatch(text); len(m) > 1 {
+		t.Forbidden = splitList(m[1])
+	}
+	for _, line := range strings.Split(text, "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "- [ ]") || strings.HasPrefix(line, "- [x]") {
+			t.Acceptance = append(t.Acceptance, strings.TrimSpace(line[5:]))
+		}
+	}
+	return t
+}
+
+func splitList(s string) []string {
+	parts := regexp.MustCompile(`[, ]+`).Split(strings.TrimSpace(s), -1)
+	var out []string
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+func inScope(file string, scope []string) bool {
+	file = filepath.ToSlash(file)
+	for _, s := range scope {
+		s = filepath.ToSlash(strings.TrimSpace(s))
+		if s == "" {
+			continue
+		}
+		if strings.HasSuffix(s, "/**") {
+			prefix := strings.TrimSuffix(s, "/**")
+			if file == prefix || strings.HasPrefix(file, prefix+"/") {
+				return true
+			}
+			continue
+		}
+		if strings.Contains(s, "*") {
+			ok, _ := filepath.Match(s, file)
+			if ok {
+				return true
+			}
+			continue
+		}
+		if file == s || strings.HasPrefix(file, strings.TrimSuffix(s, "/")+"/") {
+			return true
+		}
+	}
+	return false
+}
+
+func hitForbidden(file string, forbidden []string) bool {
+	return len(forbidden) > 0 && inScope(file, forbidden)
+}
+
+func suggestsViolation(rule, lowerDiff string, changed []string) bool {
+	joined := lowerDiff + " " + strings.ToLower(strings.Join(changed, " "))
+	checks := []string{"tests/hidden", "thresholds.yaml", "t.skip", "__eq__"}
+	for _, c := range checks {
+		if strings.Contains(rule, c) && strings.Contains(joined, c) {
+			return true
+		}
+	}
+	return false
+}
+
+func loadInvariants(repo string) ([]mem.Invariant, error) {
+	dir := mem.LocateRepoToolbeltDir(repo)
+	return mem.NewStore(dir).List("")
+}
+
+func listChangedFiles(repo, base, head string) ([]string, error) {
+	cmd := exec.Command("git", "diff", "--name-only", base+".."+head) //nolint:gosec // refs do operador
+	cmd.Dir = repo
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("git diff: %w", err)
+	}
+	var files []string
+	for _, line := range strings.Split(string(out), "\n") {
+		line = strings.TrimSpace(line)
+		if line != "" {
+			files = append(files, line)
+		}
+	}
+	return files, nil
+}
+
+func gitDiff(repo, base, head string) (string, error) {
+	cmd := exec.Command("git", "diff", base+".."+head) //nolint:gosec // refs do operador
+	cmd.Dir = repo
+	out, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("git diff: %w", err)
+	}
+	return string(out), nil
+}
+
+func aggregateFindings(all []Finding) []Finding {
+	type key struct{ id, file, msg string }
+	counts := map[key]Finding{}
+	for _, f := range all {
+		k := key{f.ID, f.File, f.Message}
+		cur, ok := counts[k]
+		if !ok {
+			counts[k] = f
+			continue
+		}
+		cur.Agreement++
+		counts[k] = cur
+	}
+	out := make([]Finding, 0, len(counts))
+	for _, f := range counts {
+		out = append(out, f)
+	}
+	return out
+}

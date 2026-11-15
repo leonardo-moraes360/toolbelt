@@ -69,11 +69,11 @@ func init() {
 	rootCmd.AddCommand(verifyCmd)
 	rootCmd.AddCommand(memCmd)
 	rootCmd.AddCommand(graphCmd)
+	rootCmd.AddCommand(reviewCmd)
+	rootCmd.AddCommand(driftCmd)
 	rootCmd.AddCommand(routerCmd)
 	rootCmd.AddCommand(mcpCmd)
 }
-
-// graphCmd é registrado em graph.go (Fase 2).
 
 // versionCmd mostra informações de versão
 var versionCmd = &cobra.Command{
