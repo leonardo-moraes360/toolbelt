@@ -753,11 +753,16 @@ Flags:
 ```
 
 A suite oculta permanece escondida do agente (paths em `tests/hidden/` protegidos
-pelo `tb guard`). Em monorepos não-Go, configure o comando oculto:
+pelo `tb guard`). Em monorepos não-Go, configure o comando oculto. Campos
+opcionais `build_cmd` e `lint_cmd` rodam antes dos testes (nessa ordem) e
+fazem o verify falhar se o comando sair com erro; ausentes = comportamento
+anterior (só `test_cmd` + hidden).
 
 ```yaml
 # .toolbelt/config.yaml
 verify:
+  build_cmd: "pnpm --filter @pkg build"
+  lint_cmd: "pnpm --filter @pkg lint"
   test_cmd: "pnpm --filter @pkg test"
   hidden_test_cmd: "pnpm --filter @pkg test:hidden"
 ```
