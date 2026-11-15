@@ -125,6 +125,9 @@ tb bench run --fake
 # Executa benchmark com agente externo ({prompt} com quoting seguro)
 tb bench run --agent "cursor-agent {prompt} --workdir {workdir}" -r 3
 
+# Sem --agent: usa bench.default_agent de .toolbelt/config.yaml
+tb bench run -r 1
+
 # Gera relatório de resultados existentes
 tb bench report --input bench/results/2026-01-01-120000.jsonl
 

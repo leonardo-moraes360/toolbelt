@@ -1491,13 +1491,22 @@ tb bench run [flags]
 
 Flags:
   --fake               Usa agente fake embutido no binário `tb` (portátil, qualquer repo)
-  --agent <cmd>        Comando do agente externo
+  --agent <cmd>        Comando do agente externo (fallback: bench.default_agent)
   --repetitions <n>    Número de repetições (default: 1)
   --output <path>      Arquivo de saída JSONL
   --label <name>       Rótulo da variante A/B
   --flag key=value     Feature flag (repetível)
   --ab-config <yaml>   Variante A/B a partir de YAML
   --task <id>          Filtra tarefas
+```
+
+Se `--agent` e `--fake` forem omitidos, `tb bench run` usa `bench.default_agent`
+de `.toolbelt/config.yaml` (quando definido).
+
+```yaml
+# .toolbelt/config.yaml
+bench:
+  default_agent: "cursor-agent {prompt} --workdir {workdir}"
 ```
 
 Placeholders `{prompt}`, `{workdir}` e `{timeout}` são interpolados com
@@ -1514,6 +1523,11 @@ tb bench compare --before graph-off.jsonl --after graph-on.jsonl
 # Roda duas configs no mesmo conjunto de tarefas e compara
 tb bench compare --config-a bench/ab/graph-off.yaml \
                  --config-b bench/ab/graph-on.yaml --fake
+
+# Mesmo fluxo com agente externo (--agent ou bench.default_agent)
+tb bench compare --config-a bench/ab/graph-off.yaml \
+                 --config-b bench/ab/graph-on.yaml \
+                 --agent "cursor-agent {prompt} --workdir {workdir}"
 ```
 
 O relatório Markdown e o JSONL incluem métricas de **sucesso (pass@1)**, **tempo** e **tokens**, com deltas A→B.
@@ -1523,6 +1537,7 @@ O relatório Markdown e o JSONL incluem métricas de **sucesso (pass@1)**, **tem
 ```bash
 tb bench run --fake --label graph-off --flag graph=off
 tb bench run --fake --ab-config bench/ab/graph-on.yaml
+tb bench run -r 1   # usa bench.default_agent do config
 tb bench compare --before bench/results/graph-off.jsonl \
                  --after bench/results/graph-on.jsonl
 tb bench list
