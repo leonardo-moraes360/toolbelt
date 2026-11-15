@@ -241,17 +241,22 @@ tb graph stats
 
 ---
 
-### `tb mem` — Gerenciamento de Memória
+### `tb mem` — Invariantes (✓ Fase 1)
 
-Gerencia o vault Markdown e a memória persistente.
+Gerencia o arquivo `.toolbelt/invariants.yaml` (fora da compactação, ADR-010).
 
 ```bash
 tb mem <subcommand>
 
 Subcomandos:
-  add       Adiciona fato ou decisão
+  add       Adiciona regra invariante
+  list      Lista invariantes
+  check     Verifica integridade (hash e retenção)
+  init      Cria conjunto padrão anti-trapaça
+
+Subcomandos (planejados — vault Markdown):
   search    Busca na memória
-  list      Lista entradas
+  show      Exibe entrada
   show      Exibe entrada específica
   edit      Edita entrada
   link      Cria link entre entradas
