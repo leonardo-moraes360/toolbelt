@@ -87,6 +87,8 @@ Veja a documentação completa em [docs/arquitetura.md](docs/arquitetura.md).
 - [ ] Protocolo A2A para comunicação entre agentes
 - [ ] `tb md` TUI para revisão de memória e planos
 - [ ] Interoperabilidade com Obsidian
+- [ ] `tb review` — revisão com contextos frescos (Elephant-Goldfish)
+- [ ] `tb drift` — detecção de divergência docs/código
 - [ ] `tb verify` — verificação adversarial com rulers plugáveis
 - [ ] Ruler visual: similaridade pixel + contraste WCAG
 - [ ] Guard check com manifesto de paths protegidos
@@ -94,6 +96,7 @@ Veja a documentação completa em [docs/arquitetura.md](docs/arquitetura.md).
 ### Fase 3
 - [ ] Índice vetorial opcional
 - [ ] Integração com Graphify (ou reimplementação)
+- [ ] Integração com Elephant-Goldfish Model (ou reimplementação)
 - [ ] Componentes opcionais em Rust para inferência local
 - [ ] Rulers adicionais para `tb verify`
 
@@ -110,8 +113,11 @@ Veja [CONTRIBUTING.md](CONTRIBUTING.md) para detalhes sobre:
 Este projeto foi inspirado por:
 - **[Graphify](https://github.com/Graphify-Labs/graphify)**: mapeamento de projetos em grafos de conhecimento queryáveis
 - **[Obsidian](https://obsidian.md/)**: vault de Markdown com wikilinks, backlinks e grafo local-first
+- **[Elephant-Goldfish Model](https://github.com/google/elephant-goldfish-model)**: revisão com contextos frescos, separação autor/revisor, drift detection
 
-Veja [ADR-006](docs/adr/006-inspiracoes-graphify-obsidian.md) para detalhes sobre o que adotamos e adaptamos.
+Veja os ADRs para detalhes:
+- [ADR-006: Graphify e Obsidian](docs/adr/006-inspiracoes-graphify-obsidian.md)
+- [ADR-007: Elephant-Goldfish Model](docs/adr/007-inspiracao-elephant-goldfish.md)
 
 ## 📄 Licença
 

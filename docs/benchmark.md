@@ -154,6 +154,64 @@ cost_per_task = (tokens_input * price_input) + (tokens_output * price_output)
 
 ---
 
+## KPIs de Revisão (Elephant-Goldfish)
+
+O padrão Elephant-Goldfish introduz métricas específicas para avaliar a qualidade das revisões com contexto fresco.
+
+### 10. defects_found_pre_impl (Defeitos Encontrados Pré-Implementação)
+
+**Definição**: Número de defeitos encontrados na fase de revisão, antes da implementação.
+
+```
+defects_found_pre_impl = count(findings com severity >= warning)
+```
+
+**Relevância**: Defeitos encontrados antes da implementação são muito mais baratos de corrigir.
+
+### 11. false_positive_rate (Taxa de Falsos Positivos)
+
+**Definição**: Proporção de findings que foram rejeitados na etapa de resolução.
+
+```
+false_positive_rate = (findings rejeitados) / (total de findings)
+```
+
+**Medição**:
+- Humano marca cada finding como aceito, rejeitado ou adiado
+- Rejeitados são falsos positivos
+
+**Meta**: < 20%
+
+### 12. tokens_per_review (Tokens por Revisão)
+
+**Definição**: Total de tokens consumidos para revisar um documento.
+
+```
+tokens_per_review = sum(tokens de cada revisor goldfish)
+```
+
+**Relevância**: Revisores goldfish devem ser eficientes por receberem contexto mínimo.
+
+### 13. review_coverage (Cobertura de Revisão)
+
+**Definição**: Proporção do documento efetivamente analisada pelos revisores.
+
+```
+review_coverage = (seções com findings ou OK explícito) / (total de seções)
+```
+
+### 14. reviewer_agreement (Concordância entre Revisores)
+
+**Definição**: Proporção de findings onde múltiplos revisores concordam.
+
+```
+reviewer_agreement = (findings com 2+ revisores) / (total de findings únicos)
+```
+
+**Relevância**: Alta concordância indica findings mais confiáveis.
+
+---
+
 ## Comparação: Graph-First vs Grep-First
 
 Uma variante específica do benchmark compara abordagens de busca:
@@ -183,6 +241,58 @@ Uma variante específica do benchmark compara abordagens de busca:
 | `precision` | files_read_relevant / total_files_read |
 | `recall` | files_read_relevant / total_files_actually_relevant |
 | `tokens_on_irrelevant` | Tokens gastos em arquivos irrelevantes |
+
+---
+
+## Comparação: Fresh-Context vs Same-Context Review
+
+Uma variante específica do benchmark compara abordagens de revisão:
+
+### Fresh-Context Review (Goldfish)
+
+1. Documento é preparado pelo elephant (planner)
+2. N revisores são spawados com contexto **fresco**
+3. Cada revisor recebe apenas: documento + material referenciado
+4. Revisores não têm acesso ao histórico da conversa
+5. Findings são agregados e deduplicados
+
+### Same-Context Review (Self-Review)
+
+1. Documento é preparado pelo agente
+2. O **mesmo agente** revisa seu próprio trabalho
+3. Agente tem todo o contexto acumulado
+4. Pode estar "cego" para problemas que assumiu
+
+### Métricas Específicas
+
+| Métrica | Descrição |
+|---------|-----------|
+| `unique_defects_found` | Defeitos distintos encontrados |
+| `defects_missed` | Defeitos que existiam mas não foram encontrados |
+| `blind_spot_rate` | Problemas óbvios perdidos por viés de contexto |
+| `tokens_total` | Tokens totais consumidos na revisão |
+| `tokens_per_defect` | Eficiência: tokens / defeito encontrado |
+| `time_to_review` | Tempo total da revisão |
+
+### Metodologia
+
+Para medir objetivamente:
+
+1. **Gold standard**: humanos especialistas revisam o mesmo documento e criam lista de defeitos conhecidos
+2. **Fresh-context**: N goldfish revisam, medem recall contra gold standard
+3. **Same-context**: mesmo agente revisa, mede recall contra gold standard
+4. **Comparação**: qual abordagem encontra mais defeitos do gold standard?
+
+### Hipótese
+
+Esperamos que fresh-context supere same-context em:
+- `unique_defects_found`: mais defeitos encontrados
+- `blind_spot_rate`: menos pontos cegos
+- `tokens_per_defect`: mais eficiente (contexto menor)
+
+E que same-context seja melhor em:
+- `time_to_review`: mais rápido (sem spawn de subagentes)
+- `tokens_total`: menos tokens totais (um agente só)
 
 ---
 
@@ -375,6 +485,18 @@ Diferenças estatisticamente significativas (p < 0.05) em todos os KPIs.
 - Considerar outros baselines além de "agente sozinho":
   - Agente com grep + sem grafo
   - Agente com outro toolkit (comparação competitiva)
+
+### Revisão: Número Ideal de Goldfish
+
+- Quantos revisores goldfish produzem o melhor custo-benefício?
+- Retornos decrescentes: 3 vs 5 vs 10 revisores?
+- Especialização: revisores genéricos vs especializados por área?
+
+### Drift Detection
+
+- Como medir eficácia do `tb drift`?
+- Ground truth: diffs manuais entre docs e código
+- Métricas: precision/recall de divergências detectadas
 
 ---
 

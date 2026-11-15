@@ -658,6 +658,64 @@ budgets:
     timeout: 5m
 ```
 
+### 8.5 Padrão Elephant-Goldfish
+
+Inspirado no [Elephant-Goldfish Model (EGM)](https://github.com/google/elephant-goldfish-model) do Google, o toolbelt implementa um workflow de revisão com isolamento de contexto:
+
+```mermaid
+graph TB
+    subgraph "Elephant (Contexto Completo)"
+        PLANNER[Planner<br/>conhece todo o projeto]
+        PLANNER --> DOC[Documento/Spec]
+        PLANNER --> REFS[Material Referenciado]
+    end
+
+    subgraph "Goldfish (Contextos Frescos)"
+        G1[Revisor 1<br/>fresco]
+        G2[Revisor 2<br/>fresco]
+        G3[Revisor 3<br/>fresco]
+    end
+
+    DOC --> G1
+    DOC --> G2
+    DOC --> G3
+    REFS --> G1
+    REFS --> G2
+    REFS --> G3
+
+    G1 --> |findings| AGG[Agregador]
+    G2 --> |findings| AGG
+    G3 --> |findings| AGG
+
+    AGG --> HUMAN[Humano<br/>resolve trade-offs]
+```
+
+**Papéis**:
+
+| Papel | Contexto | Responsabilidade |
+|-------|----------|------------------|
+| Elephant (Planner) | Completo | Redige specs, faz brainstorm, conhece o projeto todo |
+| Goldfish (Reviewers) | Fresco | Revisa sem contexto prévio, encontra lacunas e suposições |
+| Human | N/A | Resolve trade-offs, aprova mudanças |
+
+**Por que contexto fresco?**
+
+1. **Guarda de qualidade**: revisor sem contexto encontra problemas que o autor, cego pelo conhecimento acumulado, não vê
+2. **Economia de tokens**: revisores recebem apenas documento + fontes, não o projeto inteiro
+3. **Anti-trapaça**: reforça separação autor ≠ revisor
+
+**Implementação via `tb review`**:
+
+```bash
+# Revisar documento com 3 goldfish
+tb review docs/design-auth.md --reviewers 3 --standards security,clarity
+
+# Revisar PR com revisores especializados
+tb review pr:42 --roles "security-reviewer,api-reviewer,test-reviewer"
+```
+
+O isolamento de contexto é **obrigatório**: se o sistema não conseguir criar contextos frescos, a revisão falha ao invés de prosseguir com contexto contaminado.
+
 ---
 
 ## 9. Proteções Contra Trapaça
@@ -1064,12 +1122,29 @@ report:
 
 ---
 
+## 13. Inspirações
+
+O toolbelt incorpora padrões de três projetos de referência:
+
+| Projeto | O Que Adotamos |
+|---------|----------------|
+| **[Graphify](https://github.com/Graphify-Labs/graphify)** | Grafo queryável, indexação via AST, proveniência (extracted vs inferred), hooks graph-first |
+| **[Obsidian](https://obsidian.md/)** | Vault Markdown como fonte de verdade, wikilinks, backlinks, frontmatter YAML, local-first |
+| **[Elephant-Goldfish Model](https://github.com/google/elephant-goldfish-model)** | Revisão com contexto fresco, separação autor/revisor, workflow draft→review→resolve, drift detection |
+
+Veja os ADRs para detalhes:
+- [ADR-006: Graphify e Obsidian](adr/006-inspiracoes-graphify-obsidian.md)
+- [ADR-007: Elephant-Goldfish Model](adr/007-inspiracao-elephant-goldfish.md)
+
+---
+
 ## Referências
 
 - [MCP Specification](https://spec.modelcontextprotocol.io/)
 - [Google A2A Protocol](https://github.com/google/A2A)
 - [Graphify](https://github.com/Graphify-Labs/graphify)
 - [Obsidian](https://obsidian.md/)
+- [Elephant-Goldfish Model](https://github.com/google/elephant-goldfish-model)
 - [bubblewrap](https://github.com/containers/bubblewrap)
 - [Landlock](https://landlock.io/)
 - [tree-sitter](https://tree-sitter.github.io/)
