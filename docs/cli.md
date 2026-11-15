@@ -565,6 +565,11 @@ Flags:
 
 Também reporta drift de escopo e commit base. Isolamento fresco é obrigatório.
 
+Invariantes de path (ex.: `tests/hidden/`, `thresholds.yaml`) são casadas contra
+arquivos **alterados** por prefixo/segmento de caminho — não por substring no
+texto do diff ou do ticket. Mencionar `forbidden: tests/hidden/**` em `rd.md`
+sem tocar esse diretório não gera finding critical.
+
 **Exemplos:**
 
 ```bash
