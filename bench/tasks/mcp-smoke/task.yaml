@@ -1,0 +1,8 @@
+id: mcp-smoke
+category: protocol
+difficulty: easy
+title: "Validar listagem de ferramentas MCP"
+description: |
+  Inicia o servidor MCP em modo de teste e valida que tools/list expõe tb_version.
+timeout: 2m
+max_tokens: 2000

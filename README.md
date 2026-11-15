@@ -219,4 +219,4 @@ Este projeto está na **Fase 0**: fundação implementada com CLI funcional, con
 | `tb mem` | 🚧 | Stub (Fase 3) |
 | `tb graph` | 🚧 | Stub (Fase 4) |
 | `tb router` | 🚧 | Stub (Fase 5) |
-| `tb mcp` | 🚧 | Stub (Fase 6) |
+| `tb mcp` | ✅ | Servidor MCP stateless (stdio) |
