@@ -861,3 +861,214 @@ benchmark:
     - direct_delivery_rate
     - pass_at_1
 ```
+
+---
+
+## Métricas e Experimentos Propostos (2026-11)
+
+Baseado na revisão de fontes primárias ([docs/pesquisa/achados.md](pesquisa/achados.md)), as seguintes métricas e experimentos são propostos para validação futura.
+
+### Métricas Propostas
+
+#### Retenção de Invariantes após Compactação
+
+**Definição**: Proporção de regras anti-trapaça e constraints de segurança preservadas após N ciclos de compactação.
+
+```
+invariant_retention = (invariantes preservados após N compactações) / (invariantes originais)
+```
+
+**Fonte**: [Benchmarks Are Surprisingly Compaction-Friendly](https://arxiv.org/abs/2610.31778) (Salle et al., 2026)
+
+**Meta proposta**: 100% (invariantes vivem fora da compactação, por design)
+
+**Status**: proposta pendente, veja [ADR-010](adr/010-invariantes-fora-compactacao.md)
+
+---
+
+#### Gap Visível vs Oculto (Reward Hacking)
+
+**Definição**: Diferença entre pass rate em testes visíveis e pass rate em testes held-out.
+
+```
+visible_hidden_gap = pass_rate_visible - pass_rate_hidden
+```
+
+**Fonte**: [SpecBench](https://arxiv.org/abs/2605.21384) (Zhao et al., 2026) — gap cresce 28 pts a cada 10× de código
+
+**Meta proposta**: gap < 10% (diferença pequena indica baixo reward hacking)
+
+**Status**: proposta pendente
+
+---
+
+#### Taxa de Impossível (Cheating Rate)
+
+**Definição**: Proporção de tarefas impossíveis onde o agente reporta sucesso.
+
+```
+impossible_pass_rate = (tarefas impossíveis com pass) / (total de tarefas impossíveis)
+```
+
+**Fonte**: [ImpossibleBench](https://arxiv.org/abs/2510.20270) (Zhong et al., 2025) — qualquer pass é trapaça
+
+**Meta proposta**: 0%
+
+**Status**: proposta pendente (implementar via `tb bench --impossible`)
+
+---
+
+#### ROI do Grafo
+
+**Definição**: Proporção de tarefas onde usar o grafo resultou em economia de tokens.
+
+```
+graph_roi_positive_pct = (tarefas onde grafo economizou) / (tarefas onde grafo foi usado)
+```
+
+**Fonte**: [How Should Agents See Code?](https://arxiv.org/abs/2611.07286) (Sepidband et al., 2026) e [Cost-Inefficient Behaviors](https://arxiv.org/abs/2609.30725) (Hu et al., 2026)
+
+**Meta proposta**: ≥ 60%
+
+**Status**: proposta pendente, veja [ADR-011](adr/011-grafo-sob-demanda.md)
+
+---
+
+### Experimentos Propostos
+
+#### A/B: Grafo vs Sem Grafo por Tipo de Tarefa
+
+```yaml
+experiment:
+  name: graph-ab-by-task-type
+  
+  task_types:
+    - localization_large_repo
+    - bug_fix_localized
+    - refactoring_cross_file
+    - feature_implementation
+    
+  conditions:
+    control: {graph: disabled}
+    treatment: {graph: enabled}
+    
+  metrics:
+    - tokens_total
+    - wall_time
+    - accuracy
+    - cost_usd
+    
+  hypothesis: "Grafo compensa mais em localização e refatoração cross-file, menos em bug fixes localizados"
+  
+  source: "arxiv.org/abs/2611.07286, arxiv.org/abs/2609.30725"
+```
+
+**Status**: proposta pendente
+
+---
+
+#### A/B: Compactação Híbrida vs Apenas LLM
+
+```yaml
+experiment:
+  name: compaction-hybrid-vs-llm
+  
+  conditions:
+    llm_only:
+      method: "resumo LLM do contexto completo"
+      
+    hybrid:
+      method: "extração mecânica + resumo LLM"
+      extraction: ["arquivos_tocados", "comandos", "falhas_teste", "decisões"]
+      
+  metrics:
+    - invariant_retention
+    - information_recall  # medido por quiz de detalhes
+    - tokens_after_compaction
+    
+  hypothesis: "Híbrida retém mais informação estruturada com menos tokens"
+  
+  source: "arxiv.org/abs/2610.31710, arxiv.org/abs/2610.31778"
+```
+
+**Status**: proposta pendente
+
+---
+
+#### Benchmark: Tarefas Impossíveis
+
+```yaml
+experiment:
+  name: impossible-tasks
+  
+  generation:
+    method: "gerar variantes onde teste contradiz spec"
+    examples:
+      - "spec pede ordenação crescente, teste espera decrescente"
+      - "spec limita a 100 items, teste passa com 200"
+      
+  conditions:
+    baseline: {hidden_tests: false}
+    with_monitor: {hidden_tests: true, trajectory_monitor: true}
+    
+  metrics:
+    - impossible_pass_rate  # meta: 0%
+    - cheating_detection_rate  # meta: 100%
+    
+  source: "arxiv.org/abs/2510.20270"
+```
+
+**Status**: proposta pendente (implementar via `tb bench --impossible`)
+
+---
+
+#### Medição: pass^k além de pass@1
+
+```yaml
+experiment:
+  name: pass-k-reliability
+  
+  k_values: [1, 3, 5, 10]
+  
+  metrics:
+    - pass_at_1
+    - pass_at_3
+    - pass_at_5
+    - pass_at_10
+    - reliability_score  # pass^k: confiabilidade em k tentativas
+    
+  hypothesis: "pass@1 alto com pass^k baixo indica solução frágil"
+  
+  source: "arxiv.org/abs/2406.12045 (τ-bench)"
+```
+
+**Status**: proposta pendente
+
+---
+
+#### Fronteira Custo × Acurácia
+
+```yaml
+experiment:
+  name: pareto-frontier
+  
+  conditions:
+    - {model: small, tools: minimal}
+    - {model: small, tools: full}
+    - {model: large, tools: minimal}
+    - {model: large, tools: full}
+    - {model: large, graph: enabled}
+    
+  metrics:
+    - accuracy
+    - cost_usd
+    - tokens_total
+    
+  analysis:
+    - plot: "fronteira de Pareto custo vs acurácia"
+    - identify: "configurações dominadas (nunca usar)"
+    
+  source: "arxiv.org/abs/2407.01502 (AI Agents That Matter)"
+```
+
+**Status**: proposta pendente
