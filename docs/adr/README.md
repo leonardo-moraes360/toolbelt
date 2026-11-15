@@ -23,6 +23,7 @@ Cada ADR segue o formato:
 | [004](004-sandbox-isolamento.md) | Sandbox com bubblewrap + Landlock + seccomp | accepted |
 | [005](005-anti-trapaca.md) | Estratégia anti-trapaça | accepted |
 | [006](006-inspiracoes-graphify-obsidian.md) | Inspirações: Graphify e Obsidian | accepted |
+| [007](007-inspiracao-elephant-goldfish.md) | Inspiração: Elephant-Goldfish Model | accepted |
 
 ## Como Propor um ADR
 
