@@ -1452,6 +1452,11 @@ Flags:
   --task <id>          Filtra tarefas
 ```
 
+Placeholders `{prompt}`, `{workdir}` e `{timeout}` são interpolados com
+quoting POSIX (aspas simples), evitando injeção via aspas, `$()` ou `;`.
+O harness também exporta `TB_BENCH_PROMPT`, `TB_BENCH_WORKDIR` e
+`TB_BENCH_TIMEOUT` para agentes que preferem ler env em vez do argv.
+
 **`tb bench compare` (A/B):**
 
 ```bash
