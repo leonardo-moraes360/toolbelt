@@ -25,14 +25,14 @@ func TestDefaultConfig(t *testing.T) {
 
 func TestInit(t *testing.T) {
 	tmpDir := t.TempDir()
+	configDir := filepath.Join(tmpDir, ".toolbelt")
 
-	err := Init(tmpDir)
+	err := Init(configDir)
 	if err != nil {
 		t.Fatalf("Init failed: %v", err)
 	}
 
 	// Verifica se o diretório foi criado
-	configDir := filepath.Join(tmpDir, DefaultConfigDir)
 	if _, err := os.Stat(configDir); os.IsNotExist(err) {
 		t.Error(".toolbelt directory was not created")
 	}
@@ -55,17 +55,18 @@ func TestInit(t *testing.T) {
 
 func TestExists(t *testing.T) {
 	tmpDir := t.TempDir()
+	configDir := filepath.Join(tmpDir, ".toolbelt")
 
 	// Antes de Init
-	if Exists(tmpDir) {
+	if Exists(configDir) {
 		t.Error("Exists should return false before Init")
 	}
 
 	// Depois de Init
-	if err := Init(tmpDir); err != nil {
+	if err := Init(configDir); err != nil {
 		t.Fatalf("Init failed: %v", err)
 	}
-	if !Exists(tmpDir) {
+	if !Exists(configDir) {
 		t.Error("Exists should return true after Init")
 	}
 }

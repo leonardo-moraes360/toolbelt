@@ -102,6 +102,12 @@ issues:
       linters:
         - funlen
 
+    # Benchmark fixtures are intentionally incomplete
+    - path: bench/fixtures/
+      linters:
+        - typecheck
+        - all
+
   max-issues-per-linter: 0
   max-same-issues: 0
 
