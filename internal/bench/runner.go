@@ -19,7 +19,7 @@ type AgentConfig struct {
 	// ID identificador do agente.
 	ID string `yaml:"id" json:"id"`
 
-	// Command comando para invocar o agente.
+	// Command command para invocar o agente.
 	// Pode usar placeholders: {prompt}, {workdir}, {timeout}
 	Command string `yaml:"command" json:"command"`
 
@@ -190,8 +190,10 @@ func (r *Runner) prepareWorkDir(task *Task) (string, error) {
 }
 
 // executeAgent executa o agente.
-func (r *Runner) executeAgent(ctx context.Context, task *Task, workDir string) (string, int, error) {
-	// Substitui placeholders no comando
+//
+//nolint:gosec // G204: command is intentionally constructed from user config
+func (r *Runner) executeAgent(ctx context.Context, task *Task, workDir string) (output string, exitCode int, err error) {
+	// Substitui placeholders no command
 	cmd := r.agent.Command
 	cmd = strings.ReplaceAll(cmd, "{prompt}", task.Prompt)
 	cmd = strings.ReplaceAll(cmd, "{workdir}", workDir)
@@ -211,20 +213,20 @@ func (r *Runner) executeAgent(ctx context.Context, task *Task, workDir string) (
 	proc.Stdout = &stdout
 	proc.Stderr = &stderr
 
-	err := proc.Run()
-	output := stdout.String() + stderr.String()
+	runErr := proc.Run()
+	output = stdout.String() + stderr.String()
 
-	exitCode := 0
-	if exitErr, ok := err.(*exec.ExitError); ok {
+	exitCode = 0
+	if exitErr, ok := runErr.(*exec.ExitError); ok {
 		exitCode = exitErr.ExitCode()
-		err = nil // Exit code != 0 não é erro fatal
+		runErr = nil // Exit code != 0 não é erro fatal
 	}
 
-	return output, exitCode, err
+	return output, exitCode, runErr
 }
 
-// executeVerification executa o comando de verificação.
-func (r *Runner) executeVerification(ctx context.Context, task *Task, workDir string) (string, int, error) {
+// executeVerification executa o command de verificação.
+func (r *Runner) executeVerification(ctx context.Context, task *Task, workDir string) (output string, exitCode int, err error) {
 	proc := exec.CommandContext(ctx, "sh", "-c", task.Verification.Command)
 	proc.Dir = workDir
 
@@ -232,16 +234,16 @@ func (r *Runner) executeVerification(ctx context.Context, task *Task, workDir st
 	proc.Stdout = &stdout
 	proc.Stderr = &stderr
 
-	err := proc.Run()
-	output := stdout.String() + stderr.String()
+	runErr := proc.Run()
+	output = stdout.String() + stderr.String()
 
-	exitCode := 0
-	if exitErr, ok := err.(*exec.ExitError); ok {
+	exitCode = 0
+	if exitErr, ok := runErr.(*exec.ExitError); ok {
 		exitCode = exitErr.ExitCode()
-		err = nil
+		runErr = nil
 	}
 
-	return output, exitCode, err
+	return output, exitCode, runErr
 }
 
 // parseAgentOutput tenta extrair métricas do output JSON do agente.

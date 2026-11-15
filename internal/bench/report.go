@@ -60,7 +60,8 @@ func WriteMarkdownReport(w io.Writer, summary *Summary, results []Result) error 
 		return sorted[i].Repetition < sorted[j].Repetition
 	})
 
-	for _, r := range sorted {
+	for i := range sorted {
+		r := &sorted[i]
 		passed := "❌"
 		if r.Passed {
 			passed = "✅"
@@ -86,6 +87,8 @@ func WriteMarkdownReport(w io.Writer, summary *Summary, results []Result) error 
 }
 
 // WriteComparisonReport gera um relatório comparando dois benchmarks.
+//
+//nolint:gocyclo // complexity is acceptable for this report function
 func WriteComparisonReport(w io.Writer, before, after *Summary) error {
 	fmt.Fprintf(w, "# Comparação de Benchmarks\n\n")
 	fmt.Fprintf(w, "| Métrica | Antes | Depois | Δ |\n")

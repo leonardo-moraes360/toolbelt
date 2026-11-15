@@ -51,7 +51,7 @@ type Task struct {
 
 // Verification define como verificar o resultado de uma tarefa.
 type Verification struct {
-	// Command comando shell para verificar (ex: "go test ./...")
+	// Command command shell para verificar (ex: "go test ./...")
 	Command string `yaml:"command" json:"command"`
 
 	// Timeout tempo máximo para verificação.

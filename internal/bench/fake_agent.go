@@ -64,7 +64,7 @@ func RunFakeAgent(workDir, prompt, configPath string) error {
 	if configPath != "" {
 		data, err := os.ReadFile(configPath)
 		if err == nil {
-			json.Unmarshal(data, &config)
+			_ = json.Unmarshal(data, &config)
 		}
 	}
 
@@ -80,15 +80,17 @@ func RunFakeAgent(workDir, prompt, configPath string) error {
 	// Aplica modificações
 	for path, content := range behavior.FilesToCreate {
 		fullPath := filepath.Join(workDir, path)
-		os.MkdirAll(filepath.Dir(fullPath), 0o755)
-		if err := os.WriteFile(fullPath, []byte(content), 0o644); err != nil {
+		if err := os.MkdirAll(filepath.Dir(fullPath), 0o755); err != nil {
+			return fmt.Errorf("creating directory for %s: %w", path, err)
+		}
+		if err := os.WriteFile(fullPath, []byte(content), 0o600); err != nil {
 			return fmt.Errorf("creating file %s: %w", path, err)
 		}
 	}
 
 	for path, content := range behavior.FilesToModify {
 		fullPath := filepath.Join(workDir, path)
-		if err := os.WriteFile(fullPath, []byte(content), 0o644); err != nil {
+		if err := os.WriteFile(fullPath, []byte(content), 0o600); err != nil {
 			return fmt.Errorf("modifying file %s: %w", path, err)
 		}
 	}

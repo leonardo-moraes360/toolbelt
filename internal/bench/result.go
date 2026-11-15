@@ -127,8 +127,8 @@ func WriteJSONL(results []Result, path string) error {
 	defer f.Close()
 
 	encoder := json.NewEncoder(f)
-	for _, r := range results {
-		if err := encoder.Encode(r); err != nil {
+	for i := range results {
+		if err := encoder.Encode(&results[i]); err != nil {
 			return fmt.Errorf("encoding result: %w", err)
 		}
 	}
@@ -158,6 +158,8 @@ func ReadJSONL(path string) ([]Result, error) {
 }
 
 // CalculateSummary calcula estatísticas agregadas dos resultados.
+//
+//nolint:gocyclo // complexity is acceptable for this aggregation function
 func CalculateSummary(benchmarkID, agentID string, results []Result) *Summary {
 	if len(results) == 0 {
 		return nil
@@ -170,8 +172,8 @@ func CalculateSummary(benchmarkID, agentID string, results []Result) *Summary {
 
 	// Conta tarefas únicas e repetições por tarefa
 	taskCounts := make(map[string]int)
-	for _, r := range results {
-		taskCounts[r.TaskID]++
+	for i := range results {
+		taskCounts[results[i].TaskID]++
 	}
 	summary.TotalTasks = len(taskCounts)
 
@@ -186,8 +188,9 @@ func CalculateSummary(benchmarkID, agentID string, results []Result) *Summary {
 
 	// Agrupa por tarefa para pass@1
 	taskResults := make(map[string][]Result)
-	for _, r := range results {
-		taskResults[r.TaskID] = append(taskResults[r.TaskID], r)
+	for i := range results {
+		r := &results[i]
+		taskResults[r.TaskID] = append(taskResults[r.TaskID], *r)
 
 		totalDuration += int(r.Duration * 1000) // ms para evitar float errors
 		totalRetries += r.Retries

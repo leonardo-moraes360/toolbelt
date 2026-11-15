@@ -28,7 +28,7 @@ var rootCmd = &cobra.Command{
 	Short: "Toolbelt - Kit de ferramentas para agentes de código IA",
 	Long: `Toolbelt (tb) é um kit de ferramentas para melhorar agentes de código IA.
 
-Inclui sandbox seguro, verificação adversarial, memória persistente,
+Inclui sandbox seguro, verificação adversarial, memória persistent,
 grafo de dependências, roteamento multi-agente e benchmark.
 
 Exemplo:
@@ -39,7 +39,7 @@ Exemplo:
 		// Inicializa logging
 		log.Init(jsonOutput)
 
-		// Carrega configuração se não for comando init/version/help
+		// Carrega configuração se não for command init/version/help
 		if cmd.Name() != "init" && cmd.Name() != "version" && cmd.Name() != "help" {
 			_, err := config.Load()
 			if err != nil {
@@ -56,12 +56,12 @@ func init() {
 	rootCmd.PersistentFlags().BoolVar(&jsonOutput, "json", false, "saída em JSON")
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "saída verbose")
 
-	// Adiciona subcomandos
+	// Adiciona subcommands
 	rootCmd.AddCommand(versionCmd)
 	rootCmd.AddCommand(initCmd)
 	rootCmd.AddCommand(benchCmd)
 
-	// Stubs para comandos futuros
+	// Stubs para commands futuros
 	rootCmd.AddCommand(sandboxCmd)
 	rootCmd.AddCommand(verifyCmd)
 	rootCmd.AddCommand(memCmd)
@@ -125,13 +125,13 @@ func init() {
 	initCmd.Flags().Bool("global", false, "inicializa configuração global")
 }
 
-// Stubs para comandos futuros
+// Stubs para commands futuros
 
 var sandboxCmd = &cobra.Command{
 	Use:   "sandbox",
 	Short: "Sandbox isolado para execução de código (não implementado)",
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("⚠️  Comando sandbox ainda não implementado")
+		fmt.Println("⚠️  Command sandbox ainda não implementado")
 		fmt.Println("   Será implementado na Fase 1")
 	},
 }
@@ -140,16 +140,16 @@ var verifyCmd = &cobra.Command{
 	Use:   "verify",
 	Short: "Verificação adversarial de código (não implementado)",
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("⚠️  Comando verify ainda não implementado")
+		fmt.Println("⚠️  Command verify ainda não implementado")
 		fmt.Println("   Será implementado na Fase 2")
 	},
 }
 
 var memCmd = &cobra.Command{
 	Use:   "mem",
-	Short: "Memória persistente do agente (não implementado)",
+	Short: "Memória persistent do agente (não implementado)",
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("⚠️  Comando mem ainda não implementado")
+		fmt.Println("⚠️  Command mem ainda não implementado")
 		fmt.Println("   Será implementado na Fase 3")
 	},
 }
@@ -158,7 +158,7 @@ var graphCmd = &cobra.Command{
 	Use:   "graph",
 	Short: "Grafo de dependências do código (não implementado)",
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("⚠️  Comando graph ainda não implementado")
+		fmt.Println("⚠️  Command graph ainda não implementado")
 		fmt.Println("   Será implementado na Fase 4")
 	},
 }
@@ -167,7 +167,7 @@ var routerCmd = &cobra.Command{
 	Use:   "router",
 	Short: "Roteamento multi-agente (não implementado)",
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("⚠️  Comando router ainda não implementado")
+		fmt.Println("⚠️  Command router ainda não implementado")
 		fmt.Println("   Será implementado na Fase 5")
 	},
 }
@@ -176,7 +176,7 @@ var mcpCmd = &cobra.Command{
 	Use:   "mcp",
 	Short: "Servidor MCP para integração com IDEs (não implementado)",
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("⚠️  Comando mcp ainda não implementado")
+		fmt.Println("⚠️  Command mcp ainda não implementado")
 		fmt.Println("   Será implementado na Fase 6")
 	},
 }

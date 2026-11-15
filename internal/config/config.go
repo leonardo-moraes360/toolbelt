@@ -20,7 +20,7 @@ const DefaultConfigFile = "config.yaml"
 
 // Config representa a configuração do toolbelt.
 type Config struct {
-	// Defaults são valores padrão para comandos.
+	// Defaults são valores padrão para commands.
 	Defaults Defaults `yaml:"defaults"`
 
 	// Sandbox configura o isolamento.
@@ -39,7 +39,7 @@ type Config struct {
 	Bench BenchConfig `yaml:"bench"`
 }
 
-// Defaults são valores padrão para comandos.
+// Defaults são valores padrão para commands.
 type Defaults struct {
 	Sandbox    bool   `yaml:"sandbox"`
 	Timeout    string `yaml:"timeout"`
@@ -177,7 +177,7 @@ func Save(cfg *Config, path string) error {
 		return fmt.Errorf("marshaling config: %w", err)
 	}
 
-	return os.WriteFile(path, data, 0o644)
+	return os.WriteFile(path, data, 0o600)
 }
 
 // Init cria o diretório de configuração e o arquivo de configuração padrão.

@@ -23,7 +23,7 @@ var benchCmd = &cobra.Command{
 Permite executar um conjunto de tarefas contra um agente externo
 configurável e coletar métricas como pass@1, tokens, tempo e custo.
 
-Subcomandos:
+Subcommands:
   run      Executa benchmark completo
   list     Lista tarefas disponíveis
   report   Gera relatório de resultados existentes
@@ -37,7 +37,7 @@ func init() {
 	benchCmd.AddCommand(benchCompareCmd)
 
 	// Flags do run
-	benchRunCmd.Flags().StringP("agent", "a", "", "comando do agente (obrigatório ou use --fake)")
+	benchRunCmd.Flags().StringP("agent", "a", "", "command do agente (obrigatório ou use --fake)")
 	benchRunCmd.Flags().Bool("fake", false, "usa agente fake para testes")
 	benchRunCmd.Flags().StringP("tasks-dir", "t", "bench/tasks", "diretório das tarefas")
 	benchRunCmd.Flags().StringP("fixtures-dir", "f", "bench/fixtures", "diretório das fixtures")
@@ -61,7 +61,7 @@ var benchRunCmd = &cobra.Command{
 	Short: "Executa benchmark",
 	Long: `Executa benchmark contra um agente de código.
 
-O agente é especificado como um comando shell que recebe o prompt
+O agente é especificado como um command shell que recebe o prompt
 e diretório de trabalho via placeholders:
   {prompt}  - prompt da tarefa
   {workdir} - diretório de trabalho temporário
@@ -202,7 +202,7 @@ func runBenchmark(cmd *cobra.Command, args []string) error {
 	taskIDs, _ := cmd.Flags().GetStringSlice("task")
 	fakeConfig, _ := cmd.Flags().GetString("fake-config")
 
-	// Valida argumentos
+	// Valida arguments
 	if !useFake && agentCmd == "" {
 		return fmt.Errorf("--agent ou --fake é obrigatório")
 	}
@@ -302,9 +302,9 @@ func runBenchmark(cmd *cobra.Command, args []string) error {
 	reportPath := outputPath[:len(outputPath)-6] + ".md"
 	reportFile, err := os.Create(reportPath)
 	if err == nil {
-		bench.WriteMarkdownReport(reportFile, summary, results)
+		_ = bench.WriteMarkdownReport(reportFile, summary, results)
 		reportFile.Close()
-		log.Info("relatório gerado", "path", reportPath)
+		log.Info("report generated", "path", reportPath)
 	}
 
 	return nil

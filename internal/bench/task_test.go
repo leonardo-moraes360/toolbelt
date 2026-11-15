@@ -111,7 +111,7 @@ func TestTask_TimeoutDuration(t *testing.T) {
 	}{
 		{"5m", 5 * time.Minute},
 		{"30s", 30 * time.Second},
-		{"", 10 * time.Minute},      // default
+		{"", 10 * time.Minute},        // default
 		{"invalid", 10 * time.Minute}, // fallback
 	}
 
