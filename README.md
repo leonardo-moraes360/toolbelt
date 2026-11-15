@@ -81,6 +81,7 @@ Veja a documentação completa em [docs/arquitetura.md](docs/arquitetura.md).
 | [docs/benchmark.md](docs/benchmark.md) | KPIs e metodologia de avaliação |
 | [docs/adr/](docs/adr/) | Registros de Decisão Arquitetural (ADRs) |
 | [docs/pesquisa/](docs/pesquisa/) | Fontes primárias, top 10 e achados da pesquisa (2026-11) |
+| [docs/campo/SINTESE.md](docs/campo/SINTESE.md) | Estudo de campo em 20 repos + ranking de melhorias |
 | [docs/identidade-visual.md](docs/identidade-visual.md) | Logo, paleta Synthwave e tokens de tema |
 
 ## 🚀 Instalação
@@ -160,6 +161,9 @@ tb bench compare --config-a bench/ab/graph-off.yaml \
 - [x] `tb drift` — detecção de drift (escopo / commit base)
 - [x] Ruler visual: screenshot + browser headless (skip gracioso)
 - [ ] Hierarquia de agentes / A2A / `tb md` (posterior)
+
+### Entrada para a próxima fase (estudo de campo)
+- Estudo de campo do `tb` em 20 repositórios públicos (relatórios em [`docs/campo/`](docs/campo/) + síntese de melhorias em [`docs/campo/SINTESE.md`](docs/campo/SINTESE.md)), como input priorizado para os próximos PRs de produto — sem marcar itens acima como concluídos.
 
 ### Fase 3
 - [ ] Router/Workers para delegação escalável de tarefas
