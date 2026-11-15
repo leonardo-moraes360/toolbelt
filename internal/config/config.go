@@ -64,6 +64,7 @@ type GraphConfig struct {
 	InferRelations bool     `yaml:"infer_relations"`
 	Languages      []string `yaml:"languages"`
 	Docs           []string `yaml:"docs"`
+	Frameworks     []string `yaml:"frameworks"`
 	MaxFileBytes   int64    `yaml:"max_file_bytes"`
 }
 
@@ -118,7 +119,10 @@ func DefaultConfig() *Config {
 				"go", "javascript", "python", "java", "kotlin", "csharp",
 				"cpp", "rust", "php", "ruby", "swift", "shell",
 			},
-			Docs:         []string{"markdown", "html", "txt"},
+			Docs: []string{"markdown", "html", "txt"},
+			Frameworks: []string{
+				"react", "vue", "svelte", "astro", "angular", "routes", "mdx",
+			},
 			MaxFileBytes: 512 * 1024,
 		},
 		Vault: VaultConfig{

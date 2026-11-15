@@ -30,8 +30,7 @@ type MarkdownIndexer struct{}
 func (MarkdownIndexer) Name() string     { return "markdown" }
 func (MarkdownIndexer) Category() string { return CategoryDoc }
 func (MarkdownIndexer) Match(path string) bool {
-	ext := strings.ToLower(filepath.Ext(path))
-	return ext == ".md" || ext == ".mdx"
+	return strings.ToLower(filepath.Ext(path)) == ".md"
 }
 
 func (MarkdownIndexer) IndexFile(root, rel string) ([]Node, []Edge, error) {

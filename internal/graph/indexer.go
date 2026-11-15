@@ -9,6 +9,7 @@ import (
 const (
 	CategoryLanguage          = "language"
 	CategoryDoc               = "doc"
+	CategoryFramework         = "framework"
 	DefaultMaxFileBytes int64 = 512 * 1024
 )
 
@@ -22,6 +23,7 @@ type LanguageIndexer interface {
 type BuildOptions struct {
 	Languages    []string
 	Docs         []string
+	Frameworks   []string
 	MaxFileBytes int64
 	SkipDirs     []string
 }
@@ -32,7 +34,10 @@ func DefaultBuildOptions() BuildOptions {
 			"go", "javascript", "python", "java", "kotlin", "csharp",
 			"cpp", "rust", "php", "ruby", "swift", "shell",
 		},
-		Docs:         []string{"markdown", "html", "txt"},
+		Docs: []string{"markdown", "html", "txt"},
+		Frameworks: []string{
+			"react", "vue", "svelte", "astro", "angular", "routes", "mdx",
+		},
 		MaxFileBytes: DefaultMaxFileBytes,
 		SkipDirs: []string{
 			".git", "vendor", "node_modules", "bin", "dist", "build",
@@ -55,6 +60,9 @@ func normalizeBuildOptions(opts *BuildOptions) {
 	if len(opts.Docs) == 0 {
 		opts.Docs = DefaultBuildOptions().Docs
 	}
+	if len(opts.Frameworks) == 0 {
+		opts.Frameworks = DefaultBuildOptions().Frameworks
+	}
 }
 
 func allowsIndexer(opts *BuildOptions, idx LanguageIndexer) bool {
@@ -62,6 +70,8 @@ func allowsIndexer(opts *BuildOptions, idx LanguageIndexer) bool {
 	switch idx.Category() {
 	case CategoryDoc:
 		return containsFold(opts.Docs, name)
+	case CategoryFramework:
+		return containsFold(opts.Frameworks, name)
 	default:
 		return containsFold(opts.Languages, name)
 	}
@@ -91,16 +101,28 @@ func Indexers() []LanguageIndexer {
 	return out
 }
 
-func indexerFor(path string, opts *BuildOptions) LanguageIndexer {
+func indexersFor(path string, opts *BuildOptions) []LanguageIndexer {
+	var frameworks, others []LanguageIndexer
 	for _, idx := range languageIndexers {
-		if !allowsIndexer(opts, idx) {
+		if !allowsIndexer(opts, idx) || !idx.Match(path) {
 			continue
 		}
-		if idx.Match(path) {
-			return idx
+		if idx.Category() == CategoryFramework {
+			frameworks = append(frameworks, idx)
+			continue
+		}
+		others = append(others, idx)
+	}
+	if len(frameworks) == 0 {
+		return others
+	}
+	out := append([]LanguageIndexer{}, frameworks...)
+	for _, idx := range others {
+		if idx.Category() == CategoryDoc {
+			out = append(out, idx)
 		}
 	}
-	return nil
+	return out
 }
 
 func BuildFromRoot(root string) (*Index, error) {
@@ -163,26 +185,29 @@ func walkSourceFile(
 	if info.Size() > opts.MaxFileBytes {
 		return nil
 	}
-	lang := indexerFor(path, opts)
-	if lang == nil {
+	idxs := indexersFor(path, opts)
+	if len(idxs) == 0 {
 		return nil
 	}
 	rel, _ := filepath.Rel(root, path)
-	fileNodes, fileEdges, err := lang.IndexFile(root, rel)
-	if err != nil {
-		return nil
+	for _, lang := range idxs {
+		fileNodes, fileEdges, err := lang.IndexFile(root, rel)
+		if err != nil {
+			continue
+		}
+		for _, n := range fileNodes {
+			nodes[n.ID] = n
+		}
+		*edges = append(*edges, fileEdges...)
 	}
-	for _, n := range fileNodes {
-		nodes[n.ID] = n
-	}
-	*edges = append(*edges, fileEdges...)
 	return nil
 }
 
 func resolveSoftMentions(nodes map[string]Node, edges []Edge) []Edge {
 	byTitle := map[string][]string{}
 	for id, n := range nodes {
-		if n.Type == NodeFunction || n.Type == NodeClass || n.Type == NodeFile || n.Type == NodeSection {
+		switch n.Type {
+		case NodeFunction, NodeClass, NodeFile, NodeSection, NodeComponent, NodeHook, NodeRoute:
 			key := strings.ToLower(n.Title)
 			byTitle[key] = append(byTitle[key], id)
 		}

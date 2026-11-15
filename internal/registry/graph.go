@@ -153,6 +153,9 @@ func graphOptionsFromConfig() graph.BuildOptions {
 	if len(cfg.Graph.Docs) > 0 {
 		opts.Docs = cfg.Graph.Docs
 	}
+	if len(cfg.Graph.Frameworks) > 0 {
+		opts.Frameworks = cfg.Graph.Frameworks
+	}
 	if cfg.Graph.MaxFileBytes > 0 {
 		opts.MaxFileBytes = cfg.Graph.MaxFileBytes
 	}

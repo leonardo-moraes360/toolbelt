@@ -20,11 +20,14 @@ const (
 type NodeType string
 
 const (
-	NodeFile     NodeType = "file"
-	NodeFunction NodeType = "function"
-	NodePackage  NodeType = "package"
-	NodeClass    NodeType = "class"
-	NodeSection  NodeType = "section"
+	NodeFile      NodeType = "file"
+	NodeFunction  NodeType = "function"
+	NodePackage   NodeType = "package"
+	NodeClass     NodeType = "class"
+	NodeSection   NodeType = "section"
+	NodeComponent NodeType = "component"
+	NodeHook      NodeType = "hook"
+	NodeRoute     NodeType = "route"
 )
 
 type EdgeType string
@@ -35,6 +38,8 @@ const (
 	EdgeDefines  EdgeType = "defines"
 	EdgeLinks    EdgeType = "links"
 	EdgeMentions EdgeType = "mentions"
+	EdgeRenders  EdgeType = "renders"
+	EdgeTemplate EdgeType = "template"
 )
 
 type Node struct {

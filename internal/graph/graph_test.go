@@ -163,6 +163,7 @@ func TestIndexerRegistryExtensible(t *testing.T) {
 		"go", "javascript", "python", "java", "kotlin", "csharp",
 		"cpp", "rust", "php", "ruby", "swift", "shell",
 		"markdown", "html", "txt",
+		"react", "vue", "svelte", "astro", "angular", "routes", "mdx",
 	}
 	for _, name := range required {
 		if !names[name] {
