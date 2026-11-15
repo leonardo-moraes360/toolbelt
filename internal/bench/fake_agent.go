@@ -80,15 +80,15 @@ func RunFakeAgent(workDir, prompt, configPath string) error {
 	// Aplica modificações
 	for path, content := range behavior.FilesToCreate {
 		fullPath := filepath.Join(workDir, path)
-		os.MkdirAll(filepath.Dir(fullPath), 0755)
-		if err := os.WriteFile(fullPath, []byte(content), 0644); err != nil {
+		os.MkdirAll(filepath.Dir(fullPath), 0o755)
+		if err := os.WriteFile(fullPath, []byte(content), 0o644); err != nil {
 			return fmt.Errorf("creating file %s: %w", path, err)
 		}
 	}
 
 	for path, content := range behavior.FilesToModify {
 		fullPath := filepath.Join(workDir, path)
-		if err := os.WriteFile(fullPath, []byte(content), 0644); err != nil {
+		if err := os.WriteFile(fullPath, []byte(content), 0o644); err != nil {
 			return fmt.Errorf("modifying file %s: %w", path, err)
 		}
 	}

@@ -49,6 +49,6 @@ func (i Info) String() string {
 }
 
 // Short retorna apenas a versão.
-func (i Info) Short() string {
+func (i Info) Short() string { //nolint:gocritic // small struct, value receiver is fine
 	return i.Version
 }

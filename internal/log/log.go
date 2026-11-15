@@ -148,7 +148,7 @@ func (h *SynthwaveHandler) Enabled(_ context.Context, level slog.Level) bool {
 }
 
 // Handle implementa slog.Handler.
-func (h *SynthwaveHandler) Handle(_ context.Context, r slog.Record) error {
+func (h *SynthwaveHandler) Handle(_ context.Context, r slog.Record) error { //nolint:gocritic // slog.Handler interface requires value receiver
 	var levelColor, levelText string
 	switch r.Level {
 	case slog.LevelDebug:

@@ -236,7 +236,7 @@ func runBenchmark(cmd *cobra.Command, args []string) error {
 	}
 
 	// Garante diretório de output
-	if err := os.MkdirAll(filepath.Dir(outputPath), 0755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(outputPath), 0o755); err != nil {
 		return fmt.Errorf("creating output directory: %w", err)
 	}
 

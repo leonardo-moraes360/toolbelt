@@ -168,7 +168,7 @@ func loadFromFile(path string, cfg *Config) error {
 // Save salva a configuração em um arquivo.
 func Save(cfg *Config, path string) error {
 	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("creating config dir: %w", err)
 	}
 
@@ -177,13 +177,13 @@ func Save(cfg *Config, path string) error {
 		return fmt.Errorf("marshaling config: %w", err)
 	}
 
-	return os.WriteFile(path, data, 0644)
+	return os.WriteFile(path, data, 0o644)
 }
 
 // Init cria o diretório de configuração e o arquivo de configuração padrão.
 // dir é o caminho completo do diretório (ex: /home/user/.config/toolbelt ou /project/.toolbelt)
 func Init(dir string) error {
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("creating config dir: %w", err)
 	}
 
@@ -191,7 +191,7 @@ func Init(dir string) error {
 	subdirs := []string{"vault", "logs", "bench"}
 	for _, sub := range subdirs {
 		subpath := filepath.Join(dir, sub)
-		if err := os.MkdirAll(subpath, 0755); err != nil {
+		if err := os.MkdirAll(subpath, 0o755); err != nil {
 			return fmt.Errorf("creating %s dir: %w", sub, err)
 		}
 	}

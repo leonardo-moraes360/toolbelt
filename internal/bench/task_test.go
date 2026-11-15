@@ -10,7 +10,7 @@ import (
 func TestLoadTask(t *testing.T) {
 	tmpDir := t.TempDir()
 	taskDir := filepath.Join(tmpDir, "test-task")
-	os.MkdirAll(taskDir, 0755)
+	os.MkdirAll(taskDir, 0o755)
 
 	taskYAML := `
 id: test-task
@@ -27,7 +27,7 @@ verification:
 timeout: "5m"
 `
 	taskPath := filepath.Join(taskDir, "task.yaml")
-	if err := os.WriteFile(taskPath, []byte(taskYAML), 0644); err != nil {
+	if err := os.WriteFile(taskPath, []byte(taskYAML), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -132,7 +132,7 @@ func TestLoadTasksFromDir(t *testing.T) {
 	// Cria duas tarefas
 	for _, id := range []string{"task-1", "task-2"} {
 		taskDir := filepath.Join(tmpDir, id)
-		os.MkdirAll(taskDir, 0755)
+		os.MkdirAll(taskDir, 0o755)
 
 		taskYAML := `
 id: ` + id + `
@@ -140,7 +140,7 @@ prompt: "Do task"
 verification:
   command: "echo ok"
 `
-		os.WriteFile(filepath.Join(taskDir, "task.yaml"), []byte(taskYAML), 0644)
+		os.WriteFile(filepath.Join(taskDir, "task.yaml"), []byte(taskYAML), 0o644)
 	}
 
 	tasks, err := LoadTasksFromDir(tmpDir)

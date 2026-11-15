@@ -104,7 +104,7 @@ func TestLocalOverridesGlobal(t *testing.T) {
 
 	// Cria configuração "global"
 	globalDir := filepath.Join(tmpDir, "global")
-	os.MkdirAll(globalDir, 0755)
+	os.MkdirAll(globalDir, 0o755)
 	globalCfg := DefaultConfig()
 	globalCfg.Defaults.Timeout = "30s"
 	globalCfg.Bench.Repetitions = 5
@@ -112,7 +112,7 @@ func TestLocalOverridesGlobal(t *testing.T) {
 
 	// Cria configuração "local"
 	localDir := filepath.Join(tmpDir, "local")
-	os.MkdirAll(localDir, 0755)
+	os.MkdirAll(localDir, 0o755)
 	localCfg := DefaultConfig()
 	localCfg.Defaults.Timeout = "60s" // Override
 	Save(localCfg, filepath.Join(localDir, "config.yaml"))
