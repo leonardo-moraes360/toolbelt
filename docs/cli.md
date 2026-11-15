@@ -1,36 +1,38 @@
 # Árvore de Comandos do `tb`
 
-Este documento descreve a interface de linha de comando planejada para o toolbelt.
+Este documento descreve a CLI do toolbelt: comandos **implementados** (espelham `tb --help`) e seções **planejadas** (Fase 3+, marcadas explicitamente). Em caso de divergência, a CLI Cobra é a fonte da verdade.
 
 ## Visão Geral
 
 ```
-tb
-├── run          Executa comandos no sandbox
-├── proc         Gerencia processos de longa duração
-├── graph        Grafo de código sob demanda (✓ Fase 2)
-├── mem          Gerencia a memória (vault)
-├── md           TUI para visualização e edição do vault
-├── agent        Gerencia agentes
-├── guard        Proteções e verificações de segurança
-├── review       Revisão fresh-context (✓ Fase 2)
-├── drift        Drift de escopo/base (✓ Fase 2)
-├── verify       Verificação adversarial (gerador vs discriminador)
-├── ticket       Gerencia tickets de trabalho
-├── board        Visualiza e gerencia o board de tarefas
-├── router       Controla o router de delegação
-├── watchdog     Monitora saúde dos workers
-├── merge        Agrega resultados de workers
-├── bench        Executa benchmarks
-├── mcp          Servidor MCP sobre stdio (✓ Fase 1)
-└── version      Exibe versão
+tb  (implementado hoje)
+├── init         Inicializa configuração local/global
+├── bench        Harness de benchmark (run|list|report|compare)
+├── drift        Drift de escopo / commit base
+├── graph        Grafo sob demanda (TB_GRAPH=on ou --enable)
+├── guard        Proteções anti-trapaça (check)
+├── mcp          Servidor MCP sobre stdio
+├── mem          Invariantes fora da compactação (add|list|check|init)
+├── review       Revisão fresh-context
+├── sandbox      Worktrees + Landlock (check|run)
+├── verify       Verificação adversarial (run; rulers tests|visual)
+├── workspace    Workspaces via git worktree
+├── version      Mostra versão
+└── router       Stub (não implementado)
+
+tb  (planejado — Fase 3+)
+├── run / proc / md / agent
+├── ticket / board / watchdog / merge
+└── serve        (hoje use: tb mcp)
 ```
 
 ---
 
 ## Comandos Detalhados
 
-### `tb run` — Execução de Comandos
+### `tb run` — Execução de Comandos (planejado — Fase 3+)
+
+> **Não implementado como `tb run`.** Hoje use `tb sandbox run` para isolamento Landlock.
 
 Executa comandos com isolamento opcional.
 
@@ -318,50 +320,45 @@ Subcomandos (planejados — vault Markdown):
   sync      Sincroniza vault → SQLite
 ```
 
-**`tb mem add`:**
+**`tb mem add` (implementado):**
 
 ```bash
-tb mem add [flags]
+tb mem add <regra> [flags]
 
 Flags:
-  --type <type>       Tipo: fact|decision|summary|note
-  --title <title>     Título da entrada
-  --tags <tags>       Tags separadas por vírgula
-  --links <links>     Wikilinks para outras entradas
-  --source <source>   Proveniência: manual|extracted|inferred
-  --file <path>       Arquivo Markdown existente
+  --category <cat>    Categoria: anti_cheat|mandate|security (default: anti_cheat)
+```
+
+**`tb mem list` (implementado):**
+
+```bash
+tb mem list [flags]
+
+Flags:
+  --category <cat>    Filtrar por categoria
 ```
 
 **Exemplos:**
 
 ```bash
-# Adicionar fato
-tb mem add --type fact --title "Convenção de Nomes Go" \
-  --tags "convention,go" \
-  "Usamos camelCase para variáveis locais e PascalCase para exportadas."
+# Adicionar invariante (argumento posicional obrigatório)
+tb mem add "Não modificar tests/hidden/**"
+tb mem add --category security "Não relaxar thresholds sem revisão"
 
-# Adicionar decisão
-tb mem add --type decision --title "SQLite para storage" \
-  --tags "architecture,database" \
-  --links "adr-003,database-module" \
-  "Decidimos usar SQLite por simplicidade e performance."
-
-# Buscar na memória
-tb mem search "autenticação"
-
-# Listar decisões recentes
-tb mem list --type decision --limit 10 --sort updated
-
-# Criar link
-tb mem link "auth-module" "jwt-validation"
-
-# Sincronizar manualmente
-tb mem sync
+# Listar / checar / seed anti-trapaça
+tb mem list
+tb mem list --category anti_cheat
+tb mem check
+tb mem init
 ```
+
+> Subcomandos de vault Markdown (`search`, `show`, `edit`, `link`, `tag`, `export`, `import`, `sync`) e flags `--type`/`--title` **não existem** na CLI atual — são planejados.
 
 ---
 
-### `tb md` — TUI Markdown
+### `tb md` — TUI Markdown (planejado — Fase 3+)
+
+> **Não implementado.** A CLI atual não expõe `tb md`.
 
 Interface TUI para navegar e editar o vault.
 
@@ -472,76 +469,27 @@ tb agent reject action-124 --reason "Não autorizado para rede externa"
 
 ---
 
-### `tb guard` — Proteções de Segurança
+### `tb guard` — Proteções de Segurança (✓ implementado: `check`)
 
-Gerencia snapshots, verificações e proteções contra trapaça.
-
-```bash
-tb guard <subcommand>
-
-Subcomandos:
-  snapshot  Cria snapshot de arquivos
-  verify    Verifica integridade de snapshot
-  protect   Marca arquivos como protegidos
-  audit     Consulta log de auditoria
-  check     Verifica padrões suspeitos
-```
-
-**`tb guard snapshot`:**
+Analisa o diff entre commits em busca de paths protegidos e padrões anti-trapaça.
 
 ```bash
-tb guard snapshot [flags]
+tb guard check <base>..<head> [flags]
 
 Flags:
-  --paths <patterns>  Globs de arquivos para snapshot
-  --id <id>           ID do snapshot (auto-gerado se omitido)
-  --verify-before     Verifica snapshot anterior antes de criar novo
-```
-
-**`tb guard verify`:**
-
-```bash
-tb guard verify [flags]
-
-Flags:
-  --snapshot-id <id>  ID do snapshot a verificar
-  --paths <patterns>  Verificar apenas estes caminhos
-  --strict            Falha em qualquer divergência
+  --strict    Exit ≠ 0 quando há violações de severidade erro
+  --json      Saída em JSON (flag global)
 ```
 
 **Exemplos:**
 
 ```bash
-# Snapshot antes de tarefa
-tb guard snapshot --paths "tests/**" "benchmarks/**"
-# Snapshot criado: snap-20260115-103000
-# Arquivos: 45
-# Hash: sha256:abc123...
-
-# Verificar após tarefa
-tb guard verify --snapshot-id snap-20260115-103000
-# Todos os 45 arquivos intactos
-
-# Se houver violação:
-# VIOLAÇÃO DETECTADA
-# - tests/auth_test.go: MODIFICADO (hash diverge)
-# - tests/old_test.go: DELETADO
-
-# Marcar arquivos como permanentemente protegidos
-tb guard protect --paths "benchmarks/**" --mode readonly
-
-# Verificar padrões suspeitos
-tb guard check --type reward-hacking --path "src/"
-# Verificando padrões de reward hacking...
-# t.Skip() adicionado em src/auth/auth_test.go:45
-# String literal suspeita em src/parser/parse_test.go:78
-
-# Consultar auditoria
-tb guard audit --since "1h" --action "file:*"
-# TIMESTAMP            AGENT        ACTION       RESOURCE          STATUS
-# 2026-01-15T10:30:00  worker-001   file:write   src/parser.go     approved
-# 2026-01-15T10:31:00  worker-001   file:delete  src/old.go        blocked
+tb guard check HEAD~1..HEAD
+tb guard check --strict HEAD~1..HEAD
+tb guard check --json HEAD~1..HEAD
 ```
+
+> Subcomandos `snapshot`, `verify`, `protect` e `audit` **não existem** na CLI atual — são planejados.
 
 ---
 
@@ -741,15 +689,18 @@ Executa o loop gerador→discriminador com rulers plugáveis.
 tb verify run [flags]
 
 Flags:
-  --ruler <type>           Tipo de ruler: tests|visual (default: tests) ✅
+  --ruler <type>           Tipo de ruler: tests|visual (default: tests)
   --test-cmd <cmd>         Testes visíveis (default: go test ./... ou verify.test_cmd)
   --hidden-test-cmd <cmd>  Suite oculta (default: go test ./tests/hidden/... ou verify.hidden_test_cmd)
-  --max-iter <n>           Máximo de iterações (default: 3)
-  --threshold <pct>        Threshold de similaridade visual (default: 0.95) ✅
-  --manifest <path>        Manifesto de telas (default: .toolbelt/screens.yaml) ✅
-  --skip-unavailable       Skip gracioso sem browser/refs (default: true) ✅
-  --output <path>          Arquivo de saída do relatório
-  --json                   Saída em JSON
+  --max-iter <n>           Máximo de iterações
+  --timeout <dur>          Timeout (default: 10m)
+  --threshold <float>      Threshold de similaridade visual (default: 0.95)
+  --manifest <path>        Manifesto de telas (default: .toolbelt/screens.yaml)
+  --skip-unavailable       Skip gracioso sem browser/refs (default: true)
+  --base <ref>             Ref base
+  --head <ref>             Ref head
+  --output <path> / -o     Arquivo de saída JSON
+  --json                   Saída em JSON (flag global)
 ```
 
 A suite oculta permanece escondida do agente (paths em `tests/hidden/` protegidos
@@ -772,60 +723,27 @@ se Chromium/Chrome ou referências estiverem ausentes, faz skip gracioso.
 **Exemplos:**
 
 ```bash
-# Verificação visual de UI
-tb verify ui-implementation --ruler visual --threshold 95
-# ═══════════════════════════════════════════════════════════════
-# VERIFICAÇÃO ADVERSARIAL: ui-implementation
-# Ruler: visual | Threshold: 95% | Max iterações: 3
-# ═══════════════════════════════════════════════════════════════
-# 
-# [Iteração 1/3]
-# ├── Guard check: OK (0 paths protegidos modificados)
-# ├── Clean build: 45s
-# ├── Captura: 8 telas × 2 modos = 16 screenshots
-# ├── Comparação:
-# │   ┌─────────────┬────────┬────────┬──────────┐
-# │   │ Tela        │ Light  │ Dark   │ Tamanho  │
-# │   ├─────────────┼────────┼────────┼──────────┤
-# │   │ login       │ 97.2%  │ 95.8%  │ OK       │
-# │   │ dashboard   │ 92.1%  │ 91.5%  │ OK       │  ← FAIL
-# │   │ settings    │ 98.4%  │ 97.9%  │ OK       │
-# │   │ profile     │ 96.0%  │ 95.2%  │ SIZE≠    │  ← FAIL
-# │   └─────────────┴────────┴────────┴──────────┘
-# ├── Contraste WCAG: 2 violações
-# └── Veredicto: FAIL
-# 
-# Gaps encontrados:
-# G1: src/components/Dashboard.tsx:45
-#     Cor de fundo difere 8% → usar var(--bg-secondary)
-# G2: src/pages/Profile.tsx:120
-#     Altura do container 450px, esperado 480px
-# 
-# Retornando ao gerador...
+# Verificação com ruler de testes
+tb verify run
+tb verify run --test-cmd "go test ./..." --hidden-test-cmd "go test ./tests/hidden/..."
 
-# Verificação de código com testes
-tb verify feature-auth --ruler tests
-# Executa testes ocultos como discriminador
+# Verificação visual (threshold é fração 0–1, não porcentagem inteira)
+tb verify run --ruler visual --threshold 0.95
+tb verify run --ruler visual --manifest .toolbelt/screens.yaml --json -o verify-result.json
 
-# Verificação de documentação
-tb verify design-spec --ruler review --threshold 80
-# Spawna revisores fresh-context como discriminador
-
-# Apenas discriminador (debug)
-tb verify ui-fix --ruler visual --discriminator-only
-# Roda uma passagem do discriminador sem loop
-
-# Saída JSON para CI
-tb verify ui --ruler visual --json --output verify-result.json
+# Skip gracioso (default): browser/refs ausentes ou todas as telas skipped
+# → relatório top-level skipped=true
+tb verify run --ruler visual --skip-unavailable
 ```
 
 **Rulers disponíveis:**
 
 | Ruler | Métrica | Threshold Default | Trapaça Específica |
 |-------|---------|-------------------|-------------------|
-| `visual` | Similaridade pixel + WCAG | 95% | Edição de refs, masks inválidas |
+| `visual` | Similaridade pixel | 0.95 | Edição de refs |
 | `tests` | Passagem em testes ocultos | 100% | Modificação de testes |
-| `review` | Cobertura de revisão | 80% | Contexto contaminado |
+
+> Ruler `review`, flag `--discriminator-only` e invocações no estilo `tb verify <task-id>` **não existem** — use `tb verify run` e `tb review` separadamente.
 
 **Template de briefing do discriminador:**
 
@@ -946,8 +864,8 @@ tb guard check main..HEAD
 # ⚠ 2 modificações requerem justificativa
 # 
 # Para aprovar, crie decisões em:
-#   tb mem add --type decision --title "Remoção de login-light.png" ...
-#   tb mem add --type decision --title "Relaxamento de threshold" ...
+#   tb mem add --category mandate "Remoção de login-light.png aprovada"
+#   tb mem add --category mandate "Relaxamento de threshold aprovado"
 
 # Modo strict para CI
 tb guard check origin/main..HEAD --strict
@@ -1034,7 +952,9 @@ approved_changes:
 
 ---
 
-### `tb ticket` — Gerenciamento de Tickets
+### `tb ticket` — Gerenciamento de Tickets (planejado — Fase 3+)
+
+> **Não implementado.** A CLI atual não expõe `tb ticket`. Use um `rd.md` manual consumido por `tb drift` / `tb review`.
 
 Cria e gerencia tickets de trabalho para o padrão Router/Workers.
 
@@ -1172,7 +1092,9 @@ ticket:
 
 ---
 
-### `tb board` — Visualização do Board
+### `tb board` — Visualização do Board (planejado — Fase 3+)
+
+> **Não implementado.**
 
 Exibe e gerencia o board de tickets (fila de trabalho).
 
@@ -1531,33 +1453,15 @@ tb bench report --input bench/results/graph-on.jsonl
 
 ---
 
-### `tb serve` — Servidor MCP
+### `tb mcp` — Servidor MCP (✓ implementado)
 
-Inicia o toolbelt como servidor MCP.
-
-```bash
-tb serve [flags]
-
-Flags:
-  --transport <type>  Transporte: stdio|unix|tcp (default: stdio)
-  --socket <path>     Caminho do Unix socket (para --transport unix)
-  --port <port>       Porta TCP (para --transport tcp)
-  --tls-cert <path>   Certificado TLS (para --transport tcp)
-  --tls-key <path>    Chave TLS (para --transport tcp)
-```
-
-**Exemplos:**
+Inicia o toolbelt como servidor MCP sobre **stdio** (JSON-RPC 2.0). Não há `tb serve` na CLI atual.
 
 ```bash
-# Modo padrão (stdio) para integração com IDE
-tb serve
-
-# Unix socket para comunicação local entre processos
-tb serve --transport unix --socket /tmp/tb.sock
-
-# TCP com TLS para acesso remoto
-tb serve --transport tcp --port 8443 --tls-cert cert.pem --tls-key key.pem
+tb mcp
 ```
+
+Transporte unix/tcp e flags `--socket`/`--port`/`--tls-*` são planejados; hoje só stdio.
 
 ---
 

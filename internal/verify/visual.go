@@ -132,12 +132,28 @@ func RunVisual(ctx context.Context, repo string, cfg VisualConfig) (*VisualRepor
 	if err != nil {
 		return nil, err
 	}
+	aggregateVisualSkipped(report)
 	if allPass {
 		report.Verdict = VerdictPass
 	} else {
 		report.Verdict = VerdictFail
 	}
 	return report, nil
+}
+
+func aggregateVisualSkipped(report *VisualReport) {
+	if len(report.Screens) == 0 {
+		return
+	}
+	for _, s := range report.Screens {
+		if !s.Skipped {
+			return
+		}
+	}
+	report.Skipped = true
+	if report.SkipReason == "" {
+		report.SkipReason = "todas as telas foram skipped"
+	}
 }
 
 func normalizeVisualConfig(repo string, cfg VisualConfig) VisualConfig {
