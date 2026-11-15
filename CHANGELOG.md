@@ -8,6 +8,7 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 ## [Não Lançado]
 
 ### Adicionado
+- `tb guard` carrega `protected_paths` de `.toolbelt/guard.yaml` (unidos aos defaults; arquivo ausente mantém só os defaults)
 - Ruler visual em `tb verify run --ruler visual` (screenshot headless, similaridade pixel, skip gracioso)
 - `tb review` fresh-context (Elephant-Goldfish) contra ticket/rd.md e invariantes de `tb mem`
 - `tb drift` para mudanças fora do scope declarado e divergência de commit base

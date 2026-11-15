@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	"gopkg.in/yaml.v3"
 )
 
 type ViolationType string
@@ -50,15 +52,59 @@ type Checker struct {
 	protectedPaths []string
 }
 
+var defaultProtectedPaths = []string{
+	"tests/hidden/*",
+	"benchmarks/*",
+	".toolbelt/thresholds.yaml",
+}
+
 func NewChecker(repoDir string) *Checker {
 	return &Checker{
-		repoDir: repoDir,
-		protectedPaths: []string{
-			"tests/hidden/*",
-			"benchmarks/*",
-			".toolbelt/thresholds.yaml",
-		},
+		repoDir:        repoDir,
+		protectedPaths: loadProtectedPaths(repoDir),
 	}
+}
+
+func loadProtectedPaths(repoDir string) []string {
+	paths := append([]string{}, defaultProtectedPaths...)
+	data, err := os.ReadFile(filepath.Join(repoDir, ".toolbelt", "guard.yaml"))
+	if err != nil {
+		return paths
+	}
+	var raw struct {
+		ProtectedPaths []any `yaml:"protected_paths"`
+	}
+	if err := yaml.Unmarshal(data, &raw); err != nil {
+		return paths
+	}
+	seen := make(map[string]struct{}, len(paths))
+	for _, p := range paths {
+		seen[p] = struct{}{}
+	}
+	for _, item := range raw.ProtectedPaths {
+		pattern := protectedPattern(item)
+		if pattern == "" {
+			continue
+		}
+		if _, ok := seen[pattern]; ok {
+			continue
+		}
+		seen[pattern] = struct{}{}
+		paths = append(paths, pattern)
+	}
+	return paths
+}
+
+func protectedPattern(item any) string {
+	switch v := item.(type) {
+	case string:
+		return strings.TrimSpace(v)
+	case map[string]any:
+		if p, ok := v["pattern"].(string); ok {
+			return strings.TrimSpace(p)
+		}
+	}
+	return ""
 }
 
 func (c *Checker) Check(baseRef, headRef string) (*CheckResult, error) {
