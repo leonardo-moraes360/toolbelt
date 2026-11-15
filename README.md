@@ -155,7 +155,7 @@ tb bench compare --config-a bench/ab/graph-off.yaml \
 
 ### Fase 2 (em andamento)
 - [x] `tb bench compare` A/B (configs/feature flags, métricas token/tempo/sucesso)
-- [ ] `tb graph` sob demanda com A/B graph-on vs graph-off
+- [x] `tb graph` sob demanda (CLI + MCP) com A/B graph-on vs graph-off
 - [ ] `tb review` — revisão fresh-context (Elephant-Goldfish)
 - [ ] `tb drift` — detecção de drift (escopo / commit base)
 - [ ] Ruler visual: screenshot + browser headless

@@ -8,7 +8,7 @@ Este documento descreve a interface de linha de comando planejada para o toolbel
 tb
 ├── run          Executa comandos no sandbox
 ├── proc         Gerencia processos de longa duração
-├── graph        Consulta e gerencia o grafo de conhecimento
+├── graph        Grafo de código sob demanda (✓ Fase 2)
 ├── mem          Gerencia a memória (vault)
 ├── md           TUI para visualização e edição do vault
 ├── agent        Gerencia agentes
@@ -125,23 +125,27 @@ tb proc stop --all
 
 ---
 
-### `tb graph` — Grafo de Conhecimento
+### `tb graph` — Grafo Sob Demanda (✓ Fase 2, ADR-011)
 
-Consulta e gerencia o grafo derivado do código e do vault.
+Consulta e indexa o grafo de código **sob demanda**. Desabilitado por padrão;
+ative com `TB_GRAPH=on` ou `--enable`. Medir ROI via
+`tb bench compare --config-a bench/ab/graph-off.yaml --config-b bench/ab/graph-on.yaml`.
 
 ```bash
-tb graph <subcommand>
+tb graph [--enable] <subcommand>
 
 Subcomandos:
-  search    Busca no grafo
-  callers   Encontra chamadores de uma função
-  deps      Mostra dependências
-  impact    Analisa impacto de mudanças
-  index     Re-indexa código
-  rebuild   Reconstrói grafo completo
-  stats     Estatísticas do grafo
-  export    Exporta grafo
+  search    Busca no grafo ✅
+  callers   Encontra chamadores de uma função ✅
+  deps      Mostra dependências ✅
+  impact    Analisa impacto de mudanças ✅
+  index     Indexa código sob demanda ✅
+  rebuild   Reconstrói grafo completo ✅
+  stats     Estatísticas do grafo ✅
 ```
+
+Ferramentas MCP (quando `TB_GRAPH=on`): `tb_graph_search`, `tb_graph_callers`,
+`tb_graph_deps`, `tb_graph_index`.
 
 **`tb graph search`:**
 

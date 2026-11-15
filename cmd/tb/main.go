@@ -73,6 +73,8 @@ func init() {
 	rootCmd.AddCommand(mcpCmd)
 }
 
+// graphCmd é registrado em graph.go (Fase 2).
+
 // versionCmd mostra informações de versão
 var versionCmd = &cobra.Command{
 	Use:   "version",
@@ -126,17 +128,6 @@ Exemplo:
 
 func init() {
 	initCmd.Flags().Bool("global", false, "inicializa configuração global")
-}
-
-// Stubs para commands futuros
-
-var graphCmd = &cobra.Command{
-	Use:   "graph",
-	Short: "Grafo de dependências do código (não implementado)",
-	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("⚠️  Command graph ainda não implementado")
-		fmt.Println("   Será implementado na Fase 4")
-	},
 }
 
 var routerCmd = &cobra.Command{

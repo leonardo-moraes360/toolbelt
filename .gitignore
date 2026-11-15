@@ -31,6 +31,7 @@ Thumbs.db
 
 # toolbelt data
 .tb/
+.toolbelt/
 
 # Logs
 *.log

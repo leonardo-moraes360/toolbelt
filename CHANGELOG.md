@@ -8,6 +8,8 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 ## [Não Lançado]
 
 ### Adicionado
+- `tb graph` sob demanda (ADR-011): index/search/callers/deps/impact/stats atrás de `TB_GRAPH`/`--enable`
+- Ferramentas MCP de grafo: `tb_graph_search`, `tb_graph_callers`, `tb_graph_deps`, `tb_graph_index`
 - Comparação A/B em `tb bench compare` (configs YAML / feature flags no mesmo task set)
 - Métricas de sucesso, tempo e tokens no JSONL e no relatório Markdown A/B
 - Fixtures realistas: `localize-callers`, `cross-file-rename`, `api-handler`
