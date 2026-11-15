@@ -1071,6 +1071,31 @@ tb version --json
 
 ---
 
+## Cores e Tema Visual
+
+A saída colorida do CLI segue o tema **Synthwave** definido em [docs/identidade-visual.md](identidade-visual.md). As cores são aplicadas automaticamente quando o terminal suporta.
+
+| Elemento | Cor | Código ANSI 256 |
+|----------|-----|-----------------|
+| Headers, comandos | Roxo `#982BD4` | 134 |
+| Valores, paths, URLs | Ciano `#0CD7FF` | 51 |
+| Erros, falhas | Rosa `#F9278C` | 198 |
+| Sucesso | Verde `#2DD4A7` | 43 |
+| Avisos | Amarelo `#FFB020` | 214 |
+| Texto secundário | Cinza `#A099B0` | 249 |
+
+**Variáveis de controle:**
+
+| Variável | Descrição | Default |
+|----------|-----------|---------|
+| `TB_COLOR` | Habilita cores: auto, always, never | `auto` |
+| `TB_COLOR_MODE` | Modo de cor: ansi, 256, truecolor | `auto` |
+| `NO_COLOR` | Desabilita cores (padrão freedesktop) | - |
+
+Consulte `assets/theme/tokens.json` para a tabela completa de mapeamento ANSI/256/TrueColor.
+
+---
+
 ## Variáveis de Ambiente
 
 | Variável | Descrição | Default |
@@ -1081,6 +1106,8 @@ tb version --json
 | `TB_SANDBOX_DEFAULT` | Sandbox por padrão em `tb run` | `false` |
 | `TB_JSON_OUTPUT` | Saída JSON por padrão | `false` |
 | `TB_TIMEOUT_DEFAULT` | Timeout padrão para comandos | `30s` |
+| `TB_COLOR` | Habilita cores: auto, always, never | `auto` |
+| `TB_COLOR_MODE` | Modo de cor: ansi, 256, truecolor | `auto` |
 
 ---
 
