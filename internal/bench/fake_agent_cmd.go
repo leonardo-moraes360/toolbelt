@@ -30,6 +30,3 @@ func resolveSelfExecutable() string {
 	return exe
 }
 
-func shellSingleQuote(s string) string {
-	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
-}
