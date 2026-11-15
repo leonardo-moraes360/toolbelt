@@ -1,0 +1,255 @@
+/**
+ * Toolbelt Synthwave Theme
+ * 
+ * Sistema de variáveis CSS baseado no tema Synthwave extraído do logo oficial.
+ * Modo escuro é o padrão. Use a classe .tb-light para modo claro.
+ * 
+ * Uso:
+ *   - Qualquer UI do tb deve importar este arquivo
+ *   - O leitor/editor Markdown deve usar estas variáveis
+ *   - Para CLI, veja a tabela de mapeamento ANSI em tokens.json
+ */
+
+:root {
+  /* ═══════════════════════════════════════════════════════════════════════════
+     CORES BASE (extraídas do logo)
+     ═══════════════════════════════════════════════════════════════════════════ */
+  --tb-color-violeta: #4A1999;
+  --tb-color-roxo: #982BD4;
+  --tb-color-roxo-sombra: #761DC5;
+  --tb-color-magenta: #BE2AC6;
+  --tb-color-rosa: #F9278C;
+  --tb-color-ciano: #0CD7FF;
+  --tb-color-azul-escuro: #00579A;
+  --tb-color-quase-preto: #29282D;
+  --tb-color-branco: #FFFFFF;
+
+  /* ═══════════════════════════════════════════════════════════════════════════
+     DEGRADÊS
+     ═══════════════════════════════════════════════════════════════════════════ */
+  --tb-gradient-primary: linear-gradient(180deg, var(--tb-color-magenta) 0%, var(--tb-color-rosa) 100%);
+  --tb-gradient-belt: linear-gradient(90deg, var(--tb-color-quase-preto) 0%, var(--tb-color-roxo-sombra) 15%, var(--tb-color-roxo) 50%, var(--tb-color-roxo-sombra) 85%, var(--tb-color-quase-preto) 100%);
+  --tb-gradient-accent: linear-gradient(135deg, var(--tb-color-ciano) 0%, var(--tb-color-azul-escuro) 100%);
+
+  /* ═══════════════════════════════════════════════════════════════════════════
+     TIPOGRAFIA
+     ═══════════════════════════════════════════════════════════════════════════ */
+  --tb-font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+  --tb-font-sans: 'Inter', 'SF Pro', -apple-system, BlinkMacSystemFont, sans-serif;
+
+  --tb-font-size-xs: 12px;
+  --tb-font-size-sm: 14px;
+  --tb-font-size-md: 16px;
+  --tb-font-size-lg: 18px;
+  --tb-font-size-xl: 24px;
+  --tb-font-size-xxl: 32px;
+
+  /* ═══════════════════════════════════════════════════════════════════════════
+     ESPAÇAMENTO
+     ═══════════════════════════════════════════════════════════════════════════ */
+  --tb-spacing-xs: 4px;
+  --tb-spacing-sm: 8px;
+  --tb-spacing-md: 16px;
+  --tb-spacing-lg: 24px;
+  --tb-spacing-xl: 32px;
+  --tb-spacing-xxl: 48px;
+
+  /* ═══════════════════════════════════════════════════════════════════════════
+     BORDAS
+     ═══════════════════════════════════════════════════════════════════════════ */
+  --tb-radius-sm: 4px;
+  --tb-radius-md: 8px;
+  --tb-radius-lg: 16px;
+  --tb-radius-full: 9999px;
+
+  /* ═══════════════════════════════════════════════════════════════════════════
+     MODO ESCURO (padrão)
+     ═══════════════════════════════════════════════════════════════════════════ */
+  --tb-bg: var(--tb-color-violeta);
+  --tb-bg-secondary: #3D1580;
+  --tb-surface: var(--tb-color-quase-preto);
+  --tb-surface-elevated: #363540;
+  
+  --tb-primary: var(--tb-color-roxo);
+  --tb-primary-hover: var(--tb-color-roxo-sombra);
+  --tb-primary-active: #5E1A9C;
+  
+  --tb-accent: var(--tb-color-ciano);
+  --tb-accent-hover: #00B8E0;
+  --tb-accent-dark: var(--tb-color-azul-escuro);
+  
+  --tb-text: var(--tb-color-branco);
+  --tb-text-secondary: #E0DCF0;
+  --tb-text-muted: #A099B0;
+  --tb-text-inverse: var(--tb-color-quase-preto);
+  
+  --tb-border: rgba(255, 255, 255, 0.15);
+  --tb-border-focus: var(--tb-color-ciano);
+  
+  --tb-error: var(--tb-color-rosa);
+  --tb-success: #2DD4A7;
+  --tb-warning: #FFB020;
+  --tb-info: var(--tb-color-ciano);
+
+  --tb-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --tb-shadow-md: 0 4px 8px rgba(0, 0, 0, 0.4);
+  --tb-shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   MODO CLARO
+   ═══════════════════════════════════════════════════════════════════════════ */
+.tb-light,
+[data-theme="light"] {
+  --tb-bg: #F5F3FA;
+  --tb-bg-secondary: #EBE8F2;
+  --tb-surface: var(--tb-color-branco);
+  --tb-surface-elevated: #FAFAFA;
+  
+  --tb-primary: var(--tb-color-roxo);
+  --tb-primary-hover: var(--tb-color-roxo-sombra);
+  --tb-primary-active: #5E1A9C;
+  
+  --tb-accent: var(--tb-color-azul-escuro);
+  --tb-accent-hover: #004080;
+  --tb-accent-dark: #003366;
+  
+  --tb-text: var(--tb-color-quase-preto);
+  --tb-text-secondary: #4A4855;
+  --tb-text-muted: #6B6680;
+  --tb-text-inverse: var(--tb-color-branco);
+  
+  --tb-border: rgba(0, 0, 0, 0.1);
+  --tb-border-focus: var(--tb-color-roxo);
+  
+  --tb-error: #D91A6B;
+  --tb-success: #1AA87A;
+  --tb-warning: #D99000;
+  --tb-info: var(--tb-color-azul-escuro);
+
+  --tb-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.08);
+  --tb-shadow-md: 0 4px 8px rgba(0, 0, 0, 0.1);
+  --tb-shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.15);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   CLASSES UTILITÁRIAS
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.tb-gradient-text {
+  background: var(--tb-gradient-primary);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.tb-gradient-bg {
+  background: var(--tb-gradient-primary);
+}
+
+.tb-gradient-belt {
+  background: var(--tb-gradient-belt);
+}
+
+.tb-gradient-accent {
+  background: var(--tb-gradient-accent);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   COMPONENTES BASE
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.tb-button {
+  background: var(--tb-primary);
+  color: var(--tb-text);
+  border: none;
+  border-radius: var(--tb-radius-md);
+  padding: var(--tb-spacing-sm) var(--tb-spacing-md);
+  font-family: var(--tb-font-sans);
+  font-size: var(--tb-font-size-sm);
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.tb-button:hover {
+  background: var(--tb-primary-hover);
+}
+
+.tb-button:active {
+  background: var(--tb-primary-active);
+}
+
+.tb-button--accent {
+  background: var(--tb-accent);
+  color: var(--tb-text-inverse);
+}
+
+.tb-button--accent:hover {
+  background: var(--tb-accent-hover);
+}
+
+.tb-card {
+  background: var(--tb-surface);
+  border-radius: var(--tb-radius-lg);
+  padding: var(--tb-spacing-lg);
+  box-shadow: var(--tb-shadow-md);
+  border: 1px solid var(--tb-border);
+}
+
+.tb-input {
+  background: var(--tb-surface);
+  color: var(--tb-text);
+  border: 1px solid var(--tb-border);
+  border-radius: var(--tb-radius-md);
+  padding: var(--tb-spacing-sm) var(--tb-spacing-md);
+  font-family: var(--tb-font-mono);
+  font-size: var(--tb-font-size-sm);
+}
+
+.tb-input:focus {
+  outline: none;
+  border-color: var(--tb-border-focus);
+  box-shadow: 0 0 0 3px rgba(12, 215, 255, 0.2);
+}
+
+.tb-code {
+  font-family: var(--tb-font-mono);
+  background: var(--tb-surface);
+  color: var(--tb-accent);
+  padding: 2px 6px;
+  border-radius: var(--tb-radius-sm);
+  font-size: 0.9em;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   STATUS BADGES
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.tb-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: var(--tb-radius-full);
+  font-size: var(--tb-font-size-xs);
+  font-weight: 500;
+}
+
+.tb-badge--error {
+  background: rgba(249, 39, 140, 0.2);
+  color: var(--tb-error);
+}
+
+.tb-badge--success {
+  background: rgba(45, 212, 167, 0.2);
+  color: var(--tb-success);
+}
+
+.tb-badge--warning {
+  background: rgba(255, 176, 32, 0.2);
+  color: var(--tb-warning);
+}
+
+.tb-badge--info {
+  background: rgba(12, 215, 255, 0.2);
+  color: var(--tb-info);
+}

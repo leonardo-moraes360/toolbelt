@@ -1,11 +1,20 @@
-# toolbelt (`tb`)
+<p align="center">
+  <img src="assets/logo/toolbelt-logo-256.png" alt="Logo do Toolbelt" width="200">
+</p>
 
-[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
-[![Go Version](https://img.shields.io/badge/Go-1.22+-00ADD8?logo=go&logoColor=white)](https://go.dev/)
-[![Status](https://img.shields.io/badge/Status-Em%20Design-yellow)](docs/arquitetura.md)
-[![MCP](https://img.shields.io/badge/Protocol-MCP-purple)](https://modelcontextprotocol.io/)
+<h1 align="center">toolbelt (<code>tb</code>)</h1>
 
-Cinto de ferramentas para agentes de código com IA, unificadas sob um único comando e protocolo.
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg" alt="License"></a>
+  <a href="https://go.dev/"><img src="https://img.shields.io/badge/Go-1.22+-00ADD8?logo=go&logoColor=white" alt="Go Version"></a>
+  <a href="docs/arquitetura.md"><img src="https://img.shields.io/badge/Status-Em%20Design-yellow" alt="Status"></a>
+  <a href="https://modelcontextprotocol.io/"><img src="https://img.shields.io/badge/Protocol-MCP-purple" alt="MCP"></a>
+  <a href="docs/identidade-visual.md"><img src="https://img.shields.io/badge/Theme-Synthwave-ff278c" alt="Theme"></a>
+</p>
+
+<p align="center">
+  Cinto de ferramentas para agentes de código com IA, unificadas sob um único comando e protocolo.
+</p>
 
 ## 🎯 Objetivos
 
@@ -70,6 +79,7 @@ Veja a documentação completa em [docs/arquitetura.md](docs/arquitetura.md).
 | [docs/cli.md](docs/cli.md) | Árvore de comandos planejada para `tb` |
 | [docs/benchmark.md](docs/benchmark.md) | KPIs e metodologia de avaliação |
 | [docs/adr/](docs/adr/) | Registros de Decisão Arquitetural (ADRs) |
+| [docs/identidade-visual.md](docs/identidade-visual.md) | Logo, paleta Synthwave e tokens de tema |
 
 ## 🗺️ Roadmap
 

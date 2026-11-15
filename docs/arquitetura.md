@@ -551,7 +551,17 @@ Interface TUI (Terminal User Interface) usando Bubble Tea para:
 - **Revisar** planos e logs de agentes
 - **Aprovar** ações pendentes
 
-### 7.2 Interoperabilidade com Obsidian
+### 7.2 Tema Visual
+
+A TUI segue o tema **Synthwave** definido em [docs/identidade-visual.md](identidade-visual.md). Os tokens de design em `assets/theme/theme.css` devem ser usados para manter consistência visual:
+
+- Fundo: violeta (`--tb-bg`) ou superfície escura (`--tb-surface`)
+- Headers: roxo primário (`--tb-primary`)
+- Links e interativos: ciano (`--tb-accent`)
+- Código: fonte mono sobre superfície com cor accent
+- Status: success/error/warning conforme tokens semânticos
+
+### 7.3 Interoperabilidade com Obsidian
 
 O vault em `.tb/vault/` é um vault Obsidian válido:
 
