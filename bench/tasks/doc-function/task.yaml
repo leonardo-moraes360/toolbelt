@@ -1,0 +1,27 @@
+id: doc-function
+name: Documentar funções
+description: |
+  Adicionar documentação Go (godoc) para todas as funções
+  no arquivo sort.go.
+category: doc
+difficulty: easy
+prompt: |
+  Adicione documentação Go (godoc) para todas as funções em sort.go.
+  
+  Cada função deve ter:
+  - Descrição do que faz
+  - Parâmetros e retorno explicados
+  - Complexidade de tempo (O notation)
+  - Exemplo de uso (opcional)
+  
+  Use o formato padrão de godoc (comentário acima da função).
+fixture: doc-function
+verification:
+  command: |
+    grep -q '// QuickSort' sort.go && 
+    grep -q '// BinarySearch' sort.go && 
+    grep -q '// Merge' sort.go
+  timeout: "10s"
+  expected_exit_code: 0
+timeout: "5m"
+hidden_tests: ""

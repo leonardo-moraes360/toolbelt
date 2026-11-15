@@ -1,0 +1,29 @@
+id: refactor-simple
+name: Extrair UserRepository
+description: |
+  Refatorar handler.go para extrair a lógica de dados
+  para uma interface UserRepository, facilitando testes
+  e manutenção.
+category: refactor
+difficulty: medium
+prompt: |
+  Refatore o código em handler.go para:
+  
+  1. Criar uma interface UserRepository com métodos:
+     - FindAll() []User
+     - FindByID(id int) (*User, error)
+     - Create(u User) User
+  
+  2. Criar InMemoryUserRepository que implementa a interface
+     usando a variável users existente
+  
+  3. Modificar os handlers para usar a interface via injeção
+  
+  Os testes existentes devem continuar passando.
+fixture: refactor-simple
+verification:
+  command: "go test -v ./... && grep -q 'UserRepository' handler.go"
+  timeout: "30s"
+  expected_exit_code: 0
+timeout: "10m"
+hidden_tests: ""

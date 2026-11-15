@@ -1,5 +1,6 @@
 # Binaries
-tb
+/tb
+bin/tb
 *.exe
 *.exe~
 *.dll

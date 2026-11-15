@@ -1401,7 +1401,7 @@ tb merge --output changes.patch TKT-001 TKT-002 TKT-003
 
 ---
 
-### `tb bench` — Benchmark
+### `tb bench` — Benchmark ✅ IMPLEMENTADO
 
 Executa benchmarks e mede KPIs.
 
@@ -1409,10 +1409,10 @@ Executa benchmarks e mede KPIs.
 tb bench <subcommand>
 
 Subcomandos:
-  run       Executa suite de benchmark
-  compare   Compara resultados
-  report    Gera relatório
-  list      Lista suites disponíveis
+  run       Executa suite de benchmark ✅
+  compare   Compara resultados ✅
+  report    Gera relatório ✅
+  list      Lista suites disponíveis ✅
 ```
 
 **`tb bench run`:**
@@ -1487,14 +1487,13 @@ tb serve --transport tcp --port 8443 --tls-cert cert.pem --tls-key key.pem
 
 ---
 
-### `tb version`
+### `tb version` ✅ IMPLEMENTADO
 
 ```bash
 tb version [flags]
 
 Flags:
-  --json    Saída em JSON
-  --short   Apenas versão, sem detalhes
+  --json    Saída em JSON ✅
 ```
 
 **Exemplos:**

@@ -1,0 +1,315 @@
+package bench
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"time"
+
+	"github.com/leonardo-moraes360/toolbelt/internal/log"
+)
+
+// AgentConfig configura como invocar um agente externo.
+type AgentConfig struct {
+	// ID identificador do agente.
+	ID string `yaml:"id" json:"id"`
+
+	// Command comando para invocar o agente.
+	// Pode usar placeholders: {prompt}, {workdir}, {timeout}
+	Command string `yaml:"command" json:"command"`
+
+	// OutputParser parser para extrair métricas da saída do agente.
+	// Valores: "json", "none"
+	OutputParser string `yaml:"output_parser" json:"output_parser"`
+
+	// Env variáveis de ambiente adicionais.
+	Env map[string]string `yaml:"env,omitempty" json:"env,omitempty"`
+}
+
+// Runner executa benchmarks.
+type Runner struct {
+	agent       AgentConfig
+	tasksDir    string
+	fixturesDir string
+	outputDir   string
+	repetitions int
+}
+
+// NewRunner cria um novo runner de benchmark.
+func NewRunner(agent AgentConfig, tasksDir, fixturesDir, outputDir string, repetitions int) *Runner {
+	return &Runner{
+		agent:       agent,
+		tasksDir:    tasksDir,
+		fixturesDir: fixturesDir,
+		outputDir:   outputDir,
+		repetitions: repetitions,
+	}
+}
+
+// Run executa o benchmark para todas as tarefas.
+func (r *Runner) Run(ctx context.Context, taskIDs []string) ([]Result, error) {
+	// Carrega tarefas
+	var tasks []*Task
+	if len(taskIDs) == 0 {
+		var err error
+		tasks, err = LoadTasksFromDir(r.tasksDir)
+		if err != nil {
+			return nil, fmt.Errorf("loading tasks: %w", err)
+		}
+	} else {
+		for _, id := range taskIDs {
+			taskPath := filepath.Join(r.tasksDir, id, "task.yaml")
+			task, err := LoadTask(taskPath)
+			if err != nil {
+				return nil, fmt.Errorf("loading task %s: %w", id, err)
+			}
+			tasks = append(tasks, task)
+		}
+	}
+
+	if len(tasks) == 0 {
+		return nil, fmt.Errorf("no tasks found")
+	}
+
+	log.Info("starting benchmark", "agent", r.agent.ID, "tasks", len(tasks), "repetitions", r.repetitions)
+
+	var results []Result
+
+	for _, task := range tasks {
+		for rep := 1; rep <= r.repetitions; rep++ {
+			select {
+			case <-ctx.Done():
+				return results, ctx.Err()
+			default:
+			}
+
+			log.Info("running task", "task", task.ID, "rep", rep, "total", r.repetitions)
+
+			result, err := r.runTask(ctx, task, rep)
+			if err != nil {
+				log.Error("task failed", "task", task.ID, "rep", rep, "error", err)
+				result = &Result{
+					TaskID:     task.ID,
+					AgentID:    r.agent.ID,
+					Repetition: rep,
+					Passed:     false,
+					Error:      err.Error(),
+					StartTime:  time.Now(),
+					EndTime:    time.Now(),
+				}
+			}
+
+			results = append(results, *result)
+		}
+	}
+
+	return results, nil
+}
+
+// runTask executa uma única tarefa.
+func (r *Runner) runTask(ctx context.Context, task *Task, rep int) (*Result, error) {
+	result := &Result{
+		TaskID:     task.ID,
+		AgentID:    r.agent.ID,
+		Repetition: rep,
+		StartTime:  time.Now(),
+	}
+
+	// Cria diretório de trabalho temporário
+	workDir, err := r.prepareWorkDir(task)
+	if err != nil {
+		return nil, fmt.Errorf("preparing work dir: %w", err)
+	}
+	defer os.RemoveAll(workDir)
+
+	// Executa o agente
+	taskCtx, cancel := context.WithTimeout(ctx, task.TimeoutDuration())
+	defer cancel()
+
+	agentOutput, exitCode, err := r.executeAgent(taskCtx, task, workDir)
+	result.ExitCode = exitCode
+	result.AgentOutput = truncateString(agentOutput, 10000)
+
+	if err != nil {
+		result.Error = err.Error()
+		result.EndTime = time.Now()
+		result.Duration = result.EndTime.Sub(result.StartTime).Seconds()
+		return result, nil // Não retorna erro, apenas marca como falha
+	}
+
+	// Parse output do agente para tokens/tool_calls
+	if r.agent.OutputParser == "json" {
+		r.parseAgentOutput(agentOutput, result)
+	}
+
+	// Executa verificação
+	verifyCtx, verifyCancel := context.WithTimeout(ctx, task.Verification.TimeoutDuration())
+	defer verifyCancel()
+
+	verifyStart := time.Now()
+	verifyOutput, verifyExit, verifyErr := r.executeVerification(verifyCtx, task, workDir)
+	result.VerificationDuration = time.Since(verifyStart).Seconds()
+	result.VerificationExitCode = verifyExit
+	result.VerificationOutput = truncateString(verifyOutput, 5000)
+
+	if verifyErr != nil {
+		result.Error = fmt.Sprintf("verification error: %v", verifyErr)
+	}
+
+	result.Passed = verifyExit == task.Verification.ExpectedExitCode
+	result.EndTime = time.Now()
+	result.Duration = result.EndTime.Sub(result.StartTime).Seconds()
+
+	return result, nil
+}
+
+// prepareWorkDir prepara o diretório de trabalho com a fixture.
+func (r *Runner) prepareWorkDir(task *Task) (string, error) {
+	workDir, err := os.MkdirTemp("", fmt.Sprintf("tb-bench-%s-*", task.ID))
+	if err != nil {
+		return "", err
+	}
+
+	// Copia fixture se especificada
+	if task.Fixture != "" {
+		fixtureDir := filepath.Join(r.fixturesDir, task.Fixture)
+		if _, err := os.Stat(fixtureDir); err == nil {
+			if err := copyDir(fixtureDir, workDir); err != nil {
+				os.RemoveAll(workDir)
+				return "", fmt.Errorf("copying fixture: %w", err)
+			}
+		}
+	}
+
+	return workDir, nil
+}
+
+// executeAgent executa o agente.
+func (r *Runner) executeAgent(ctx context.Context, task *Task, workDir string) (string, int, error) {
+	// Substitui placeholders no comando
+	cmd := r.agent.Command
+	cmd = strings.ReplaceAll(cmd, "{prompt}", task.Prompt)
+	cmd = strings.ReplaceAll(cmd, "{workdir}", workDir)
+	cmd = strings.ReplaceAll(cmd, "{timeout}", task.Timeout)
+
+	// Executa via shell
+	proc := exec.CommandContext(ctx, "sh", "-c", cmd)
+	proc.Dir = workDir
+
+	// Configura ambiente
+	proc.Env = os.Environ()
+	for k, v := range r.agent.Env {
+		proc.Env = append(proc.Env, fmt.Sprintf("%s=%s", k, v))
+	}
+
+	var stdout, stderr bytes.Buffer
+	proc.Stdout = &stdout
+	proc.Stderr = &stderr
+
+	err := proc.Run()
+	output := stdout.String() + stderr.String()
+
+	exitCode := 0
+	if exitErr, ok := err.(*exec.ExitError); ok {
+		exitCode = exitErr.ExitCode()
+		err = nil // Exit code != 0 não é erro fatal
+	}
+
+	return output, exitCode, err
+}
+
+// executeVerification executa o comando de verificação.
+func (r *Runner) executeVerification(ctx context.Context, task *Task, workDir string) (string, int, error) {
+	proc := exec.CommandContext(ctx, "sh", "-c", task.Verification.Command)
+	proc.Dir = workDir
+
+	var stdout, stderr bytes.Buffer
+	proc.Stdout = &stdout
+	proc.Stderr = &stderr
+
+	err := proc.Run()
+	output := stdout.String() + stderr.String()
+
+	exitCode := 0
+	if exitErr, ok := err.(*exec.ExitError); ok {
+		exitCode = exitErr.ExitCode()
+		err = nil
+	}
+
+	return output, exitCode, err
+}
+
+// parseAgentOutput tenta extrair métricas do output JSON do agente.
+func (r *Runner) parseAgentOutput(output string, result *Result) {
+	// Tenta encontrar JSON no output
+	start := strings.Index(output, "{")
+	end := strings.LastIndex(output, "}")
+	if start == -1 || end == -1 || end <= start {
+		return
+	}
+
+	jsonStr := output[start : end+1]
+	var data struct {
+		Tokens struct {
+			Input     int     `json:"input"`
+			Output    int     `json:"output"`
+			Total     int     `json:"total"`
+			CostUSD   float64 `json:"cost_usd"`
+			CacheRead int     `json:"cache_read"`
+		} `json:"tokens"`
+		ToolCalls int `json:"tool_calls"`
+	}
+
+	if err := json.Unmarshal([]byte(jsonStr), &data); err != nil {
+		return
+	}
+
+	if data.Tokens.Total > 0 {
+		result.Tokens = &TokenInfo{
+			Input:     data.Tokens.Input,
+			Output:    data.Tokens.Output,
+			Total:     data.Tokens.Total,
+			CostUSD:   data.Tokens.CostUSD,
+			CacheRead: data.Tokens.CacheRead,
+		}
+	}
+	result.ToolCalls = data.ToolCalls
+}
+
+// copyDir copia um diretório recursivamente.
+func copyDir(src, dst string) error {
+	return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
+		relPath, err := filepath.Rel(src, path)
+		if err != nil {
+			return err
+		}
+		dstPath := filepath.Join(dst, relPath)
+
+		if info.IsDir() {
+			return os.MkdirAll(dstPath, info.Mode())
+		}
+
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		return os.WriteFile(dstPath, data, info.Mode())
+	})
+}
+
+// truncateString trunca uma string para o tamanho máximo.
+func truncateString(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen] + "... [truncated]"
+}
