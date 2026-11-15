@@ -358,9 +358,42 @@ Os arquivos em `hidden_tests` são:
 
 ---
 
-## Execução do Benchmark
+## Execução do Benchmark (Fase 0)
 
-### Comandos
+Na Fase 0, o harness de benchmark está implementado e pode ser usado com:
+- **Agente fake**: determinístico, para testar o harness no CI
+- **Agente externo**: qualquer comando shell que aceite prompt
+
+### Comandos Básicos (Implementados)
+
+```bash
+# Executar com agente fake (para CI/testes)
+tb bench run --fake -r 3
+
+# Executar com agente externo
+tb bench run --agent "cursor-agent {prompt} --workdir {workdir}"
+
+# Listar tarefas disponíveis
+tb bench list
+
+# Gerar relatório de resultados existentes
+tb bench report --input bench/results/2026-01-01-120000.jsonl
+
+# Comparar dois benchmarks
+tb bench compare --before v1.jsonl --after v2.jsonl
+```
+
+### Tarefas Fixture (Fase 0)
+
+| Task ID | Categoria | Dificuldade | Descrição |
+|---------|-----------|-------------|-----------|
+| `bugfix-go` | bugfix | easy | Corrigir divisão por zero |
+| `feature-small` | feature | easy | Implementar Multiply e Divide |
+| `refactor-simple` | refactor | medium | Extrair UserRepository |
+| `test-coverage` | test | easy | Aumentar cobertura de testes |
+| `doc-function` | doc | easy | Documentar funções |
+
+### Comandos Futuros (Planejados)
 
 ```bash
 # Executar baseline

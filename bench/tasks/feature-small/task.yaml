@@ -1,0 +1,22 @@
+id: feature-small
+name: Implementar Multiply e Divide
+description: |
+  Implementar as funções Multiply e Divide que estão faltando
+  no pacote calculator. Divide deve retornar erro para divisão
+  por zero.
+category: feature
+difficulty: easy
+prompt: |
+  Implemente as funções Multiply e Divide no arquivo calculator.go.
+  
+  Multiply deve multiplicar dois inteiros.
+  Divide deve dividir dois inteiros e retornar erro se o divisor for zero.
+  
+  Os testes em calculator_test.go já existem e devem passar.
+fixture: feature-small
+verification:
+  command: "go test -v ./..."
+  timeout: "30s"
+  expected_exit_code: 0
+timeout: "5m"
+hidden_tests: ""

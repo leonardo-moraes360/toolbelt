@@ -1,0 +1,23 @@
+id: test-coverage
+name: Aumentar cobertura de testes
+description: |
+  O arquivo strings.go tem várias funções, mas apenas uma
+  tem teste. Adicionar testes para cobrir todas as funções.
+category: test
+difficulty: easy
+prompt: |
+  O arquivo strings_test.go tem apenas um teste para Reverse.
+  Adicione testes para as funções:
+  - IsPalindrome
+  - CountWords
+  - Truncate
+  
+  Cada função deve ter pelo menos 3 casos de teste cobrindo
+  casos normais e edge cases.
+fixture: test-coverage
+verification:
+  command: "go test -v -cover ./... | grep -E 'coverage:.*100|PASS'"
+  timeout: "30s"
+  expected_exit_code: 0
+timeout: "5m"
+hidden_tests: ""

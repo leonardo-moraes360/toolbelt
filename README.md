@@ -7,7 +7,8 @@
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg" alt="License"></a>
   <a href="https://go.dev/"><img src="https://img.shields.io/badge/Go-1.22+-00ADD8?logo=go&logoColor=white" alt="Go Version"></a>
-  <a href="docs/arquitetura.md"><img src="https://img.shields.io/badge/Status-Em%20Design-yellow" alt="Status"></a>
+  <a href="docs/arquitetura.md"><img src="https://img.shields.io/badge/Status-Fase%200-green" alt="Status"></a>
+  <a href="https://github.com/leonardo-moraes360/toolbelt/actions"><img src="https://github.com/leonardo-moraes360/toolbelt/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="https://modelcontextprotocol.io/"><img src="https://img.shields.io/badge/Protocol-MCP-purple" alt="MCP"></a>
   <a href="docs/identidade-visual.md"><img src="https://img.shields.io/badge/Theme-Synthwave-ff278c" alt="Theme"></a>
 </p>
@@ -82,9 +83,67 @@ Veja a documentação completa em [docs/arquitetura.md](docs/arquitetura.md).
 | [docs/pesquisa/](docs/pesquisa/) | Fontes primárias, top 10 e achados da pesquisa (2026-11) |
 | [docs/identidade-visual.md](docs/identidade-visual.md) | Logo, paleta Synthwave e tokens de tema |
 
+## 🚀 Instalação
+
+### Via Go
+
+```bash
+go install github.com/leonardo-moraes360/toolbelt/cmd/tb@latest
+```
+
+### Via Homebrew (em breve)
+
+```bash
+brew install leonardo-moraes360/tap/toolbelt
+```
+
+### Build local
+
+```bash
+git clone https://github.com/leonardo-moraes360/toolbelt.git
+cd toolbelt
+make build
+./bin/tb version
+```
+
+## 📖 Uso Rápido
+
+```bash
+# Inicializa configuração local
+tb init
+
+# Mostra versão
+tb version
+
+# Lista tarefas de benchmark disponíveis
+tb bench list
+
+# Executa benchmark com agente fake (para testes)
+tb bench run --fake
+
+# Executa benchmark com agente externo
+tb bench run --agent "cursor-agent {prompt} --workdir {workdir}" -r 3
+
+# Gera relatório de resultados existentes
+tb bench report --input bench/results/2026-01-01-120000.jsonl
+
+# Compara dois benchmarks
+tb bench compare --before results-v1.jsonl --after results-v2.jsonl
+```
+
 ## 🗺️ Roadmap
 
-### MVP (Fase 1)
+### Fase 0 (Atual) ✅
+- [x] CLI skeleton com Cobra (`tb version`, `tb init`, `tb help`)
+- [x] Configuração hierárquica (global + local)
+- [x] Logging estruturado com slog e tema Synthwave
+- [x] `tb bench` harness para medir baseline
+- [x] Fixtures de benchmark (5 tarefas)
+- [x] Agente fake determinístico para CI
+- [x] GitHub Actions CI
+- [x] Makefile, golangci-lint, goreleaser
+
+### Fase 1 (MVP)
 - [ ] Sandbox com isolamento (bubblewrap + Landlock + seccomp)
 - [ ] Vault Markdown como fonte de verdade para memória
 - [ ] Grafo SQLite+FTS5 como índice derivado
@@ -143,4 +202,21 @@ Veja os ADRs para detalhes:
 
 ## 📊 Status do Projeto
 
-Este projeto está em **fase de design**. A documentação de arquitetura está sendo desenvolvida antes de qualquer implementação. Nenhum código funcional foi escrito ainda.
+Este projeto está na **Fase 0**: fundação implementada com CLI funcional, configuração, logging e harness de benchmark. A arquitetura completa está documentada em [docs/arquitetura.md](docs/arquitetura.md).
+
+### Comandos Implementados
+
+| Comando | Status | Descrição |
+|---------|--------|-----------|
+| `tb version` | ✅ | Mostra versão, commit e build time |
+| `tb init` | ✅ | Inicializa configuração local |
+| `tb bench run` | ✅ | Executa benchmark |
+| `tb bench list` | ✅ | Lista tarefas disponíveis |
+| `tb bench report` | ✅ | Gera relatório Markdown |
+| `tb bench compare` | ✅ | Compara dois benchmarks |
+| `tb sandbox` | 🚧 | Stub (Fase 1) |
+| `tb verify` | 🚧 | Stub (Fase 2) |
+| `tb mem` | 🚧 | Stub (Fase 3) |
+| `tb graph` | 🚧 | Stub (Fase 4) |
+| `tb router` | 🚧 | Stub (Fase 5) |
+| `tb mcp` | 🚧 | Stub (Fase 6) |
