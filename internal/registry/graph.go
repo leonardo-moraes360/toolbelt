@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/leonardo-moraes360/toolbelt/internal/config"
 	"github.com/leonardo-moraes360/toolbelt/internal/graph"
 	"github.com/leonardo-moraes360/toolbelt/internal/mem"
 )
@@ -128,7 +129,8 @@ func handleGraphIndex(_ context.Context, args map[string]any) (any, error) {
 	if path == "" {
 		path = "."
 	}
-	idx, err := s.Rebuild(path)
+	opts := graphOptionsFromConfig()
+	idx, err := s.RebuildOpts(path, &opts)
 	if err != nil {
 		return nil, err
 	}
@@ -137,4 +139,22 @@ func handleGraphIndex(_ context.Context, args map[string]any) (any, error) {
 		"edges": len(idx.Edges),
 		"path":  s.Path(),
 	}, nil
+}
+
+func graphOptionsFromConfig() graph.BuildOptions {
+	opts := graph.DefaultBuildOptions()
+	cfg, err := config.Load()
+	if err != nil {
+		return opts
+	}
+	if len(cfg.Graph.Languages) > 0 {
+		opts.Languages = cfg.Graph.Languages
+	}
+	if len(cfg.Graph.Docs) > 0 {
+		opts.Docs = cfg.Graph.Docs
+	}
+	if cfg.Graph.MaxFileBytes > 0 {
+		opts.MaxFileBytes = cfg.Graph.MaxFileBytes
+	}
+	return opts
 }

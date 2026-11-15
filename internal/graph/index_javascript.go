@@ -30,7 +30,8 @@ func init() {
 
 type JSIndexer struct{}
 
-func (JSIndexer) Name() string { return "javascript" }
+func (JSIndexer) Name() string     { return "javascript" }
+func (JSIndexer) Category() string { return CategoryLanguage }
 
 func (JSIndexer) Match(path string) bool {
 	ext := strings.ToLower(filepath.Ext(path))
@@ -51,17 +52,8 @@ func (JSIndexer) IndexFile(root, rel string) ([]Node, []Edge, error) {
 	}
 	raw := string(data)
 	code := stripJSComments(raw)
-	modName := jsModuleName(rel)
-	pkgID := "pkg:" + modName
-	fileID := "file:" + filepath.ToSlash(rel)
-
-	nodes := []Node{
-		{ID: pkgID, Type: NodePackage, Title: modName, Package: modName, Source: "extracted", Confidence: 0.9},
-		{ID: fileID, Type: NodeFile, Path: filepath.ToSlash(rel), Title: filepath.Base(rel), Package: modName, Source: "extracted", Confidence: 0.9},
-	}
-	edges := []Edge{
-		{SourceID: pkgID, TargetID: fileID, Type: EdgeDefines, Source: "extracted", Confidence: 0.9},
-	}
+	modName := moduleNameFromRel(rel)
+	nodes, edges, _, fileID := baseFileNodes(modName, rel, 0.9)
 
 	funcIDs, fnNodes, fnEdges := extractJSFunctions(modName, filepath.ToSlash(rel), fileID, code)
 	nodes = append(nodes, fnNodes...)
@@ -157,28 +149,6 @@ func extractJSCalls(modName, fileID string, funcIDs map[string]string, src strin
 		})
 	}
 	return edges
-}
-
-func jsModuleName(rel string) string {
-	slash := filepath.ToSlash(rel)
-	dir := filepath.ToSlash(filepath.Dir(slash))
-	if dir == "." || dir == "" {
-		return strings.TrimSuffix(filepath.Base(slash), filepath.Ext(slash))
-	}
-	return dir
-}
-
-func uniqueMatches(re *regexp.Regexp, src string) []string {
-	seen := map[string]bool{}
-	var out []string
-	for _, m := range re.FindAllStringSubmatch(src, -1) {
-		if len(m) < 2 || m[1] == "" || seen[m[1]] {
-			continue
-		}
-		seen[m[1]] = true
-		out = append(out, m[1])
-	}
-	return out
 }
 
 func stripJSComments(src string) string {

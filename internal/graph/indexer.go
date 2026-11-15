@@ -6,10 +6,74 @@ import (
 	"strings"
 )
 
+const (
+	CategoryLanguage          = "language"
+	CategoryDoc               = "doc"
+	DefaultMaxFileBytes int64 = 512 * 1024
+)
+
 type LanguageIndexer interface {
 	Name() string
+	Category() string
 	Match(path string) bool
 	IndexFile(root, rel string) ([]Node, []Edge, error)
+}
+
+type BuildOptions struct {
+	Languages    []string
+	Docs         []string
+	MaxFileBytes int64
+	SkipDirs     []string
+}
+
+func DefaultBuildOptions() BuildOptions {
+	return BuildOptions{
+		Languages: []string{
+			"go", "javascript", "python", "java", "kotlin", "csharp",
+			"cpp", "rust", "php", "ruby", "swift", "shell",
+		},
+		Docs:         []string{"markdown", "html", "txt"},
+		MaxFileBytes: DefaultMaxFileBytes,
+		SkipDirs: []string{
+			".git", "vendor", "node_modules", "bin", "dist", "build",
+			".next", "target", "__pycache__", ".venv", "venv", ".tox",
+			"coverage", ".idea", ".vscode",
+		},
+	}
+}
+
+func normalizeBuildOptions(opts *BuildOptions) {
+	if opts.MaxFileBytes <= 0 {
+		opts.MaxFileBytes = DefaultMaxFileBytes
+	}
+	if len(opts.SkipDirs) == 0 {
+		opts.SkipDirs = DefaultBuildOptions().SkipDirs
+	}
+	if len(opts.Languages) == 0 {
+		opts.Languages = DefaultBuildOptions().Languages
+	}
+	if len(opts.Docs) == 0 {
+		opts.Docs = DefaultBuildOptions().Docs
+	}
+}
+
+func allowsIndexer(opts *BuildOptions, idx LanguageIndexer) bool {
+	name := strings.ToLower(idx.Name())
+	switch idx.Category() {
+	case CategoryDoc:
+		return containsFold(opts.Docs, name)
+	default:
+		return containsFold(opts.Languages, name)
+	}
+}
+
+func containsFold(list []string, want string) bool {
+	for _, v := range list {
+		if strings.EqualFold(strings.TrimSpace(v), want) {
+			return true
+		}
+	}
+	return false
 }
 
 var languageIndexers []LanguageIndexer
@@ -27,8 +91,11 @@ func Indexers() []LanguageIndexer {
 	return out
 }
 
-func indexerFor(path string) LanguageIndexer {
+func indexerFor(path string, opts *BuildOptions) LanguageIndexer {
 	for _, idx := range languageIndexers {
+		if !allowsIndexer(opts, idx) {
+			continue
+		}
 		if idx.Match(path) {
 			return idx
 		}
@@ -37,6 +104,16 @@ func indexerFor(path string) LanguageIndexer {
 }
 
 func BuildFromRoot(root string) (*Index, error) {
+	opts := DefaultBuildOptions()
+	return BuildFromRootOpts(root, &opts)
+}
+
+func BuildFromRootOpts(root string, opts *BuildOptions) (*Index, error) {
+	if opts == nil {
+		def := DefaultBuildOptions()
+		opts = &def
+	}
+	normalizeBuildOptions(opts)
 	abs, err := filepath.Abs(root)
 	if err != nil {
 		return nil, err
@@ -44,13 +121,19 @@ func BuildFromRoot(root string) (*Index, error) {
 	idx := &Index{Root: abs}
 	nodes := map[string]Node{}
 	var edges []Edge
+	skip := map[string]bool{}
+	for _, d := range opts.SkipDirs {
+		skip[d] = true
+	}
 
 	err = filepath.Walk(abs, func(path string, info os.FileInfo, err error) error {
-		return walkSourceFile(abs, path, info, err, nodes, &edges)
+		return walkSourceFile(abs, path, info, err, nodes, &edges, opts, skip)
 	})
 	if err != nil {
 		return nil, err
 	}
+
+	edges = resolveSoftMentions(nodes, edges)
 
 	for _, n := range nodes {
 		idx.Nodes = append(idx.Nodes, n)
@@ -59,20 +142,28 @@ func BuildFromRoot(root string) (*Index, error) {
 	return idx, nil
 }
 
-func walkSourceFile(root, path string, info os.FileInfo, err error, nodes map[string]Node, edges *[]Edge) error {
+func walkSourceFile(
+	root, path string,
+	info os.FileInfo,
+	err error,
+	nodes map[string]Node,
+	edges *[]Edge,
+	opts *BuildOptions,
+	skipDirs map[string]bool,
+) error {
 	if err != nil {
 		return err
 	}
 	if info.IsDir() {
-		base := info.Name()
-		switch base {
-		case ".git", "vendor", "node_modules", "bin", "dist", "build", ".next":
+		if skipDirs[info.Name()] {
 			return filepath.SkipDir
-		default:
-			return nil
 		}
+		return nil
 	}
-	lang := indexerFor(path)
+	if info.Size() > opts.MaxFileBytes {
+		return nil
+	}
+	lang := indexerFor(path, opts)
 	if lang == nil {
 		return nil
 	}
@@ -86,6 +177,35 @@ func walkSourceFile(root, path string, info os.FileInfo, err error, nodes map[st
 	}
 	*edges = append(*edges, fileEdges...)
 	return nil
+}
+
+func resolveSoftMentions(nodes map[string]Node, edges []Edge) []Edge {
+	byTitle := map[string][]string{}
+	for id, n := range nodes {
+		if n.Type == NodeFunction || n.Type == NodeClass || n.Type == NodeFile || n.Type == NodeSection {
+			key := strings.ToLower(n.Title)
+			byTitle[key] = append(byTitle[key], id)
+		}
+	}
+	out := make([]Edge, 0, len(edges))
+	for _, e := range edges {
+		if !strings.HasPrefix(e.TargetID, "sym:") {
+			out = append(out, e)
+			continue
+		}
+		name := strings.TrimPrefix(e.TargetID, "sym:")
+		cands := byTitle[strings.ToLower(name)]
+		if len(cands) == 0 {
+			if _, ok := nodes["file:"+name]; ok {
+				e.TargetID = "file:" + name
+				out = append(out, e)
+			}
+			continue
+		}
+		e.TargetID = cands[0]
+		out = append(out, e)
+	}
+	return out
 }
 
 func skipIndexedTestFile(path string) bool {

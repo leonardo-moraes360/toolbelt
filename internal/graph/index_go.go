@@ -15,7 +15,8 @@ func init() {
 
 type GoIndexer struct{}
 
-func (GoIndexer) Name() string { return "go" }
+func (GoIndexer) Name() string     { return "go" }
+func (GoIndexer) Category() string { return CategoryLanguage }
 
 func (GoIndexer) Match(path string) bool {
 	return filepath.Ext(path) == ".go" && !strings.HasSuffix(path, "_test.go")

@@ -159,8 +159,15 @@ func TestIndexerRegistryExtensible(t *testing.T) {
 	for _, idx := range Indexers() {
 		names[idx.Name()] = true
 	}
-	if !names["go"] || !names["javascript"] {
-		t.Fatalf("expected go and javascript indexers, got %#v", names)
+	required := []string{
+		"go", "javascript", "python", "java", "kotlin", "csharp",
+		"cpp", "rust", "php", "ruby", "swift", "shell",
+		"markdown", "html", "txt",
+	}
+	for _, name := range required {
+		if !names[name] {
+			t.Fatalf("missing indexer %q in %#v", name, names)
+		}
 	}
 }
 

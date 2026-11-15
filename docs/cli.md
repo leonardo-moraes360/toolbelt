@@ -131,9 +131,39 @@ Consulta e indexa o grafo de código **sob demanda**. Desabilitado por padrão;
 ative com `TB_GRAPH=on` ou `--enable`. Medir ROI via
 `tb bench compare --config-a bench/ab/graph-off.yaml --config-b bench/ab/graph-on.yaml`.
 
-Linguagens indexadas (extensível via `LanguageIndexer`): Go (`.go`) e
-JavaScript/TypeScript (`.js`, `.jsx`, `.mjs`, `.cjs`, `.ts`, `.tsx`), com
-parser leve por regex para JS/TS (sem dependência pesada).
+Linguagens e docs (extensível via `LanguageIndexer`, regex leve, sem cgo):
+
+| `graph.languages` | Extensões |
+|-------------------|-----------|
+| `go` | `.go` (AST) |
+| `javascript` | `.js`, `.jsx`, `.mjs`, `.cjs`, `.ts`, `.tsx` |
+| `python` | `.py` |
+| `java` | `.java` |
+| `kotlin` | `.kt`, `.kts` |
+| `csharp` | `.cs` |
+| `cpp` | `.c`, `.h`, `.cc`, `.cpp`, `.cxx`, `.hpp`, `.hh`, `.hxx` |
+| `rust` | `.rs` |
+| `php` | `.php` |
+| `ruby` | `.rb` |
+| `swift` | `.swift` |
+| `shell` | `.sh`, `.bash`, `.zsh`, `.ksh` |
+
+| `graph.docs` | Extensões | O que indexa |
+|--------------|-----------|--------------|
+| `markdown` | `.md`, `.mdx` | documento, headings, links, menções |
+| `html` | `.html`, `.htm` | documento, `<h1>`–`<h6>`, âncoras |
+| `txt` | `.txt` | documento, paths/símbolos mencionados |
+
+```yaml
+# .toolbelt/config.yaml (todos ligados por padrão)
+graph:
+  languages: [go, javascript, python, java, kotlin, csharp, cpp, rust, php, ruby, swift, shell]
+  docs: [markdown, html, txt]
+  max_file_bytes: 524288   # ignora arquivos maiores
+```
+
+Ignora `node_modules`, `vendor`, `dist`, `build`, `.git`, etc. O grafo
+continua sob demanda (ADR-011): `TB_GRAPH=on` ou `--enable`.
 
 ```bash
 tb graph [--enable] <subcommand>

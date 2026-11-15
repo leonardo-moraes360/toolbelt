@@ -59,9 +59,12 @@ type SandboxConfig struct {
 
 // GraphConfig configura o grafo de código.
 type GraphConfig struct {
-	AutoIndex      bool `yaml:"auto_index"`
-	IndexOnChange  bool `yaml:"index_on_change"`
-	InferRelations bool `yaml:"infer_relations"`
+	AutoIndex      bool     `yaml:"auto_index"`
+	IndexOnChange  bool     `yaml:"index_on_change"`
+	InferRelations bool     `yaml:"infer_relations"`
+	Languages      []string `yaml:"languages"`
+	Docs           []string `yaml:"docs"`
+	MaxFileBytes   int64    `yaml:"max_file_bytes"`
 }
 
 // VaultConfig configura a memória.
@@ -111,6 +114,12 @@ func DefaultConfig() *Config {
 			AutoIndex:      true,
 			IndexOnChange:  true,
 			InferRelations: false,
+			Languages: []string{
+				"go", "javascript", "python", "java", "kotlin", "csharp",
+				"cpp", "rust", "php", "ruby", "swift", "shell",
+			},
+			Docs:         []string{"markdown", "html", "txt"},
+			MaxFileBytes: 512 * 1024,
 		},
 		Vault: VaultConfig{
 			Path:         ".toolbelt/vault",
