@@ -135,9 +135,9 @@ tb bench compare --config-a bench/ab/graph-off.yaml \
                  --config-b bench/ab/graph-on.yaml --fake
 ```
 
-## 🗺️ Roadmap
+## 🗺️ Roadmap / Status
 
-### Fase 0 ✅
+### Fase 0 (concluída) ✅
 - [x] CLI skeleton com Cobra (`tb version`, `tb init`, `tb help`)
 - [x] Configuração hierárquica (global + local)
 - [x] Logging estruturado com slog e tema Synthwave
@@ -147,18 +147,17 @@ tb bench compare --config-a bench/ab/graph-off.yaml \
 - [x] GitHub Actions CI
 - [x] Makefile, golangci-lint, goreleaser
 
-### Fase 1 (MVP) ✅
-- [x] Sandbox com isolamento (worktrees + Landlock)
-- [x] `tb mem` — invariantes fora da compactação
+### Fase 1 (concluída) ✅
+- [x] `tb mcp` — servidor MCP stateless
+- [x] Worktrees + sandbox Landlock
 - [x] `tb guard` / `tb verify` (ruler de testes)
-- [x] Servidor MCP (`tb mcp`)
-- [x] Harness de benchmark
+- [x] `tb mem` — invariantes fora da compactação
 
 ### Fase 2 (em andamento)
 - [x] `tb bench compare` A/B (configs/feature flags, métricas token/tempo/sucesso)
 - [ ] `tb graph` sob demanda com A/B graph-on vs graph-off
-- [ ] `tb review` — revisão com contextos frescos (Elephant-Goldfish)
-- [ ] Detecção de drift (escopo / commit base)
+- [ ] `tb review` — revisão fresh-context (Elephant-Goldfish)
+- [ ] `tb drift` — detecção de drift (escopo / commit base)
 - [ ] Ruler visual: screenshot + browser headless
 - [ ] Hierarquia de agentes / A2A / `tb md` (posterior)
 
