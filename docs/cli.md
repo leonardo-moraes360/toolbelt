@@ -176,7 +176,9 @@ graph:
   max_file_bytes: 524288   # ignora arquivos maiores
 ```
 
-Ignora `node_modules`, `vendor`, `dist`, `build`, `.git`, etc. O grafo
+Ignora subdiretórios como `node_modules`, `vendor`, `dist`, `build`,
+`target`, `.git`, etc. A raiz do walk nunca é pulada pelo nome (ex.: indexar
+`/tmp/target` funciona; um `target/` filho continua ignorado). O grafo
 continua sob demanda (ADR-011): `TB_GRAPH=on` ou `--enable`.
 
 ```bash
