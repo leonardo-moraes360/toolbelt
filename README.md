@@ -121,7 +121,7 @@ tb bench list
 # Executa benchmark com agente fake (para testes)
 tb bench run --fake
 
-# Executa benchmark com agente externo
+# Executa benchmark com agente externo ({prompt} com quoting seguro)
 tb bench run --agent "cursor-agent {prompt} --workdir {workdir}" -r 3
 
 # Gera relatório de resultados existentes

@@ -193,18 +193,17 @@ func (r *Runner) prepareWorkDir(task *Task) (string, error) {
 //
 //nolint:gosec // G204: command is intentionally constructed from user config
 func (r *Runner) executeAgent(ctx context.Context, task *Task, workDir string) (output string, exitCode int, err error) {
-	// Substitui placeholders no command
-	cmd := r.agent.Command
-	cmd = strings.ReplaceAll(cmd, "{prompt}", task.Prompt)
-	cmd = strings.ReplaceAll(cmd, "{workdir}", workDir)
-	cmd = strings.ReplaceAll(cmd, "{timeout}", task.Timeout)
+	cmd := ExpandAgentCommand(r.agent.Command, task.Prompt, workDir, task.Timeout)
 
-	// Executa via shell
 	proc := exec.CommandContext(ctx, "sh", "-c", cmd)
 	proc.Dir = workDir
 
-	// Configura ambiente
 	proc.Env = os.Environ()
+	proc.Env = append(proc.Env,
+		"TB_BENCH_PROMPT="+task.Prompt,
+		"TB_BENCH_WORKDIR="+workDir,
+		"TB_BENCH_TIMEOUT="+task.Timeout,
+	)
 	for k, v := range r.agent.Env {
 		proc.Env = append(proc.Env, fmt.Sprintf("%s=%s", k, v))
 	}
@@ -219,10 +218,24 @@ func (r *Runner) executeAgent(ctx context.Context, task *Task, workDir string) (
 	exitCode = 0
 	if exitErr, ok := runErr.(*exec.ExitError); ok {
 		exitCode = exitErr.ExitCode()
-		runErr = nil // Exit code != 0 não é erro fatal
+		runErr = nil
 	}
 
 	return output, exitCode, runErr
+}
+
+// ExpandAgentCommand substitui placeholders com quoting seguro para sh -c.
+// {prompt}, {workdir} e {timeout} são interpolados via aspas simples POSIX.
+func ExpandAgentCommand(template, prompt, workDir, timeout string) string {
+	cmd := template
+	cmd = strings.ReplaceAll(cmd, "{prompt}", shellSingleQuote(prompt))
+	cmd = strings.ReplaceAll(cmd, "{workdir}", shellSingleQuote(workDir))
+	cmd = strings.ReplaceAll(cmd, "{timeout}", shellSingleQuote(timeout))
+	return cmd
+}
+
+func shellSingleQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
 // executeVerification executa o command de verificação.

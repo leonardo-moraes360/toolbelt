@@ -77,9 +77,11 @@ var benchRunCmd = &cobra.Command{
 
 O agente é especificado como um command shell que recebe o prompt
 e diretório de trabalho via placeholders:
-  {prompt}  - prompt da tarefa
-  {workdir} - diretório de trabalho temporário
-  {timeout} - timeout configurado
+  {prompt}  - prompt da tarefa (interpolado com quoting seguro)
+  {workdir} - diretório de trabalho temporário (quoting seguro)
+  {timeout} - timeout configurado (quoting seguro)
+
+Também exporta TB_BENCH_PROMPT, TB_BENCH_WORKDIR e TB_BENCH_TIMEOUT.
 
 Exemplo:
   tb bench run --agent "cursor-agent {prompt} --workdir {workdir}"
