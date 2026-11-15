@@ -742,7 +742,7 @@ tb verify run [flags]
 
 Flags:
   --ruler <type>           Tipo de ruler: tests|visual (default: tests) ✅
-  --test-cmd <cmd>         Testes visíveis (default: go test ./... ou verify.test_cmd)
+  --test-cmd <cmd>         Testes visíveis (default: verify.test_cmd; `tb init` detecta go/npm/pnpm/yarn/pytest/cargo/make)
   --hidden-test-cmd <cmd>  Suite oculta (default: go test ./tests/hidden/... ou verify.hidden_test_cmd)
   --max-iter <n>           Máximo de iterações (default: 3)
   --threshold <pct>        Threshold de similaridade visual (default: 0.95) ✅
@@ -751,6 +751,12 @@ Flags:
   --output <path>          Arquivo de saída do relatório
   --json                   Saída em JSON
 ```
+
+`tb init` preenche `verify.test_cmd` a partir da toolchain do repositório
+(`go.mod` → `go test ./...`, `package.json` + scripts.test → `npm`/`pnpm`/`yarn test`,
+`pyproject.toml`/`uv.lock` → `pytest`/`uv run pytest`, `Cargo.toml` → `cargo test`,
+`Makefile` com target `test`/`check` → `make test`/`make check`). Sem marcadores
+reconhecidos, permanece o default Go.
 
 A suite oculta permanece escondida do agente (paths em `tests/hidden/` protegidos
 pelo `tb guard`). Em monorepos não-Go, configure o comando oculto:
