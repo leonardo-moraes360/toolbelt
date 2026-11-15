@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -23,11 +24,14 @@ var benchCmd = &cobra.Command{
 Permite executar um conjunto de tarefas contra um agente externo
 configurável e coletar métricas como pass@1, tokens, tempo e custo.
 
+Suporta comparação A/B entre configs/feature flags no mesmo conjunto
+de tarefas (sucesso, tempo e tokens no JSONL e no relatório Markdown).
+
 Subcommands:
   run      Executa benchmark completo
   list     Lista tarefas disponíveis
   report   Gera relatório de resultados existentes
-  compare  Compara dois benchmarks`,
+  compare  Compara dois benchmarks ou configs A/B`,
 }
 
 func init() {
@@ -36,7 +40,6 @@ func init() {
 	benchCmd.AddCommand(benchReportCmd)
 	benchCmd.AddCommand(benchCompareCmd)
 
-	// Flags do run
 	benchRunCmd.Flags().StringP("agent", "a", "", "command do agente (obrigatório ou use --fake)")
 	benchRunCmd.Flags().Bool("fake", false, "usa agente fake para testes")
 	benchRunCmd.Flags().StringP("tasks-dir", "t", "bench/tasks", "diretório das tarefas")
@@ -45,15 +48,26 @@ func init() {
 	benchRunCmd.Flags().IntP("repetitions", "r", 1, "repetições por tarefa")
 	benchRunCmd.Flags().StringSlice("task", nil, "IDs específicos de tarefas (opcional)")
 	benchRunCmd.Flags().String("fake-config", "", "arquivo de configuração do agente fake")
+	benchRunCmd.Flags().String("label", "", "rótulo da variante A/B (ex: graph-on)")
+	benchRunCmd.Flags().StringToString("flag", nil, "feature flags key=value (ex: --flag graph=on)")
+	benchRunCmd.Flags().String("ab-config", "", "arquivo YAML de variante A/B")
 
-	// Flags do report
+	benchListCmd.Flags().StringP("tasks-dir", "t", "bench/tasks", "diretório das tarefas")
+
 	benchReportCmd.Flags().StringP("input", "i", "", "arquivo JSONL de entrada")
 	benchReportCmd.Flags().StringP("output", "o", "", "arquivo Markdown de saída")
 
-	// Flags do compare
-	benchCompareCmd.Flags().String("before", "", "arquivo JSONL do benchmark anterior")
-	benchCompareCmd.Flags().String("after", "", "arquivo JSONL do benchmark atual")
+	benchCompareCmd.Flags().String("before", "", "arquivo JSONL da variante A")
+	benchCompareCmd.Flags().String("after", "", "arquivo JSONL da variante B")
+	benchCompareCmd.Flags().String("config-a", "", "YAML da variante A (roda + compara)")
+	benchCompareCmd.Flags().String("config-b", "", "YAML da variante B (roda + compara)")
+	benchCompareCmd.Flags().Bool("fake", false, "usa agente fake ao rodar configs A/B")
+	benchCompareCmd.Flags().StringP("tasks-dir", "t", "bench/tasks", "diretório das tarefas")
+	benchCompareCmd.Flags().StringP("fixtures-dir", "f", "bench/fixtures", "diretório das fixtures")
+	benchCompareCmd.Flags().IntP("repetitions", "r", 1, "repetições por tarefa")
+	benchCompareCmd.Flags().StringSlice("task", nil, "IDs específicos de tarefas")
 	benchCompareCmd.Flags().StringP("output", "o", "", "arquivo Markdown de saída")
+	benchCompareCmd.Flags().String("output-dir", "bench/results", "diretório para JSONL das configs A/B")
 }
 
 var benchRunCmd = &cobra.Command{
@@ -69,8 +83,8 @@ e diretório de trabalho via placeholders:
 
 Exemplo:
   tb bench run --agent "cursor-agent {prompt} --workdir {workdir}"
-  tb bench run --fake                   # usa agente fake para testes
-  tb bench run --fake -r 3              # 3 repetições com fake`,
+  tb bench run --fake --label graph-off --flag graph=off
+  tb bench run --fake --ab-config bench/ab/graph-off.yaml`,
 	RunE: runBenchmark,
 }
 
@@ -103,7 +117,7 @@ var benchListCmd = &cobra.Command{
 			if diff == "" {
 				diff = "?"
 			}
-			fmt.Printf("  %-20s [%s] %s - %s\n", t.ID, diff, cat, t.Name)
+			fmt.Printf("  %-24s [%s] %s - %s\n", t.ID, diff, cat, t.Name)
 		}
 		fmt.Printf("\nTotal: %d tarefas\n", len(tasks))
 
@@ -132,7 +146,10 @@ var benchReportCmd = &cobra.Command{
 		}
 
 		agentID := results[0].AgentID
-		benchID := "report"
+		benchID := results[0].ConfigLabel
+		if benchID == "" {
+			benchID = "report"
+		}
 		summary := bench.CalculateSummary(benchID, agentID, results)
 
 		var w *os.File
@@ -153,97 +170,280 @@ var benchReportCmd = &cobra.Command{
 
 var benchCompareCmd = &cobra.Command{
 	Use:   "compare",
-	Short: "Compara dois benchmarks",
-	RunE: func(cmd *cobra.Command, args []string) error {
-		beforePath, _ := cmd.Flags().GetString("before")
-		afterPath, _ := cmd.Flags().GetString("after")
-		output, _ := cmd.Flags().GetString("output")
+	Short: "Compara dois benchmarks ou configs A/B",
+	Long: `Compara métricas de sucesso, tempo e tokens entre dois lados A/B.
 
-		if beforePath == "" || afterPath == "" {
-			return fmt.Errorf("--before e --after são obrigatórios")
+Modos:
+  1. Arquivos JSONL existentes:
+       tb bench compare --before a.jsonl --after b.jsonl
+  2. Configs A/B (roda as duas no mesmo conjunto de tarefas):
+       tb bench compare --config-a bench/ab/graph-off.yaml \
+                        --config-b bench/ab/graph-on.yaml --fake`,
+	RunE: runCompare,
+}
+
+func runCompare(cmd *cobra.Command, args []string) error {
+	beforePath, _ := cmd.Flags().GetString("before")
+	afterPath, _ := cmd.Flags().GetString("after")
+	configA, _ := cmd.Flags().GetString("config-a")
+	configB, _ := cmd.Flags().GetString("config-b")
+	output, _ := cmd.Flags().GetString("output")
+
+	var beforeResults, afterResults []bench.Result
+	var err error
+
+	switch {
+	case configA != "" && configB != "":
+		beforeResults, afterResults, err = runABConfigs(cmd, configA, configB)
+		if err != nil {
+			return err
 		}
-
-		beforeResults, err := bench.ReadJSONL(beforePath)
+	case beforePath != "" && afterPath != "":
+		beforeResults, err = bench.ReadJSONL(beforePath)
 		if err != nil {
 			return fmt.Errorf("reading before results: %w", err)
 		}
-
-		afterResults, err := bench.ReadJSONL(afterPath)
+		afterResults, err = bench.ReadJSONL(afterPath)
 		if err != nil {
 			return fmt.Errorf("reading after results: %w", err)
 		}
+	default:
+		return fmt.Errorf("informe --before/--after ou --config-a/--config-b")
+	}
 
-		beforeSummary := bench.CalculateSummary("before", beforeResults[0].AgentID, beforeResults)
-		afterSummary := bench.CalculateSummary("after", afterResults[0].AgentID, afterResults)
+	if len(beforeResults) == 0 || len(afterResults) == 0 {
+		return fmt.Errorf("resultados vazios para comparação A/B")
+	}
 
-		var w *os.File
-		if output == "" {
-			w = os.Stdout
-		} else {
-			var err error
-			w, err = os.Create(output)
-			if err != nil {
-				return fmt.Errorf("creating output file: %w", err)
-			}
-			defer w.Close()
+	labelA := beforeResults[0].ConfigLabel
+	if labelA == "" {
+		labelA = "A"
+	}
+	labelB := afterResults[0].ConfigLabel
+	if labelB == "" {
+		labelB = "B"
+	}
+
+	beforeSummary := bench.CalculateSummary(labelA, beforeResults[0].AgentID, beforeResults)
+	afterSummary := bench.CalculateSummary(labelB, afterResults[0].AgentID, afterResults)
+
+	var w *os.File
+	if output == "" {
+		w = os.Stdout
+	} else {
+		w, err = os.Create(output)
+		if err != nil {
+			return fmt.Errorf("creating output file: %w", err)
 		}
+		defer w.Close()
+	}
 
-		return bench.WriteComparisonReport(w, beforeSummary, afterSummary)
-	},
+	return bench.WriteComparisonReport(w, beforeSummary, afterSummary)
 }
 
-func runBenchmark(cmd *cobra.Command, args []string) error {
-	agentCmd, _ := cmd.Flags().GetString("agent")
+func runABConfigs(cmd *cobra.Command, configA, configB string) (sideA, sideB []bench.Result, err error) {
 	useFake, _ := cmd.Flags().GetBool("fake")
 	tasksDir, _ := cmd.Flags().GetString("tasks-dir")
 	fixturesDir, _ := cmd.Flags().GetString("fixtures-dir")
-	outputPath, _ := cmd.Flags().GetString("output")
 	repetitions, _ := cmd.Flags().GetInt("repetitions")
 	taskIDs, _ := cmd.Flags().GetStringSlice("task")
-	fakeConfig, _ := cmd.Flags().GetString("fake-config")
+	outputDir, _ := cmd.Flags().GetString("output-dir")
 
-	// Valida arguments
-	if !useFake && agentCmd == "" {
-		return fmt.Errorf("--agent ou --fake é obrigatório")
+	variantA, err := bench.LoadABVariant(configA)
+	if err != nil {
+		return nil, nil, err
+	}
+	variantB, err := bench.LoadABVariant(configB)
+	if err != nil {
+		return nil, nil, err
 	}
 
-	// Configura agente
-	var agent bench.AgentConfig
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		<-sigCh
+		cancel()
+	}()
+
+	if err := os.MkdirAll(outputDir, 0o755); err != nil {
+		return nil, nil, err
+	}
+
+	resultsA, err := runVariant(ctx, useFake, tasksDir, fixturesDir, outputDir, repetitions, taskIDs, variantA)
+	if err != nil {
+		return nil, nil, fmt.Errorf("variante A: %w", err)
+	}
+	resultsB, err := runVariant(ctx, useFake, tasksDir, fixturesDir, outputDir, repetitions, taskIDs, variantB)
+	if err != nil {
+		return nil, nil, fmt.Errorf("variante B: %w", err)
+	}
+	return resultsA, resultsB, nil
+}
+
+func runVariant(
+	ctx context.Context,
+	useFake bool,
+	tasksDir, fixturesDir, outputDir string,
+	repetitions int,
+	taskIDs []string,
+	variant *bench.ABVariant,
+) ([]bench.Result, error) {
+	agent := defaultAgent(useFake, "")
+	bench.ApplyVariant(&agent, variant)
+	outPath := filepath.Join(outputDir, sanitizeLabel(variant.Label)+".jsonl")
+	runner := bench.NewRunner(agent, tasksDir, fixturesDir, outputDir, repetitions)
+	results, err := runner.Run(ctx, taskIDs)
+	if err != nil && len(results) == 0 {
+		return nil, err
+	}
+	bench.TagResults(results, variant)
+	if err := bench.WriteJSONL(results, outPath); err != nil {
+		return nil, err
+	}
+	log.Info("variante A/B salva", "label", variant.Label, "path", outPath)
+	return results, nil
+}
+
+func sanitizeLabel(label string) string {
+	label = strings.TrimSpace(label)
+	if label == "" {
+		return "variant"
+	}
+	return strings.Map(func(r rune) rune {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '-', r == '_':
+			return r
+		default:
+			return '-'
+		}
+	}, label)
+}
+
+func defaultAgent(useFake bool, agentCmd string) bench.AgentConfig {
 	if useFake {
-		// Encontra o binário fake-agent
-		fakeAgentCmd := "go run ./cmd/fake-agent"
-		if fakeConfig != "" {
-			fakeAgentCmd += " --config " + fakeConfig
-		}
-		fakeAgentCmd += " --workdir {workdir} --prompt {prompt}"
-
-		agent = bench.AgentConfig{
+		return bench.AgentConfig{
 			ID:           "fake",
-			Command:      fakeAgentCmd,
-			OutputParser: "json",
-		}
-	} else {
-		agent = bench.AgentConfig{
-			ID:           "external",
-			Command:      agentCmd,
+			Command:      "go run ./cmd/fake-agent --workdir {workdir} --prompt {prompt}",
 			OutputParser: "json",
 		}
 	}
+	return bench.AgentConfig{
+		ID:           "external",
+		Command:      agentCmd,
+		OutputParser: "json",
+	}
+}
 
-	// Configura output
+func runBenchmark(cmd *cobra.Command, args []string) error {
+	opts, err := parseBenchRunFlags(cmd)
+	if err != nil {
+		return err
+	}
+
+	agent := defaultAgent(opts.useFake, opts.agentCmd)
+	if opts.useFake && opts.fakeConfig != "" {
+		agent.Command = "go run ./cmd/fake-agent --config " + opts.fakeConfig + " --workdir {workdir} --prompt {prompt}"
+	}
+
+	variant, err := resolveVariant(opts.abConfig, opts.label, opts.flags)
+	if err != nil {
+		return err
+	}
+	bench.ApplyVariant(&agent, variant)
+	outputPath := opts.outputPath
 	if outputPath == "" {
-		outputPath = fmt.Sprintf("bench/results/%s.jsonl", time.Now().Format("2006-01-02-150405"))
+		outputPath = defaultOutputPath(variant)
 	}
-
-	// Garante diretório de output
 	if err := os.MkdirAll(filepath.Dir(outputPath), 0o755); err != nil {
 		return fmt.Errorf("creating output directory: %w", err)
 	}
 
-	// Configura contexto com cancelamento
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := withSignalCancel()
 	defer cancel()
 
+	runner := bench.NewRunner(agent, opts.tasksDir, opts.fixturesDir, filepath.Dir(outputPath), opts.repetitions)
+	log.Info("iniciando benchmark",
+		"agent", agent.ID,
+		"label", labelOr(variant),
+		"tasks_dir", opts.tasksDir,
+		"repetitions", opts.repetitions,
+		"output", outputPath)
+
+	startTime := time.Now()
+	results, err := runner.Run(ctx, opts.taskIDs)
+	endTime := time.Now()
+	if err != nil && len(results) == 0 {
+		return fmt.Errorf("benchmark failed: %w", err)
+	}
+
+	bench.TagResults(results, variant)
+	if err := bench.WriteJSONL(results, outputPath); err != nil {
+		return fmt.Errorf("writing results: %w", err)
+	}
+
+	summary := bench.CalculateSummary(benchIDFor(variant), agent.ID, results)
+	summary.StartTime = startTime
+	summary.EndTime = endTime
+	printBenchSummary(summary, variant, outputPath)
+	writeBenchMarkdown(outputPath, summary, results)
+	return nil
+}
+
+type benchRunOpts struct {
+	agentCmd    string
+	useFake     bool
+	tasksDir    string
+	fixturesDir string
+	outputPath  string
+	repetitions int
+	taskIDs     []string
+	fakeConfig  string
+	label       string
+	flags       map[string]string
+	abConfig    string
+}
+
+func parseBenchRunFlags(cmd *cobra.Command) (*benchRunOpts, error) {
+	opts := &benchRunOpts{}
+	opts.agentCmd, _ = cmd.Flags().GetString("agent")
+	opts.useFake, _ = cmd.Flags().GetBool("fake")
+	opts.tasksDir, _ = cmd.Flags().GetString("tasks-dir")
+	opts.fixturesDir, _ = cmd.Flags().GetString("fixtures-dir")
+	opts.outputPath, _ = cmd.Flags().GetString("output")
+	opts.repetitions, _ = cmd.Flags().GetInt("repetitions")
+	opts.taskIDs, _ = cmd.Flags().GetStringSlice("task")
+	opts.fakeConfig, _ = cmd.Flags().GetString("fake-config")
+	opts.label, _ = cmd.Flags().GetString("label")
+	opts.flags, _ = cmd.Flags().GetStringToString("flag")
+	opts.abConfig, _ = cmd.Flags().GetString("ab-config")
+	if !opts.useFake && opts.agentCmd == "" {
+		return nil, fmt.Errorf("--agent ou --fake é obrigatório")
+	}
+	return opts, nil
+}
+
+func resolveVariant(abConfig, label string, flags map[string]string) (*bench.ABVariant, error) {
+	if abConfig != "" {
+		return bench.LoadABVariant(abConfig)
+	}
+	if label != "" || len(flags) > 0 {
+		return &bench.ABVariant{Label: label, Flags: flags}, nil
+	}
+	return nil, nil
+}
+
+func defaultOutputPath(variant *bench.ABVariant) string {
+	suffix := time.Now().Format("2006-01-02-150405")
+	if variant != nil && variant.Label != "" {
+		suffix = sanitizeLabel(variant.Label) + "-" + suffix
+	}
+	return fmt.Sprintf("bench/results/%s.jsonl", suffix)
+}
+
+func withSignalCancel() (context.Context, context.CancelFunc) {
+	ctx, cancel := context.WithCancel(context.Background())
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
@@ -251,42 +451,25 @@ func runBenchmark(cmd *cobra.Command, args []string) error {
 		log.Warn("recebido sinal de interrupção, finalizando...")
 		cancel()
 	}()
+	return ctx, cancel
+}
 
-	// Cria runner
-	runner := bench.NewRunner(agent, tasksDir, fixturesDir, filepath.Dir(outputPath), repetitions)
-
-	// Executa
-	log.Info("iniciando benchmark",
-		"agent", agent.ID,
-		"tasks_dir", tasksDir,
-		"repetitions", repetitions,
-		"output", outputPath)
-
-	startTime := time.Now()
-	results, err := runner.Run(ctx, taskIDs)
-	endTime := time.Now()
-
-	if err != nil && len(results) == 0 {
-		return fmt.Errorf("benchmark failed: %w", err)
+func benchIDFor(variant *bench.ABVariant) string {
+	if variant != nil && variant.Label != "" {
+		return variant.Label
 	}
+	return fmt.Sprintf("bench-%s", time.Now().Format("20060102-150405"))
+}
 
-	// Salva resultados
-	if err := bench.WriteJSONL(results, outputPath); err != nil {
-		return fmt.Errorf("writing results: %w", err)
-	}
-
-	// Gera sumário
-	benchID := fmt.Sprintf("bench-%s", time.Now().Format("20060102-150405"))
-	summary := bench.CalculateSummary(benchID, agent.ID, results)
-	summary.StartTime = startTime
-	summary.EndTime = endTime
-
-	// Mostra resumo
+func printBenchSummary(summary *bench.Summary, variant *bench.ABVariant, outputPath string) {
 	fmt.Println()
 	fmt.Println("═══════════════════════════════════════════════════════════")
 	fmt.Printf("  Benchmark completo: %d tarefas × %d repetições\n", summary.TotalTasks, summary.TotalRepetitions)
+	if variant != nil && variant.Label != "" {
+		fmt.Printf("  Variante A/B:  %s\n", variant.Label)
+	}
 	fmt.Println("═══════════════════════════════════════════════════════════")
-	fmt.Printf("  pass@1:        %.1f%%\n", summary.Metrics.PassAt1*100)
+	fmt.Printf("  sucesso:       %.1f%%\n", summary.Metrics.PassAt1*100)
 	fmt.Printf("  Tempo médio:   %.1fs\n", summary.Metrics.AvgDuration)
 	if summary.Metrics.TotalTokens > 0 {
 		fmt.Printf("  Tokens total:  %d\n", summary.Metrics.TotalTokens)
@@ -297,15 +480,22 @@ func runBenchmark(cmd *cobra.Command, args []string) error {
 	fmt.Println("═══════════════════════════════════════════════════════════")
 	fmt.Printf("  Resultados: %s\n", outputPath)
 	fmt.Println()
+}
 
-	// Gera relatório Markdown
-	reportPath := outputPath[:len(outputPath)-6] + ".md"
+func writeBenchMarkdown(outputPath string, summary *bench.Summary, results []bench.Result) {
+	reportPath := strings.TrimSuffix(outputPath, ".jsonl") + ".md"
 	reportFile, err := os.Create(reportPath)
-	if err == nil {
-		_ = bench.WriteMarkdownReport(reportFile, summary, results)
-		reportFile.Close()
-		log.Info("report generated", "path", reportPath)
+	if err != nil {
+		return
 	}
+	_ = bench.WriteMarkdownReport(reportFile, summary, results)
+	reportFile.Close()
+	log.Info("report generated", "path", reportPath)
+}
 
-	return nil
+func labelOr(v *bench.ABVariant) string {
+	if v == nil || v.Label == "" {
+		return "-"
+	}
+	return v.Label
 }

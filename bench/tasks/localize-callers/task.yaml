@@ -1,0 +1,22 @@
+id: localize-callers
+name: Localizar chamadores cross-package
+description: |
+  Em um repositório multi-pacote, o agente deve mapear quem chama
+  mathutil.Scale e documentar a cadeia Total → Discounted.
+category: localization
+difficulty: medium
+prompt: |
+  Localize todos os chamadores de mathutil.Scale neste projeto.
+  Crie o arquivo CALLERS.md na raiz do módulo com:
+  - o nome da função Scale
+  - o pacote mathutil
+  - as funções Total e Discounted que usam Scale (direta ou indiretamente)
+  Não altere o código Go, apenas documente.
+fixture: localize-callers
+verification:
+  command: "go test ./..."
+  timeout: "30s"
+  expected_exit_code: 0
+timeout: "5m"
+expected_changes:
+  - CALLERS.md

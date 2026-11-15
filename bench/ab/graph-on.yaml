@@ -1,0 +1,5 @@
+label: graph-on
+flags:
+  graph: "on"
+env:
+  TB_GRAPH: "1"

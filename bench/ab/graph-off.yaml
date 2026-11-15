@@ -1,0 +1,5 @@
+label: graph-off
+flags:
+  graph: "off"
+env:
+  TB_GRAPH: "0"

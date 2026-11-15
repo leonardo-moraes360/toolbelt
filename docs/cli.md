@@ -1406,58 +1406,58 @@ tb merge --output changes.patch TKT-001 TKT-002 TKT-003
 
 ---
 
-### `tb bench` — Benchmark ✅ IMPLEMENTADO
+### `tb bench` — Benchmark ✅ IMPLEMENTADO (A/B na Fase 2)
 
-Executa benchmarks e mede KPIs.
+Executa benchmarks e mede KPIs. Suporta comparação A/B entre configs/feature flags.
 
 ```bash
 tb bench <subcommand>
 
 Subcomandos:
   run       Executa suite de benchmark ✅
-  compare   Compara resultados ✅
+  compare   Compara resultados ou configs A/B ✅
   report    Gera relatório ✅
-  list      Lista suites disponíveis ✅
+  list      Lista tarefas disponíveis ✅
 ```
 
 **`tb bench run`:**
 
 ```bash
-tb bench run [flags] <suite>
+tb bench run [flags]
 
 Flags:
-  --baseline           Executa como baseline (agente sozinho)
-  --toolbelt           Executa com toolbelt
-  --repetitions <n>    Número de repetições (default: 5)
-  --output <path>      Arquivo de saída
-  --graph-first        Força abordagem graph-first
-  --grep-first         Força abordagem grep-first
+  --fake               Usa agente fake (CI)
+  --agent <cmd>        Comando do agente externo
+  --repetitions <n>    Número de repetições (default: 1)
+  --output <path>      Arquivo de saída JSONL
+  --label <name>       Rótulo da variante A/B
+  --flag key=value     Feature flag (repetível)
+  --ab-config <yaml>   Variante A/B a partir de YAML
+  --task <id>          Filtra tarefas
 ```
+
+**`tb bench compare` (A/B):**
+
+```bash
+# Compara dois JSONL já gerados
+tb bench compare --before graph-off.jsonl --after graph-on.jsonl
+
+# Roda duas configs no mesmo conjunto de tarefas e compara
+tb bench compare --config-a bench/ab/graph-off.yaml \
+                 --config-b bench/ab/graph-on.yaml --fake
+```
+
+O relatório Markdown e o JSONL incluem métricas de **sucesso (pass@1)**, **tempo** e **tokens**, com deltas A→B.
 
 **Exemplos:**
 
 ```bash
-# Executar benchmark baseline
-tb bench run --baseline --repetitions 10 coding-tasks
-
-# Executar com toolbelt
-tb bench run --toolbelt --repetitions 10 coding-tasks
-
-# Comparar abordagens de busca
-tb bench run --graph-first coding-tasks --output graph-results.json
-tb bench run --grep-first coding-tasks --output grep-results.json
-tb bench compare graph-results.json grep-results.json
-
-# Gerar relatório
-tb bench report --input results.json --format markdown > report.md
-
-# Listar suites
+tb bench run --fake --label graph-off --flag graph=off
+tb bench run --fake --ab-config bench/ab/graph-on.yaml
+tb bench compare --before bench/results/graph-off.jsonl \
+                 --after bench/results/graph-on.jsonl
 tb bench list
-# SUITE           TASKS   DESCRIPTION
-# coding-tasks    50      Tarefas de implementação
-# refactoring     30      Tarefas de refatoração
-# debugging       25      Tarefas de debugging
-# documentation   20      Tarefas de documentação
+tb bench report --input bench/results/graph-on.jsonl
 ```
 
 ---

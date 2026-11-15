@@ -1,0 +1,20 @@
+id: cross-file-rename
+name: Renomear tipo em múltiplos arquivos
+description: |
+  O tipo Customer deve ser renomeado para User em models e api,
+  mantendo o comportamento e fazendo os testes compilarem.
+category: refactor
+difficulty: medium
+prompt: |
+  Renomeie o tipo models.Customer para models.User em todo o módulo
+  (definição e usos). Não altere a lógica de Greeting/Display.
+  Os testes em api/ devem passar após o rename.
+fixture: cross-file-rename
+verification:
+  command: "go test ./..."
+  timeout: "30s"
+  expected_exit_code: 0
+timeout: "5m"
+expected_changes:
+  - models/user.go
+  - api/handler.go

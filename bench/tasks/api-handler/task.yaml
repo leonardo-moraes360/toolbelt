@@ -1,0 +1,21 @@
+id: api-handler
+name: Implementar endpoint /echo e registrar rota
+description: |
+  Adicionar handler Echo que devolve {"message": <query msg>}
+  e registrar em routes.Mount sob /echo.
+category: feature
+difficulty: medium
+prompt: |
+  Implemente o endpoint GET /echo?msg=...:
+  1. Crie handlers.Echo que responde JSON {"message": <valor de msg>}
+  2. Registre a rota /echo em routes.Mount
+  Os testes em routes/ devem passar.
+fixture: api-handler
+verification:
+  command: "go test ./..."
+  timeout: "30s"
+  expected_exit_code: 0
+timeout: "5m"
+expected_changes:
+  - handlers/echo.go
+  - routes/routes.go

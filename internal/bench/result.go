@@ -15,6 +15,12 @@ type Result struct {
 	// AgentID identificador do agente usado.
 	AgentID string `json:"agent_id"`
 
+	// ConfigLabel rótulo da variante A/B (ex: graph-on, graph-off).
+	ConfigLabel string `json:"config_label,omitempty"`
+
+	// Flags feature flags ativas nesta execução.
+	Flags map[string]string `json:"flags,omitempty"`
+
 	// Repetition número da repetição (1-based).
 	Repetition int `json:"repetition"`
 
