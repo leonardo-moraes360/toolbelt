@@ -131,6 +131,10 @@ Consulta e indexa o grafo de código **sob demanda**. Desabilitado por padrão;
 ative com `TB_GRAPH=on` ou `--enable`. Medir ROI via
 `tb bench compare --config-a bench/ab/graph-off.yaml --config-b bench/ab/graph-on.yaml`.
 
+Linguagens indexadas (extensível via `LanguageIndexer`): Go (`.go`) e
+JavaScript/TypeScript (`.js`, `.jsx`, `.mjs`, `.cjs`, `.ts`, `.tsx`), com
+parser leve por regex para JS/TS (sem dependência pesada).
+
 ```bash
 tb graph [--enable] <subcommand>
 
