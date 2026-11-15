@@ -1263,7 +1263,33 @@ report:
 
 ---
 
-## 13. Inspirações
+## 14. Achados da Pesquisa (2026-11)
+
+Em novembro de 2026, uma revisão de ~100 fontes primárias (papers, specs, blogs oficiais, repos e benchmarks) identificou achados que podem mudar o desenho do toolbelt.
+
+Veja a documentação completa em [docs/pesquisa/](pesquisa/):
+- [Fontes primárias](pesquisa/fontes-primarias.md) — tabelas por área com todas as fontes
+- [Top 10 leituras](pesquisa/top-10.md) — as 10 fontes mais importantes para começar
+- [Achados e ideias novas](pesquisa/achados.md) — propostas concretas por módulo
+
+### Propostas Pendentes por Módulo
+
+| Módulo | Proposta | ADR/Status |
+|--------|----------|------------|
+| **mem/ctx** | Arquivo de invariantes fixado fora da compactação; compactação híbrida (extração mecânica + resumo LLM) | [ADR-010](adr/010-invariantes-fora-compactacao.md) (proposed) |
+| **mem/ctx** | AGENTS.md como contexto local padrão; memória bitemporal com invalidação de fatos | pendente |
+| **grafo** | `tb graph` sob demanda com A/B por tipo de tarefa; priorizar skills humanas | [ADR-011](adr/011-grafo-sob-demanda.md) (proposed) |
+| **verify** | Suíte held-out composta que o gerador nunca vê; gap visível/oculto como KPI | pendente |
+| **guard** | Monitor de trajetória (nota de suspeita); padrões de trapaça além de apagar testes | pendente |
+| **benchmark** | `tb bench --impossible` para detectar trapaça; pass^k além de pass@1; fronteira custo×acurácia | pendente |
+| **protocolo** | `tb mcp` nasce stateless (MCP 2026-07-28); ferramentas como arquivos + busca adiada | pendente |
+| **router** | Mandate com commit base e arquivos; escopos disjuntos para paralelismo; watchdog de desperdício | parcialmente em [ADR-009](adr/009-router-e-workers.md) |
+
+**Nota**: propostas marcadas como "pendente" estão documentadas em [achados.md](pesquisa/achados.md) mas ainda não têm ADR.
+
+---
+
+## 15. Inspirações
 
 O toolbelt incorpora padrões de três projetos de referência:
 

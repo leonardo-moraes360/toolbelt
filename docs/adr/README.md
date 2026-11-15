@@ -26,6 +26,8 @@ Cada ADR segue o formato:
 | [007](007-inspiracao-elephant-goldfish.md) | Inspiração: Elephant-Goldfish Model | accepted |
 | [008](008-verificacao-adversarial.md) | Verificação adversarial (gerador vs discriminador) | accepted |
 | [009](009-router-e-workers.md) | Padrão Router e Workers para delegação | proposed |
+| [010](010-invariantes-fora-compactacao.md) | Invariantes fixados fora da compactação | proposed |
+| [011](011-grafo-sob-demanda.md) | Grafo de código sob demanda com A/B | proposed |
 
 ## Como Propor um ADR
 

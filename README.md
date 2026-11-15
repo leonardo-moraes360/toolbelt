@@ -79,6 +79,7 @@ Veja a documentação completa em [docs/arquitetura.md](docs/arquitetura.md).
 | [docs/cli.md](docs/cli.md) | Árvore de comandos planejada para `tb` |
 | [docs/benchmark.md](docs/benchmark.md) | KPIs e metodologia de avaliação |
 | [docs/adr/](docs/adr/) | Registros de Decisão Arquitetural (ADRs) |
+| [docs/pesquisa/](docs/pesquisa/) | Fontes primárias, top 10 e achados da pesquisa (2026-11) |
 | [docs/identidade-visual.md](docs/identidade-visual.md) | Logo, paleta Synthwave e tokens de tema |
 
 ## 🗺️ Roadmap
