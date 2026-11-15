@@ -64,6 +64,7 @@ func init() {
 
 	// Stubs para commands futuros
 	rootCmd.AddCommand(sandboxCmd)
+	rootCmd.AddCommand(workspaceCmd)
 	rootCmd.AddCommand(verifyCmd)
 	rootCmd.AddCommand(memCmd)
 	rootCmd.AddCommand(graphCmd)
@@ -127,15 +128,6 @@ func init() {
 }
 
 // Stubs para commands futuros
-
-var sandboxCmd = &cobra.Command{
-	Use:   "sandbox",
-	Short: "Sandbox isolado para execução de código (não implementado)",
-	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("⚠️  Command sandbox ainda não implementado")
-		fmt.Println("   Será implementado na Fase 1")
-	},
-}
 
 var verifyCmd = &cobra.Command{
 	Use:   "verify",

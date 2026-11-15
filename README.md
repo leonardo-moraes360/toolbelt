@@ -214,7 +214,7 @@ Este projeto está na **Fase 0**: fundação implementada com CLI funcional, con
 | `tb bench list` | ✅ | Lista tarefas disponíveis |
 | `tb bench report` | ✅ | Gera relatório Markdown |
 | `tb bench compare` | ✅ | Compara dois benchmarks |
-| `tb sandbox` | 🚧 | Stub (Fase 1) |
+| `tb sandbox` | ✅ | Worktrees + Landlock (Linux) |
 | `tb verify` | 🚧 | Stub (Fase 2) |
 | `tb mem` | 🚧 | Stub (Fase 3) |
 | `tb graph` | 🚧 | Stub (Fase 4) |
