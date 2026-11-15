@@ -113,6 +113,70 @@ Agregador de resultados:
 3. **Paralelização**: tickets independentes executam em paralelo
 4. **Especialização opcional**: workers podem ter prompts especializados
 5. **Transparência**: todo o fluxo é auditável
+6. **Entrega direta**: follow-ups podem ir direto ao worker dono
+
+### Entrega Direta (Direct Delivery / Subscription)
+
+Quando um worker completa um ticket que tem dependentes, ele pode **se inscrever** para receber os tickets dependentes diretamente, sem que esses passem pelo Board. Isso é chamado de **entrega direta** (direct delivery) ou **subscription**.
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    FLUXO VIA BOARD (padrão)                     │
+│  Router → Board → Worker A (TKT-001 done)                       │
+│  Router → Board → Worker B (TKT-002 depende de TKT-001)         │
+│                                                                 │
+│  Latência: ticket passa pelo Board, worker B pode ser outro     │
+└─────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────┐
+│                    ENTREGA DIRETA (subscription)                │
+│  Router → Board → Worker A (TKT-001 done)                       │
+│           Worker A se inscreve para TKT-002                     │
+│  Router ────────→ Worker A (TKT-002 direto, sem Board)          │
+│                                                                 │
+│  Latência: ticket vai direto, contexto do TKT-001 reutilizado   │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Benefícios da entrega direta**:
+
+1. **Menor latência**: ticket não espera na fila do Board
+2. **Afinidade de contexto**: worker que fez TKT-001 já tem contexto relevante para TKT-002
+3. **Cache-read maximizado**: tokens de contexto do ticket anterior estão em cache
+4. **Menos conflitos**: mesmo worker edita arquivos relacionados sequencialmente
+
+**Mecanismo de subscription**:
+
+```yaml
+ticket:
+  id: "TKT-001"
+  title: "Criar modelo User"
+  # ... outros campos ...
+  
+  subscription:
+    worker: "worker-001"           # worker que completou este ticket
+    subscribed_to: ["TKT-002"]     # tickets que este worker receberá diretamente
+    ttl: "30m"                     # subscription expira se ticket não chegar
+    direct_delivery: true          # habilita entrega direta
+```
+
+**Regras de subscription**:
+
+- Worker só pode se inscrever para tickets que **dependem** de um que ele completou
+- Subscription tem TTL (time-to-live) para evitar locks eternos
+- Se worker falhar ou subscription expirar, ticket volta para o Board
+- Router pode vetar subscription se worker estiver sobrecarregado
+
+**Configuração do Router**:
+
+```yaml
+router:
+  direct_delivery:
+    enabled: true
+    subscription_ttl: 30m
+    max_subscriptions_per_worker: 5
+    veto_on_worker_load: 80%  # veta se worker > 80% utilização
+```
 
 ### Fluxo de Execução
 
@@ -127,8 +191,11 @@ Agregador de resultados:
    b. Recebe apenas arquivos do mandate
    c. Executa com contexto mínimo
    d. Retorna resultado ou erro
+   e. (opcional) Se inscreve para tickets dependentes
 7. Watchdog monitora timeouts e saúde
-8. Tickets dependentes são liberados quando deps completam
+8. Tickets dependentes são:
+   a. Entregues diretamente ao worker subscrito, OU
+   b. Liberados para o Board se não houver subscription
 9. Merge agrega todos os resultados
 10. Router reporta sucesso/falha consolidado
 ```
@@ -161,6 +228,7 @@ Agregador de resultados:
 | router_latency_p50 | < 500ms | Delegação deve ser rápida |
 | tickets_parallel_max | ≥ 3 | Paralelização efetiva |
 | merge_conflict_rate | < 5% | Mandates bem definidos |
+| direct_delivery_rate | ≥ 50% | Entrega direta reduz latência |
 
 ## Alternativas Consideradas
 

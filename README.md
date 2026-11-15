@@ -95,6 +95,7 @@ Veja a documentação completa em [docs/arquitetura.md](docs/arquitetura.md).
 
 ### Fase 3
 - [ ] Router/Workers para delegação escalável de tarefas
+- [ ] Entrega direta (direct delivery) — follow-ups vão direto ao worker dono
 - [ ] `tb ticket` / `tb board` — gerenciamento de tickets de trabalho
 - [ ] `tb router` / `tb watchdog` — controle de delegação e saúde
 - [ ] `tb merge` — agregação de resultados de workers
@@ -102,6 +103,7 @@ Veja a documentação completa em [docs/arquitetura.md](docs/arquitetura.md).
 - [ ] Integração com Graphify (ou reimplementação)
 - [ ] Integração com Elephant-Goldfish Model (ou reimplementação)
 - [ ] Componentes opcionais em Rust para inferência local
+- [ ] Rulers adicionais para `tb verify`
 
 ## 🤝 Contribuindo
 
@@ -121,6 +123,7 @@ Este projeto foi inspirado por:
 Veja os ADRs para detalhes:
 - [ADR-006: Graphify e Obsidian](docs/adr/006-inspiracoes-graphify-obsidian.md)
 - [ADR-007: Elephant-Goldfish Model](docs/adr/007-inspiracao-elephant-goldfish.md)
+- [ADR-008: Verificação Adversarial](docs/adr/008-verificacao-adversarial.md)
 - [ADR-009: Router e Workers](docs/adr/009-router-e-workers.md)
 
 ## 📄 Licença

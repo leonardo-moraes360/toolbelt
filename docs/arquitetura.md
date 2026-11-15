@@ -805,16 +805,40 @@ ticket:
 - **Cache-read**: workers aproveitam cache de tokens via contextos repetidos
 - **Auditoria**: cada ticket tem histórico isolado e rastreável
 
+**Entrega Direta (Direct Delivery)**:
+
+Quando um worker completa um ticket com dependentes, ele pode se inscrever para receber os tickets dependentes **diretamente**, sem passar pelo Board:
+
+```mermaid
+sequenceDiagram
+    participant R as Router
+    participant B as Board
+    participant W1 as Worker 1
+
+    R->>B: TKT-001 (sem deps)
+    B->>W1: Worker 1 puxa TKT-001
+    W1->>W1: Executa TKT-001
+    W1->>R: TKT-001 done + subscribe TKT-002
+    R-->>W1: TKT-002 entregue DIRETO (sem Board)
+    Note over W1: Contexto de TKT-001<br/>já em cache
+```
+
+Benefícios da entrega direta:
+- **Menor latência**: ticket não espera na fila
+- **Afinidade de contexto**: worker já tem contexto relevante
+- **Cache-read maximizado**: tokens do ticket anterior em cache
+- **Menos conflitos**: mesmo worker edita arquivos relacionados
+
 **Implementação via `tb router` e `tb ticket`**:
 
 ```bash
 # Criar tickets a partir de tarefa
 tb ticket create --from "Implementar autenticação completa"
 
-# Ver board de tickets
+# Ver board de tickets (inclui subscriptions)
 tb board list --status pending,running
 
-# Monitorar workers
+# Monitorar workers (mostra subscriptions ativas)
 tb watchdog status
 
 # Forçar merge de resultados
@@ -1010,34 +1034,218 @@ Veja [docs/benchmark.md](benchmark.md) para detalhes completos.
 
 ---
 
-## 12. Questões em Aberto
+## 12. Verificação Adversarial (`tb verify`)
 
-### 12.1 Integração vs Reimplementação
+### 12.1 Conceito: Loop Gerador vs Discriminador
+
+Inspirado em GANs (Generative Adversarial Networks), o toolbelt implementa um **loop adversarial** onde:
+
+- **Gerador** (implementador): executa a tarefa e submete para verificação
+- **Discriminador** (verificador): agente independente que tenta FALHAR o trabalho
+
+```mermaid
+sequenceDiagram
+    participant G as Gerador
+    participant D as Discriminador
+    participant H as Humano
+
+    loop Máximo 3 iterações
+        G->>G: Implementa/corrige
+        G->>D: Submete para verificação
+        D->>D: Guard check (paths protegidos)
+        D->>D: Clean build
+        D->>D: Captura fresh
+        D->>D: Medição com ruler
+        D->>D: Verifica trapaça
+        
+        alt PASS
+            D->>G: PASS + relatório
+            G->>H: Concluído
+        else FAIL
+            D->>G: FAIL + gaps
+            Note over G: Próxima iteração
+        end
+    end
+    
+    D->>H: Escalação (3 falhas)
+```
+
+**Princípio fundamental**: Só a medição do discriminador conta como prova. Medições do gerador são informativas, nunca probatórias.
+
+### 12.2 Rulers Plugáveis
+
+O sistema `tb verify` é genérico, com **rulers** específicos por domínio:
+
+| Ruler | Domínio | Métrica | Threshold |
+|-------|---------|---------|-----------|
+| `visual` | UI/telas | Similaridade pixel + WCAG | ≥ 95% por tela |
+| `tests` | Código | Passagem em testes ocultos | 100% |
+| `review` | Documentos | Cobertura de revisão fresh-context | Configurable |
+
+Cada ruler define:
+- Métrica principal e threshold de passagem
+- Regras específicas de trapaça
+- Formato de relatório
+
+### 12.3 Sandbox do Discriminador
+
+O discriminador opera em isolamento total:
+
+```yaml
+discriminator:
+  sandbox:
+    port: dedicated      # porta própria
+    database: dedicated  # DB próprio
+    network: isolated    # sem acesso ao gerador
+  
+  permissions:
+    push: denied
+    branch_switch: denied
+    stash: denied
+    fix_code: denied     # apenas reporta, nunca corrige
+  
+  cleanup: required      # limpa após execução
+```
+
+### 12.4 Guard Check e Paths Protegidos
+
+Antes da medição, o discriminador executa um **guard check** sobre `base..head`:
+
+```mermaid
+graph LR
+    DIFF[git diff base..head] --> GUARD[Guard Check]
+    GUARD --> PROT{Mudou path protegido?}
+    PROT -->|Sim| DEC{Tem decisão registrada?}
+    PROT -->|Não| CONT[Continua verificação]
+    DEC -->|Sim| CONT
+    DEC -->|Não| FLAG[Flag: justificativa necessária]
+```
+
+**Paths protegidos** (configurados em `.toolbelt/guard.yaml`):
+
+```yaml
+protected_paths:
+  - pattern: "references/**"
+    reason: "Referências visuais não podem ser editadas sem decisão"
+  
+  - pattern: "masks/**"
+    reason: "Masks requerem justificativa de região dinâmica"
+  
+  - pattern: "**/comparator.{js,ts,go}"
+    reason: "Lógica de comparação é imutável"
+  
+  - pattern: ".toolbelt/thresholds.yaml"
+    reason: "Thresholds não podem ser relaxados"
+  
+  - pattern: "**/*.seed"
+    reason: "Seeds determinísticos são fixos"
+```
+
+Mudanças em paths protegidos **não são automaticamente trapaça**, mas requerem uma decisão registrada no vault ou aprovação explícita.
+
+### 12.5 Definição de Trapaça
+
+Trapaça causa **FAIL imediato**, mesmo se a métrica principal passar:
+
+| Tipo | Descrição | Detecção |
+|------|-----------|----------|
+| Edição de referência | Modificar/deletar refs existentes | Guard check |
+| Mask inválida | Mask sem região dinâmica real | Análise de justificativa |
+| Alteração de comparador | Mudar threshold, padding, contagem | Guard check |
+| Mudança de seed | Alterar seed para esconder diferenças | Guard check |
+| Estado incorreto | Capturar estado diferente do projetado | Comparação com spec |
+| Design invertido | Mover design em direção ao código | Diff no design |
+
+### 12.6 Política de Iteração e Escalação
+
+```yaml
+verification:
+  max_iterations: 3
+  
+  on_pass:
+    - log_result
+    - update_audit
+    - notify_generator
+  
+  on_fail:
+    iteration_1:
+      - provide_gaps
+      - return_to_generator
+    iteration_2:
+      - provide_detailed_gaps
+      - suggest_fixes
+      - return_to_generator
+    iteration_3:
+      - escalate_to_human
+      - provide_full_report
+      - block_merge
+```
+
+### 12.7 Relatório do Discriminador
+
+```yaml
+report:
+  verdict: PASS | FAIL
+  
+  per_screen:
+    - screen: "login"
+      light_mode: 97.2%
+      dark_mode: 95.8%
+      size_match: true
+      contrast_pass: true
+  
+  gaps:
+    - id: G1
+      file: "src/components/Button.tsx"
+      line: 45
+      issue: "Cor do botão difere 12% do design"
+      proposed_fix: "Usar var(--primary-600) ao invés de #3b82f6"
+  
+  accepted_deviations:
+    - reason: "Fonte do sistema difere entre OS"
+      approved_by: "decision-2026-01-15"
+  
+  design_system_followups:
+    - "Considerar adicionar --primary-600 ao token set"
+  
+  cheating_detected: []
+  
+  metrics:
+    build_time: "45s"
+    capture_time: "12s"
+    comparison_time: "3s"
+```
+
+---
+
+## 13. Questões em Aberto
+
+### 13.1 Integração vs Reimplementação
 
 - **Graphify**: integrar via MCP ou reimplementar a indexação? 
   - Integração: menos trabalho, depende de manutenção externa
   - Reimplementação: controle total, pode otimizar para o caso de uso
   - **Decisão pendente**: experimentar integração primeiro, medir latência e completude
 
-### 12.2 Modelo de Inferência para Proveniência
+### 13.2 Modelo de Inferência para Proveniência
 
 - Qual modelo usar para inferir relações semânticas?
 - Deve rodar localmente ou via API?
 - Trade-off custo vs qualidade das inferências
 
-### 12.3 Persistência do Estado do Agente
+### 13.3 Persistência do Estado do Agente
 
 - Onde persistir o estado de agentes entre sessões?
 - Formato: JSON, SQLite, ou no próprio vault?
 - Como lidar com agentes órfãos?
 
-### 12.4 Escalabilidade da Hierarquia
+### 13.4 Escalabilidade da Hierarquia
 
 - Quantos workers por supervisor?
 - Quantos supervisors por planner?
 - Como balancear carga?
 
-### 12.5 Versionamento do Vault
+### 13.5 Versionamento do Vault
 
 - O vault deve ser versionado junto com o código?
 - Como fazer merge de mudanças de memória?

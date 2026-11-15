@@ -682,6 +682,289 @@ tb drift --format json | jq '.critical_count' | xargs -I {} test {} -eq 0
 
 ---
 
+### `tb verify` — Verificação Adversarial
+
+Executa o loop gerador→discriminador com rulers plugáveis.
+
+```bash
+tb verify <task> [flags]
+
+Flags:
+  --ruler <type>        Tipo de ruler: visual|tests|review (obrigatório)
+  --max-iter <n>        Máximo de iterações (default: 3)
+  --threshold <pct>     Threshold de passagem (default: depende do ruler)
+  --manifest <path>     Manifesto de telas/testes (default: .toolbelt/verify.yaml)
+  --output <path>       Arquivo de saída do relatório
+  --json                Saída em JSON
+  --discriminator-only  Executa apenas discriminador (para debug)
+  --skip-guard          Pula guard check (apenas para testes)
+```
+
+**Exemplos:**
+
+```bash
+# Verificação visual de UI
+tb verify ui-implementation --ruler visual --threshold 95
+# ═══════════════════════════════════════════════════════════════
+# VERIFICAÇÃO ADVERSARIAL: ui-implementation
+# Ruler: visual | Threshold: 95% | Max iterações: 3
+# ═══════════════════════════════════════════════════════════════
+# 
+# [Iteração 1/3]
+# ├── Guard check: OK (0 paths protegidos modificados)
+# ├── Clean build: 45s
+# ├── Captura: 8 telas × 2 modos = 16 screenshots
+# ├── Comparação:
+# │   ┌─────────────┬────────┬────────┬──────────┐
+# │   │ Tela        │ Light  │ Dark   │ Tamanho  │
+# │   ├─────────────┼────────┼────────┼──────────┤
+# │   │ login       │ 97.2%  │ 95.8%  │ OK       │
+# │   │ dashboard   │ 92.1%  │ 91.5%  │ OK       │  ← FAIL
+# │   │ settings    │ 98.4%  │ 97.9%  │ OK       │
+# │   │ profile     │ 96.0%  │ 95.2%  │ SIZE≠    │  ← FAIL
+# │   └─────────────┴────────┴────────┴──────────┘
+# ├── Contraste WCAG: 2 violações
+# └── Veredicto: FAIL
+# 
+# Gaps encontrados:
+# G1: src/components/Dashboard.tsx:45
+#     Cor de fundo difere 8% → usar var(--bg-secondary)
+# G2: src/pages/Profile.tsx:120
+#     Altura do container 450px, esperado 480px
+# 
+# Retornando ao gerador...
+
+# Verificação de código com testes
+tb verify feature-auth --ruler tests
+# Executa testes ocultos como discriminador
+
+# Verificação de documentação
+tb verify design-spec --ruler review --threshold 80
+# Spawna revisores fresh-context como discriminador
+
+# Apenas discriminador (debug)
+tb verify ui-fix --ruler visual --discriminator-only
+# Roda uma passagem do discriminador sem loop
+
+# Saída JSON para CI
+tb verify ui --ruler visual --json --output verify-result.json
+```
+
+**Rulers disponíveis:**
+
+| Ruler | Métrica | Threshold Default | Trapaça Específica |
+|-------|---------|-------------------|-------------------|
+| `visual` | Similaridade pixel + WCAG | 95% | Edição de refs, masks inválidas |
+| `tests` | Passagem em testes ocultos | 100% | Modificação de testes |
+| `review` | Cobertura de revisão | 80% | Contexto contaminado |
+
+**Template de briefing do discriminador:**
+
+```yaml
+# .toolbelt/discriminator-brief.yaml
+task: ui-implementation
+ruler: visual
+
+context:
+  description: "Implementação da tela de login conforme design"
+  design_reference: "references/login-v2.png"
+  spec_link: "vault/specs/login-redesign.md"
+
+screens:
+  - name: login
+    modes: [light, dark]
+    reference_light: "references/login-light.png"
+    reference_dark: "references/login-dark.png"
+    masks:
+      - region: [100, 200, 50, 20]
+        reason: "Timestamp dinâmico"
+
+acceptance:
+  min_similarity: 95
+  wcag_level: AA
+  
+cheating_rules:
+  - no_reference_edits
+  - no_mask_without_reason
+  - no_threshold_changes
+```
+
+**Formato do relatório:**
+
+```yaml
+# verify-report.yaml
+task: ui-implementation
+ruler: visual
+verdict: PASS | FAIL
+iterations: 2
+
+per_screen:
+  - screen: login
+    light_similarity: 97.2
+    dark_similarity: 95.8
+    size_match: true
+    wcag_pass: true
+    
+  - screen: dashboard
+    light_similarity: 96.5
+    dark_similarity: 95.1
+    size_match: true
+    wcag_pass: false
+    wcag_violations:
+      - element: ".btn-secondary"
+        contrast: 3.8
+        required: 4.5
+
+gaps:
+  - id: G1
+    file: "src/components/Button.tsx"
+    line: 45
+    issue: "Contraste insuficiente no modo escuro"
+    proposed_fix: "Usar --text-on-dark ao invés de --text-muted"
+
+accepted_deviations:
+  - reason: "Fonte Roboto não disponível, usando system font"
+    decision_id: "vault/decisions/font-fallback.md"
+
+cheating_detected: []
+
+metrics:
+  total_time: "2m 15s"
+  build_time: "45s"
+  capture_time: "30s"
+  comparison_time: "5s"
+```
+
+---
+
+### `tb guard check` — Verificação de Paths Protegidos
+
+Verifica mudanças em paths protegidos entre dois commits.
+
+```bash
+tb guard check <base>..<head> [flags]
+
+Flags:
+  --manifest <path>     Manifesto de paths protegidos (default: .toolbelt/guard.yaml)
+  --strict              Falha se qualquer path protegido foi modificado sem decisão
+  --json                Saída em JSON
+  --output <path>       Arquivo de saída
+```
+
+**Exemplos:**
+
+```bash
+# Verificar mudanças entre main e branch atual
+tb guard check main..HEAD
+# ═══════════════════════════════════════════════════════════════
+# GUARD CHECK: main..HEAD
+# ═══════════════════════════════════════════════════════════════
+# 
+# Paths protegidos modificados: 2
+# 
+# ┌───────────────────────────────────────────────────────────────┐
+# │ references/login-light.png                                    │
+# │ ├── Regra: "Referências visuais requerem decisão"             │
+# │ ├── Modificação: DELETED                                      │
+# │ └── Decisão: ⚠ NÃO ENCONTRADA                                 │
+# ├───────────────────────────────────────────────────────────────┤
+# │ .toolbelt/thresholds.yaml                                     │
+# │ ├── Regra: "Thresholds não podem ser relaxados"               │
+# │ ├── Modificação: min_similarity 95 → 90                       │
+# │ └── Decisão: ⚠ NÃO ENCONTRADA                                 │
+# └───────────────────────────────────────────────────────────────┘
+# 
+# ⚠ 2 modificações requerem justificativa
+# 
+# Para aprovar, crie decisões em:
+#   tb mem add --type decision --title "Remoção de login-light.png" ...
+#   tb mem add --type decision --title "Relaxamento de threshold" ...
+
+# Modo strict para CI
+tb guard check origin/main..HEAD --strict
+# Exit code 1 se houver modificação sem decisão
+
+# Saída JSON
+tb guard check main..HEAD --json
+```
+
+**Manifesto de paths protegidos (`.toolbelt/guard.yaml`):**
+
+```yaml
+# .toolbelt/guard.yaml
+version: 1
+
+protected_paths:
+  # Referências visuais
+  - pattern: "references/**"
+    reason: "Referências visuais não podem ser editadas sem decisão registrada"
+    allow_additions: true    # novos arquivos OK
+    allow_deletions: false   # deleções requerem decisão
+    allow_modifications: false
+    
+  # Masks
+  - pattern: "masks/**"
+    reason: "Masks requerem justificativa de região dinâmica"
+    require_reason_in_commit: true
+    
+  # Comparador
+  - pattern: "**/comparator.{js,ts,go,py}"
+    reason: "Lógica de comparação é imutável"
+    allow_modifications: false
+    
+  - pattern: ".toolbelt/thresholds.yaml"
+    reason: "Thresholds não podem ser relaxados sem aprovação"
+    detect_relaxation: true  # detecta especificamente valores diminuindo
+    
+  # Seeds
+  - pattern: "**/*.seed"
+    reason: "Seeds determinísticos são fixos por cenário"
+    
+  # Testes de benchmark
+  - pattern: "benchmarks/**"
+    reason: "Testes de benchmark são read-only"
+    allow_modifications: false
+    
+  # Testes ocultos
+  - pattern: "tests/hidden/**"
+    reason: "Testes ocultos não podem ser acessados pelo implementador"
+    visibility: discriminator_only
+
+decision_sources:
+  - "vault/decisions/**"
+  - ".toolbelt/approved-changes.yaml"
+
+on_violation:
+  ci: fail
+  local: warn
+```
+
+**Formato de decisão aprovada:**
+
+```yaml
+# .toolbelt/approved-changes.yaml
+approved_changes:
+  - path: "references/login-light.png"
+    action: delete
+    reason: "Design atualizado para v3, ref antiga obsoleta"
+    approved_by: "owner"
+    approved_at: "2026-01-15T10:30:00Z"
+    ticket: "DESIGN-123"
+    
+  - path: ".toolbelt/thresholds.yaml"
+    action: modify
+    field: "min_similarity"
+    old_value: 95
+    new_value: 93
+    reason: "Fonte do sistema tem variação maior que esperado"
+    approved_by: "owner"
+    approved_at: "2026-01-15T11:00:00Z"
+    temporary: true
+    expires_at: "2026-02-15"
+```
+
+---
+
 ### `tb ticket` — Gerenciamento de Tickets
 
 Cria e gerencia tickets de trabalho para o padrão Router/Workers.
@@ -809,6 +1092,10 @@ ticket:
     
   dependencies: []
   
+  subscription:
+    worker: "worker-001"
+    direct_delivery: true
+  
   resources:
     cpu_limit: "50%"
     mem_limit: "512M"
@@ -906,6 +1193,7 @@ Flags:
   --strategy <type>     Estratégia: fifo|priority|dependency (default: dependency)
   --timeout <dur>       Timeout global por ticket (default: 10m)
   --config <path>       Arquivo de configuração
+  --direct-delivery     Habilita entrega direta a workers subscritos (default: true)
 ```
 
 **Exemplos:**
@@ -919,6 +1207,7 @@ tb router start
 # Workers máx: 3
 # Estratégia: dependency
 # Timeout: 10m
+# Entrega direta: habilitada
 # 
 # Aguardando tickets em .toolbelt/board/
 
@@ -931,6 +1220,7 @@ tb router status
 # Workers: 3/5 ativos
 # Tickets processados: 12
 # Tickets pendentes: 4
+# Entregas diretas: 8 (67%)
 # Tempo médio por ticket: 3m 45s
 # Falhas: 1 (TKT-008, timeout)
 ```
@@ -942,6 +1232,10 @@ tb router status
 router:
   max_workers: 3
   strategy: dependency  # fifo | priority | dependency
+  
+  direct_delivery:
+    enabled: true
+    subscription_ttl: 30m
   
   timeouts:
     per_ticket: 10m
@@ -1001,13 +1295,13 @@ tb watchdog status
 # WATCHDOG STATUS
 # ═══════════════════════════════════════════════════════════════
 # 
-# ┌────────────┬──────────┬────────────┬──────────┬────────────┐
-# │ WORKER     │ STATUS   │ TICKET     │ ELAPSED  │ HEALTH     │
-# ├────────────┼──────────┼────────────┼──────────┼────────────┤
-# │ worker-001 │ working  │ TKT-003    │ 2m 30s   │ ██████████ │
-# │ worker-002 │ working  │ TKT-005    │ 4m 15s   │ ████████░░ │
-# │ worker-003 │ idle     │ -          │ 30s      │ ██████████ │
-# └────────────┴──────────┴────────────┴──────────┴────────────┘
+# ┌────────────┬──────────┬────────────┬──────────┬────────────┬───────────┐
+# │ WORKER     │ STATUS   │ TICKET     │ ELAPSED  │ HEALTH     │ SUBSCRIBED│
+# ├────────────┼──────────┼────────────┼──────────┼────────────┼───────────┤
+# │ worker-001 │ working  │ TKT-003    │ 2m 30s   │ ██████████ │ TKT-006   │
+# │ worker-002 │ working  │ TKT-005    │ 4m 15s   │ ████████░░ │ -         │
+# │ worker-003 │ idle     │ -          │ 30s      │ ██████████ │ TKT-007,08│
+# └────────────┴──────────┴────────────┴──────────┴────────────┴───────────┘
 # 
 # Alertas: 0
 # Tickets timeout: 0
