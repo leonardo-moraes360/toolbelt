@@ -65,6 +65,7 @@ func init() {
 	// Stubs para commands futuros
 	rootCmd.AddCommand(sandboxCmd)
 	rootCmd.AddCommand(workspaceCmd)
+	rootCmd.AddCommand(guardCmd)
 	rootCmd.AddCommand(verifyCmd)
 	rootCmd.AddCommand(memCmd)
 	rootCmd.AddCommand(graphCmd)
@@ -128,15 +129,6 @@ func init() {
 }
 
 // Stubs para commands futuros
-
-var verifyCmd = &cobra.Command{
-	Use:   "verify",
-	Short: "Verificação adversarial de código (não implementado)",
-	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("⚠️  Command verify ainda não implementado")
-		fmt.Println("   Será implementado na Fase 2")
-	},
-}
 
 var memCmd = &cobra.Command{
 	Use:   "mem",
