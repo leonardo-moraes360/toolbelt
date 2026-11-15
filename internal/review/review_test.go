@@ -59,6 +59,139 @@ func TestDetectDriftOutOfScope(t *testing.T) {
 	}
 }
 
+func TestLoadTicketMarkdownHeadingScope(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "rd.md")
+	content := "# Fix ErrPrefix\n\n## Scope\n\n- command.go\n- command_test.go\n- `rd.md`\n\n## Notes\n\nOther section.\n"
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ticket, err := LoadTicket(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"command.go", "command_test.go", "rd.md"}
+	if len(ticket.Scope) != len(want) {
+		t.Fatalf("scope=%v want %v", ticket.Scope, want)
+	}
+	for i, s := range want {
+		if ticket.Scope[i] != s {
+			t.Fatalf("scope[%d]=%q want %q", i, ticket.Scope[i], s)
+		}
+	}
+}
+
+func TestLoadTicketMarkdownEscopoLists(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "rd.md")
+	content := `## Escopo
+
+* scripts/check.sh
+1. ` + "`src/main.go`" + `
+2) internal/review/review.go
+
+base_commit: abc
+`
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ticket, err := LoadTicket(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ticket.BaseCommit != "abc" {
+		t.Fatalf("base=%q", ticket.BaseCommit)
+	}
+	want := []string{"scripts/check.sh", "src/main.go", "internal/review/review.go"}
+	if len(ticket.Scope) != len(want) {
+		t.Fatalf("scope=%v want %v", ticket.Scope, want)
+	}
+	for i, s := range want {
+		if ticket.Scope[i] != s {
+			t.Fatalf("scope[%d]=%q want %q", i, ticket.Scope[i], s)
+		}
+	}
+}
+
+func TestLoadTicketMarkdownScopeMultilineLabel(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "rd.md")
+	content := `Scope:
+- command.go
+- command_test.go
+`
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ticket, err := LoadTicket(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ticket.Scope) != 2 || ticket.Scope[0] != "command.go" || ticket.Scope[1] != "command_test.go" {
+		t.Fatalf("scope=%v", ticket.Scope)
+	}
+}
+
+func TestLoadTicketMarkdownScopeSameLine(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "rd.md")
+	content := "Scope: command.go, command_test.go, rd.md\n"
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ticket, err := LoadTicket(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ticket.Scope) != 3 {
+		t.Fatalf("scope=%v", ticket.Scope)
+	}
+}
+
+func TestInScopeMidDoubleStar(t *testing.T) {
+	cases := []struct {
+		file, pattern string
+		want          bool
+	}{
+		{"src/foo.go", "src/**/foo.go", true},
+		{"src/a/foo.go", "src/**/foo.go", true},
+		{"src/a/b/foo.go", "src/**/foo.go", true},
+		{"pkg/foo.go", "src/**/foo.go", false},
+		{"src/a/b.go", "src/**/*.go", true},
+		{"src/x.go", "src/*.go", true},
+		{"src/a/x.go", "src/*.go", false},
+		{"src/a/b.go", "src/**", true},
+		{"src", "src/**", true},
+	}
+	for _, tc := range cases {
+		got := inScope(tc.file, []string{tc.pattern})
+		if got != tc.want {
+			t.Fatalf("inScope(%q, %q)=%v want %v", tc.file, tc.pattern, got, tc.want)
+		}
+	}
+}
+
+func TestDetectDriftWithMarkdownScopeGlobs(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "rd.md")
+	content := `## Scope
+
+- src/**/*.go
+- scripts/*.sh
+`
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ticket, err := LoadTicket(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rep := DetectDrift(ticket, []string{"src/pkg/a.go", "scripts/check.sh", "README.md"}, "HEAD")
+	if len(rep.OutOfScope) != 1 || rep.OutOfScope[0] != "README.md" {
+		t.Fatalf("out of scope=%v", rep.OutOfScope)
+	}
+}
+
 func TestReviewFreshInvariants(t *testing.T) {
 	ctx := FreshContext{
 		Reviewer: "goldfish-1",

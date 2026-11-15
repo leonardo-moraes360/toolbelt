@@ -159,6 +159,7 @@ tb bench compare --config-a bench/ab/graph-off.yaml \
 - [x] `tb graph` sob demanda (CLI + MCP) com A/B graph-on vs graph-off
 - [x] `tb review` — revisão fresh-context contra ticket/rd.md + invariantes
 - [x] `tb drift` — detecção de drift (escopo / commit base)
+- [x] Parser Markdown de Scope (`## Scope` / listas) e globs com `**` no meio
 - [x] Ruler visual: screenshot + browser headless (skip gracioso)
 - [ ] Hierarquia de agentes / A2A / `tb md` (posterior)
 

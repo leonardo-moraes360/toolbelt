@@ -294,12 +294,9 @@ func parseTicketFrontmatter(text string) (*TicketScope, bool, error) {
 
 func parseTicketMarkdown(text string) *TicketScope {
 	t := &TicketScope{Description: text}
-	reScope := regexp.MustCompile(`(?mi)^(?:scope|escopo)\s*:\s*(.+)$`)
 	reBase := regexp.MustCompile(`(?mi)^(?:base_commit|base)\s*:\s*(\S+)`)
 	reForbid := regexp.MustCompile(`(?mi)^(?:forbidden|proibido)\s*:\s*(.+)$`)
-	if m := reScope.FindStringSubmatch(text); len(m) > 1 {
-		t.Scope = splitList(m[1])
-	}
+	t.Scope = parseMarkdownScope(text)
 	if m := reBase.FindStringSubmatch(text); len(m) > 1 {
 		t.BaseCommit = strings.TrimSpace(m[1])
 	}
@@ -315,11 +312,121 @@ func parseTicketMarkdown(text string) *TicketScope {
 	return t
 }
 
+func parseMarkdownScope(text string) []string {
+	if items := collectHeadingList(text, "scope", "escopo"); len(items) > 0 {
+		return items
+	}
+	return collectLabelList(text, "scope", "escopo")
+}
+
+func collectHeadingList(text string, names ...string) []string {
+	nameSet := map[string]bool{}
+	for _, n := range names {
+		nameSet[strings.ToLower(n)] = true
+	}
+	headingRe := regexp.MustCompile(`(?i)^#{1,6}\s+(.+?)\s*$`)
+	lines := strings.Split(text, "\n")
+	inSection := false
+	var items []string
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if m := headingRe.FindStringSubmatch(trimmed); len(m) > 1 {
+			title := strings.ToLower(strings.TrimSpace(m[1]))
+			if inSection {
+				break
+			}
+			if nameSet[title] {
+				inSection = true
+			}
+			continue
+		}
+		if !inSection {
+			continue
+		}
+		if trimmed == "" {
+			if len(items) > 0 {
+				break
+			}
+			continue
+		}
+		if item, ok := parseListItem(trimmed); ok {
+			if item != "" {
+				items = append(items, item)
+			}
+			continue
+		}
+		if len(items) > 0 {
+			break
+		}
+	}
+	return items
+}
+
+func collectLabelList(text string, names ...string) []string {
+	labelRe := regexp.MustCompile(`(?i)^(?:` + strings.Join(names, "|") + `)\s*:\s*(.*)$`)
+	lines := strings.Split(text, "\n")
+	for i, line := range lines {
+		m := labelRe.FindStringSubmatch(strings.TrimSpace(line))
+		if m == nil {
+			continue
+		}
+		var items []string
+		rest := strings.TrimSpace(m[1])
+		if rest != "" {
+			if item, ok := parseListItem(rest); ok {
+				if item != "" {
+					items = append(items, item)
+				}
+			} else {
+				items = append(items, splitList(rest)...)
+			}
+		}
+		for j := i + 1; j < len(lines); j++ {
+			trimmed := strings.TrimSpace(lines[j])
+			if trimmed == "" {
+				if len(items) > 0 {
+					break
+				}
+				continue
+			}
+			if item, ok := parseListItem(trimmed); ok {
+				if item != "" {
+					items = append(items, item)
+				}
+				continue
+			}
+			break
+		}
+		return items
+	}
+	return nil
+}
+
+var listItemRe = regexp.MustCompile(`^(?:[-*+]|\d+[.)])\s+(.+)$`)
+
+func parseListItem(line string) (string, bool) {
+	m := listItemRe.FindStringSubmatch(strings.TrimSpace(line))
+	if m == nil {
+		return "", false
+	}
+	return cleanScopePath(m[1]), true
+}
+
+func cleanScopePath(s string) string {
+	s = strings.TrimSpace(s)
+	if len(s) >= 2 && s[0] == '`' {
+		if end := strings.IndexByte(s[1:], '`'); end >= 0 {
+			s = s[1 : 1+end]
+		}
+	}
+	return strings.Trim(strings.TrimSpace(s), "\"'")
+}
+
 func splitList(s string) []string {
 	parts := regexp.MustCompile(`[, ]+`).Split(strings.TrimSpace(s), -1)
 	var out []string
 	for _, p := range parts {
-		p = strings.TrimSpace(p)
+		p = cleanScopePath(p)
 		if p != "" {
 			out = append(out, p)
 		}
@@ -334,25 +441,73 @@ func inScope(file string, scope []string) bool {
 		if s == "" {
 			continue
 		}
-		if strings.HasSuffix(s, "/**") {
-			prefix := strings.TrimSuffix(s, "/**")
-			if file == prefix || strings.HasPrefix(file, prefix+"/") {
-				return true
-			}
-			continue
-		}
-		if strings.Contains(s, "*") {
-			ok, _ := filepath.Match(s, file)
-			if ok {
-				return true
-			}
-			continue
-		}
-		if file == s || strings.HasPrefix(file, strings.TrimSuffix(s, "/")+"/") {
+		if matchPathGlob(file, s) {
 			return true
 		}
 	}
 	return false
+}
+
+func matchPathGlob(file, pattern string) bool {
+	if strings.HasSuffix(pattern, "/**") && strings.Count(pattern, "**") == 1 {
+		prefix := strings.TrimSuffix(pattern, "/**")
+		return file == prefix || strings.HasPrefix(file, prefix+"/")
+	}
+	if strings.Contains(pattern, "**") {
+		re, err := doublestarRegexp(pattern)
+		if err != nil {
+			return false
+		}
+		return re.MatchString(file)
+	}
+	if strings.ContainsAny(pattern, "*?") {
+		ok, _ := filepath.Match(pattern, file)
+		return ok
+	}
+	return file == pattern || strings.HasPrefix(file, strings.TrimSuffix(pattern, "/")+"/")
+}
+
+func doublestarRegexp(pattern string) (*regexp.Regexp, error) {
+	var b strings.Builder
+	b.WriteByte('^')
+	for i := 0; i < len(pattern); {
+		if i+1 < len(pattern) && pattern[i] == '*' && pattern[i+1] == '*' {
+			i = appendDoublestar(&b, pattern, i+2)
+			continue
+		}
+		switch pattern[i] {
+		case '*':
+			b.WriteString("[^/]*")
+		case '?':
+			b.WriteString("[^/]")
+		default:
+			b.WriteString(regexp.QuoteMeta(string(pattern[i])))
+		}
+		i++
+	}
+	b.WriteByte('$')
+	return regexp.Compile(b.String())
+}
+
+func appendDoublestar(b *strings.Builder, pattern string, i int) int {
+	if i < len(pattern) && pattern[i] == '/' {
+		i++
+	}
+	s := b.String()
+	switch {
+	case strings.HasSuffix(s, "/"):
+		b.Reset()
+		b.WriteString(strings.TrimSuffix(s, "/"))
+		b.WriteString("(?:/.*)?")
+		if i < len(pattern) && pattern[i] != '/' {
+			b.WriteByte('/')
+		}
+	case s == "^":
+		b.WriteString("(?:.*/)?")
+	default:
+		b.WriteString(".*")
+	}
+	return i
 }
 
 func hitForbidden(file string, forbidden []string) bool {

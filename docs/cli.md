@@ -565,6 +565,10 @@ Flags:
 
 Também reporta drift de escopo e commit base. Isolamento fresco é obrigatório.
 
+O ticket/rd.md aceita frontmatter YAML ou Markdown: seção `## Scope` / `## Escopo`
+(ou `Scope:` / `Escopo:`) com listas (`-`, `*`, numeradas) e paths entre backticks.
+Globs no scope incluem `src/*.go`, `src/**` e padrões com `**` no meio (ex.: `src/**/foo.go`).
+
 **Exemplos:**
 
 ```bash
@@ -640,7 +644,8 @@ tb review docs/spec.md --json --output review-results.json
 ### `tb drift` — Drift de Escopo/Base (✓ Fase 2)
 
 Detecta mudanças fora do scope declarado no ticket/rd.md e divergência
-do commit base (mandate).
+do commit base (mandate). O parser de scope é o mesmo do `tb review`
+(YAML frontmatter ou Markdown `## Scope` / listas / globs com `**`).
 
 ```bash
 tb drift [ticket] [flags]
