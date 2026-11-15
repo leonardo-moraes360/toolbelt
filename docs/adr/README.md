@@ -24,6 +24,7 @@ Cada ADR segue o formato:
 | [005](005-anti-trapaca.md) | Estratégia anti-trapaça | accepted |
 | [006](006-inspiracoes-graphify-obsidian.md) | Inspirações: Graphify e Obsidian | accepted |
 | [007](007-inspiracao-elephant-goldfish.md) | Inspiração: Elephant-Goldfish Model | accepted |
+| [008](008-verificacao-adversarial.md) | Verificação adversarial (gerador vs discriminador) | accepted |
 
 ## Como Propor um ADR
 

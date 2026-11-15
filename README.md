@@ -89,12 +89,16 @@ Veja a documentação completa em [docs/arquitetura.md](docs/arquitetura.md).
 - [ ] Interoperabilidade com Obsidian
 - [ ] `tb review` — revisão com contextos frescos (Elephant-Goldfish)
 - [ ] `tb drift` — detecção de divergência docs/código
+- [ ] `tb verify` — verificação adversarial com rulers plugáveis
+- [ ] Ruler visual: similaridade pixel + contraste WCAG
+- [ ] Guard check com manifesto de paths protegidos
 
 ### Fase 3
 - [ ] Índice vetorial opcional
 - [ ] Integração com Graphify (ou reimplementação)
 - [ ] Integração com Elephant-Goldfish Model (ou reimplementação)
 - [ ] Componentes opcionais em Rust para inferência local
+- [ ] Rulers adicionais para `tb verify`
 
 ## 🤝 Contribuindo
 

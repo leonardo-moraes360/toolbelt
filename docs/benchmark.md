@@ -497,3 +497,177 @@ Diferenças estatisticamente significativas (p < 0.05) em todos os KPIs.
 - Como medir eficácia do `tb drift`?
 - Ground truth: diffs manuais entre docs e código
 - Métricas: precision/recall de divergências detectadas
+
+---
+
+## KPIs de Verificação Adversarial
+
+O sistema `tb verify` introduz métricas específicas para avaliar a eficácia do loop gerador→discriminador.
+
+### 15. mean_similarity (Similaridade Média)
+
+**Definição**: Média de similaridade por tela no ruler visual.
+
+```
+mean_similarity = sum(similarity_per_screen) / count(screens)
+```
+
+**Medição**:
+- Calculada pelo discriminador
+- Separada por modo (light/dark)
+- Exclui áreas mascaradas
+
+### 16. iterations_to_pass (Iterações até PASS)
+
+**Definição**: Número de ciclos gerador→discriminador até atingir PASS.
+
+```
+iterations_to_pass = count(iterations até verdict == PASS)
+```
+
+**Relevância**: Menos iterações = maior eficiência do gerador.
+
+**Meta**: ≤ 2 iterações em média
+
+### 17. cheating_attempts_detected (Tentativas de Trapaça Detectadas)
+
+**Definição**: Número de tentativas de trapaça identificadas pelo discriminador.
+
+```
+cheating_attempts = count(violations onde tipo ∈ cheating_rules)
+```
+
+**Categorias**:
+- Edição de referências
+- Masks inválidas
+- Alteração de threshold
+- Mudança de seed
+- Outros
+
+**Meta**: 0 tentativas não detectadas
+
+### 18. human_escalations (Escalações para Humano)
+
+**Definição**: Proporção de tarefas que requerem intervenção humana após 3 falhas.
+
+```
+human_escalations = (tasks com 3 FAILs) / (total de tasks)
+```
+
+**Relevância**: Alta taxa indica problema no processo ou spec inadequada.
+
+**Meta**: < 10%
+
+### 19. discriminator_false_fail_rate (Taxa de Falso-FAIL do Discriminador)
+
+**Definição**: Proporção de FAILs que eram falsos positivos (trabalho estava correto).
+
+```
+false_fail_rate = (FAILs revertidos por humano) / (total de FAILs)
+```
+
+**Medição**:
+- Humano revisa FAILs escalados
+- Marca como "falso FAIL" se implementação estava correta
+- Indica discriminador muito rigoroso ou spec ambígua
+
+**Meta**: < 5%
+
+### 20. verification_overhead (Overhead de Verificação)
+
+**Definição**: Tempo adicional gasto em verificação vs implementação.
+
+```
+overhead = (tempo_total_verificacao) / (tempo_implementacao)
+```
+
+**Componentes**:
+- Tempo de guard check
+- Tempo de build
+- Tempo de captura
+- Tempo de comparação
+
+---
+
+## Comparação: Auto-Verificação vs Verificação Adversarial
+
+Uma variante do benchmark compara verificação pelo próprio implementador com verificação adversarial.
+
+### Auto-Verificação (Self-Verify)
+
+1. Gerador implementa solução
+2. **Mesmo gerador** verifica seu próprio trabalho
+3. Gerador tem todo o contexto e código
+4. Métricas coletadas pelo próprio gerador
+
+### Verificação Adversarial
+
+1. Gerador implementa solução
+2. **Discriminador independente** verifica
+3. Discriminador não viu o código sendo escrito
+4. Clean build, fresh capture, medição independente
+
+### Métricas Específicas
+
+| Métrica | Descrição |
+|---------|-----------|
+| `defects_caught_self` | Defeitos encontrados por auto-verificação |
+| `defects_caught_adversarial` | Defeitos encontrados por verificação adversarial |
+| `defects_missed_self` | Defeitos que passaram por auto-verificação |
+| `defects_missed_adversarial` | Defeitos que passaram por verificação adversarial |
+| `cheating_detected` | Tentativas de trapaça detectadas (só adversarial detecta) |
+| `time_to_verify_self` | Tempo de auto-verificação |
+| `time_to_verify_adversarial` | Tempo de verificação adversarial |
+
+### Metodologia
+
+Para medir objetivamente:
+
+1. **Gold standard**: humanos especialistas identificam todos os defeitos em implementações
+2. **Auto-verificação**: gerador verifica, mede recall contra gold standard
+3. **Adversarial**: discriminador verifica, mede recall contra gold standard
+4. **Comparação**: qual abordagem encontra mais defeitos?
+
+### Hipótese
+
+Esperamos que verificação adversarial supere auto-verificação em:
+- `defects_caught`: mais defeitos encontrados
+- `cheating_detected`: detecta manipulação (auto-verificação não detecta)
+- `defects_missed`: menos defeitos escapam
+
+E que auto-verificação seja melhor em:
+- `time_to_verify`: mais rápida (sem spawn de discriminador)
+- `false_fail_rate`: menos falsos positivos (conhece o contexto)
+
+### Benchmark de UI
+
+Específico para o ruler visual:
+
+```yaml
+benchmark:
+  name: adversarial-vs-self-visual
+  
+  tasks:
+    - implement UI according to design
+    - fix visual differences
+    - add dark mode support
+    
+  conditions:
+    self_verify:
+      verifier: generator
+      clean_build: false
+      fresh_capture: false
+      
+    adversarial:
+      verifier: discriminator
+      clean_build: true
+      fresh_capture: true
+      
+  metrics:
+    - similarity_achieved
+    - iterations_to_pass
+    - defects_found
+    - defects_missed
+    - cheating_attempts
+    - time_total
+```
