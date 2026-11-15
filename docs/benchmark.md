@@ -358,11 +358,12 @@ Os arquivos em `hidden_tests` são:
 
 ---
 
-## Execução do Benchmark (Fase 0)
+## Execução do Benchmark (Fase 0 + A/B Fase 2)
 
-Na Fase 0, o harness de benchmark está implementado e pode ser usado com:
+O harness de benchmark está implementado e pode ser usado com:
 - **Agente fake**: determinístico, para testar o harness no CI
 - **Agente externo**: qualquer comando shell que aceite prompt
+- **Comparação A/B**: duas configs/feature flags no mesmo conjunto de tarefas
 
 ### Comandos Básicos (Implementados)
 
@@ -373,17 +374,24 @@ tb bench run --fake -r 3
 # Executar com agente externo
 tb bench run --agent "cursor-agent {prompt} --workdir {workdir}"
 
+# Variante A/B com label e flags (gravados no JSONL)
+tb bench run --fake --label graph-off --flag graph=off
+
 # Listar tarefas disponíveis
 tb bench list
 
 # Gerar relatório de resultados existentes
 tb bench report --input bench/results/2026-01-01-120000.jsonl
 
-# Comparar dois benchmarks
+# Comparar dois JSONL (sucesso, tempo, tokens)
 tb bench compare --before v1.jsonl --after v2.jsonl
+
+# Rodar A/B a partir de configs YAML
+tb bench compare --config-a bench/ab/graph-off.yaml \
+                 --config-b bench/ab/graph-on.yaml --fake
 ```
 
-### Tarefas Fixture (Fase 0)
+### Tarefas Fixture
 
 | Task ID | Categoria | Dificuldade | Descrição |
 |---------|-----------|-------------|-----------|
@@ -392,24 +400,20 @@ tb bench compare --before v1.jsonl --after v2.jsonl
 | `refactor-simple` | refactor | medium | Extrair UserRepository |
 | `test-coverage` | test | easy | Aumentar cobertura de testes |
 | `doc-function` | doc | easy | Documentar funções |
+| `localize-callers` | localization | medium | Mapear chamadores cross-package |
+| `cross-file-rename` | refactor | medium | Renomear tipo em múltiplos arquivos |
+| `api-handler` | feature | medium | Endpoint /echo + registro de rota |
+| `mcp-smoke` | smoke | easy | Smoke do servidor MCP |
 
-### Comandos Futuros (Planejados)
+### Configs A/B
 
-```bash
-# Executar baseline
-tb bench run --baseline --repetitions 10 full-suite \
-  --output baseline-results.json
+Arquivos em `bench/ab/`:
 
-# Executar com toolbelt
-tb bench run --toolbelt --repetitions 10 full-suite \
-  --output toolbelt-results.json
-
-# Comparar
-tb bench compare baseline-results.json toolbelt-results.json
-
-# Gerar relatório
-tb bench report --input toolbelt-results.json --format markdown
-```
+| Arquivo | Label | Flags |
+|---------|-------|-------|
+| `graph-off.yaml` | graph-off | `graph=off` |
+| `graph-on.yaml` | graph-on | `graph=on` |
+| `baseline.yaml` | baseline | `graph=off`, `review=off` |
 
 ### Estrutura dos Resultados
 

@@ -7,7 +7,7 @@
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg" alt="License"></a>
   <a href="https://go.dev/"><img src="https://img.shields.io/badge/Go-1.22+-00ADD8?logo=go&logoColor=white" alt="Go Version"></a>
-  <a href="docs/arquitetura.md"><img src="https://img.shields.io/badge/Status-Fase%200-green" alt="Status"></a>
+  <a href="docs/arquitetura.md"><img src="https://img.shields.io/badge/Status-Fase%202-green" alt="Status"></a>
   <a href="https://github.com/leonardo-moraes360/toolbelt/actions"><img src="https://github.com/leonardo-moraes360/toolbelt/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="https://modelcontextprotocol.io/"><img src="https://img.shields.io/badge/Protocol-MCP-purple" alt="MCP"></a>
   <a href="docs/identidade-visual.md"><img src="https://img.shields.io/badge/Theme-Synthwave-ff278c" alt="Theme"></a>
@@ -127,41 +127,40 @@ tb bench run --agent "cursor-agent {prompt} --workdir {workdir}" -r 3
 # Gera relatório de resultados existentes
 tb bench report --input bench/results/2026-01-01-120000.jsonl
 
-# Compara dois benchmarks
+# Compara dois benchmarks (sucesso, tempo, tokens)
 tb bench compare --before results-v1.jsonl --after results-v2.jsonl
+
+# Comparação A/B entre configs/feature flags
+tb bench compare --config-a bench/ab/graph-off.yaml \
+                 --config-b bench/ab/graph-on.yaml --fake
 ```
 
 ## 🗺️ Roadmap
 
-### Fase 0 (Atual) ✅
+### Fase 0 ✅
 - [x] CLI skeleton com Cobra (`tb version`, `tb init`, `tb help`)
 - [x] Configuração hierárquica (global + local)
 - [x] Logging estruturado com slog e tema Synthwave
 - [x] `tb bench` harness para medir baseline
-- [x] Fixtures de benchmark (5 tarefas)
+- [x] Fixtures de benchmark
 - [x] Agente fake determinístico para CI
 - [x] GitHub Actions CI
 - [x] Makefile, golangci-lint, goreleaser
 
-### Fase 1 (MVP)
-- [ ] Sandbox com isolamento (bubblewrap + Landlock + seccomp)
-- [ ] Vault Markdown como fonte de verdade para memória
-- [ ] Grafo SQLite+FTS5 como índice derivado
-- [ ] Indexação de código via tree-sitter com proveniência
-- [ ] `tb run` / `tb proc` para execução de scripts
-- [ ] Servidor MCP
-- [ ] Harness de benchmark
+### Fase 1 (MVP) ✅
+- [x] Sandbox com isolamento (worktrees + Landlock)
+- [x] `tb mem` — invariantes fora da compactação
+- [x] `tb guard` / `tb verify` (ruler de testes)
+- [x] Servidor MCP (`tb mcp`)
+- [x] Harness de benchmark
 
-### Fase 2
-- [ ] Hierarquia de agentes (planner → supervisor → worker)
-- [ ] Protocolo A2A para comunicação entre agentes
-- [ ] `tb md` TUI para revisão de memória e planos
-- [ ] Interoperabilidade com Obsidian
+### Fase 2 (em andamento)
+- [x] `tb bench compare` A/B (configs/feature flags, métricas token/tempo/sucesso)
+- [ ] `tb graph` sob demanda com A/B graph-on vs graph-off
 - [ ] `tb review` — revisão com contextos frescos (Elephant-Goldfish)
-- [ ] `tb drift` — detecção de divergência docs/código
-- [ ] `tb verify` — verificação adversarial com rulers plugáveis
-- [ ] Ruler visual: similaridade pixel + contraste WCAG
-- [ ] Guard check com manifesto de paths protegidos
+- [ ] Detecção de drift (escopo / commit base)
+- [ ] Ruler visual: screenshot + browser headless
+- [ ] Hierarquia de agentes / A2A / `tb md` (posterior)
 
 ### Fase 3
 - [ ] Router/Workers para delegação escalável de tarefas

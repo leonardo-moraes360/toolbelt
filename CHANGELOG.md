@@ -8,6 +8,10 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 ## [Não Lançado]
 
 ### Adicionado
+- Comparação A/B em `tb bench compare` (configs YAML / feature flags no mesmo task set)
+- Métricas de sucesso, tempo e tokens no JSONL e no relatório Markdown A/B
+- Fixtures realistas: `localize-callers`, `cross-file-rename`, `api-handler`
+- Configs A/B de exemplo em `bench/ab/` (`graph-on`, `graph-off`, `baseline`)
 - CLI skeleton com Cobra (`tb version`, `tb init`, `tb help`)
 - Configuração hierárquica (global `~/.config/toolbelt` + local `.toolbelt/`)
 - Logging estruturado com `log/slog` e tema Synthwave

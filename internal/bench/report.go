@@ -9,20 +9,42 @@ import (
 
 // WriteMarkdownReport gera um relatório Markdown dos resultados.
 func WriteMarkdownReport(w io.Writer, summary *Summary, results []Result) error {
+	writeReportHeader(w, summary, results)
+	writeReportSummaryTable(w, summary)
+	return writeReportTaskTable(w, results)
+}
+
+func writeReportHeader(w io.Writer, summary *Summary, results []Result) {
 	fmt.Fprintf(w, "# Relatório de Benchmark\n\n")
 	fmt.Fprintf(w, "**ID**: %s\n", summary.BenchmarkID)
 	fmt.Fprintf(w, "**Agente**: %s\n", summary.AgentID)
+	if len(results) > 0 && results[0].ConfigLabel != "" {
+		fmt.Fprintf(w, "**Variante A/B**: %s\n", results[0].ConfigLabel)
+	}
+	if len(results) > 0 && len(results[0].Flags) > 0 {
+		fmt.Fprintf(w, "**Flags**: %s\n", formatFlags(results[0].Flags))
+	}
 	fmt.Fprintf(w, "**Início**: %s\n", summary.StartTime.Format("2006-01-02 15:04:05"))
 	fmt.Fprintf(w, "**Fim**: %s\n", summary.EndTime.Format("2006-01-02 15:04:05"))
 	fmt.Fprintf(w, "\n---\n\n")
+}
 
-	// Resumo
+func formatFlags(flags map[string]string) string {
+	parts := make([]string, 0, len(flags))
+	for k, v := range flags {
+		parts = append(parts, fmt.Sprintf("%s=%s", k, v))
+	}
+	sort.Strings(parts)
+	return strings.Join(parts, ", ")
+}
+
+func writeReportSummaryTable(w io.Writer, summary *Summary) {
 	fmt.Fprintf(w, "## Resumo\n\n")
 	fmt.Fprintf(w, "| Métrica | Valor |\n")
 	fmt.Fprintf(w, "|---------|-------|\n")
 	fmt.Fprintf(w, "| Tarefas | %d |\n", summary.TotalTasks)
 	fmt.Fprintf(w, "| Repetições | %d |\n", summary.TotalRepetitions)
-	fmt.Fprintf(w, "| **pass@1** | **%.1f%%** |\n", summary.Metrics.PassAt1*100)
+	fmt.Fprintf(w, "| **sucesso (pass@1)** | **%.1f%%** |\n", summary.Metrics.PassAt1*100)
 
 	for _, k := range []int{3, 5, 10} {
 		if v, ok := summary.Metrics.PassAtK[k]; ok {
@@ -44,13 +66,13 @@ func WriteMarkdownReport(w io.Writer, summary *Summary, results []Result) error 
 	}
 	fmt.Fprintf(w, "| Retries médio | %.1f |\n", summary.Metrics.AvgRetries)
 	fmt.Fprintf(w, "\n")
+}
 
-	// Resultados por tarefa
+func writeReportTaskTable(w io.Writer, results []Result) error {
 	fmt.Fprintf(w, "## Resultados por Tarefa\n\n")
 	fmt.Fprintf(w, "| Tarefa | Rep | Passou | Tempo | Tokens | Erro |\n")
 	fmt.Fprintf(w, "|--------|-----|--------|-------|--------|------|\n")
 
-	// Ordena por tarefa e repetição
 	sorted := make([]Result, len(results))
 	copy(sorted, results)
 	sort.Slice(sorted, func(i, j int) bool {
@@ -86,93 +108,122 @@ func WriteMarkdownReport(w io.Writer, summary *Summary, results []Result) error 
 	return nil
 }
 
-// WriteComparisonReport gera um relatório comparando dois benchmarks.
-//
-//nolint:gocyclo // complexity is acceptable for this report function
+// WriteComparisonReport gera um relatório comparando dois benchmarks (A/B).
 func WriteComparisonReport(w io.Writer, before, after *Summary) error {
-	fmt.Fprintf(w, "# Comparação de Benchmarks\n\n")
-	fmt.Fprintf(w, "| Métrica | Antes | Depois | Δ |\n")
+	labelA := before.AgentID
+	labelB := after.AgentID
+	if before.BenchmarkID != "" {
+		labelA = before.BenchmarkID
+	}
+	if after.BenchmarkID != "" {
+		labelB = after.BenchmarkID
+	}
+
+	fmt.Fprintf(w, "# Comparação A/B de Benchmarks\n\n")
+	fmt.Fprintf(w, "**Variante A**: %s (agente %s)\n", labelA, before.AgentID)
+	fmt.Fprintf(w, "**Variante B**: %s (agente %s)\n\n", labelB, after.AgentID)
+	fmt.Fprintf(w, "| Métrica | A (%s) | B (%s) | Δ |\n", labelA, labelB)
 	fmt.Fprintf(w, "|---------|-------|--------|---|\n")
-
-	// pass@1
-	delta := (after.Metrics.PassAt1 - before.Metrics.PassAt1) * 100
-	sign := "+"
-	if delta < 0 {
-		sign = ""
-	}
-	fmt.Fprintf(w, "| pass@1 | %.1f%% | %.1f%% | %s%.1f%% |\n",
-		before.Metrics.PassAt1*100, after.Metrics.PassAt1*100, sign, delta)
-
-	// Tempo médio
-	deltaTime := after.Metrics.AvgDuration - before.Metrics.AvgDuration
-	sign = "+"
-	if deltaTime < 0 {
-		sign = ""
-	}
-	fmt.Fprintf(w, "| Tempo médio | %.1fs | %.1fs | %s%.1fs |\n",
-		before.Metrics.AvgDuration, after.Metrics.AvgDuration, sign, deltaTime)
-
-	// Tokens
-	if before.Metrics.TotalTokens > 0 && after.Metrics.TotalTokens > 0 {
-		deltaTokens := (float64(after.Metrics.AvgTokens) - float64(before.Metrics.AvgTokens)) / float64(before.Metrics.AvgTokens) * 100
-		sign = "+"
-		if deltaTokens < 0 {
-			sign = ""
-		}
-		fmt.Fprintf(w, "| Tokens médio | %.0f | %.0f | %s%.1f%% |\n",
-			before.Metrics.AvgTokens, after.Metrics.AvgTokens, sign, deltaTokens)
-	}
-
-	// Custo
-	if before.Metrics.TotalCostUSD > 0 && after.Metrics.TotalCostUSD > 0 {
-		deltaCost := (after.Metrics.TotalCostUSD - before.Metrics.TotalCostUSD) / before.Metrics.TotalCostUSD * 100
-		sign = "+"
-		if deltaCost < 0 {
-			sign = ""
-		}
-		fmt.Fprintf(w, "| Custo total | $%.4f | $%.4f | %s%.1f%% |\n",
-			before.Metrics.TotalCostUSD, after.Metrics.TotalCostUSD, sign, deltaCost)
-	}
-
+	writeComparisonMetrics(w, before, after)
 	fmt.Fprintf(w, "\n")
 
-	// Interpretação
+	cmp := CompareAB(before, after)
 	fmt.Fprintf(w, "## Interpretação\n\n")
+	improvements, regressions := interpretAB(cmp)
+	writeInterpretation(w, improvements, regressions)
+	return nil
+}
 
-	improvements := []string{}
-	regressions := []string{}
+func writeComparisonMetrics(w io.Writer, before, after *Summary) {
+	writeDeltaRow(w, "sucesso (pass@1)",
+		fmt.Sprintf("%.1f%%", before.Metrics.PassAt1*100),
+		fmt.Sprintf("%.1f%%", after.Metrics.PassAt1*100),
+		(after.Metrics.PassAt1-before.Metrics.PassAt1)*100, "%")
 
-	if after.Metrics.PassAt1 > before.Metrics.PassAt1 {
-		improvements = append(improvements, fmt.Sprintf("pass@1 melhorou %.1f pontos", (after.Metrics.PassAt1-before.Metrics.PassAt1)*100))
-	} else if after.Metrics.PassAt1 < before.Metrics.PassAt1 {
-		regressions = append(regressions, fmt.Sprintf("pass@1 piorou %.1f pontos", (before.Metrics.PassAt1-after.Metrics.PassAt1)*100))
+	writeDeltaRow(w, "tempo médio",
+		fmt.Sprintf("%.1fs", before.Metrics.AvgDuration),
+		fmt.Sprintf("%.1fs", after.Metrics.AvgDuration),
+		after.Metrics.AvgDuration-before.Metrics.AvgDuration, "s")
+
+	if before.Metrics.AvgTokens > 0 || after.Metrics.AvgTokens > 0 {
+		deltaTok := 0.0
+		if before.Metrics.AvgTokens > 0 {
+			deltaTok = (after.Metrics.AvgTokens - before.Metrics.AvgTokens) / before.Metrics.AvgTokens * 100
+		}
+		writeDeltaRow(w, "tokens médio",
+			fmt.Sprintf("%.0f", before.Metrics.AvgTokens),
+			fmt.Sprintf("%.0f", after.Metrics.AvgTokens),
+			deltaTok, "%")
 	}
 
-	if after.Metrics.AvgDuration < before.Metrics.AvgDuration {
-		improvements = append(improvements, fmt.Sprintf("tempo médio reduziu %.1fs", before.Metrics.AvgDuration-after.Metrics.AvgDuration))
-	} else if after.Metrics.AvgDuration > before.Metrics.AvgDuration*1.1 {
-		regressions = append(regressions, fmt.Sprintf("tempo médio aumentou %.1fs", after.Metrics.AvgDuration-before.Metrics.AvgDuration))
+	if before.Metrics.TotalCostUSD > 0 || after.Metrics.TotalCostUSD > 0 {
+		deltaCost := 0.0
+		if before.Metrics.TotalCostUSD > 0 {
+			deltaCost = (after.Metrics.TotalCostUSD - before.Metrics.TotalCostUSD) / before.Metrics.TotalCostUSD * 100
+		}
+		fmt.Fprintf(w, "| custo total | $%.4f | $%.4f | %s%.1f%% |\n",
+			before.Metrics.TotalCostUSD, after.Metrics.TotalCostUSD, signed(deltaCost), deltaCost)
 	}
 
+	if before.Metrics.AvgToolCalls > 0 || after.Metrics.AvgToolCalls > 0 {
+		writeDeltaRow(w, "tool calls médio",
+			fmt.Sprintf("%.1f", before.Metrics.AvgToolCalls),
+			fmt.Sprintf("%.1f", after.Metrics.AvgToolCalls),
+			after.Metrics.AvgToolCalls-before.Metrics.AvgToolCalls, "")
+	}
+}
+
+func writeInterpretation(w io.Writer, improvements, regressions []string) {
 	if len(improvements) > 0 {
-		fmt.Fprintf(w, "**Melhorias:**\n")
+		fmt.Fprintf(w, "**Melhorias (B vs A):**\n")
 		for _, imp := range improvements {
 			fmt.Fprintf(w, "- %s\n", imp)
 		}
 		fmt.Fprintf(w, "\n")
 	}
-
 	if len(regressions) > 0 {
-		fmt.Fprintf(w, "**Regressões:**\n")
+		fmt.Fprintf(w, "**Regressões (B vs A):**\n")
 		for _, reg := range regressions {
 			fmt.Fprintf(w, "- %s\n", reg)
 		}
 		fmt.Fprintf(w, "\n")
 	}
-
 	if len(improvements) == 0 && len(regressions) == 0 {
-		fmt.Fprintf(w, "Sem diferenças significativas.\n")
+		fmt.Fprintf(w, "Sem diferenças significativas em sucesso, tempo ou tokens.\n")
 	}
+}
 
-	return nil
+func writeDeltaRow(w io.Writer, name, a, b string, delta float64, unit string) {
+	fmt.Fprintf(w, "| %s | %s | %s | %s%.1f%s |\n", name, a, b, signed(delta), delta, unit)
+}
+
+func signed(v float64) string {
+	if v >= 0 {
+		return "+"
+	}
+	return ""
+}
+
+func interpretAB(cmp *ABComparison) (improvements, regressions []string) {
+	if cmp == nil {
+		return nil, nil
+	}
+	if cmp.DeltaPassAt1 > 0.001 {
+		improvements = append(improvements, fmt.Sprintf("sucesso (pass@1) +%.1f pontos", cmp.DeltaPassAt1*100))
+	} else if cmp.DeltaPassAt1 < -0.001 {
+		regressions = append(regressions, fmt.Sprintf("sucesso (pass@1) %.1f pontos", cmp.DeltaPassAt1*100))
+	}
+	if cmp.DeltaDuration < -0.05 {
+		improvements = append(improvements, fmt.Sprintf("tempo médio %.1fs", cmp.DeltaDuration))
+	} else if cmp.DeltaDuration > 0.05 {
+		regressions = append(regressions, fmt.Sprintf("tempo médio +%.1fs", cmp.DeltaDuration))
+	}
+	if cmp.AvgTokensA > 0 {
+		if cmp.DeltaTokensPct < -1 {
+			improvements = append(improvements, fmt.Sprintf("tokens médio %.1f%%", cmp.DeltaTokensPct))
+		} else if cmp.DeltaTokensPct > 1 {
+			regressions = append(regressions, fmt.Sprintf("tokens médio +%.1f%%", cmp.DeltaTokensPct))
+		}
+	}
+	return improvements, regressions
 }
