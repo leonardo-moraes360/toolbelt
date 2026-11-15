@@ -15,6 +15,12 @@ tb
 ├── guard        Proteções e verificações de segurança
 ├── review       Revisão com contextos frescos (Elephant-Goldfish)
 ├── drift        Detecta divergência entre docs e código
+├── verify       Verificação adversarial (gerador vs discriminador)
+├── ticket       Gerencia tickets de trabalho
+├── board        Visualiza e gerencia o board de tarefas
+├── router       Controla o router de delegação
+├── watchdog     Monitora saúde dos workers
+├── merge        Agrega resultados de workers
 ├── bench        Executa benchmarks
 ├── serve        Inicia servidor MCP
 └── version      Exibe versão
@@ -673,6 +679,431 @@ tb drift --ignore "vendor/**" --ignore "**/*_test.go"
 # No CI, falhar se houver drift crítico
 tb drift --format json | jq '.critical_count' | xargs -I {} test {} -eq 0
 ```
+
+---
+
+### `tb ticket` — Gerenciamento de Tickets
+
+Cria e gerencia tickets de trabalho para o padrão Router/Workers.
+
+```bash
+tb ticket <subcommand>
+
+Subcomandos:
+  create    Cria tickets a partir de tarefa
+  list      Lista tickets existentes
+  show      Exibe detalhes de um ticket
+  cancel    Cancela ticket pendente
+  retry     Reenfileira ticket falhado
+```
+
+**`tb ticket create`:**
+
+```bash
+tb ticket create [flags] <task-description>
+
+Flags:
+  --from <file>         Arquivo de spec para decompor
+  --max-tickets <n>     Máximo de tickets a criar (default: 10)
+  --parallel <n>        Sugestão de tickets paralelos (default: 3)
+  --mandate <file>      Template de mandate (default: .toolbelt/mandate.yaml)
+  --output <path>       Arquivo de saída JSON/YAML
+  --json                Saída em JSON
+  --dry-run             Mostra tickets sem criar
+```
+
+**Exemplos:**
+
+```bash
+# Criar tickets a partir de descrição
+tb ticket create "Implementar autenticação JWT completa"
+# ═══════════════════════════════════════════════════════════════
+# DECOMPOSIÇÃO DE TAREFA
+# ═══════════════════════════════════════════════════════════════
+# 
+# Tarefa: Implementar autenticação JWT completa
+# 
+# Tickets criados: 4
+# 
+# ┌────────────┬────────────────────────────────────────┬──────────┐
+# │ ID         │ Título                                 │ Deps     │
+# ├────────────┼────────────────────────────────────────┼──────────┤
+# │ TKT-001    │ Criar modelo User                      │ -        │
+# │ TKT-002    │ Implementar JWT signing                │ TKT-001  │
+# │ TKT-003    │ Criar handler POST /auth/login         │ TKT-002  │
+# │ TKT-004    │ Criar middleware de validação JWT      │ TKT-002  │
+# └────────────┴────────────────────────────────────────┴──────────┘
+# 
+# Paralelismo máximo: 2 (TKT-003 e TKT-004 após TKT-002)
+# Tempo estimado: 15-25 min
+
+# Criar a partir de spec
+tb ticket create --from docs/specs/auth.md --max-tickets 5
+
+# Dry run para revisar antes de criar
+tb ticket create --dry-run "Refatorar módulo de pagamentos"
+```
+
+**`tb ticket list`:**
+
+```bash
+tb ticket list [flags]
+
+Flags:
+  --status <statuses>   Filtrar por status: pending,running,done,failed,cancelled
+  --deps <ticket-id>    Mostrar dependentes de um ticket
+  --json                Saída em JSON
+```
+
+**Exemplos:**
+
+```bash
+# Listar todos os tickets
+tb ticket list
+# ID         STATUS    TITLE                              WORKER
+# TKT-001    done      Criar modelo User                  worker-001
+# TKT-002    done      Implementar JWT signing            worker-002
+# TKT-003    running   Criar handler POST /auth/login     worker-001
+# TKT-004    pending   Criar middleware validação JWT     -
+
+# Filtrar por status
+tb ticket list --status pending,running
+
+# Ver dependentes de um ticket
+tb ticket list --deps TKT-002
+```
+
+**Formato do Ticket:**
+
+```yaml
+# .toolbelt/tickets/TKT-001.yaml
+ticket:
+  id: "TKT-001"
+  title: "Criar modelo User"
+  status: pending
+  created_at: "2026-01-15T10:30:00Z"
+  
+  mandate:
+    scope:
+      - "src/models/user.go"
+      - "src/models/user_test.go"
+    permissions: [read, write, run_tests]
+    forbidden:
+      - "src/database/*"
+      - "tests/hidden/*"
+      - ".toolbelt/thresholds.yaml"
+      
+  context:
+    files:
+      - "docs/specs/auth.md"
+      - "vault/decisions/user-schema.md"
+    symbols:
+      - "Session"
+      - "validateEmail"
+    graph_queries:
+      - "callers:Session"
+      
+  acceptance:
+    criteria: "Testes em src/models/user_test.go passam"
+    timeout: "10m"
+    
+  dependencies: []
+  
+  resources:
+    cpu_limit: "50%"
+    mem_limit: "512M"
+```
+
+---
+
+### `tb board` — Visualização do Board
+
+Exibe e gerencia o board de tickets (fila de trabalho).
+
+```bash
+tb board <subcommand>
+
+Subcomandos:
+  list      Lista tickets no board
+  watch     Monitora board em tempo real
+  pause     Pausa processamento de novos tickets
+  resume    Retoma processamento
+  drain     Espera workers finalizarem e para
+```
+
+**`tb board list`:**
+
+```bash
+tb board list [flags]
+
+Flags:
+  --status <statuses>   Filtrar: pending,running,done,failed
+  --worker <id>         Filtrar por worker
+  --priority            Ordenar por prioridade
+  --json                Saída em JSON
+```
+
+**Exemplos:**
+
+```bash
+# Ver estado atual do board
+tb board list
+# ═══════════════════════════════════════════════════════════════
+# BOARD: auth-implementation
+# ═══════════════════════════════════════════════════════════════
+# 
+# RUNNING (2):
+# ┌────────────┬────────────────────────────────────┬────────────┐
+# │ TKT-003    │ Criar handler POST /auth/login     │ worker-001 │
+# │ TKT-005    │ Implementar rate limiting          │ worker-002 │
+# └────────────┴────────────────────────────────────┴────────────┘
+# 
+# PENDING (3):
+# ┌────────────┬────────────────────────────────────┬──────────┐
+# │ TKT-004    │ Criar middleware validação JWT     │ blocked  │
+# │ TKT-006    │ Adicionar logout endpoint          │ ready    │
+# │ TKT-007    │ Testes de integração               │ ready    │
+# └────────────┴────────────────────────────────────┴──────────┘
+# 
+# Workers: 2 ativos, 1 idle
+# Tempo estimado restante: 8-12 min
+
+# Monitorar em tempo real
+tb board watch
+# (atualiza a cada 2s)
+
+# Pausar board
+tb board pause
+# Board pausado. Tickets running continuam, novos não são atribuídos.
+
+# Retomar
+tb board resume
+```
+
+---
+
+### `tb router` — Controle do Router
+
+Controla o router de delegação de tarefas.
+
+```bash
+tb router <subcommand>
+
+Subcomandos:
+  start     Inicia router para processar tarefas
+  stop      Para router graciosamente
+  status    Exibe status do router
+  config    Mostra/edita configuração
+```
+
+**`tb router start`:**
+
+```bash
+tb router start [flags]
+
+Flags:
+  --workers <n>         Número máximo de workers (default: 3)
+  --strategy <type>     Estratégia: fifo|priority|dependency (default: dependency)
+  --timeout <dur>       Timeout global por ticket (default: 10m)
+  --config <path>       Arquivo de configuração
+```
+
+**Exemplos:**
+
+```bash
+# Iniciar router com configuração padrão
+tb router start
+# ═══════════════════════════════════════════════════════════════
+# ROUTER: iniciado
+# ═══════════════════════════════════════════════════════════════
+# Workers máx: 3
+# Estratégia: dependency
+# Timeout: 10m
+# 
+# Aguardando tickets em .toolbelt/board/
+
+# Iniciar com mais workers
+tb router start --workers 5 --strategy priority
+
+# Ver status
+tb router status
+# Router: running
+# Workers: 3/5 ativos
+# Tickets processados: 12
+# Tickets pendentes: 4
+# Tempo médio por ticket: 3m 45s
+# Falhas: 1 (TKT-008, timeout)
+```
+
+**Configuração do Router:**
+
+```yaml
+# .toolbelt/router.yaml
+router:
+  max_workers: 3
+  strategy: dependency  # fifo | priority | dependency
+  
+  timeouts:
+    per_ticket: 10m
+    idle_worker: 5m
+    global: 1h
+    
+  retry:
+    max_attempts: 2
+    backoff: exponential
+    
+  workers:
+    model: "claude-sonnet-4-20250514"
+    temperature: 0.3
+    capabilities:
+      - read:code
+      - write:code
+      - run:tests
+      - query:graph
+      
+  merge:
+    conflict_strategy: prompt  # prompt | last_wins | fail
+    atomic: true
+```
+
+---
+
+### `tb watchdog` — Monitoramento de Workers
+
+Monitora saúde e performance dos workers.
+
+```bash
+tb watchdog <subcommand>
+
+Subcomandos:
+  status    Exibe status de todos os workers
+  kill      Força término de worker travado
+  scale     Ajusta número de workers
+  alerts    Lista alertas recentes
+```
+
+**`tb watchdog status`:**
+
+```bash
+tb watchdog status [flags]
+
+Flags:
+  --worker <id>         Status de worker específico
+  --json                Saída em JSON
+```
+
+**Exemplos:**
+
+```bash
+# Status de todos os workers
+tb watchdog status
+# ═══════════════════════════════════════════════════════════════
+# WATCHDOG STATUS
+# ═══════════════════════════════════════════════════════════════
+# 
+# ┌────────────┬──────────┬────────────┬──────────┬────────────┐
+# │ WORKER     │ STATUS   │ TICKET     │ ELAPSED  │ HEALTH     │
+# ├────────────┼──────────┼────────────┼──────────┼────────────┤
+# │ worker-001 │ working  │ TKT-003    │ 2m 30s   │ ██████████ │
+# │ worker-002 │ working  │ TKT-005    │ 4m 15s   │ ████████░░ │
+# │ worker-003 │ idle     │ -          │ 30s      │ ██████████ │
+# └────────────┴──────────┴────────────┴──────────┴────────────┘
+# 
+# Alertas: 0
+# Tickets timeout: 0
+# CPU total: 45%
+# Memória total: 1.2GB
+
+# Forçar término de worker
+tb watchdog kill worker-002 --reason "Travado em loop"
+# worker-002 terminado. Ticket TKT-005 retornado ao board.
+
+# Escalar workers
+tb watchdog scale --workers 5
+# Workers escalados: 3 → 5
+```
+
+**Alertas monitorados:**
+
+| Alerta | Condição | Ação |
+|--------|----------|------|
+| `worker_slow` | > 80% do timeout | Warning no log |
+| `worker_stuck` | 100% do timeout | Cancela ticket, mata worker |
+| `worker_crash` | Exit code != 0 | Retry ou escalate |
+| `queue_growing` | Fila > 2x workers | Sugere escalar |
+| `resource_high` | CPU/Mem > 90% | Pausa novas atribuições |
+
+---
+
+### `tb merge` — Agregação de Resultados
+
+Agrega resultados de múltiplos workers e resolve conflitos.
+
+```bash
+tb merge [flags] <ticket-ids>
+
+Flags:
+  --strategy <type>     Conflito: prompt|last_wins|fail (default: prompt)
+  --dry-run             Mostra mudanças sem aplicar
+  --force               Ignora conflitos e usa último
+  --output <path>       Patch unificado de saída
+  --json                Saída em JSON
+```
+
+**Exemplos:**
+
+```bash
+# Merge automático de tickets concluídos
+tb merge TKT-001 TKT-002 TKT-003
+# ═══════════════════════════════════════════════════════════════
+# MERGE: 3 tickets
+# ═══════════════════════════════════════════════════════════════
+# 
+# Arquivos modificados: 5
+# 
+# ┌──────────────────────────────────┬──────────────────────────┐
+# │ ARQUIVO                          │ STATUS                   │
+# ├──────────────────────────────────┼──────────────────────────┤
+# │ src/models/user.go               │ TKT-001 (único)          │
+# │ src/services/jwt.go              │ TKT-002 (único)          │
+# │ src/handlers/auth.go             │ ⚠ CONFLITO (TKT-002,003) │
+# │ src/middleware/auth.go           │ TKT-003 (único)          │
+# │ go.mod                           │ TKT-001 + TKT-002 (merge)│
+# └──────────────────────────────────┴──────────────────────────┘
+# 
+# Conflito em src/handlers/auth.go:
+# 
+# TKT-002 (linha 45):
+#   func validateToken(token string) bool { ... }
+# 
+# TKT-003 (linha 45):
+#   func validateToken(token string) (*Claims, error) { ... }
+# 
+# [1] Manter TKT-002
+# [2] Manter TKT-003
+# [3] Editar manualmente
+# Escolha: 2
+# 
+# Merge concluído. 5 arquivos atualizados.
+
+# Dry run para ver conflitos
+tb merge --dry-run TKT-001 TKT-002
+
+# Forçar merge usando último
+tb merge --strategy last_wins TKT-001 TKT-002
+
+# Gerar patch unificado
+tb merge --output changes.patch TKT-001 TKT-002 TKT-003
+```
+
+**Estratégias de conflito:**
+
+| Estratégia | Comportamento |
+|------------|---------------|
+| `prompt` | Pergunta ao usuário para cada conflito |
+| `last_wins` | Usa a versão do ticket mais recente |
+| `fail` | Falha se houver qualquer conflito |
+| `semantic` | Tenta merge semântico via LLM (experimental) |
 
 ---
 

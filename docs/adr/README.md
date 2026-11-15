@@ -24,6 +24,7 @@ Cada ADR segue o formato:
 | [005](005-anti-trapaca.md) | Estratégia anti-trapaça | accepted |
 | [006](006-inspiracoes-graphify-obsidian.md) | Inspirações: Graphify e Obsidian | accepted |
 | [007](007-inspiracao-elephant-goldfish.md) | Inspiração: Elephant-Goldfish Model | accepted |
+| [009](009-router-e-workers.md) | Padrão Router e Workers para delegação | proposed |
 
 ## Como Propor um ADR
 
