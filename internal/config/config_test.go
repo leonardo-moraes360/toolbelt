@@ -21,6 +21,33 @@ func TestDefaultConfig(t *testing.T) {
 	if cfg.Bench.Repetitions != 5 {
 		t.Errorf("Default repetitions = %d, want %d", cfg.Bench.Repetitions, 5)
 	}
+	if cfg.Verify.TestCmd != "go test ./..." {
+		t.Errorf("Default verify test_cmd = %q", cfg.Verify.TestCmd)
+	}
+	if cfg.Verify.HiddenTestCmd != "go test ./tests/hidden/..." {
+		t.Errorf("Default verify hidden_test_cmd = %q", cfg.Verify.HiddenTestCmd)
+	}
+}
+
+func TestVerifyConfigLoad(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.yaml")
+	cfg := DefaultConfig()
+	cfg.Verify.TestCmd = "pnpm --filter @auditaja/core test"
+	cfg.Verify.HiddenTestCmd = "pnpm --filter @auditaja/core test:hidden"
+	if err := Save(cfg, configPath); err != nil {
+		t.Fatalf("Save failed: %v", err)
+	}
+	loaded := DefaultConfig()
+	if err := loadFromFile(configPath, loaded); err != nil {
+		t.Fatalf("loadFromFile failed: %v", err)
+	}
+	if loaded.Verify.TestCmd != cfg.Verify.TestCmd {
+		t.Errorf("test_cmd = %q", loaded.Verify.TestCmd)
+	}
+	if loaded.Verify.HiddenTestCmd != cfg.Verify.HiddenTestCmd {
+		t.Errorf("hidden_test_cmd = %q", loaded.Verify.HiddenTestCmd)
+	}
 }
 
 func TestInit(t *testing.T) {
