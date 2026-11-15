@@ -38,11 +38,136 @@ func TestRunPass(t *testing.T) {
 
 func TestDefaultHiddenTestCmd(t *testing.T) {
 	cfg := DefaultConfig(t.TempDir())
-	if cfg.HiddenTest != "go test ./tests/hidden/..." {
-		t.Fatalf("HiddenTest default = %q", cfg.HiddenTest)
+	if cfg.HiddenTest != "" {
+		t.Fatalf("HiddenTest default = %q, want empty (opt-in / dir-gated)", cfg.HiddenTest)
+	}
+	if DefaultHiddenTestCmd != "go test ./tests/hidden/..." {
+		t.Fatalf("DefaultHiddenTestCmd = %q", DefaultHiddenTestCmd)
 	}
 	if cfg.VisibleTest != "go test ./..." {
 		t.Fatalf("VisibleTest default = %q", cfg.VisibleTest)
+	}
+}
+
+func TestHiddenTestCmdRunsWithoutHiddenDir(t *testing.T) {
+	dir := t.TempDir()
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "a@b.c")
+	runGit(t, dir, "config", "user.name", "t")
+	runGit(t, dir, "commit", "--allow-empty", "-m", "c")
+
+	cfg := DefaultConfig(dir)
+	cfg.BaseRef = "HEAD"
+	cfg.HeadRef = "HEAD"
+	cfg.Timeout = 30 * time.Second
+	cfg.MaxIterations = 1
+	cfg.VisibleTest = "true"
+	cfg.HiddenTest = "false"
+
+	res, err := Run(context.Background(), &cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.HiddenAvailable {
+		t.Fatal("expected hidden suite available when hidden_test_cmd is set without tests/hidden/")
+	}
+	if res.HiddenPassed {
+		t.Fatal("expected hidden cmd false to fail")
+	}
+	if res.Verdict == VerdictPass {
+		t.Fatal("expected non-pass when configured hidden_test_cmd fails without tests/hidden/")
+	}
+}
+
+func TestHiddenTestCmdPassWithoutHiddenDir(t *testing.T) {
+	dir := t.TempDir()
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "a@b.c")
+	runGit(t, dir, "config", "user.name", "t")
+	runGit(t, dir, "commit", "--allow-empty", "-m", "c")
+
+	cfg := DefaultConfig(dir)
+	cfg.BaseRef = "HEAD"
+	cfg.HeadRef = "HEAD"
+	cfg.Timeout = 30 * time.Second
+	cfg.MaxIterations = 1
+	cfg.VisibleTest = "true"
+	cfg.HiddenTest = "true"
+
+	res, err := Run(context.Background(), &cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.HiddenAvailable {
+		t.Fatal("expected hidden suite available when hidden_test_cmd is set without tests/hidden/")
+	}
+	if !res.HiddenPassed {
+		t.Fatal("expected hidden cmd true to pass")
+	}
+	if res.Verdict != VerdictPass {
+		t.Fatalf("veredicto %s", res.Verdict)
+	}
+}
+
+func TestHiddenSkippedWithoutDirOrCmd(t *testing.T) {
+	dir := t.TempDir()
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "a@b.c")
+	runGit(t, dir, "config", "user.name", "t")
+	runGit(t, dir, "commit", "--allow-empty", "-m", "c")
+
+	cfg := DefaultConfig(dir)
+	cfg.BaseRef = "HEAD"
+	cfg.HeadRef = "HEAD"
+	cfg.Timeout = 30 * time.Second
+	cfg.MaxIterations = 1
+	cfg.VisibleTest = "true"
+	cfg.HiddenTest = ""
+
+	res, err := Run(context.Background(), &cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.HiddenAvailable {
+		t.Fatal("expected hidden suite unavailable without tests/hidden/ and without hidden_test_cmd")
+	}
+	if res.Verdict != VerdictPass {
+		t.Fatalf("veredicto %s", res.Verdict)
+	}
+}
+
+func TestHiddenDefaultGoCmdWhenDirExists(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "tests", "hidden"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	_ = os.WriteFile(filepath.Join(dir, "tests", "hidden", "noop.txt"), []byte("not go\n"), 0o644)
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "a@b.c")
+	runGit(t, dir, "config", "user.name", "t")
+	runGit(t, dir, "add", "-A")
+	runGit(t, dir, "commit", "-m", "c")
+
+	cfg := DefaultConfig(dir)
+	cfg.BaseRef = "HEAD"
+	cfg.HeadRef = "HEAD"
+	cfg.Timeout = 30 * time.Second
+	cfg.MaxIterations = 1
+	cfg.VisibleTest = "true"
+	cfg.HiddenTest = ""
+
+	res, err := Run(context.Background(), &cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.HiddenAvailable {
+		t.Fatal("expected hidden suite when tests/hidden/ exists")
+	}
+	if res.HiddenPassed {
+		t.Fatal("default go hidden cmd should fail on empty/non-Go suite")
+	}
+	if res.Verdict == VerdictPass {
+		t.Fatal("expected non-pass with default go hidden on empty dir")
 	}
 }
 

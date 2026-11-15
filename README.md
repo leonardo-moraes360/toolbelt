@@ -214,7 +214,7 @@ Este projeto está na **Fase 0**: fundação implementada com CLI funcional, con
 | `tb bench compare` | ✅ | Compara dois benchmarks |
 | `tb sandbox` | ✅ | Worktrees + Landlock (Linux) |
 | `tb guard` | ✅ | Check anti-trapaça em diff |
-| `tb verify` | ✅ | Ruler de testes + suíte oculta (`--hidden-test-cmd` / `verify.hidden_test_cmd`) |
+| `tb verify` | ✅ | Ruler de testes + suíte oculta (`--hidden-test-cmd` / `verify.hidden_test_cmd` rodam sem exigir `tests/hidden/`) |
 | `tb mem` | ✅ | Invariantes fora da compactação |
 | `tb graph` | ✅ | Grafo sob demanda multi-linguagem + frameworks + docs (ADR-011) |
 | `tb router` | 🚧 | Stub (Fase 5) |

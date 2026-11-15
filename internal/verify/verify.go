@@ -20,6 +20,8 @@ const (
 	VerdictEscalate Verdict = "ESCALATE"
 )
 
+const DefaultHiddenTestCmd = "go test ./tests/hidden/..."
+
 type Config struct {
 	RepoDir       string
 	BaseRef       string
@@ -46,7 +48,7 @@ func DefaultConfig(repo string) Config {
 		BaseRef:       "HEAD~1",
 		HeadRef:       "HEAD",
 		VisibleTest:   "go test ./...",
-		HiddenTest:    "go test ./tests/hidden/...",
+		HiddenTest:    "",
 		MaxIterations: 3,
 		Timeout:       10 * time.Minute,
 	}
@@ -71,9 +73,12 @@ func Run(ctx context.Context, cfg *Config) (*Result, error) {
 	}
 
 	hiddenDir := filepath.Join(cfg.RepoDir, "tests", "hidden")
-	if _, statErr := os.Stat(hiddenDir); statErr == nil {
-		res.HiddenAvailable = true
+	_, dirErr := os.Stat(hiddenDir)
+	dirExists := dirErr == nil
+	if cfg.HiddenTest == "" && dirExists {
+		cfg.HiddenTest = DefaultHiddenTestCmd
 	}
+	res.HiddenAvailable = cfg.HiddenTest != "" || dirExists
 
 	for i := 1; i <= cfg.MaxIterations; i++ {
 		res.Iterations = i

@@ -24,8 +24,8 @@ func TestDefaultConfig(t *testing.T) {
 	if cfg.Verify.TestCmd != "go test ./..." {
 		t.Errorf("Default verify test_cmd = %q", cfg.Verify.TestCmd)
 	}
-	if cfg.Verify.HiddenTestCmd != "go test ./tests/hidden/..." {
-		t.Errorf("Default verify hidden_test_cmd = %q", cfg.Verify.HiddenTestCmd)
+	if cfg.Verify.HiddenTestCmd != "" {
+		t.Errorf("Default verify hidden_test_cmd = %q, want empty", cfg.Verify.HiddenTestCmd)
 	}
 	if len(cfg.Graph.Languages) < 12 {
 		t.Errorf("expected default graph languages, got %v", cfg.Graph.Languages)
