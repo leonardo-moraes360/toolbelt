@@ -87,11 +87,15 @@ Veja a documentação completa em [docs/arquitetura.md](docs/arquitetura.md).
 - [ ] Protocolo A2A para comunicação entre agentes
 - [ ] `tb md` TUI para revisão de memória e planos
 - [ ] Interoperabilidade com Obsidian
+- [ ] `tb verify` — verificação adversarial com rulers plugáveis
+- [ ] Ruler visual: similaridade pixel + contraste WCAG
+- [ ] Guard check com manifesto de paths protegidos
 
 ### Fase 3
 - [ ] Índice vetorial opcional
 - [ ] Integração com Graphify (ou reimplementação)
 - [ ] Componentes opcionais em Rust para inferência local
+- [ ] Rulers adicionais para `tb verify`
 
 ## 🤝 Contribuindo
 

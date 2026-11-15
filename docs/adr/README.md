@@ -23,6 +23,7 @@ Cada ADR segue o formato:
 | [004](004-sandbox-isolamento.md) | Sandbox com bubblewrap + Landlock + seccomp | accepted |
 | [005](005-anti-trapaca.md) | Estratégia anti-trapaça | accepted |
 | [006](006-inspiracoes-graphify-obsidian.md) | Inspirações: Graphify e Obsidian | accepted |
+| [008](008-verificacao-adversarial.md) | Verificação adversarial (gerador vs discriminador) | accepted |
 
 ## Como Propor um ADR
 
