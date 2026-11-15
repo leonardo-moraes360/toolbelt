@@ -1442,7 +1442,7 @@ Subcomandos:
 tb bench run [flags]
 
 Flags:
-  --fake               Usa agente fake (CI)
+  --fake               Usa agente fake embutido no binário `tb` (portátil, qualquer repo)
   --agent <cmd>        Comando do agente externo
   --repetitions <n>    Número de repetições (default: 1)
   --output <path>      Arquivo de saída JSONL
