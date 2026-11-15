@@ -226,6 +226,8 @@ func (r *Runner) executeAgent(ctx context.Context, task *Task, workDir string) (
 }
 
 // executeVerification executa o command de verificação.
+//
+//nolint:gosec // G204: command is intentionally from task config
 func (r *Runner) executeVerification(ctx context.Context, task *Task, workDir string) (output string, exitCode int, err error) {
 	proc := exec.CommandContext(ctx, "sh", "-c", task.Verification.Command)
 	proc.Dir = workDir
