@@ -1,3 +1,193 @@
-// Package guard fornece proteções de segurança e verificação de paths.
-// Será implementado na Fase 2 com snapshots e verificação adversarial.
 package guard
+
+import (
+	"bufio"
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"regexp"
+	"strings"
+)
+
+type ViolationType string
+
+const (
+	ViolationTestDeletion  ViolationType = "test_deletion"
+	ViolationTestSkip      ViolationType = "test_skip"
+	ViolationTrivialAssert ViolationType = "trivial_assert"
+	ViolationEnvDetection  ViolationType = "env_detection"
+	ViolationProtectedPath ViolationType = "protected_path"
+	ViolationEqOverride    ViolationType = "eq_override"
+)
+
+type Severity string
+
+const (
+	SeverityError   Severity = "error"
+	SeverityWarning Severity = "warning"
+)
+
+type Violation struct {
+	Type     ViolationType `json:"type"`
+	File     string        `json:"file"`
+	Line     int           `json:"line,omitempty"`
+	Message  string        `json:"message"`
+	Severity Severity      `json:"severity"`
+	Context  string        `json:"context,omitempty"`
+}
+
+type CheckResult struct {
+	BaseRef    string      `json:"base_ref"`
+	HeadRef    string      `json:"head_ref"`
+	Violations []Violation `json:"violations"`
+}
+
+type Checker struct {
+	repoDir        string
+	protectedPaths []string
+}
+
+func NewChecker(repoDir string) *Checker {
+	return &Checker{
+		repoDir: repoDir,
+		protectedPaths: []string{
+			"tests/hidden/*",
+			"benchmarks/*",
+			".toolbelt/thresholds.yaml",
+		},
+	}
+}
+
+func (c *Checker) Check(baseRef, headRef string) (*CheckResult, error) {
+	diff, err := c.gitDiff(baseRef, headRef)
+	if err != nil {
+		return nil, err
+	}
+	res := &CheckResult{BaseRef: baseRef, HeadRef: headRef}
+	for _, cf := range parseDiff(diff) {
+		if cf.deleted && isTestFile(cf.path) {
+			res.Violations = append(res.Violations, Violation{
+				Type: ViolationTestDeletion, File: cf.path, Message: "teste removido", Severity: SeverityError,
+			})
+		}
+		if c.isProtected(cf.path) {
+			res.Violations = append(res.Violations, Violation{
+				Type: ViolationProtectedPath, File: cf.path, Message: "path protegido alterado", Severity: SeverityError,
+			})
+		}
+		if cf.deleted {
+			continue
+		}
+		full := filepath.Join(c.repoDir, cf.path)
+		if _, statErr := os.Stat(full); statErr != nil {
+			continue
+		}
+		res.Violations = append(res.Violations, c.scanFile(full, cf.path)...)
+	}
+	return res, nil
+}
+
+type changed struct {
+	path    string
+	deleted bool
+}
+
+func (c *Checker) gitDiff(base, head string) (string, error) {
+	cmd := exec.Command("git", "diff", "--name-status", base+".."+head) //nolint:gosec // refs validados pelo operador
+	cmd.Dir = c.repoDir
+	out, err := cmd.Output()
+	return string(out), err
+}
+
+func parseDiff(diff string) []changed {
+	var out []changed
+	s := bufio.NewScanner(strings.NewReader(diff))
+	for s.Scan() {
+		line := s.Text()
+		if len(line) < 2 {
+			continue
+		}
+		ch := changed{path: strings.TrimSpace(line[1:])}
+		if line[0] == 'D' {
+			ch.deleted = true
+		}
+		out = append(out, ch)
+	}
+	return out
+}
+
+func isTestFile(path string) bool {
+	b := filepath.Base(path)
+	p := filepath.ToSlash(path)
+	return strings.HasSuffix(b, "_test.go") || strings.Contains(p, "/tests/") || strings.Contains(p, "/test/")
+}
+
+func (c *Checker) isProtected(path string) bool {
+	for _, pattern := range c.protectedPaths {
+		if ok, _ := filepath.Match(pattern, path); ok {
+			return true
+		}
+		if strings.HasSuffix(pattern, "/*") && strings.HasPrefix(path, strings.TrimSuffix(pattern, "/*")) {
+			return true
+		}
+	}
+	return false
+}
+
+func (c *Checker) scanFile(full, rel string) []Violation {
+	switch filepath.Ext(full) {
+	case ".go":
+		return c.scanGo(full, rel)
+	default:
+		return nil
+	}
+}
+
+func (c *Checker) scanGo(full, rel string) []Violation {
+	var v []Violation
+	fset := token.NewFileSet()
+	node, err := parser.ParseFile(fset, full, nil, 0)
+	if err != nil {
+		return v
+	}
+	ast.Inspect(node, func(n ast.Node) bool {
+		call, ok := n.(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		sel, ok := call.Fun.(*ast.SelectorExpr)
+		if ok && sel.Sel.Name == "Skip" {
+			if id, ok := sel.X.(*ast.Ident); ok && id.Name == "t" {
+				pos := fset.Position(call.Pos())
+				v = append(v, Violation{Type: ViolationTestSkip, File: rel, Line: pos.Line, Message: "t.Skip()", Severity: SeverityWarning})
+			}
+		}
+		return true
+	})
+	data, _ := os.ReadFile(full)
+	v = append(v, scanEnv(string(data), rel)...)
+	return v
+}
+
+var envPatterns = []*regexp.Regexp{
+	regexp.MustCompile(`os\.Getenv\s*\(\s*["']CI["']\s*\)`),
+	regexp.MustCompile(`testing\.Testing\s*\(\s*\)`),
+}
+
+func scanEnv(content, rel string) []Violation {
+	var v []Violation
+	for i, line := range strings.Split(content, "\n") {
+		for _, re := range envPatterns {
+			if re.MatchString(line) {
+				v = append(v, Violation{
+					Type: ViolationEnvDetection, File: rel, Line: i + 1,
+					Message: "detecção de ambiente de teste", Severity: SeverityWarning, Context: strings.TrimSpace(line),
+				})
+			}
+		}
+	}
+	return v
+}
