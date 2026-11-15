@@ -22,7 +22,7 @@ tb
 ├── watchdog     Monitora saúde dos workers
 ├── merge        Agrega resultados de workers
 ├── bench        Executa benchmarks
-├── serve        Inicia servidor MCP
+├── mcp          Servidor MCP sobre stdio (✓ Fase 1)
 └── version      Exibe versão
 ```
 

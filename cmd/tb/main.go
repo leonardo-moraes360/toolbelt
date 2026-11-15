@@ -8,6 +8,7 @@ import (
 
 	"github.com/leonardo-moraes360/toolbelt/internal/config"
 	"github.com/leonardo-moraes360/toolbelt/internal/log"
+	_ "github.com/leonardo-moraes360/toolbelt/internal/registry"
 	"github.com/leonardo-moraes360/toolbelt/internal/version"
 )
 
@@ -169,14 +170,5 @@ var routerCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		fmt.Println("⚠️  Command router ainda não implementado")
 		fmt.Println("   Será implementado na Fase 5")
-	},
-}
-
-var mcpCmd = &cobra.Command{
-	Use:   "mcp",
-	Short: "Servidor MCP para integração com IDEs (não implementado)",
-	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("⚠️  Command mcp ainda não implementado")
-		fmt.Println("   Será implementado na Fase 6")
 	},
 }

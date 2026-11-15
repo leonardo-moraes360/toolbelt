@@ -1,0 +1,19 @@
+id: mcp-smoke
+name: Validar listagem de ferramentas MCP
+category: protocol
+difficulty: easy
+title: "Validar listagem de ferramentas MCP"
+description: |
+  Smoke do harness para a superfície MCP. A cobertura funcional de
+  tools/list e tb_version fica nos testes unitários de internal/mcp
+  e internal/registry; esta tarefa garante que o task.yaml é carregável
+  pelo runner de benchmark.
+prompt: |
+  Liste as ferramentas MCP disponíveis e confirme que tb_version
+  está presente na resposta de tools/list.
+timeout: 2m
+max_tokens: 2000
+verification:
+  command: "true"
+  timeout: "10s"
+  expected_exit_code: 0
