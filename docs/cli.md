@@ -13,6 +13,8 @@ tb
 ├── md           TUI para visualização e edição do vault
 ├── agent        Gerencia agentes
 ├── guard        Proteções e verificações de segurança
+├── review       Revisão com contextos frescos (Elephant-Goldfish)
+├── drift        Detecta divergência entre docs e código
 ├── bench        Executa benchmarks
 ├── serve        Inicia servidor MCP
 └── version      Exibe versão
@@ -476,6 +478,200 @@ tb guard audit --since "1h" --action "file:*"
 # TIMESTAMP            AGENT        ACTION       RESOURCE          STATUS
 # 2026-01-15T10:30:00  worker-001   file:write   src/parser.go     approved
 # 2026-01-15T10:31:00  worker-001   file:delete  src/old.go        blocked
+```
+
+---
+
+### `tb review` — Revisão com Contextos Frescos
+
+Implementa o padrão Elephant-Goldfish: spawna N revisores em contextos frescos para revisar documentos ou PRs.
+
+```bash
+tb review <target> [flags]
+
+Targets:
+  <path>              Arquivo ou diretório de docs
+  pr:<number>         Pull request por número
+  pr:<url>            Pull request por URL
+
+Flags:
+  --reviewers <n>       Número de revisores goldfish (default: 3)
+  --roles <roles>       Roles específicos para revisores (separados por vírgula)
+  --standards <stds>    Padrões de revisão: security,clarity,completeness,consistency
+  --severity <level>    Mínimo de severity para reportar: info,warning,error,critical
+  --output <path>       Arquivo de saída do relatório
+  --json                Saída em JSON
+  --resolve             Inicia etapa de resolução interativa após revisão
+  --timeout <dur>       Timeout por revisor (default: 5m)
+```
+
+**Exemplos:**
+
+```bash
+# Revisar documento de design
+tb review docs/design-auth.md
+# Spawning 3 fresh-context reviewers...
+# 
+# ═══════════════════════════════════════════════════════════════
+# RELATÓRIO DE REVISÃO: docs/design-auth.md
+# ═══════════════════════════════════════════════════════════════
+# 
+# CRÍTICOS (2):
+# ┌────┬──────────────────────────────────────────────────────────┐
+# │ #1 │ [security] Não especifica como tokens são invalidados   │
+# │    │ Linha 45: "JWT tokens são emitidos..."                  │
+# │    │ Revisores: 2/3 concordam                                │
+# ├────┼──────────────────────────────────────────────────────────┤
+# │ #2 │ [completeness] Falta tratamento de rate limiting        │
+# │    │ Seção 3.2 menciona mas não detalha implementação        │
+# │    │ Revisores: 3/3 concordam                                │
+# └────┴──────────────────────────────────────────────────────────┘
+# 
+# WARNINGS (5): ...
+# INFO (3): ...
+# 
+# Total: 2 críticos, 5 warnings, 3 info
+
+# Revisar com roles específicos
+tb review docs/api-spec.md --roles "api-reviewer,security-reviewer,ux-reviewer"
+
+# Revisar PR
+tb review pr:42 --reviewers 5 --standards security,completeness
+# Fetching PR #42...
+# Analyzing 12 files changed, 450 additions, 120 deletions
+# Spawning 5 fresh-context reviewers...
+# ...
+
+# Revisar com resolução interativa
+tb review docs/design.md --resolve
+# ... (relatório)
+# 
+# ═══════════════════════════════════════════════════════════════
+# ETAPA DE RESOLUÇÃO
+# ═══════════════════════════════════════════════════════════════
+# 
+# [1/2] Crítico: Não especifica invalidação de tokens
+#   (a) Aceitar - adicionar seção sobre invalidação
+#   (b) Rejeitar - já coberto em outro doc
+#   (c) Adiar - precisa mais contexto
+#   Escolha [a/b/c]: a
+#   
+# Resolução salva. Execute `tb review --apply` para aplicar.
+
+# Saída JSON para integração
+tb review docs/spec.md --json --output review-results.json
+```
+
+**Padrões de revisão disponíveis**:
+
+| Padrão | O que verifica |
+|--------|---------------|
+| `security` | Vulnerabilidades, vazamento de dados, autenticação |
+| `clarity` | Ambiguidades, termos indefinidos, contradições |
+| `completeness` | Requisitos faltantes, edge cases, fluxos incompletos |
+| `consistency` | Alinhamento com código existente, convenções, outros docs |
+| `testability` | Se os requisitos são testáveis |
+| `feasibility` | Riscos de implementação, dependências |
+
+**Isolamento obrigatório**: Se o sistema não conseguir criar contextos frescos para os revisores, o comando falha com erro ao invés de prosseguir com contexto contaminado.
+
+---
+
+### `tb drift` — Detecção de Divergência
+
+Compara documentação (vault ou docs) contra o grafo de código e reporta divergências.
+
+```bash
+tb drift [path] [flags]
+
+Argumentos:
+  [path]               Caminho para analisar (default: todo o vault)
+
+Flags:
+  --against <target>   Comparar contra: code,vault,both (default: code)
+  --depth <level>      Profundidade: shallow,medium,deep (default: medium)
+  --format <fmt>       Formato: table,json,markdown (default: table)
+  --output <path>      Arquivo de saída
+  --ignore <patterns>  Padrões a ignorar (globs)
+  --since <ref>        Comparar desde commit/tag/data
+```
+
+**Exemplos:**
+
+```bash
+# Verificar drift de todo o vault
+tb drift
+# Analisando vault contra código...
+# 
+# ═══════════════════════════════════════════════════════════════
+# RELATÓRIO DE DRIFT
+# ═══════════════════════════════════════════════════════════════
+# 
+# DOCUMENTAÇÃO DESATUALIZADA (3):
+# ┌─────────────────────────────────────────────────────────────────────────────┐
+# │ vault/facts/auth-module.md                                                  │
+# │ ├── Menciona: validateToken(string) -> bool                                 │
+# │ ├── Código atual: ValidateToken(ctx, string) -> (Claims, error)             │
+# │ └── Última sync: 2026-01-10 (15 dias atrás)                                 │
+# ├─────────────────────────────────────────────────────────────────────────────┤
+# │ vault/facts/database-schema.md                                              │
+# │ ├── Menciona: tabela 'users' com 5 colunas                                  │
+# │ ├── Código atual: tabela 'users' com 8 colunas                              │
+# │ └── Colunas novas: created_at, updated_at, deleted_at                       │
+# └─────────────────────────────────────────────────────────────────────────────┘
+# 
+# CÓDIGO SEM DOCUMENTAÇÃO (5):
+# - src/api/handlers/webhook.go (handler novo)
+# - src/services/notification.go (serviço novo)
+# - src/database/migrations/003_add_audit.sql (migration nova)
+# ...
+# 
+# DOCUMENTAÇÃO ÓRFÃ (1):
+# - vault/facts/legacy-parser.md → código deletado em abc123
+# 
+# Resumo: 3 desatualizados, 5 não documentados, 1 órfão
+
+# Verificar drift de arquivo específico
+tb drift docs/api-spec.md
+# Comparando docs/api-spec.md contra código...
+# 
+# Endpoints documentados: 15
+# Endpoints no código: 18
+# 
+# FALTANDO NA DOC:
+# - POST /api/v2/webhooks (src/api/routes.go:145)
+# - DELETE /api/v2/sessions/:id (src/api/routes.go:162)
+# - GET /api/v2/health/detailed (src/api/routes.go:23)
+
+# Verificar drift desde último release
+tb drift --since v0.5.0
+# Analisando mudanças desde v0.5.0...
+# 
+# Arquivos de código modificados: 45
+# Documentação potencialmente afetada: 12
+# Documentação atualizada: 7
+# Documentação possivelmente desatualizada: 5
+
+# Saída em markdown para relatório
+tb drift --format markdown --output drift-report.md
+
+# Ignorar certos padrões
+tb drift --ignore "vendor/**" --ignore "**/*_test.go"
+```
+
+**Níveis de profundidade**:
+
+| Nível | O que verifica |
+|-------|---------------|
+| `shallow` | Existência de arquivos, nomes de funções/classes |
+| `medium` | Assinaturas de funções, estrutura de tipos, imports |
+| `deep` | Semântica de implementação, comportamento documentado vs real |
+
+**Integração com CI**:
+
+```bash
+# No CI, falhar se houver drift crítico
+tb drift --format json | jq '.critical_count' | xargs -I {} test {} -eq 0
 ```
 
 ---
