@@ -1,0 +1,55 @@
+# Binaries
+tb
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary
+*.test
+
+# Output of go build
+/bin/
+/dist/
+
+# Go workspace
+go.work
+go.work.sum
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# toolbelt data
+.tb/
+
+# Logs
+*.log
+
+# Coverage
+coverage.out
+coverage.html
+
+# Vendor (if not committed)
+# vendor/
+
+# Build artifacts
+*.o
+*.a
+
+# Debug
+__debug_bin*
+
+# Air (hot reload)
+tmp/
+
+# Goreleaser
+dist/
