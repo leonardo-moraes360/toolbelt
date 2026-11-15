@@ -694,12 +694,28 @@ tb verify run [flags]
 
 Flags:
   --ruler <type>           Tipo de ruler: tests|visual (default: tests) ✅
+  --test-cmd <cmd>         Testes visíveis (default: go test ./... ou verify.test_cmd)
+  --hidden-test-cmd <cmd>  Suite oculta (default: go test ./tests/hidden/... ou verify.hidden_test_cmd)
   --max-iter <n>           Máximo de iterações (default: 3)
   --threshold <pct>        Threshold de similaridade visual (default: 0.95) ✅
   --manifest <path>        Manifesto de telas (default: .toolbelt/screens.yaml) ✅
   --skip-unavailable       Skip gracioso sem browser/refs (default: true) ✅
   --output <path>          Arquivo de saída do relatório
   --json                   Saída em JSON
+```
+
+A suite oculta permanece escondida do agente (paths em `tests/hidden/` protegidos
+pelo `tb guard`). Em monorepos não-Go, configure o comando oculto:
+
+```yaml
+# .toolbelt/config.yaml
+verify:
+  test_cmd: "pnpm --filter @pkg test"
+  hidden_test_cmd: "pnpm --filter @pkg test:hidden"
+```
+
+```bash
+tb verify run --test-cmd "pnpm test" --hidden-test-cmd "pnpm test:hidden"
 ```
 
 Ruler `visual` (docs/verificacao-visual.md): captura headless + diff de pixels;

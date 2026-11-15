@@ -37,6 +37,9 @@ type Config struct {
 
 	// Bench configura o benchmark.
 	Bench BenchConfig `yaml:"bench"`
+
+	// Verify configura a verificação adversarial.
+	Verify VerifyConfig `yaml:"verify"`
 }
 
 // Defaults são valores padrão para commands.
@@ -84,6 +87,12 @@ type BenchConfig struct {
 	Timeout      string `yaml:"timeout"`
 }
 
+// VerifyConfig configura o ruler de testes do tb verify.
+type VerifyConfig struct {
+	TestCmd       string `yaml:"test_cmd"`
+	HiddenTestCmd string `yaml:"hidden_test_cmd"`
+}
+
 // DefaultConfig retorna a configuração padrão.
 func DefaultConfig() *Config {
 	return &Config{
@@ -119,6 +128,10 @@ func DefaultConfig() *Config {
 			DefaultAgent: "",
 			Repetitions:  5,
 			Timeout:      "10m",
+		},
+		Verify: VerifyConfig{
+			TestCmd:       "go test ./...",
+			HiddenTestCmd: "go test ./tests/hidden/...",
 		},
 	}
 }

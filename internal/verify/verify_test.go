@@ -36,6 +36,86 @@ func TestRunPass(t *testing.T) {
 	}
 }
 
+func TestDefaultHiddenTestCmd(t *testing.T) {
+	cfg := DefaultConfig(t.TempDir())
+	if cfg.HiddenTest != "go test ./tests/hidden/..." {
+		t.Fatalf("HiddenTest default = %q", cfg.HiddenTest)
+	}
+	if cfg.VisibleTest != "go test ./..." {
+		t.Fatalf("VisibleTest default = %q", cfg.VisibleTest)
+	}
+}
+
+func TestHiddenTestCmdConfigurableNonGo(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "tests", "hidden"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	_ = os.WriteFile(filepath.Join(dir, "tests", "hidden", "check.mjs"), []byte("process.exit(0)\n"), 0o644)
+	_ = os.WriteFile(filepath.Join(dir, "package.json"), []byte(`{"name":"demo"}`+"\n"), 0o644)
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "a@b.c")
+	runGit(t, dir, "config", "user.name", "t")
+	runGit(t, dir, "add", "-A")
+	runGit(t, dir, "commit", "-m", "c")
+
+	cfg := DefaultConfig(dir)
+	cfg.BaseRef = "HEAD"
+	cfg.HeadRef = "HEAD"
+	cfg.Timeout = time.Minute
+	cfg.MaxIterations = 1
+	cfg.VisibleTest = "true"
+	cfg.HiddenTest = "node tests/hidden/check.mjs"
+
+	res, err := Run(context.Background(), &cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.HiddenAvailable {
+		t.Fatal("expected hidden suite available")
+	}
+	if !res.HiddenPassed {
+		t.Fatal("expected hidden suite to pass with custom cmd")
+	}
+	if res.Verdict != VerdictPass {
+		t.Fatalf("veredicto %s", res.Verdict)
+	}
+}
+
+func TestHiddenTestCmdDefaultFailsNonGoSuite(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "tests", "hidden"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	_ = os.WriteFile(filepath.Join(dir, "tests", "hidden", "noop.txt"), []byte("not go\n"), 0o644)
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "a@b.c")
+	runGit(t, dir, "config", "user.name", "t")
+	runGit(t, dir, "add", "-A")
+	runGit(t, dir, "commit", "-m", "c")
+
+	cfg := DefaultConfig(dir)
+	cfg.BaseRef = "HEAD"
+	cfg.HeadRef = "HEAD"
+	cfg.Timeout = 30 * time.Second
+	cfg.MaxIterations = 1
+	cfg.VisibleTest = "true"
+
+	res, err := Run(context.Background(), &cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.HiddenAvailable {
+		t.Fatal("expected hidden suite available")
+	}
+	if res.HiddenPassed {
+		t.Fatal("default go hidden cmd should fail on non-Go suite")
+	}
+	if res.Verdict == VerdictPass {
+		t.Fatal("expected non-pass without custom hidden_test_cmd")
+	}
+}
+
 func runGit(t *testing.T, dir string, args ...string) {
 	t.Helper()
 	cmd := exec.Command("git", args...)

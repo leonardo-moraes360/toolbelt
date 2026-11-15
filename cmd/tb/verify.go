@@ -9,6 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/leonardo-moraes360/toolbelt/internal/config"
 	"github.com/leonardo-moraes360/toolbelt/internal/verify"
 )
 
@@ -27,6 +28,7 @@ func init() {
 	verifyRunCmd.Flags().String("base", "", "ref base")
 	verifyRunCmd.Flags().String("head", "", "ref head")
 	verifyRunCmd.Flags().String("test-cmd", "", "linha de testes visíveis")
+	verifyRunCmd.Flags().String("hidden-test-cmd", "", "linha de testes ocultos (default: go test ./tests/hidden/...)")
 	verifyRunCmd.Flags().Int("max-iter", 0, "máximo de iterações")
 	verifyRunCmd.Flags().String("timeout", "10m", "timeout")
 	verifyRunCmd.Flags().StringP("output", "o", "", "arquivo JSON")
@@ -53,6 +55,14 @@ func runTestsVerify(cmd *cobra.Command) error {
 		return err
 	}
 	cfg := verify.DefaultConfig(cwd)
+	if fileCfg, loadErr := config.Load(); loadErr == nil {
+		if fileCfg.Verify.TestCmd != "" {
+			cfg.VisibleTest = fileCfg.Verify.TestCmd
+		}
+		if fileCfg.Verify.HiddenTestCmd != "" {
+			cfg.HiddenTest = fileCfg.Verify.HiddenTestCmd
+		}
+	}
 	if v, _ := cmd.Flags().GetString("base"); v != "" {
 		cfg.BaseRef = v
 	}
@@ -61,6 +71,9 @@ func runTestsVerify(cmd *cobra.Command) error {
 	}
 	if v, _ := cmd.Flags().GetString("test-cmd"); v != "" {
 		cfg.VisibleTest = v
+	}
+	if v, _ := cmd.Flags().GetString("hidden-test-cmd"); v != "" {
+		cfg.HiddenTest = v
 	}
 	if v, _ := cmd.Flags().GetInt("max-iter"); v > 0 {
 		cfg.MaxIterations = v
