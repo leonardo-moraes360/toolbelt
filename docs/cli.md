@@ -951,10 +951,13 @@ tb guard check main..HEAD
 
 # Modo strict para CI
 tb guard check origin/main..HEAD --strict
-# Exit code 1 se houver modificação sem decisão
+# Exit code 1 se houver SeverityError
 
-# Saída JSON
+# Saída JSON (exit 0 mesmo com violações)
 tb guard check main..HEAD --json
+
+# Strict + JSON: imprime JSON válido e sai ≠ 0 se houver SeverityError
+tb guard check origin/main..HEAD --strict --json
 ```
 
 **Manifesto de paths protegidos (`.toolbelt/guard.yaml`):**
