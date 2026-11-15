@@ -5,58 +5,24 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
-	"os"
 	"path/filepath"
 	"strings"
 )
 
-// BuildFromRoot indexa código Go sob demanda via go/ast (proveniência extracted).
-func BuildFromRoot(root string) (*Index, error) {
-	abs, err := filepath.Abs(root)
-	if err != nil {
-		return nil, err
-	}
-	idx := &Index{Root: abs}
-	nodes := map[string]Node{}
-	var edges []Edge
-
-	err = filepath.Walk(abs, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		if info.IsDir() {
-			base := info.Name()
-			if base == ".git" || base == "vendor" || base == "node_modules" || base == "bin" {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if filepath.Ext(path) != ".go" || strings.HasSuffix(path, "_test.go") {
-			return nil
-		}
-		rel, _ := filepath.Rel(abs, path)
-		fileNodes, fileEdges, err := indexGoFile(abs, rel)
-		if err != nil {
-			return nil
-		}
-		for _, n := range fileNodes {
-			nodes[n.ID] = n
-		}
-		edges = append(edges, fileEdges...)
-		return nil
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	for _, n := range nodes {
-		idx.Nodes = append(idx.Nodes, n)
-	}
-	idx.Edges = edges
-	return idx, nil
+func init() {
+	RegisterIndexer(GoIndexer{})
 }
 
-func indexGoFile(root, rel string) ([]Node, []Edge, error) {
+type GoIndexer struct{}
+
+func (GoIndexer) Name() string     { return "go" }
+func (GoIndexer) Category() string { return CategoryLanguage }
+
+func (GoIndexer) Match(path string) bool {
+	return filepath.Ext(path) == ".go" && !strings.HasSuffix(path, "_test.go")
+}
+
+func (GoIndexer) IndexFile(root, rel string) ([]Node, []Edge, error) {
 	full := filepath.Join(root, rel)
 	fset := token.NewFileSet()
 	f, err := parser.ParseFile(fset, full, nil, parser.SkipObjectResolution)
@@ -105,14 +71,9 @@ func indexGoFile(root, rel string) ([]Node, []Edge, error) {
 		})
 	}
 
-	for name, callerID := range funcIDs {
-		_ = name
-		fn := findFunc(f, filepath.Base(callerID))
-		if fn == nil {
-			// callerID is func:pkg.Name
-			parts := strings.Split(callerID, ".")
-			fn = findFunc(f, parts[len(parts)-1])
-		}
+	for _, callerID := range funcIDs {
+		parts := strings.Split(callerID, ".")
+		fn := findFunc(f, parts[len(parts)-1])
 		if fn == nil || fn.Body == nil {
 			continue
 		}

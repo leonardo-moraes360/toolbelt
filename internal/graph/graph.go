@@ -20,17 +20,26 @@ const (
 type NodeType string
 
 const (
-	NodeFile     NodeType = "file"
-	NodeFunction NodeType = "function"
-	NodePackage  NodeType = "package"
+	NodeFile      NodeType = "file"
+	NodeFunction  NodeType = "function"
+	NodePackage   NodeType = "package"
+	NodeClass     NodeType = "class"
+	NodeSection   NodeType = "section"
+	NodeComponent NodeType = "component"
+	NodeHook      NodeType = "hook"
+	NodeRoute     NodeType = "route"
 )
 
 type EdgeType string
 
 const (
-	EdgeImports EdgeType = "imports"
-	EdgeCalls   EdgeType = "calls"
-	EdgeDefines EdgeType = "defines"
+	EdgeImports  EdgeType = "imports"
+	EdgeCalls    EdgeType = "calls"
+	EdgeDefines  EdgeType = "defines"
+	EdgeLinks    EdgeType = "links"
+	EdgeMentions EdgeType = "mentions"
+	EdgeRenders  EdgeType = "renders"
+	EdgeTemplate EdgeType = "template"
 )
 
 type Node struct {
@@ -119,7 +128,12 @@ func (s *Store) Save() error {
 }
 
 func (s *Store) Rebuild(root string) (*Index, error) {
-	idx, err := BuildFromRoot(root)
+	opts := DefaultBuildOptions()
+	return s.RebuildOpts(root, &opts)
+}
+
+func (s *Store) RebuildOpts(root string, opts *BuildOptions) (*Index, error) {
+	idx, err := BuildFromRootOpts(root, opts)
 	if err != nil {
 		return nil, err
 	}

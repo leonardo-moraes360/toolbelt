@@ -7,6 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/leonardo-moraes360/toolbelt/internal/config"
 	"github.com/leonardo-moraes360/toolbelt/internal/graph"
 	"github.com/leonardo-moraes360/toolbelt/internal/mem"
 )
@@ -54,7 +55,8 @@ var graphIndexCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		idx, err := s.Rebuild(root)
+		opts := graphBuildOptions()
+		idx, err := s.RebuildOpts(root, &opts)
 		if err != nil {
 			return err
 		}
@@ -171,6 +173,27 @@ func init() {
 	graphDepsCmd.Flags().Bool("transitive", false, "inclui transitivas")
 	graphImpactCmd.Flags().String("file", "", "arquivo modificado")
 	graphImpactCmd.Flags().Int("depth", 2, "profundidade")
+}
+
+func graphBuildOptions() graph.BuildOptions {
+	opts := graph.DefaultBuildOptions()
+	cfg, err := config.Load()
+	if err != nil {
+		return opts
+	}
+	if len(cfg.Graph.Languages) > 0 {
+		opts.Languages = cfg.Graph.Languages
+	}
+	if len(cfg.Graph.Docs) > 0 {
+		opts.Docs = cfg.Graph.Docs
+	}
+	if len(cfg.Graph.Frameworks) > 0 {
+		opts.Frameworks = cfg.Graph.Frameworks
+	}
+	if cfg.Graph.MaxFileBytes > 0 {
+		opts.MaxFileBytes = cfg.Graph.MaxFileBytes
+	}
+	return opts
 }
 
 func printNodes(nodes []graph.Node) error {

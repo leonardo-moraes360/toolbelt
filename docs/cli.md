@@ -131,6 +131,54 @@ Consulta e indexa o grafo de código **sob demanda**. Desabilitado por padrão;
 ative com `TB_GRAPH=on` ou `--enable`. Medir ROI via
 `tb bench compare --config-a bench/ab/graph-off.yaml --config-b bench/ab/graph-on.yaml`.
 
+Linguagens e docs (extensível via `LanguageIndexer`, regex leve, sem cgo):
+
+| `graph.languages` | Extensões |
+|-------------------|-----------|
+| `go` | `.go` (AST) |
+| `javascript` | `.js`, `.mjs`, `.cjs`, `.ts` (`.tsx`/`.jsx` via `react` quando ligado) |
+| `python` | `.py` |
+| `java` | `.java` |
+| `kotlin` | `.kt`, `.kts` |
+| `csharp` | `.cs` |
+| `cpp` | `.c`, `.h`, `.cc`, `.cpp`, `.cxx`, `.hpp`, `.hh`, `.hxx` |
+| `rust` | `.rs` |
+| `php` | `.php` |
+| `ruby` | `.rb` |
+| `swift` | `.swift` |
+| `shell` | `.sh`, `.bash`, `.zsh`, `.ksh` |
+
+| `graph.docs` | Extensões | O que indexa |
+|--------------|-----------|--------------|
+| `markdown` | `.md` | documento, headings, links, menções |
+| `html` | `.html`, `.htm` | documento, `<h1>`–`<h6>`, âncoras |
+| `txt` | `.txt` | documento, paths/símbolos mencionados |
+
+| `graph.frameworks` | Extensões / convenção | O que indexa |
+|--------------------|-----------------------|--------------|
+| `react` | `.tsx`, `.jsx` | componentes, hooks `use*`, arestas `renders` |
+| `vue` | `.vue` | SFC script/template, imports, componentes no template |
+| `svelte` | `.svelte` | script, imports, componentes no markup |
+| `astro` | `.astro` | frontmatter, imports, componentes no body |
+| `angular` | `*.component.ts` / `.html`, services/modules | `@Component`/`@Injectable`/`@NgModule`, selector, `templateUrl` |
+| `routes` | Next `app/`/`pages/`, SvelteKit `routes/`, Nuxt `pages/` | nós `route` por convenção de arquivo |
+| `mdx` | `.mdx` | doc (headings/links) + imports/componentes JSX |
+
+Frameworks têm prioridade sobre o indexador genérico de linguagem no mesmo
+arquivo (ex.: `.tsx` com `react` ligado não cai só como JS).
+
+```yaml
+# .toolbelt/config.yaml (todos ligados por padrão)
+graph:
+  languages: [go, javascript, python, java, kotlin, csharp, cpp, rust, php, ruby, swift, shell]
+  docs: [markdown, html, txt]
+  frameworks: [react, vue, svelte, astro, angular, routes, mdx]
+  max_file_bytes: 524288   # ignora arquivos maiores
+```
+
+Ignora `node_modules`, `vendor`, `dist`, `build`, `.git`, etc. O grafo
+continua sob demanda (ADR-011): `TB_GRAPH=on` ou `--enable`.
+
 ```bash
 tb graph [--enable] <subcommand>
 

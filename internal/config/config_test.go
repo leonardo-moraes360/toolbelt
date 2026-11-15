@@ -27,6 +27,18 @@ func TestDefaultConfig(t *testing.T) {
 	if cfg.Verify.HiddenTestCmd != "go test ./tests/hidden/..." {
 		t.Errorf("Default verify hidden_test_cmd = %q", cfg.Verify.HiddenTestCmd)
 	}
+	if len(cfg.Graph.Languages) < 12 {
+		t.Errorf("expected default graph languages, got %v", cfg.Graph.Languages)
+	}
+	if len(cfg.Graph.Docs) != 3 {
+		t.Errorf("expected markdown/html/txt docs, got %v", cfg.Graph.Docs)
+	}
+	if len(cfg.Graph.Frameworks) < 7 {
+		t.Errorf("expected default frameworks, got %v", cfg.Graph.Frameworks)
+	}
+	if cfg.Graph.MaxFileBytes != 512*1024 {
+		t.Errorf("unexpected max_file_bytes %d", cfg.Graph.MaxFileBytes)
+	}
 }
 
 func TestVerifyConfigLoad(t *testing.T) {
@@ -47,6 +59,35 @@ func TestVerifyConfigLoad(t *testing.T) {
 	}
 	if loaded.Verify.HiddenTestCmd != cfg.Verify.HiddenTestCmd {
 		t.Errorf("hidden_test_cmd = %q", loaded.Verify.HiddenTestCmd)
+	}
+}
+
+func TestGraphConfigRoundTrip(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.yaml")
+	cfg := DefaultConfig()
+	cfg.Graph.Languages = []string{"go", "python"}
+	cfg.Graph.Docs = []string{"markdown"}
+	cfg.Graph.Frameworks = []string{"react", "vue"}
+	cfg.Graph.MaxFileBytes = 1024
+	if err := Save(cfg, configPath); err != nil {
+		t.Fatal(err)
+	}
+	loaded := DefaultConfig()
+	if err := loadFromFile(configPath, loaded); err != nil {
+		t.Fatal(err)
+	}
+	if len(loaded.Graph.Languages) != 2 || loaded.Graph.Languages[1] != "python" {
+		t.Fatalf("languages=%v", loaded.Graph.Languages)
+	}
+	if len(loaded.Graph.Docs) != 1 || loaded.Graph.Docs[0] != "markdown" {
+		t.Fatalf("docs=%v", loaded.Graph.Docs)
+	}
+	if len(loaded.Graph.Frameworks) != 2 || loaded.Graph.Frameworks[0] != "react" {
+		t.Fatalf("frameworks=%v", loaded.Graph.Frameworks)
+	}
+	if loaded.Graph.MaxFileBytes != 1024 {
+		t.Fatalf("max_file_bytes=%d", loaded.Graph.MaxFileBytes)
 	}
 }
 
