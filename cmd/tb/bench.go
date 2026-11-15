@@ -325,7 +325,7 @@ func defaultAgent(useFake bool, agentCmd string) bench.AgentConfig {
 	if useFake {
 		return bench.AgentConfig{
 			ID:           "fake",
-			Command:      "go run ./cmd/fake-agent --workdir {workdir} --prompt {prompt}",
+			Command:      bench.FakeAgentCommand(""),
 			OutputParser: "json",
 		}
 	}
@@ -344,7 +344,7 @@ func runBenchmark(cmd *cobra.Command, args []string) error {
 
 	agent := defaultAgent(opts.useFake, opts.agentCmd)
 	if opts.useFake && opts.fakeConfig != "" {
-		agent.Command = "go run ./cmd/fake-agent --config " + opts.fakeConfig + " --workdir {workdir} --prompt {prompt}"
+		agent.Command = bench.FakeAgentCommand(opts.fakeConfig)
 	}
 
 	variant, err := resolveVariant(opts.abConfig, opts.label, opts.flags)

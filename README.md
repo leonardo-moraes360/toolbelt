@@ -118,7 +118,7 @@ tb version
 # Lista tarefas de benchmark disponíveis
 tb bench list
 
-# Executa benchmark com agente fake (para testes)
+# Executa benchmark com agente fake embutido (funciona em qualquer repo)
 tb bench run --fake
 
 # Executa benchmark com agente externo
