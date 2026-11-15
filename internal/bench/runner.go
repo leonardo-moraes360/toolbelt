@@ -234,6 +234,10 @@ func ExpandAgentCommand(template, prompt, workDir, timeout string) string {
 	return cmd
 }
 
+func shellSingleQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
+
 // executeVerification executa o command de verificação.
 //
 //nolint:gosec // G204: command is intentionally from task config
