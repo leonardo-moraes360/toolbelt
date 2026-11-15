@@ -716,6 +716,137 @@ tb review pr:42 --roles "security-reviewer,api-reviewer,test-reviewer"
 
 O isolamento de contexto é **obrigatório**: se o sistema não conseguir criar contextos frescos, a revisão falha ao invés de prosseguir com contexto contaminado.
 
+### 8.6 Padrão Router/Workers
+
+Para tarefas complexas que requerem alta paralelização e economia de contexto, o toolbelt suporta o padrão Router/Workers:
+
+```mermaid
+graph TB
+    subgraph "Coordenação"
+        ROUTER[Router<br/>decompõe e delega]
+        BOARD[Board<br/>fila de tickets]
+        WATCHDOG[Watchdog<br/>monitora health]
+        MERGE[Merge<br/>agrega resultados]
+    end
+
+    subgraph "Execução"
+        W1[Worker 1<br/>sandbox isolado]
+        W2[Worker 2<br/>sandbox isolado]
+        W3[Worker 3<br/>sandbox isolado]
+    end
+
+    ROUTER --> |tickets| BOARD
+    BOARD --> W1
+    BOARD --> W2
+    BOARD --> W3
+    W1 --> |resultado| MERGE
+    W2 --> |resultado| MERGE
+    W3 --> |resultado| MERGE
+    WATCHDOG -.-> |monitora| W1
+    WATCHDOG -.-> |monitora| W2
+    WATCHDOG -.-> |monitora| W3
+    MERGE --> ROUTER
+```
+
+**Conceitos principais**:
+
+| Conceito | Descrição |
+|----------|-----------|
+| **Ticket** | Unidade atômica de trabalho com scope, permissões e critérios de aceite |
+| **Mandate** | Define quais arquivos o worker pode ler/escrever e quais são proibidos |
+| **Board** | Fila de coordenação com suporte a priorização e dependências |
+| **Watchdog** | Monitor independente que detecta workers travados e escala sob demanda |
+| **Merge** | Agregador que resolve conflitos entre workers e aplica mudanças atomicamente |
+
+**Fluxo de execução**:
+
+```mermaid
+sequenceDiagram
+    participant R as Router
+    participant B as Board
+    participant W as Workers
+    participant M as Merge
+    participant WD as Watchdog
+
+    R->>R: Recebe tarefa complexa
+    R->>R: Decompõe em tickets atômicos
+    R->>B: Enfileira tickets
+    B->>W: Workers puxam tickets
+    WD->>W: Monitora health/timeout
+    W->>M: Retornam resultados
+    M->>M: Resolve conflitos
+    M->>R: Resultado consolidado
+```
+
+**Exemplo de Ticket**:
+
+```yaml
+ticket:
+  id: "TKT-001"
+  title: "Implementar handler de login"
+  mandate:
+    scope: ["src/handlers/auth.go", "src/services/auth.go"]
+    permissions: [read, write]
+    forbidden: ["src/database/*", "tests/hidden/*"]
+  context:
+    files: ["docs/specs/auth.md"]
+    symbols: ["User", "Session", "validateCredentials"]
+  acceptance:
+    criteria: "Testes em tests/auth_test.go passam"
+    timeout: "10m"
+  dependencies: []
+```
+
+**Benefícios**:
+
+- **Contexto mínimo**: cada worker recebe ~80% menos contexto que abordagem monolítica
+- **Paralelização**: tickets independentes executam simultaneamente
+- **Isolamento de falha**: erro em um worker não polui contexto dos outros
+- **Cache-read**: workers aproveitam cache de tokens via contextos repetidos
+- **Auditoria**: cada ticket tem histórico isolado e rastreável
+
+**Entrega Direta (Direct Delivery)**:
+
+Quando um worker completa um ticket com dependentes, ele pode se inscrever para receber os tickets dependentes **diretamente**, sem passar pelo Board:
+
+```mermaid
+sequenceDiagram
+    participant R as Router
+    participant B as Board
+    participant W1 as Worker 1
+
+    R->>B: TKT-001 (sem deps)
+    B->>W1: Worker 1 puxa TKT-001
+    W1->>W1: Executa TKT-001
+    W1->>R: TKT-001 done + subscribe TKT-002
+    R-->>W1: TKT-002 entregue DIRETO (sem Board)
+    Note over W1: Contexto de TKT-001<br/>já em cache
+```
+
+Benefícios da entrega direta:
+- **Menor latência**: ticket não espera na fila
+- **Afinidade de contexto**: worker já tem contexto relevante
+- **Cache-read maximizado**: tokens do ticket anterior em cache
+- **Menos conflitos**: mesmo worker edita arquivos relacionados
+
+**Implementação via `tb router` e `tb ticket`**:
+
+```bash
+# Criar tickets a partir de tarefa
+tb ticket create --from "Implementar autenticação completa"
+
+# Ver board de tickets (inclui subscriptions)
+tb board list --status pending,running
+
+# Monitorar workers (mostra subscriptions ativas)
+tb watchdog status
+
+# Forçar merge de resultados
+tb merge --tickets TKT-001,TKT-002
+```
+
+Veja [ADR-009](adr/009-router-e-workers.md) para detalhes de design.
+
 ---
 
 ## 9. Proteções Contra Trapaça

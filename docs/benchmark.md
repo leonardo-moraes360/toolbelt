@@ -671,3 +671,193 @@ benchmark:
     - cheating_attempts
     - time_total
 ```
+
+---
+
+## KPIs de Router/Workers
+
+O padrão Router/Workers introduz métricas específicas para avaliar a eficácia da delegação e paralelização.
+
+### 21. cache_read_tokens_pct (Porcentagem de Tokens Cache-Read)
+
+**Definição**: Proporção de tokens de input que vieram de cache (contexto reutilizado).
+
+```
+cache_read_tokens_pct = (cache_read_tokens) / (total_input_tokens) × 100
+```
+
+**Medição**:
+- Reportado pela API do modelo (quando disponível)
+- Estimado via repetição de contextos entre workers
+
+**Relevância**: Workers com mandates pequenos e repetitivos aproveitam mais cache.
+
+**Meta**: ≥ 70% de cache-read em workloads típicos
+
+### 22. router_latency_p50 / router_latency_p95 (Latência do Router)
+
+**Definição**: Tempo que o router leva para decompor tarefa e criar tickets.
+
+```
+router_latency = timestamp_tickets_criados - timestamp_tarefa_recebida
+```
+
+**Medição**:
+- p50 (mediana): latência típica
+- p95 (percentil 95): latência de cauda
+
+**Meta**: 
+- p50 < 500ms
+- p95 < 2s
+
+### 23. tickets_parallel_max (Paralelismo Máximo de Tickets)
+
+**Definição**: Maior número de tickets executando simultaneamente.
+
+```
+tickets_parallel_max = max(workers_ativos em qualquer instante)
+```
+
+**Relevância**: Indica eficácia da paralelização. Baixo paralelismo sugere dependências excessivas.
+
+**Meta**: ≥ 3 tickets em paralelo para tarefas complexas
+
+### 24. merge_conflict_rate (Taxa de Conflitos no Merge)
+
+**Definição**: Proporção de arquivos com conflitos entre workers.
+
+```
+merge_conflict_rate = (arquivos com conflito) / (arquivos modificados) × 100
+```
+
+**Relevância**: Alta taxa indica mandates mal definidos ou sobreposição de escopo.
+
+**Meta**: < 5%
+
+### 25. delegation_rate (Taxa de Delegação)
+
+**Definição**: Proporção de tarefas delegadas vs executadas pelo próprio router.
+
+```
+delegation_rate = (tarefas delegadas para workers) / (total de tarefas)
+```
+
+**Relevância**: Router deve delegar, não executar. Taxa baixa indica gargalo.
+
+**Meta**: ≥ 90%
+
+### 26. worker_utilization (Utilização de Workers)
+
+**Definição**: Tempo que workers passam trabalhando vs ociosos.
+
+```
+worker_utilization = (tempo_trabalhando) / (tempo_total) × 100
+```
+
+**Medição**: Por worker e agregado.
+
+**Meta**: ≥ 80% durante processamento de filas
+
+### 27. ticket_retry_rate (Taxa de Retry de Tickets)
+
+**Definição**: Proporção de tickets que precisaram de retry após falha.
+
+```
+ticket_retry_rate = (tickets com retry) / (total de tickets)
+```
+
+**Relevância**: Alta taxa indica tickets mal especificados ou workers instáveis.
+
+**Meta**: < 10%
+
+### 28. direct_delivery_rate (Taxa de Entrega Direta)
+
+**Definição**: Proporção de tickets entregues diretamente a workers subscritos vs via board.
+
+```
+direct_delivery_rate = (tickets entregues diretamente) / (total de tickets) × 100
+```
+
+**Relevância**: Entrega direta reduz latência de atribuição e melhora afinidade de contexto.
+
+**Meta**: ≥ 50% para workloads com dependências
+
+---
+
+## Comparação: Router/Workers vs Monolítico
+
+Uma variante do benchmark compara a arquitetura Router/Workers com execução monolítica.
+
+### Monolítico (Baseline)
+
+1. Agente único recebe tarefa complexa
+2. Executa todas as subtarefas sequencialmente
+3. Contexto cresce ao longo da execução
+4. Sem paralelização
+
+### Router/Workers (Experimental)
+
+1. Router decompõe tarefa em tickets
+2. Workers executam em paralelo com contexto mínimo
+3. Follow-ups podem ir direto ao worker dono (entrega direta)
+4. Merge agrega resultados
+5. Paralelização efetiva
+
+### Métricas Específicas
+
+| Métrica | Descrição |
+|---------|-----------|
+| `total_input_tokens` | Tokens de input totais (monolítico acumula) |
+| `cache_read_savings` | Economia por reutilização de cache |
+| `wall_time_total` | Tempo total de execução |
+| `wall_time_critical_path` | Tempo do caminho crítico (paralelização) |
+| `context_peak_tokens` | Pico de contexto (monolítico cresce) |
+| `failures_isolated` | Falhas contidas em um worker |
+| `failures_cascaded` | Falhas que afetaram outros (monolítico) |
+| `direct_delivery_latency` | Latência de entrega direta vs via board |
+
+### Hipótese
+
+Esperamos que Router/Workers supere monolítico em:
+- `total_input_tokens`: ~40% menos via contexto mínimo + cache
+- `wall_time_total`: ~60% menos via paralelização
+- `failures_isolated`: falhas não propagam
+
+E que monolítico seja melhor em:
+- `router_latency`: sem overhead de decomposição
+- `merge_conflict_rate`: sem conflitos (único executor)
+- Tarefas simples: overhead de coordenação não compensa
+
+### Benchmark de Delegação
+
+```yaml
+benchmark:
+  name: router-workers-vs-monolithic
+  
+  tasks:
+    - implement feature across 5+ files
+    - refactor module with dependencies
+    - add tests for existing code
+    
+  conditions:
+    monolithic:
+      executor: single_agent
+      context: cumulative
+      parallelism: 1
+      
+    router_workers:
+      executor: router_with_workers
+      context: minimal_per_worker
+      parallelism: 3-5
+      direct_delivery: true
+      
+  metrics:
+    - total_input_tokens
+    - cache_read_tokens_pct
+    - wall_time_total
+    - wall_time_critical_path
+    - context_peak_tokens
+    - merge_conflict_rate
+    - direct_delivery_rate
+    - pass_at_1
+```

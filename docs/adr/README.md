@@ -25,6 +25,7 @@ Cada ADR segue o formato:
 | [006](006-inspiracoes-graphify-obsidian.md) | Inspirações: Graphify e Obsidian | accepted |
 | [007](007-inspiracao-elephant-goldfish.md) | Inspiração: Elephant-Goldfish Model | accepted |
 | [008](008-verificacao-adversarial.md) | Verificação adversarial (gerador vs discriminador) | accepted |
+| [009](009-router-e-workers.md) | Padrão Router e Workers para delegação | proposed |
 
 ## Como Propor um ADR
 
