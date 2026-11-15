@@ -130,15 +130,6 @@ func init() {
 
 // Stubs para commands futuros
 
-var memCmd = &cobra.Command{
-	Use:   "mem",
-	Short: "Memória persistent do agente (não implementado)",
-	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("⚠️  Command mem ainda não implementado")
-		fmt.Println("   Será implementado na Fase 3")
-	},
-}
-
 var graphCmd = &cobra.Command{
 	Use:   "graph",
 	Short: "Grafo de dependências do código (não implementado)",

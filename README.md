@@ -217,7 +217,7 @@ Este projeto está na **Fase 0**: fundação implementada com CLI funcional, con
 | `tb sandbox` | ✅ | Worktrees + Landlock (Linux) |
 | `tb guard` | ✅ | Check anti-trapaça em diff |
 | `tb verify` | ✅ | Ruler de testes + suíte oculta |
-| `tb mem` | 🚧 | Stub (Fase 3) |
+| `tb mem` | ✅ | Invariantes fora da compactação |
 | `tb graph` | 🚧 | Stub (Fase 4) |
 | `tb router` | 🚧 | Stub (Fase 5) |
 | `tb mcp` | ✅ | Servidor MCP stateless (stdio) |
