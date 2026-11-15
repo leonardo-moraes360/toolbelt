@@ -2,7 +2,7 @@
 
 ## Status
 
-proposed
+accepted (implementação Fase 2: `tb graph` + MCP + A/B `bench/ab/graph-*.yaml`)
 
 ## Contexto
 
