@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -96,25 +98,34 @@ var initCmd = &cobra.Command{
 	Short: "Inicializa configuração local do toolbelt",
 	Long: `Cria o diretório .toolbelt/ e arquivo config.yaml no diretório atual.
 
+Se AGENTS.md ou CLAUDE.md existirem na raiz do repositório, o init lê esses
+arquivos, registra os caminhos em .toolbelt/agent_docs.yaml e extrai dicas de
+execução (nunca sobrescreve). Use --write-agents para semear um AGENTS.md
+mínimo apontando ao tb quando o arquivo ainda não existe.
+
 Exemplo:
-  tb init              Cria configuração básica
-  tb init --global     Cria configuração global em ~/.config/toolbelt`,
+  tb init                 Cria configuração básica
+  tb init --write-agents  Também semeia AGENTS.md se ausente
+  tb init --global        Cria configuração global em ~/.config/toolbelt`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		global, _ := cmd.Flags().GetBool("global")
+		writeAgents, _ := cmd.Flags().GetBool("write-agents")
 
 		var dir string
+		var repoRoot string
 		if global {
 			homeDir, err := os.UserHomeDir()
 			if err != nil {
 				return fmt.Errorf("getting home directory: %w", err)
 			}
-			dir = homeDir + "/.config/toolbelt"
+			dir = filepath.Join(homeDir, ".config", "toolbelt")
 		} else {
 			cwd, err := os.Getwd()
 			if err != nil {
 				return fmt.Errorf("getting current directory: %w", err)
 			}
-			dir = cwd + "/.toolbelt"
+			repoRoot = cwd
+			dir = filepath.Join(cwd, config.DefaultConfigDir)
 		}
 
 		if err := config.Init(dir); err != nil {
@@ -122,12 +133,37 @@ Exemplo:
 		}
 
 		log.Info("configuração inicializada", "path", dir)
+
+		if !global && repoRoot != "" {
+			docs, err := config.HandleAgentDocs(repoRoot, dir, writeAgents)
+			if err != nil {
+				return fmt.Errorf("processando AGENTS.md/CLAUDE.md: %w", err)
+			}
+			if docs.Seeded {
+				log.Info("AGENTS.md semeado", "path", filepath.Join(repoRoot, config.AgentsMDName))
+			}
+			if len(docs.Sources) > 0 {
+				log.Info("documentação de agentes encontrada",
+					"sources", strings.Join(docs.Sources, ","),
+					"record", docs.Record)
+				if len(docs.Hints) > 0 {
+					log.Info("dicas de execução em AGENTS.md/CLAUDE.md",
+						"hints", strings.Join(docs.Hints, " | "))
+				}
+			} else if writeAgents {
+				log.Info("nenhum AGENTS.md/CLAUDE.md após seed")
+			} else {
+				log.Info("nenhum AGENTS.md/CLAUDE.md na raiz; use --write-agents para semear")
+			}
+		}
+
 		return nil
 	},
 }
 
 func init() {
 	initCmd.Flags().Bool("global", false, "inicializa configuração global")
+	initCmd.Flags().Bool("write-agents", false, "semeia AGENTS.md mínimo se ausente (nunca sobrescreve)")
 }
 
 var routerCmd = &cobra.Command{
