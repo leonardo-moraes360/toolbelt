@@ -10,21 +10,6 @@ func init() {
 
 var regexLanguageSpecs = []regexLang{
 	{
-		name: "python",
-		exts: extSet(".py"),
-		funcRes: []*regexp.Regexp{
-			mustRE(`(?m)^\s*(?:async\s+)?def\s+([A-Za-z_]\w*)\s*\(`),
-		},
-		classRes: []*regexp.Regexp{
-			mustRE(`(?m)^\s*class\s+([A-Za-z_]\w*)\s*[:(]`),
-		},
-		importRes: []*regexp.Regexp{
-			mustRE(`(?m)^\s*import\s+([A-Za-z_][\w.]*)`),
-			mustRE(`(?m)^\s*from\s+([A-Za-z_][\w.]*)\s+import\s+`),
-		},
-		skipTests: true,
-	},
-	{
 		name: "java",
 		exts: extSet(".java"),
 		funcRes: []*regexp.Regexp{
