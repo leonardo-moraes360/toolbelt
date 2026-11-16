@@ -75,8 +75,52 @@ func TestRunVisualSkipWithoutManifest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !rep.Skipped || rep.Verdict != VerdictPass {
-		t.Fatalf("expected graceful skip pass: %+v", rep)
+	if !rep.Skipped || rep.Verdict != VerdictSkipped {
+		t.Fatalf("expected graceful SKIPPED, got %+v", rep)
+	}
+}
+
+func TestRunVisualEmptyScreensSkipped(t *testing.T) {
+	dir := t.TempDir()
+	bin := filepath.Join(dir, "bin")
+	if err := os.MkdirAll(bin, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	fake := filepath.Join(bin, "chromium")
+	if err := os.WriteFile(fake, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("TB_BROWSER", fake)
+	t.Setenv("PATH", bin)
+
+	toolbelt := filepath.Join(dir, ".toolbelt")
+	if err := os.MkdirAll(toolbelt, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	manifest := filepath.Join(toolbelt, "screens.yaml")
+	content := []byte("version: 1\nbase_url: http://127.0.0.1:9\nscreens: []\n")
+	if err := os.WriteFile(manifest, content, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	rep, err := RunVisual(context.Background(), dir, VisualConfig{SkipOK: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !rep.Skipped {
+		t.Fatalf("expected top-level skipped=true for screens: [], got %+v", rep)
+	}
+	if rep.SkipReason == "" {
+		t.Fatal("expected skip_reason for empty screens")
+	}
+	if rep.Verdict != VerdictSkipped {
+		t.Fatalf("expected SKIPPED for empty screens, got %s", rep.Verdict)
+	}
+	if rep.Screens == nil {
+		t.Fatal("expected screens=[] not null")
+	}
+	if len(rep.Screens) != 0 {
+		t.Fatalf("expected 0 screen results, got %d", len(rep.Screens))
 	}
 }
 
@@ -113,8 +157,8 @@ func TestRunVisualAllScreensSkippedAggregates(t *testing.T) {
 	if rep.SkipReason == "" {
 		t.Fatal("expected skip_reason when all screens skipped")
 	}
-	if rep.Verdict != VerdictPass {
-		t.Fatalf("expected PASS with skip-unavailable, got %s", rep.Verdict)
+	if rep.Verdict != VerdictSkipped {
+		t.Fatalf("expected SKIPPED when all screens skipped, got %s", rep.Verdict)
 	}
 	if len(rep.Screens) != 2 {
 		t.Fatalf("expected 2 screen results, got %d", len(rep.Screens))
@@ -136,6 +180,42 @@ func TestAggregateVisualSkippedPartial(t *testing.T) {
 	aggregateVisualSkipped(rep)
 	if rep.Skipped {
 		t.Fatal("partial skip must not set top-level skipped")
+	}
+}
+
+func TestAggregateVisualSkippedEmpty(t *testing.T) {
+	rep := &VisualReport{Screens: []ScreenResult{}}
+	aggregateVisualSkipped(rep)
+	if !rep.Skipped {
+		t.Fatal("empty screens must set top-level skipped")
+	}
+	if rep.SkipReason == "" {
+		t.Fatal("expected skip_reason for empty screens")
+	}
+}
+
+func TestVisualVerdictSkippedNotPass(t *testing.T) {
+	if got := visualVerdict(true, true, true); got != VerdictSkipped {
+		t.Fatalf("skipped+skipOK => SKIPPED, got %s", got)
+	}
+	if got := visualVerdict(true, true, false); got != VerdictFail {
+		t.Fatalf("skipped without skipOK => FAIL, got %s", got)
+	}
+	if got := visualVerdict(false, true, true); got != VerdictPass {
+		t.Fatalf("not skipped + allPass => PASS, got %s", got)
+	}
+}
+
+func TestRunVisualSkipWithoutManifestFailsWhenNotOK(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("TB_BROWSER", "this-browser-does-not-exist-xyz")
+	t.Setenv("PATH", dir)
+	rep, err := RunVisual(context.Background(), dir, VisualConfig{SkipOK: false})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !rep.Skipped || rep.Verdict != VerdictFail {
+		t.Fatalf("expected FAIL when skip-unavailable=false, got %+v", rep)
 	}
 }
 
