@@ -648,6 +648,53 @@ func TestRunRetriesGenuineFailure(t *testing.T) {
 	}
 }
 
+func TestRunRejectsOptionInjection(t *testing.T) {
+	dir := t.TempDir()
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "a@b.c")
+	runGit(t, dir, "config", "user.name", "t")
+	runGit(t, dir, "commit", "--allow-empty", "-m", "a")
+	runGit(t, dir, "commit", "--allow-empty", "-m", "b")
+
+	outDir := t.TempDir()
+	injected := filepath.Join(outDir, "pwned")
+	cfg := DefaultConfig(dir)
+	cfg.BaseRef = "--output=" + injected
+	cfg.HeadRef = "HEAD"
+	cfg.VisibleTest = "true"
+	cfg.MaxIterations = 1
+	_, err := Run(context.Background(), &cfg)
+	if err == nil {
+		t.Fatal("injeção em base deveria falhar")
+	}
+	if _, statErr := os.Stat(injected); statErr == nil {
+		t.Fatal("não deveria criar arquivo alvo")
+	}
+	if _, statErr := os.Stat(injected + "..HEAD"); statErr == nil {
+		t.Fatal("não deveria criar arquivo via --output")
+	}
+}
+
+func TestRunRejectsMissingSHA(t *testing.T) {
+	dir := t.TempDir()
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "a@b.c")
+	runGit(t, dir, "config", "user.name", "t")
+	runGit(t, dir, "commit", "--allow-empty", "-m", "a")
+	cfg := DefaultConfig(dir)
+	cfg.BaseRef = "dddddddddddddddddddddddddddddddddddddddd"
+	cfg.HeadRef = "HEAD"
+	cfg.VisibleTest = "true"
+	cfg.MaxIterations = 1
+	_, err := Run(context.Background(), &cfg)
+	if err == nil {
+		t.Fatal("SHA inexistente deveria falhar")
+	}
+	if !strings.Contains(err.Error(), "inexistente") {
+		t.Fatalf("erro claro esperado: %v", err)
+	}
+}
+
 func runGit(t *testing.T, dir string, args ...string) {
 	t.Helper()
 	cmd := exec.Command("git", args...)

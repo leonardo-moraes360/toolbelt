@@ -18,15 +18,23 @@ func CheckPinnedApproval(repo, base, approved, head string) (*PinnedApproval, er
 	if approved == "" {
 		return nil, nil
 	}
+	baseSHA, err := resolveGitRef(repo, base)
+	if err != nil {
+		return nil, fmt.Errorf("base: %w", err)
+	}
 	resolved, err := resolveGitRef(repo, approved)
 	if err != nil {
 		return nil, fmt.Errorf("approved-sha: %w", err)
 	}
-	approvedID, err := gitPatchIDStable(repo, base, resolved)
+	headSHA, err := resolveGitRef(repo, head)
+	if err != nil {
+		return nil, fmt.Errorf("head: %w", err)
+	}
+	approvedID, err := gitPatchIDStable(repo, baseSHA, resolved)
 	if err != nil {
 		return nil, fmt.Errorf("patch-id base..approved: %w", err)
 	}
-	headID, err := gitPatchIDStable(repo, base, head)
+	headID, err := gitPatchIDStable(repo, baseSHA, headSHA)
 	if err != nil {
 		return nil, fmt.Errorf("patch-id base..head: %w", err)
 	}
@@ -39,7 +47,7 @@ func CheckPinnedApproval(repo, base, approved, head string) (*PinnedApproval, er
 	if out.Match {
 		return out, nil
 	}
-	summary, err := gitRangeDiff(repo, base, resolved, head)
+	summary, err := gitRangeDiff(repo, baseSHA, resolved, headSHA)
 	if err != nil {
 		return nil, err
 	}
@@ -69,7 +77,7 @@ func gitPatchIDStable(repo, base, head string) (string, error) {
 func gitRangeDiff(repo, base, approved, head string) (string, error) {
 	left := base + ".." + approved
 	right := base + ".." + head
-	cmd := exec.Command("git", "range-diff", left, right) //nolint:gosec // refs do operador
+	cmd := exec.Command("git", "range-diff", left, right) //nolint:gosec // SHAs já resolvidos (sem '-')
 	cmd.Dir = repo
 	out, err := cmd.CombinedOutput()
 	if err != nil {

@@ -512,11 +512,11 @@ qualquer etapa falhar (mesma semântica de cada comando avulso).
 tb stack <op> [<op>...] [flags]
 
 Flags:
-  --base <ref>           Ref base compartilhada (default: HEAD~1)
-  --head <ref>           Ref head compartilhada (default: HEAD)
+  --base <ref>           Ref base compartilhada (default: HEAD~1; validada/resolvida)
+  --head <ref>           Ref head compartilhada (default: HEAD; validada/resolvida)
   --fail-fast            Para na primeira etapa que falhar
   --ticket <path>        Ticket/rd.md (review/drift/verify; default: rd.md)
-  --approved-sha <sha>   SHA aprovado (review/drift)
+  --approved-sha <sha>   SHA aprovado (review/drift; validado/resolvido)
   --warn-only            guard: exit 0 mesmo com SeverityError
   --test-cmd <cmd>       verify: testes visíveis
   --hidden-test-cmd <cmd> verify: testes ocultos
@@ -550,15 +550,16 @@ Analisa o diff entre commits em busca de paths protegidos e padrões anti-trapa�
 tb guard check [base..head] [flags]
 
 Flags:
-  --base <ref>   Ref base (default: HEAD~1)
-  --head <ref>   Ref head (default: HEAD)
+  --base <ref>   Ref base (default: HEAD~1; validada/resolvida para SHA)
+  --head <ref>   Ref head (default: HEAD; validada/resolvida para SHA)
   --warn-only    Exit 0 mesmo com SeverityError (opt-out do default CI-safe)
   --strict       Deprecated: falha em SeverityError já é o default
   --json         Saída em JSON (flag global)
 ```
 
-Por default, exit ≠ 0 quando há `SeverityError`. No modo texto limpo imprime
-`guard: ok (N regras, 0 violações)`.
+Refs que começam com `-` ou SHA inexistente saem com erro claro (sem chamar
+`git` de forma que interprete a ref como opção). Por default, exit ≠ 0 quando
+há `SeverityError`. No modo texto limpo imprime `guard: ok (N regras, 0 violações)`.
 
 **Exemplos:**
 
@@ -663,9 +664,13 @@ Detecta mudanças fora do scope declarado no ticket/rd.md, toques em
 (mandate). O parser de scope/forbidden é o mesmo do `tb review`
 (YAML frontmatter ou Markdown `## Scope` / `## Forbidden` / listas / globs com `**`).
 
-`--base` / `base_commit` do ticket (ex.: `HEAD^`, tags, SHA curto) são
-resolvidos com `git rev-parse` antes da comparação — evita falso
-`base_mismatch` por comparar a string da ref com o SHA declarado.
+`--base` / `base_commit` do ticket (ex.: `HEAD^`, tags, SHA curto) e
+`--head` / `--approved-sha` (CLI e MCP) são validados (rejeitam refs que
+começam com `-`) e resolvidos com
+`git rev-parse --verify --end-of-options <ref>^{commit}` antes de qualquer
+`git diff`/`range-diff` — evita injeção de opções do git, SHA inexistente
+opaco e falso `base_mismatch` por comparar a string da ref com o SHA
+declarado. O SHA resolvido é o que segue no restante do fluxo.
 
 ```bash
 tb drift [ticket] [flags]

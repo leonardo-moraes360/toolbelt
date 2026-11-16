@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/leonardo-moraes360/toolbelt/internal/config"
+	"github.com/leonardo-moraes360/toolbelt/internal/gitref"
 	"github.com/leonardo-moraes360/toolbelt/internal/graph"
 	"github.com/leonardo-moraes360/toolbelt/internal/guard"
 	"github.com/leonardo-moraes360/toolbelt/internal/mem"
@@ -169,68 +170,92 @@ func Prepare(opts *Options) (*Shared, error) {
 		}
 		repo = cwd
 	}
-	base := opts.Base
-	if base == "" {
-		base = "HEAD~1"
+	base, head, err := resolveStackRefs(repo, opts)
+	if err != nil {
+		return nil, err
 	}
-	head := opts.Head
-	if head == "" {
-		head = "HEAD"
-	}
-	base = resolveEffectiveBase(repo, base, opts.Ticket)
-
 	loaders := opts.Loaders
 	if loaders == nil {
 		loaders = defaultLoaders()
 	}
-
-	shared := &Shared{
-		RepoDir: repo,
-		Base:    base,
-		Head:    head,
-	}
+	shared := &Shared{RepoDir: repo, Base: base, Head: head}
 	if fileCfg, err := config.Load(); err == nil {
 		shared.FileConfig = fileCfg
 	}
-
-	diff, err := loaders.UnifiedDiff(repo, base, head)
-	if err != nil {
+	if err := loadSharedGit(shared, loaders); err != nil {
 		return nil, err
+	}
+	if err := loadSharedExtras(opts, shared, loaders); err != nil {
+		return nil, err
+	}
+	return shared, nil
+}
+
+func resolveStackRefs(repo string, opts *Options) (base, head string, err error) {
+	base = opts.Base
+	if base == "" {
+		base = "HEAD~1"
+	}
+	head = opts.Head
+	if head == "" {
+		head = "HEAD"
+	}
+	base = resolveEffectiveBase(repo, base, opts.Ticket)
+	base, head, err = gitref.ResolvePair(repo, base, head)
+	if err != nil {
+		return "", "", err
+	}
+	if opts.ApprovedSHA != "" {
+		approved, resolveErr := gitref.Resolve(repo, opts.ApprovedSHA)
+		if resolveErr != nil {
+			return "", "", fmt.Errorf("approved-sha: %w", resolveErr)
+		}
+		opts.ApprovedSHA = approved
+	}
+	return base, head, nil
+}
+
+func loadSharedGit(shared *Shared, loaders *Loaders) error {
+	diff, err := loaders.UnifiedDiff(shared.RepoDir, shared.Base, shared.Head)
+	if err != nil {
+		return err
 	}
 	shared.Diff = diff
 	shared.DiffLoads++
 
-	nameStatus, err := loaders.NameStatus(repo, base, head)
+	nameStatus, err := loaders.NameStatus(shared.RepoDir, shared.Base, shared.Head)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	shared.NameStatus = nameStatus
 	shared.NameStatusLoads++
 
-	changed, err := loaders.ChangedFiles(repo, base, head)
+	changed, err := loaders.ChangedFiles(shared.RepoDir, shared.Base, shared.Head)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	shared.Changed = changed
 	shared.IndexLoads++
+	return nil
+}
 
-	invariants, err := loaders.Invariants(repo)
+func loadSharedExtras(opts *Options, shared *Shared, loaders *Loaders) error {
+	invariants, err := loaders.Invariants(shared.RepoDir)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	shared.Invariants = invariants
 	shared.MemLoads++
 
 	if opts.LoadGraph || graph.Enabled() {
-		idx, gErr := loaders.GraphIndex(repo)
+		idx, gErr := loaders.GraphIndex(shared.RepoDir)
 		if gErr != nil {
-			return nil, gErr
+			return gErr
 		}
 		shared.GraphIndex = idx
 		shared.GraphLoads++
 	}
-
-	return shared, nil
+	return nil
 }
 
 func defaultLoaders() *Loaders {
@@ -244,7 +269,7 @@ func defaultLoaders() *Loaders {
 }
 
 func gitUnifiedDiff(repo, base, head string) (string, error) {
-	cmd := exec.Command("git", "diff", base+".."+head) //nolint:gosec // refs do operador
+	cmd := exec.Command("git", "diff", "--end-of-options", base+".."+head) //nolint:gosec // refs resolvidas
 	cmd.Dir = repo
 	out, err := cmd.Output()
 	if err != nil {
@@ -254,7 +279,7 @@ func gitUnifiedDiff(repo, base, head string) (string, error) {
 }
 
 func gitNameStatus(repo, base, head string) (string, error) {
-	cmd := exec.Command("git", "diff", "--name-status", base+".."+head) //nolint:gosec // refs do operador
+	cmd := exec.Command("git", "diff", "--name-status", "--end-of-options", base+".."+head) //nolint:gosec // refs resolvidas
 	cmd.Dir = repo
 	out, err := cmd.Output()
 	if err != nil {
@@ -264,7 +289,7 @@ func gitNameStatus(repo, base, head string) (string, error) {
 }
 
 func gitChangedFiles(repo, base, head string) ([]string, error) {
-	cmd := exec.Command("git", "diff", "--name-only", base+".."+head) //nolint:gosec // refs do operador
+	cmd := exec.Command("git", "diff", "--name-only", "--end-of-options", base+".."+head) //nolint:gosec // refs resolvidas
 	cmd.Dir = repo
 	out, err := cmd.Output()
 	if err != nil {

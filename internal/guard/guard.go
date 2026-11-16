@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/leonardo-moraes360/toolbelt/internal/gitref"
 	"gopkg.in/yaml.v3"
 )
 
@@ -127,17 +128,20 @@ func (c *Checker) Check(baseRef, headRef string) (*CheckResult, error) {
 }
 
 func (c *Checker) CheckDiff(baseRef, headRef, nameStatus string) (*CheckResult, error) {
+	base, head, err := gitref.ResolvePair(c.repoDir, baseRef, headRef)
+	if err != nil {
+		return nil, err
+	}
 	diff := nameStatus
 	if diff == "" {
-		var err error
-		diff, err = c.gitDiff(baseRef, headRef)
+		diff, err = c.gitDiff(base, head)
 		if err != nil {
 			return nil, err
 		}
 	}
 	res := &CheckResult{
-		BaseRef:      baseRef,
-		HeadRef:      headRef,
+		BaseRef:      base,
+		HeadRef:      head,
 		RulesChecked: len(c.protectedPaths),
 	}
 	for _, cf := range parseDiff(diff) {
@@ -174,7 +178,7 @@ type changed struct {
 }
 
 func (c *Checker) gitDiff(base, head string) (string, error) {
-	cmd := exec.Command("git", "diff", "--name-status", base+".."+head) //nolint:gosec // refs validados pelo operador
+	cmd := exec.Command("git", "diff", "--name-status", "--end-of-options", base+".."+head) //nolint:gosec // refs resolvidas
 	cmd.Dir = c.repoDir
 	out, err := cmd.Output()
 	return string(out), err

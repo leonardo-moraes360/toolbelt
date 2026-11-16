@@ -7,6 +7,13 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Não Lançado]
 
+### Corrigido
+- Refs de `--base`/`--head`/`--approved-sha` (CLI e MCP em guard/drift/review/verify/stack)
+  rejeitam valores que começam com `-`, resolvem via
+  `git rev-parse --verify --end-of-options <ref>^{commit}` e usam o SHA daí em
+  diante; chamadas `git` passam `--end-of-options` onde aplicável. SHA de 40 hex
+  inexistente agora falha com erro claro (`ref inexistente ou inválida`)
+
 ## [0.0.2] - 2026-11-16
 
 ### Adicionado

@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/leonardo-moraes360/toolbelt/internal/gitref"
 	"github.com/leonardo-moraes360/toolbelt/internal/mem"
 	"gopkg.in/yaml.v3"
 )
@@ -109,6 +110,12 @@ func Run(cfg *Config) (*Report, error) {
 	if ticket != nil && ticket.BaseCommit != "" && cfg.BaseRef == "HEAD~1" {
 		cfg.BaseRef = ticket.BaseCommit
 	}
+	base, head, err := gitref.ResolvePair(cfg.RepoDir, cfg.BaseRef, cfg.HeadRef)
+	if err != nil {
+		return nil, err
+	}
+	cfg.BaseRef = base
+	cfg.HeadRef = head
 
 	changed, err := resolveChanged(cfg)
 	if err != nil {
@@ -544,13 +551,7 @@ func reconcileDriftBase(repo string, drift *DriftReport) {
 }
 
 func resolveGitRef(repo, ref string) (string, error) {
-	cmd := exec.Command("git", "rev-parse", "--verify", ref) //nolint:gosec // refs do operador/ticket
-	cmd.Dir = repo
-	out, err := cmd.Output()
-	if err != nil {
-		return "", err
-	}
-	return strings.TrimSpace(string(out)), nil
+	return gitref.Resolve(repo, ref)
 }
 
 func LoadTicket(path string) (*TicketScope, error) {
@@ -895,7 +896,7 @@ func resolveInvariants(cfg *Config) []mem.Invariant {
 }
 
 func listChangedFiles(repo, base, head string) ([]string, error) {
-	cmd := exec.Command("git", "diff", "--name-only", base+".."+head) //nolint:gosec // refs do operador
+	cmd := exec.Command("git", "diff", "--name-only", "--end-of-options", base+".."+head) //nolint:gosec // refs resolvidas
 	cmd.Dir = repo
 	out, err := cmd.Output()
 	if err != nil {
@@ -912,7 +913,7 @@ func listChangedFiles(repo, base, head string) ([]string, error) {
 }
 
 func gitDiff(repo, base, head string) (string, error) {
-	cmd := exec.Command("git", "diff", base+".."+head) //nolint:gosec // refs do operador
+	cmd := exec.Command("git", "diff", "--end-of-options", base+".."+head) //nolint:gosec // refs resolvidas
 	cmd.Dir = repo
 	out, err := cmd.Output()
 	if err != nil {
