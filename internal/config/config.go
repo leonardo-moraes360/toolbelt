@@ -95,6 +95,8 @@ type BenchConfig struct {
 type VerifyConfig struct {
 	TestCmd       string `yaml:"test_cmd"`
 	HiddenTestCmd string `yaml:"hidden_test_cmd"`
+	BuildCmd      string `yaml:"build_cmd,omitempty"`
+	LintCmd       string `yaml:"lint_cmd,omitempty"`
 }
 
 // DefaultConfig retorna a configuração padrão.
