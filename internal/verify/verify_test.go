@@ -664,6 +664,9 @@ func TestRunFailFastMissingCommand(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error when test_cmd binary is missing")
 	}
+	if !IsMissingCommand(err) {
+		t.Fatalf("expected MissingCommandError, got %T %v", err, err)
+	}
 	if !strings.Contains(err.Error(), "não encontrado") {
 		t.Fatalf("error should mention missing command, got %v", err)
 	}
@@ -676,7 +679,13 @@ func TestRunFailFastMissingCommand(t *testing.T) {
 	if want := fmt.Sprintf(errMissingCmdFmt, cfg.VisibleTest, "verify.test_cmd"); err.Error() != want {
 		t.Fatalf("error=%q want %q", err.Error(), want)
 	}
-	if res != nil && res.Iterations > 1 {
+	if res == nil {
+		t.Fatal("missing command must return Result with error envelope")
+	}
+	if res.Error == "" || res.Verdict != VerdictFail {
+		t.Fatalf("result must carry FAIL + error, got verdict=%s error=%q", res.Verdict, res.Error)
+	}
+	if res.Iterations > 1 {
 		t.Fatalf("missing command must fail-fast without retries, iterations=%d", res.Iterations)
 	}
 }

@@ -62,6 +62,25 @@ type Result struct {
 	HeadSHA         string             `json:"head_sha,omitempty"`
 	WorkDir         string             `json:"workdir,omitempty"`
 	Metrics         map[string]string  `json:"metrics,omitempty"`
+	Error           string             `json:"error,omitempty"`
+}
+
+type MissingCommandError struct {
+	Command   string
+	ConfigKey string
+}
+
+func (e *MissingCommandError) Error() string {
+	return fmt.Sprintf(errMissingCmdFmt, e.Command, e.ConfigKey)
+}
+
+func (e *MissingCommandError) ExitCode() int {
+	return 127
+}
+
+func IsMissingCommand(err error) bool {
+	var e *MissingCommandError
+	return errors.As(err, &e)
 }
 
 func DefaultConfig(repo string) Config {
@@ -121,6 +140,11 @@ func Run(ctx context.Context, cfg *Config) (*Result, error) {
 		res.Iterations = i
 		passed, iterErr := runVerifyIteration(ctx, &execCfg, res)
 		if iterErr != nil {
+			if IsMissingCommand(iterErr) {
+				res.Verdict = VerdictFail
+				res.Error = iterErr.Error()
+				return res, iterErr
+			}
 			return nil, iterErr
 		}
 		if passed {
@@ -267,7 +291,7 @@ func runConfiguredCmd(ctx context.Context, cfg *Config, command, configKey strin
 		return true, nil
 	}
 	if isCommandMissing(err) {
-		return false, fmt.Errorf(errMissingCmdFmt, command, configKey)
+		return false, &MissingCommandError{Command: command, ConfigKey: configKey}
 	}
 	log.Debug("teste falhou", "output", string(out), "error", err)
 	return false, nil
