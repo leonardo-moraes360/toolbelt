@@ -211,34 +211,40 @@ func Save(cfg *Config, path string) error {
 // Init cria o diretório de configuração e o arquivo de configuração padrão.
 // dir é o caminho completo do diretório (ex: /home/user/.config/toolbelt ou /project/.toolbelt)
 func Init(dir string) error {
+	_, err := InitDetailed(dir)
+	return err
+}
+
+// InitDetailed is like Init but also returns toolchain detection details (PATH warnings).
+func InitDetailed(dir string) (DetectedCmd, error) {
+	var detected DetectedCmd
 	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return fmt.Errorf("creating config dir: %w", err)
+		return detected, fmt.Errorf("creating config dir: %w", err)
 	}
 
-	// Cria subdiretórios
 	subdirs := []string{"vault", "logs", "bench"}
 	for _, sub := range subdirs {
 		subpath := filepath.Join(dir, sub)
 		if err := os.MkdirAll(subpath, 0o755); err != nil {
-			return fmt.Errorf("creating %s dir: %w", sub, err)
+			return detected, fmt.Errorf("creating %s dir: %w", sub, err)
 		}
 	}
 
-	// Salva configuração padrão
 	configPath := filepath.Join(dir, DefaultConfigFile)
 	if _, err := os.Stat(configPath); errors.Is(err, os.ErrNotExist) {
 		cfg := DefaultConfig()
 		if root, ok := projectRootForInit(dir); ok {
-			if cmd := DetectTestCmd(root); cmd != "" {
-				cfg.Verify.TestCmd = cmd
+			detected = DetectTestCmdDetailed(root)
+			if detected.Cmd != "" {
+				cfg.Verify.TestCmd = detected.Cmd
 			}
 		}
 		if err := Save(cfg, configPath); err != nil {
-			return fmt.Errorf("saving default config: %w", err)
+			return detected, fmt.Errorf("saving default config: %w", err)
 		}
 	}
 
-	return nil
+	return detected, nil
 }
 
 // Exists verifica se o diretório de configuração existe.

@@ -2,44 +2,60 @@ package config
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
 )
 
-var makeTargetRe = regexp.MustCompile(`(?m)^([a-zA-Z0-9][^:\n]*):`)
+var (
+	makeTargetRe = regexp.MustCompile(`(?m)^([a-zA-Z0-9][^:\n]*):`)
+	lookPath     = exec.LookPath
+)
+
+// DetectedCmd is the test command chosen for a repo plus an optional warning.
+type DetectedCmd struct {
+	Cmd     string
+	Warning string
+}
 
 // DetectTestCmd inspeciona a raiz do projeto e devolve o test_cmd adequado
 // ao toolchain detectado. Retorna string vazia se nada for reconhecido.
 func DetectTestCmd(root string) string {
+	return DetectTestCmdDetailed(root).Cmd
+}
+
+// DetectTestCmdDetailed is like DetectTestCmd but also reports PATH fallbacks.
+func DetectTestCmdDetailed(root string) DetectedCmd {
 	if root == "" {
-		return ""
+		return DetectedCmd{}
 	}
 
 	if fileExists(filepath.Join(root, "go.mod")) {
-		return "go test ./..."
+		return resolveCmd("go test ./...")
 	}
 
 	if fileExists(filepath.Join(root, "package.json")) {
 		if cmd := detectNodeTestCmd(root); cmd != "" {
-			return cmd
+			return resolveNodeCmd(cmd)
 		}
 	}
 
 	if fileExists(filepath.Join(root, "Cargo.toml")) {
-		return "cargo test"
+		return resolveCmd("cargo test")
 	}
 
-	if cmd := detectPythonTestCmd(root); cmd != "" {
-		return cmd
+	if d := detectPythonTestCmd(root); d.Cmd != "" {
+		return d
 	}
 
 	if cmd := detectMakeTestCmd(root); cmd != "" {
-		return cmd
+		return resolveCmd(cmd)
 	}
 
-	return ""
+	return DetectedCmd{}
 }
 
 func detectNodeTestCmd(root string) string {
@@ -72,6 +88,15 @@ func detectNodeTestCmd(root string) string {
 	}
 }
 
+func resolveNodeCmd(preferred string) DetectedCmd {
+	fallbacks := []string{preferred}
+	switch strings.Fields(preferred)[0] {
+	case "pnpm", "yarn", "bun":
+		fallbacks = append(fallbacks, "npm test")
+	}
+	return resolveCmd(fallbacks...)
+}
+
 func nodePackageManager(root, packageManagerField string) string {
 	if pm := packageManagerFromField(packageManagerField); pm != "" {
 		return pm
@@ -102,7 +127,7 @@ func packageManagerFromField(field string) string {
 	}
 }
 
-func detectPythonTestCmd(root string) string {
+func detectPythonTestCmd(root string) DetectedCmd {
 	hasPyProject := fileExists(filepath.Join(root, "pyproject.toml"))
 	hasPytestIni := fileExists(filepath.Join(root, "pytest.ini"))
 	hasTox := fileExists(filepath.Join(root, "tox.ini"))
@@ -110,13 +135,59 @@ func detectPythonTestCmd(root string) string {
 	hasUvLock := fileExists(filepath.Join(root, "uv.lock"))
 
 	if !hasPyProject && !hasPytestIni && !hasTox && !hasSetupCfg && !hasUvLock {
-		return ""
+		return DetectedCmd{}
 	}
 
 	if hasUvLock {
-		return "uv run pytest"
+		return resolveCmd(
+			"uv run pytest",
+			"pytest",
+			"python -m pytest",
+			"python3 -m pytest",
+		)
 	}
-	return "pytest"
+	return resolveCmd("pytest", "python -m pytest", "python3 -m pytest")
+}
+
+func resolveCmd(candidates ...string) DetectedCmd {
+	var preferred string
+	for _, cmd := range candidates {
+		cmd = strings.TrimSpace(cmd)
+		if cmd == "" {
+			continue
+		}
+		if preferred == "" {
+			preferred = cmd
+		}
+		bin := commandBinary(cmd)
+		if bin == "" {
+			continue
+		}
+		if _, err := lookPath(bin); err == nil {
+			if cmd == preferred {
+				return DetectedCmd{Cmd: cmd}
+			}
+			return DetectedCmd{
+				Cmd:     cmd,
+				Warning: fmt.Sprintf("%s não encontrado no PATH; usando %s", commandBinary(preferred), cmd),
+			}
+		}
+	}
+	if preferred == "" {
+		return DetectedCmd{}
+	}
+	return DetectedCmd{
+		Cmd:     preferred,
+		Warning: fmt.Sprintf("%s não encontrado no PATH; verify.test_cmd %q pode falhar", commandBinary(preferred), preferred),
+	}
+}
+
+func commandBinary(cmd string) string {
+	fields := strings.Fields(cmd)
+	if len(fields) == 0 {
+		return ""
+	}
+	return fields[0]
 }
 
 func detectMakeTestCmd(root string) string {

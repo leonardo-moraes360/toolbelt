@@ -1,12 +1,32 @@
 package config
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
+func withLookPath(t *testing.T, available map[string]bool) {
+	t.Helper()
+	orig := lookPath
+	lookPath = func(file string) (string, error) {
+		if available[file] {
+			return "/fake/bin/" + file, nil
+		}
+		return "", errors.New("not found")
+	}
+	t.Cleanup(func() { lookPath = orig })
+}
+
 func TestDetectTestCmd(t *testing.T) {
+	withLookPath(t, map[string]bool{
+		"go": true, "npm": true, "pnpm": true, "yarn": true, "bun": true,
+		"cargo": true, "uv": true, "pytest": true, "make": true,
+		"python": true, "python3": true,
+	})
+
 	tests := []struct {
 		name    string
 		files   map[string]string
@@ -132,7 +152,77 @@ func TestDetectTestCmd(t *testing.T) {
 	}
 }
 
+func TestDetectTestCmd_UvMissingFallsBack(t *testing.T) {
+	withLookPath(t, map[string]bool{"pytest": true, "python": true, "python3": true})
+
+	root := t.TempDir()
+	for name, content := range map[string]string{
+		"pyproject.toml": "[project]\nname = \"typer\"\n",
+		"uv.lock":        "version = 1\n",
+	} {
+		if err := os.WriteFile(filepath.Join(root, name), []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	got := DetectTestCmdDetailed(root)
+	if got.Cmd != "pytest" {
+		t.Fatalf("cmd = %q, want pytest fallback", got.Cmd)
+	}
+	if !strings.Contains(got.Warning, "uv") {
+		t.Fatalf("expected uv PATH warning, got %q", got.Warning)
+	}
+}
+
+func TestDetectTestCmd_UvMissingFallsBackToPythonModule(t *testing.T) {
+	withLookPath(t, map[string]bool{"python3": true})
+
+	root := t.TempDir()
+	for name, content := range map[string]string{
+		"pyproject.toml": "[project]\nname = \"typer\"\n",
+		"uv.lock":        "version = 1\n",
+	} {
+		if err := os.WriteFile(filepath.Join(root, name), []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	got := DetectTestCmdDetailed(root)
+	if got.Cmd != "python3 -m pytest" {
+		t.Fatalf("cmd = %q, want python3 -m pytest", got.Cmd)
+	}
+	if got.Warning == "" {
+		t.Fatal("expected warning when falling back from uv")
+	}
+}
+
+func TestDetectTestCmd_PnpmMissingFallsBackToNpm(t *testing.T) {
+	withLookPath(t, map[string]bool{"npm": true})
+
+	root := t.TempDir()
+	for name, content := range map[string]string{
+		"package.json":   `{"scripts":{"test":"vitest"}}`,
+		"pnpm-lock.yaml": "lockfileVersion: '9.0'\n",
+	} {
+		if err := os.WriteFile(filepath.Join(root, name), []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	got := DetectTestCmdDetailed(root)
+	if got.Cmd != "npm test" {
+		t.Fatalf("cmd = %q, want npm test", got.Cmd)
+	}
+	if !strings.Contains(got.Warning, "pnpm") {
+		t.Fatalf("expected pnpm warning, got %q", got.Warning)
+	}
+}
+
 func TestInitDetectsToolchain(t *testing.T) {
+	withLookPath(t, map[string]bool{
+		"go": true, "npm": true, "pytest": true, "cargo": true, "make": true,
+	})
+
 	tests := []struct {
 		name    string
 		files   map[string]string

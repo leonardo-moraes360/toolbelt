@@ -42,6 +42,9 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 - Stubs para comandos futuros: `sandbox`, `verify`, `mem`, `graph`, `router`, `mcp`
 
 ### Corrigido
+- `tb init`: hints de `AGENTS.md`/`CLAUDE.md` ignoram fences de código longos e
+  aceitam prosa curta (“use/run/prefer …”); `verify.test_cmd` valida o binário no
+  `PATH` com fallback (ex. `uv` ausente → `pytest` / `python -m pytest`)
 - `tb review`: invariante `tests/hidden` (e `thresholds.yaml`) casa por prefixo/segmento
   de path nos arquivos alterados, não por substring no diff (evita FP quando o ticket
   só menciona a regra)
