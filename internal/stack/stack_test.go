@@ -249,8 +249,8 @@ func TestStackVerifyRunsOnHeadWorktree(t *testing.T) {
 	writeFile(t, filepath.Join(dir, "go.mod"), "module demo\ngo 1.22\n")
 	writeFile(t, filepath.Join(dir, "demo.go"), "package demo\nfunc Add(a, b int) int { return a + b }\n")
 	writeFile(t, filepath.Join(dir, "demo_test.go"), "package demo\nimport \"testing\"\nfunc TestAdd(t *testing.T) {\n\tif Add(1, 2) != 3 { t.Fatal() }\n}\n")
-	git(t, dir, "add", "-A")
-	git(t, dir, "commit", "-m", "base")
+	runGit(t, dir, "add", "-A")
+	runGit(t, dir, "commit", "-m", "base")
 	baseOut, err := exec.Command("git", "-C", dir, "rev-parse", "HEAD").Output()
 	if err != nil {
 		t.Fatal(err)
@@ -258,14 +258,14 @@ func TestStackVerifyRunsOnHeadWorktree(t *testing.T) {
 	base := strings.TrimSpace(string(baseOut))
 
 	writeFile(t, filepath.Join(dir, "marker_test.go"), "package demo\nimport \"testing\"\nfunc TestMarkerOnlyOnHead(t *testing.T) {\n\tt.Fatal(\"marker: only on head\")\n}\n")
-	git(t, dir, "add", "-A")
-	git(t, dir, "commit", "-m", "head-with-failing-marker")
+	runGit(t, dir, "add", "-A")
+	runGit(t, dir, "commit", "-m", "head-with-failing-marker")
 	headOut, err := exec.Command("git", "-C", dir, "rev-parse", "HEAD").Output()
 	if err != nil {
 		t.Fatal(err)
 	}
 	head := strings.TrimSpace(string(headOut))
-	git(t, dir, "checkout", "-q", base)
+	runGit(t, dir, "checkout", "-q", base)
 
 	res, err := Run(context.Background(), &Options{
 		RepoDir: dir,

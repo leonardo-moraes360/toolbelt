@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"os/exec"
@@ -115,10 +116,7 @@ func TestVerifyMissingCommandExit127JSONEnvelope(t *testing.T) {
 	if exitErr.ExitCode() != 127 {
 		t.Fatalf("exit=%d want 127\n%s", exitErr.ExitCode(), out)
 	}
-	var res verify.Result
-	if jerr := json.Unmarshal(out, &res); jerr != nil {
-		t.Fatalf("deve emitir envelope JSON: %v\n%s", jerr, out)
-	}
+	res := decodeVerifyResultJSON(t, out)
 	if res.Error == "" {
 		t.Fatalf("JSON deve incluir error:\n%s", out)
 	}
@@ -156,10 +154,7 @@ func TestVerifyMissingBuildCommandExit127JSON(t *testing.T) {
 	if exitErr.ExitCode() != 127 {
 		t.Fatalf("exit=%d want 127\n%s", exitErr.ExitCode(), out)
 	}
-	var res verify.Result
-	if jerr := json.Unmarshal(out, &res); jerr != nil {
-		t.Fatalf("deve emitir envelope JSON: %v\n%s", jerr, out)
-	}
+	res := decodeVerifyResultJSON(t, out)
 	if !strings.Contains(res.Error, "verify.build_cmd") {
 		t.Fatalf("error deve citar build_cmd: %q", res.Error)
 	}
@@ -199,4 +194,22 @@ func runTBErr(tbBin, dir string, args ...string) ([]byte, error) {
 	cmd := exec.Command(tbBin, args...)
 	cmd.Dir = dir
 	return cmd.CombinedOutput()
+}
+
+func decodeVerifyResultJSON(t *testing.T, out []byte) verify.Result {
+	t.Helper()
+	marker := []byte(`"verdict"`)
+	idx := bytes.LastIndex(out, marker)
+	if idx < 0 {
+		t.Fatalf("campo verdict não encontrado:\n%s", out)
+	}
+	start := idx
+	for start > 0 && out[start] != '{' {
+		start--
+	}
+	var res verify.Result
+	if err := json.Unmarshal(out[start:], &res); err != nil {
+		t.Fatalf("deve emitir envelope JSON: %v\n%s", err, out[start:])
+	}
+	return res
 }
