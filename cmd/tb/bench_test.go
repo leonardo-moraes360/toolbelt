@@ -2,6 +2,7 @@ package main
 
 import (
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -116,6 +117,159 @@ func TestBenchCompareHasAgentFlag(t *testing.T) {
 	f := benchCompareCmd.Flags().Lookup("agent")
 	if f == nil {
 		t.Fatal("bench compare must expose --agent")
+	}
+}
+
+func TestParseBenchRunFlagsHonorsConfigDirs(t *testing.T) {
+	tmp := t.TempDir()
+	chdir(t, tmp)
+
+	tasks := filepath.Join(tmp, "custom-tasks")
+	fixtures := filepath.Join(tmp, "custom-fixtures")
+	outDir := filepath.Join(tmp, "custom-out")
+
+	cfg := config.DefaultConfig()
+	cfg.Bench.DefaultAgent = "echo hi {prompt}"
+	cfg.Bench.TasksDir = tasks
+	cfg.Bench.FixturesDir = fixtures
+	cfg.Bench.OutputDir = outDir
+	if err := config.Save(cfg, config.LocalConfigPath()); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	cmd := newBenchRunTestCmd()
+	opts, err := parseBenchRunFlags(cmd)
+	if err != nil {
+		t.Fatalf("parseBenchRunFlags: %v", err)
+	}
+	if opts.tasksDir != tasks {
+		t.Fatalf("tasksDir = %q, want %q", opts.tasksDir, tasks)
+	}
+	if opts.fixturesDir != fixtures {
+		t.Fatalf("fixturesDir = %q, want %q", opts.fixturesDir, fixtures)
+	}
+	if opts.outputDir != outDir {
+		t.Fatalf("outputDir = %q, want %q", opts.outputDir, outDir)
+	}
+}
+
+func TestParseBenchRunFlagsCLIOverridesConfigDirs(t *testing.T) {
+	tmp := t.TempDir()
+	chdir(t, tmp)
+
+	cfg := config.DefaultConfig()
+	cfg.Bench.DefaultAgent = "echo hi {prompt}"
+	cfg.Bench.TasksDir = filepath.Join(tmp, "from-yaml-tasks")
+	cfg.Bench.FixturesDir = filepath.Join(tmp, "from-yaml-fixtures")
+	if err := config.Save(cfg, config.LocalConfigPath()); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	cliTasks := filepath.Join(tmp, "from-cli-tasks")
+	cliFixtures := filepath.Join(tmp, "from-cli-fixtures")
+	cmd := newBenchRunTestCmd()
+	if err := cmd.Flags().Set("tasks-dir", cliTasks); err != nil {
+		t.Fatalf("Set tasks-dir: %v", err)
+	}
+	if err := cmd.Flags().Set("fixtures-dir", cliFixtures); err != nil {
+		t.Fatalf("Set fixtures-dir: %v", err)
+	}
+
+	opts, err := parseBenchRunFlags(cmd)
+	if err != nil {
+		t.Fatalf("parseBenchRunFlags: %v", err)
+	}
+	if opts.tasksDir != cliTasks {
+		t.Fatalf("tasksDir = %q, want CLI override %q", opts.tasksDir, cliTasks)
+	}
+	if opts.fixturesDir != cliFixtures {
+		t.Fatalf("fixturesDir = %q, want CLI override %q", opts.fixturesDir, cliFixtures)
+	}
+}
+
+func TestResolveAgentCommandUsesConfigFileFlag(t *testing.T) {
+	tmp := t.TempDir()
+	chdir(t, tmp)
+
+	cfgPath := filepath.Join(tmp, "alt-config.yaml")
+	cfg := config.DefaultConfig()
+	cfg.Bench.DefaultAgent = "echo FROM_C_FLAG {prompt}"
+	if err := config.Save(cfg, cfgPath); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	config.SetFile(cfgPath)
+	t.Cleanup(func() { config.SetFile("") })
+
+	got, err := resolveAgentCommand("", false)
+	if err != nil {
+		t.Fatalf("resolveAgentCommand: %v", err)
+	}
+	if got != "echo FROM_C_FLAG {prompt}" {
+		t.Fatalf("got %q, want default_agent from -c file", got)
+	}
+}
+
+func TestParseBenchRunFlagsUsesConfigFileFlagDirs(t *testing.T) {
+	tmp := t.TempDir()
+	chdir(t, tmp)
+
+	tasks := filepath.Join(tmp, "abs-tasks")
+	fixtures := filepath.Join(tmp, "abs-fixtures")
+	outDir := filepath.Join(tmp, "abs-out")
+	cfgPath := filepath.Join(tmp, "alt-config.yaml")
+
+	cfg := config.DefaultConfig()
+	cfg.Bench.DefaultAgent = "echo hi {prompt}"
+	cfg.Bench.TasksDir = tasks
+	cfg.Bench.FixturesDir = fixtures
+	cfg.Bench.OutputDir = outDir
+	if err := config.Save(cfg, cfgPath); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	config.SetFile(cfgPath)
+	t.Cleanup(func() { config.SetFile("") })
+
+	cmd := newBenchRunTestCmd()
+	opts, err := parseBenchRunFlags(cmd)
+	if err != nil {
+		t.Fatalf("parseBenchRunFlags: %v", err)
+	}
+	if opts.tasksDir != tasks {
+		t.Fatalf("tasksDir = %q, want %q from -c", opts.tasksDir, tasks)
+	}
+	if opts.fixturesDir != fixtures {
+		t.Fatalf("fixturesDir = %q, want %q from -c", opts.fixturesDir, fixtures)
+	}
+	if opts.outputDir != outDir {
+		t.Fatalf("outputDir = %q, want %q from -c", opts.outputDir, outDir)
+	}
+}
+
+func TestResolveBenchPathPrecedence(t *testing.T) {
+	cmd := newBenchRunTestCmd()
+	got := resolveBenchPath(cmd, "tasks-dir", "/from/config", "bench/tasks")
+	if got != "/from/config" {
+		t.Fatalf("without Changed, want config value, got %q", got)
+	}
+	if err := cmd.Flags().Set("tasks-dir", "/from/cli"); err != nil {
+		t.Fatalf("Set: %v", err)
+	}
+	got = resolveBenchPath(cmd, "tasks-dir", "/from/config", "bench/tasks")
+	if got != "/from/cli" {
+		t.Fatalf("with Changed, want CLI, got %q", got)
+	}
+}
+
+func TestDefaultOutputPathUsesOutputDir(t *testing.T) {
+	path := defaultOutputPath(nil, "/tmp/bench-out")
+	dir := filepath.Dir(path)
+	if dir != "/tmp/bench-out" {
+		t.Fatalf("dir = %q, want /tmp/bench-out", dir)
+	}
+	if filepath.Ext(path) != ".jsonl" {
+		t.Fatalf("ext = %q, want .jsonl", filepath.Ext(path))
 	}
 }
 

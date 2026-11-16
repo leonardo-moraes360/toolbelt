@@ -32,13 +32,21 @@ const (
 	SeverityWarning Severity = "warning"
 )
 
+type ViolationSource string
+
+const (
+	SourceDefault ViolationSource = "default"
+	SourceCustom  ViolationSource = "custom"
+)
+
 type Violation struct {
-	Type     ViolationType `json:"type"`
-	File     string        `json:"file"`
-	Line     int           `json:"line,omitempty"`
-	Message  string        `json:"message"`
-	Severity Severity      `json:"severity"`
-	Context  string        `json:"context,omitempty"`
+	Type     ViolationType   `json:"type"`
+	File     string          `json:"file"`
+	Line     int             `json:"line,omitempty"`
+	Message  string          `json:"message"`
+	Severity Severity        `json:"severity"`
+	Context  string          `json:"context,omitempty"`
+	Source   ViolationSource `json:"source,omitempty"`
 }
 
 type CheckResult struct {
@@ -47,9 +55,14 @@ type CheckResult struct {
 	Violations []Violation `json:"violations"`
 }
 
+type protectedEntry struct {
+	pattern string
+	custom  bool
+}
+
 type Checker struct {
 	repoDir        string
-	protectedPaths []string
+	protectedPaths []protectedEntry
 }
 
 var defaultProtectedPaths = []string{
@@ -65,8 +78,13 @@ func NewChecker(repoDir string) *Checker {
 	}
 }
 
-func loadProtectedPaths(repoDir string) []string {
-	paths := append([]string{}, defaultProtectedPaths...)
+func loadProtectedPaths(repoDir string) []protectedEntry {
+	paths := make([]protectedEntry, 0, len(defaultProtectedPaths))
+	seen := make(map[string]struct{}, len(defaultProtectedPaths))
+	for _, p := range defaultProtectedPaths {
+		seen[p] = struct{}{}
+		paths = append(paths, protectedEntry{pattern: p})
+	}
 	data, err := os.ReadFile(filepath.Join(repoDir, ".toolbelt", "guard.yaml"))
 	if err != nil {
 		return paths
@@ -77,10 +95,6 @@ func loadProtectedPaths(repoDir string) []string {
 	if err := yaml.Unmarshal(data, &raw); err != nil {
 		return paths
 	}
-	seen := make(map[string]struct{}, len(paths))
-	for _, p := range paths {
-		seen[p] = struct{}{}
-	}
 	for _, item := range raw.ProtectedPaths {
 		pattern := protectedPattern(item)
 		if pattern == "" {
@@ -90,7 +104,7 @@ func loadProtectedPaths(repoDir string) []string {
 			continue
 		}
 		seen[pattern] = struct{}{}
-		paths = append(paths, pattern)
+		paths = append(paths, protectedEntry{pattern: pattern, custom: true})
 	}
 	return paths
 }
@@ -119,9 +133,14 @@ func (c *Checker) Check(baseRef, headRef string) (*CheckResult, error) {
 				Type: ViolationTestDeletion, File: cf.path, Message: "teste removido", Severity: SeverityError,
 			})
 		}
-		if c.isProtected(cf.path) {
+		if entry, ok := c.protectedMatch(cf.path); ok {
+			src := SourceDefault
+			if entry.custom {
+				src = SourceCustom
+			}
 			res.Violations = append(res.Violations, Violation{
-				Type: ViolationProtectedPath, File: cf.path, Message: "path protegido alterado", Severity: SeverityError,
+				Type: ViolationProtectedPath, File: cf.path, Message: "path protegido alterado",
+				Severity: SeverityError, Source: src,
 			})
 		}
 		if cf.deleted {
@@ -171,29 +190,31 @@ func isTestFile(path string) bool {
 	return strings.HasSuffix(b, "_test.go") || strings.Contains(p, "/tests/") || strings.Contains(p, "/test/")
 }
 
-func (c *Checker) isProtected(path string) bool {
+func (c *Checker) protectedMatch(path string) (protectedEntry, bool) {
+	for _, entry := range c.protectedPaths {
+		if matchProtectedPattern(entry.pattern, path) {
+			return entry, true
+		}
+	}
+	return protectedEntry{}, false
+}
+
+func matchProtectedPattern(pattern, path string) bool {
 	path = filepath.ToSlash(path)
-	for _, pattern := range c.protectedPaths {
-		pattern = filepath.ToSlash(strings.TrimSpace(pattern))
-		if pattern == "" {
-			continue
-		}
-		if ok, _ := filepath.Match(pattern, path); ok {
-			return true
-		}
-		if strings.HasSuffix(pattern, "/") {
-			dir := strings.TrimSuffix(pattern, "/")
-			if path == dir || strings.HasPrefix(path, pattern) {
-				return true
-			}
-			continue
-		}
-		if strings.HasSuffix(pattern, "/*") {
-			prefix := strings.TrimSuffix(pattern, "/*")
-			if path == prefix || strings.HasPrefix(path, prefix+"/") {
-				return true
-			}
-		}
+	pattern = filepath.ToSlash(strings.TrimSpace(pattern))
+	if pattern == "" {
+		return false
+	}
+	if ok, _ := filepath.Match(pattern, path); ok {
+		return true
+	}
+	if strings.HasSuffix(pattern, "/") {
+		dir := strings.TrimSuffix(pattern, "/")
+		return path == dir || strings.HasPrefix(path, pattern)
+	}
+	if strings.HasSuffix(pattern, "/*") {
+		prefix := strings.TrimSuffix(pattern, "/*")
+		return path == prefix || strings.HasPrefix(path, prefix+"/")
 	}
 	return false
 }

@@ -377,6 +377,10 @@ tb bench run --agent "cursor-agent {prompt} --workdir {workdir}"
 # Sem --agent/--fake: usa bench.default_agent de .toolbelt/config.yaml
 tb bench run -r 1
 
+# Sem -t/-f: usa bench.tasks_dir / fixtures_dir / output_dir do YAML
+# (precedência: flag CLI > config.yaml > default; -c/--config alimenta Load)
+tb -c /tmp/alt-config.yaml bench run -r 1
+
 # Variante A/B com label e flags (gravados no JSONL)
 tb bench run --fake --label graph-off --flag graph=off
 
