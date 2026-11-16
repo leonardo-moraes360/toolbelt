@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/leonardo-moraes360/toolbelt/internal/execenv"
 	"github.com/leonardo-moraes360/toolbelt/internal/guard"
 	"github.com/leonardo-moraes360/toolbelt/internal/log"
 	"github.com/leonardo-moraes360/toolbelt/internal/review"
@@ -41,6 +42,8 @@ type Config struct {
 	Scope          []string
 	TicketPath     string
 	NameStatusDiff string
+	EnvAllow       []string
+	EnvPass        []string
 }
 
 type Result struct {
@@ -175,14 +178,14 @@ func runVerifyIteration(ctx context.Context, cfg *Config, res *Result) (bool, er
 		log.Info("iteração de verify falhou", "n", res.Iterations, "step", "build_or_lint")
 		return false, nil
 	}
-	visibleOK, err := runConfiguredCmd(ctx, cfg.RepoDir, cfg.VisibleTest, cfg.Timeout, "verify.test_cmd")
+	visibleOK, err := runConfiguredCmd(ctx, cfg, cfg.VisibleTest, "verify.test_cmd")
 	if err != nil {
 		return false, err
 	}
 	res.VisiblePassed = visibleOK
 	hiddenOK := true
 	if res.HiddenAvailable {
-		hiddenOK, err = runConfiguredCmd(ctx, cfg.RepoDir, cfg.HiddenTest, cfg.Timeout, "verify.hidden_test_cmd")
+		hiddenOK, err = runConfiguredCmd(ctx, cfg, cfg.HiddenTest, "verify.hidden_test_cmd")
 		if err != nil {
 			return false, err
 		}
@@ -198,7 +201,7 @@ func runVerifyIteration(ctx context.Context, cfg *Config, res *Result) (bool, er
 func runBuildAndLint(ctx context.Context, cfg *Config, res *Result) (bool, error) {
 	if cfg.BuildCmd != "" {
 		res.BuildRan = true
-		ok, err := runConfiguredCmd(ctx, cfg.RepoDir, cfg.BuildCmd, cfg.Timeout, "verify.build_cmd")
+		ok, err := runConfiguredCmd(ctx, cfg, cfg.BuildCmd, "verify.build_cmd")
 		if err != nil {
 			return false, err
 		}
@@ -209,7 +212,7 @@ func runBuildAndLint(ctx context.Context, cfg *Config, res *Result) (bool, error
 	}
 	if cfg.LintCmd != "" {
 		res.LintRan = true
-		ok, err := runConfiguredCmd(ctx, cfg.RepoDir, cfg.LintCmd, cfg.Timeout, "verify.lint_cmd")
+		ok, err := runConfiguredCmd(ctx, cfg, cfg.LintCmd, "verify.lint_cmd")
 		if err != nil {
 			return false, err
 		}
@@ -221,11 +224,12 @@ func runBuildAndLint(ctx context.Context, cfg *Config, res *Result) (bool, error
 	return true, nil
 }
 
-func runConfiguredCmd(ctx context.Context, dir, command string, timeout time.Duration, configKey string) (bool, error) {
-	ctx, cancel := context.WithTimeout(ctx, timeout)
+func runConfiguredCmd(ctx context.Context, cfg *Config, command, configKey string) (bool, error) {
+	ctx, cancel := context.WithTimeout(ctx, cfg.Timeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "sh", "-c", command) //nolint:gosec // ruler configurado pelo operador
-	cmd.Dir = dir
+	cmd.Dir = cfg.RepoDir
+	cmd.Env = execenv.Environ(execenv.Options{Allow: cfg.EnvAllow, Pass: cfg.EnvPass})
 	out, err := cmd.CombinedOutput()
 	if err == nil {
 		return true, nil

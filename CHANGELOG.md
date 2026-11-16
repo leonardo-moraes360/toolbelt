@@ -9,12 +9,21 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ### Adicionado
 - Flag global `tb --version` (mesma saída textual de `tb version`)
+- `tb init` grava padrões de cache/derivados em `.git/info/exclude` (grafo, logs,
+  vault, workspaces, captures, bench) sem tocar no `.gitignore` do projeto;
+  invariantes/config permanecem versionáveis (recomendação documentada em
+  `docs/cli.md`)
+- `tb mem init` reporta caminho e invariantes criadas (ou já existentes); JSON com
+  `created`/`count`/`invariants`
 
 ### Mudanças
 - `tb stack` sem operação: erro curto listando ops válidas (`verify`, `review`,
   `drift`, `guard`), sem dump de `Usage` (alinhado ao padrão de erros de domínio)
 - Help/`docs/cli.md` de `tb stack` deixam explícito que empilha operações de
   verificação e **não** é stack de branches (Graphite/git-stack)
+- `tb mem add|edit|list`: rejeitam `--category` inválida e `--ref` fora de
+  ADR/decisions, com lista dos valores válidos no erro
+- `tb mem search`: busca case- e accent-insensitive (Unicode NFD)
 - Docs: `tb drift` deixa de ser descrito como “vault vs código”; o relatório real é
   escopo / forbidden / commit base (+ `pinned_approval` opcional)
 - Docs: deixa explícito que o `tb` **não fala com o GitHub** (100% local) e precisa
@@ -23,6 +32,14 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
   linguagem `typescript` separada
 - Docs: anota a depreciação de `tb guard check --strict` (substituído pelo default
   estrito e por `--warn-only`); remove o exemplo invocável com `--strict`
+
+### Segurança
+- Processos filhos de `tb verify` / `tb stack` (verify) e MCP `tb_run` /
+  `tb_verify_run` / `tb_stack` passam a receber ambiente filtrado por allowlist
+  (PATH, HOME, LANG, TMPDIR, GOPATH/GOCACHE, NODE/npm/pnpm, etc.). Segredos
+  (`*TOKEN*`/`*SECRET*`/`*KEY*`/`*PASSWORD*`) nunca passam sem opt-in explícito
+  (`--pass-env` / `env.pass` / arg MCP `pass_env`). Extensão via `--env` /
+  `env.allow` / arg MCP `env`.
 
 ## [0.0.2] - 2026-11-16
 
