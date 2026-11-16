@@ -43,6 +43,12 @@ func TestMCPSchemaTypesAndGraphImpact(t *testing.T) {
 		{"tb_stack", "fail_fast", "boolean"},
 		{"tb_stack", "max_iter", "integer"},
 		{"tb_stack", "ops", "array"},
+		{"tb_run", "env", "array"},
+		{"tb_run", "pass_env", "array"},
+		{"tb_verify_run", "env", "array"},
+		{"tb_verify_run", "pass_env", "array"},
+		{"tb_stack", "env", "array"},
+		{"tb_stack", "pass_env", "array"},
 	}
 	for _, tc := range cases {
 		tool, ok := tools[tc.tool]

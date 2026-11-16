@@ -524,6 +524,8 @@ Flags:
   --timeout <duration>   verify: timeout (default: 10m)
   --reviewers <n>        review: máximo de goldfish
   --standards <csv>      review: papéis (scope,quality,acceptance)
+  --env <KEY>            (global) allowlist extra para o verify empilhado
+  --pass-env <KEY>       (global) opt-in explícito de segredo para o verify
 ```
 
 Operação desconhecida sai com erro claro (sem dump de `Usage`).
@@ -535,6 +537,7 @@ tb stack verify review drift guard
 tb stack guard drift --fail-fast
 tb stack review drift --base HEAD~1 --head HEAD --ticket rd.md
 tb stack verify guard --test-cmd "true" --max-iter 1
+tb stack verify --test-cmd "true" --env APP_ENV --pass-env GITHUB_TOKEN
 ```
 
 Cada item de `steps` traz `op`, `ok`, `exit_code`, `duration_ms` e `result` (o JSON
@@ -766,7 +769,16 @@ Flags:
   --ticket <path>          Ticket com Scope (exceção de `protected_paths` custom)
   --output <path> / -o     Arquivo de saída JSON
   --json                   Saída em JSON (flag global)
+  --env <KEY>              (global, repetível) inclui KEY na allowlist do filho
+  --pass-env <KEY>         (global, repetível) opt-in explícito para segredo no filho
 ```
+
+Processos filhos do verify (`sh -c` de `test_cmd`/`build_cmd`/`lint_cmd`/`hidden_test_cmd`)
+recebem só uma **allowlist** de ambiente (PATH, HOME, LANG, TMPDIR, GOPATH/GOCACHE,
+NODE/npm/pnpm essenciais, proxies, etc.). Nomes com `TOKEN`, `SECRET`, `KEY` ou
+`PASSWORD` **nunca** passam, a menos de `--pass-env KEY` (ou `env.pass` no
+`.toolbelt/config.yaml`). `--env KEY` estende a allowlist, mas **não** contorna o
+bloqueio de segredos.
 
 `tb init` preenche `verify.test_cmd` a partir da toolchain do repositório
 (`go.mod` → `go test ./...`, `package.json` + scripts.test → `npm`/`pnpm`/`yarn`/`bun test`
@@ -1600,13 +1612,13 @@ Transporte unix/tcp e flags `--socket`/`--port`/`--tls-*` são planejados; hoje 
 | `tb_version` | `tb version` | |
 | `tb_echo` | — | smoke |
 | `tb_env` | — | cwd/os/arch |
-| `tb_run` | — | `sh -c` com timeout |
+| `tb_run` | — | `sh -c` com timeout; env filtrado; args `env`/`pass_env` (arrays) |
 | `tb_mem_add` / `tb_mem_list` / `tb_mem_show` / `tb_mem_edit` / `tb_mem_retire` / `tb_mem_search` / `tb_mem_check` / `tb_mem_init` | `tb mem …` | arg opcional `cwd`; `ref`/`all` onde aplicável |
-| `tb_verify_run` | `tb verify run` | `ruler=tests\|visual`; args espelham flags |
+| `tb_verify_run` | `tb verify run` | `ruler=tests\|visual`; args espelham flags + `env`/`pass_env` |
 | `tb_review` | `tb review` | ticket/base/head/approved_sha/reviewers/standards |
 | `tb_drift` | `tb drift` | retorna `{drift, has_drift, pinned_approval}` |
 | `tb_guard_check` | `tb guard check` | `base`/`head` ou `range=A..B`; `strict_fail` por default em SeverityError; `warn_only=true` opt-out; `strict` deprecated (boolean) |
-| `tb_stack` | `tb stack` | `ops` (array), `base`/`head`, `fail_fast` (boolean); retorna JSON agregado |
+| `tb_stack` | `tb stack` | `ops` (array), `base`/`head`, `fail_fast` (boolean), `env`/`pass_env`; retorna JSON agregado |
 | `tb_graph_search` / `tb_graph_callers` / `tb_graph_deps` / `tb_graph_impact` / `tb_graph_index` | `tb graph …` | chamada requer `TB_GRAPH=on`; `depth`/`limit` integer; `transitive` boolean |
 
 Schemas tipam `depth`/`limit`/`reviewers`/`max_iter` como integer, `strict`/`warn_only`/`transitive`/`skip_unavailable` como boolean, `threshold` como number e `standards` como array de strings; valores string legados ainda são aceitos. Relatórios de verify/review/drift/guard voltam como JSON no `content` (sem código de saída de processo).
@@ -1724,6 +1736,22 @@ Variáveis planejadas (ainda não lidas pela CLI): `TB_VAULT`, `TB_LOG_LEVEL`,
 `TB_SANDBOX_DEFAULT`, `TB_JSON_OUTPUT`, `TB_TIMEOUT_DEFAULT`, `TB_COLOR`,
 `TB_COLOR_MODE`.
 
+### Allowlist de ambiente nos processos filhos
+
+`tb verify` / `tb stack` (etapa verify), MCP `tb_run` / `tb_verify_run` / `tb_stack`
+não repassam o ambiente completo ao `sh -c`. Só passam chaves da allowlist embutida
+(PATH, HOME, LANG, TMPDIR, toolchain Go/Node/npm/pnpm, proxies, XDG, etc.), mais:
+
+| Fonte | Efeito |
+|-------|--------|
+| `.toolbelt/config.yaml` → `env.allow` | Estende a allowlist |
+| `.toolbelt/config.yaml` → `env.pass` | Opt-in explícito de segredos |
+| Flag global `--env KEY` / arg MCP `env` | Estende a allowlist (não contorna segredos) |
+| Flag global `--pass-env KEY` / arg MCP `pass_env` | Opt-in explícito de segredos |
+
+Segredos: qualquer nome contendo `TOKEN`, `SECRET`, `KEY` ou `PASSWORD`
+(case-insensitive) é bloqueado sem opt-in.
+
 ---
 
 ## Erros e Usage
@@ -1756,6 +1784,9 @@ alternativo.
 # .toolbelt/config.yaml (exemplo)
 verify:
   test_cmd: "go test ./..."
+env:
+  allow: [APP_ENV, CUSTOM_OK]
+  pass: [GITHUB_TOKEN]
 bench:
   default_agent: "cursor-agent {prompt} --workdir {workdir}"
   tasks_dir: bench/tasks
