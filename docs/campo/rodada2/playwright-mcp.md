@@ -1,3 +1,5 @@
+🇧🇷 Português | [🇺🇸 English](../../en/campo/rodada2/playwright-mcp.md)
+
 # Estudo de campo rodada 2: microsoft/playwright-mcp
 
 Evidência coletada em 2026-11-16 no VM. Clone local em `/tmp/target/playwright-mcp` (shallow). Nenhuma interação com o remoto do alvo. Binário `tb` buildado de `main` atual (`go build -o /tmp/tb ./cmd/tb` → `toolbelt 0.1.0-dev`, `commit: unknown` sem ldflags). Log bruto: `/tmp/tb-campo2-playwright-mcp.log`. Grupo: **com instrumentação AI existente**.

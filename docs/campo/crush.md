@@ -1,3 +1,5 @@
+🇧🇷 Português | [🇺🇸 English](../en/campo/crush.md)
+
 # Campo: charmbracelet/crush
 
 Estudo de campo do `tb` (toolbelt @ `c8aae04`) usando o repositório público third-party **charmbracelet/crush** apenas em clone local (`/tmp/target/crush`). Sem push, issues, PRs ou comentários no upstream.

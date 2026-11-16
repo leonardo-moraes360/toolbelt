@@ -1,3 +1,5 @@
+🇧🇷 Português | [🇺🇸 English](en/cli.md)
+
 # Árvore de Comandos do `tb`
 
 Este documento descreve a CLI do toolbelt: comandos **implementados** (espelham `tb --help`) e seções **planejadas** (Fase 3+, marcadas explicitamente). Em caso de divergência, a CLI Cobra é a fonte da verdade.

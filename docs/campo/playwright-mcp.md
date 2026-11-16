@@ -1,3 +1,5 @@
+🇧🇷 Português | [🇺🇸 English](../en/campo/playwright-mcp.md)
+
 # Estudo de campo: microsoft/playwright-mcp
 
 Evidência coletada em 2026-11-15 no VM local. Clone em `/tmp/target/playwright-mcp` (shallow). Nenhuma interação com o remoto do alvo (sem push/issue/PR/comentário). Binário `tb` buildado deste repo (`make build` → `toolbelt c8aae04`). Log bruto: `/tmp/tb-campo-evidence.log`.

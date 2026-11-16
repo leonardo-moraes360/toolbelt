@@ -1,3 +1,5 @@
+🇧🇷 Português | [🇺🇸 English](../en/adr/004-sandbox-isolamento.md)
+
 # ADR-004: Sandbox com bubblewrap + Landlock + seccomp
 
 ## Status

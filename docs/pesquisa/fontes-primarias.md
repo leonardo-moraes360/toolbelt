@@ -1,3 +1,5 @@
+🇧🇷 Português | [🇺🇸 English](../en/pesquisa/fontes-primarias.md)
+
 # Fontes Primárias
 
 > **Data da pesquisa**: 2026-11-15  

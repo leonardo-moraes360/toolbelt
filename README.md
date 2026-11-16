@@ -1,3 +1,5 @@
+🇧🇷 Português | [🇺🇸 English](README.en.md)
+
 <p align="center">
   <img src="assets/logo/toolbelt-logo-256.png" alt="Logo do Toolbelt" width="200">
 </p>

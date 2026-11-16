@@ -1,3 +1,5 @@
+🇧🇷 Português | [🇺🇸 English](../en/campo/click.md)
+
 # Estudo de campo: pallets/click
 
 Grupo: sem instrumentação de agente de IA.  

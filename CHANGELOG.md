@@ -7,6 +7,13 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Não Lançado]
 
+### Adicionado
+- Espelho completo da documentação em inglês (`README.en.md`, `*.en.md` na raiz,
+  `docs/en/**`) com seletores de idioma; PT permanece a fonte de verdade
+  (`docs/en/TRANSLATION.md`, `docs/TRANSLATION.md`)
+- Teste `TestDocsEnglishMirrorComplete` exige par em `docs/en/` para cada `.md` em
+  `docs/`; `TestDocsCLIExamplesMatchCobra` também valida `docs/en/cli.md`
+
 ### Mudanças
 - Docs: `tb drift` deixa de ser descrito como “vault vs código”; o relatório real é
   escopo / forbidden / commit base (+ `pinned_approval` opcional)

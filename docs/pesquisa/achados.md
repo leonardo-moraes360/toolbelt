@@ -1,3 +1,5 @@
+🇧🇷 Português | [🇺🇸 English](../en/pesquisa/achados.md)
+
 # Achados da Pesquisa
 
 > Ideias novas extraídas das [fontes primárias](fontes-primarias.md), com fonte, módulo afetado e proposta concreta.

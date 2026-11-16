@@ -1,3 +1,5 @@
+🇧🇷 Português | [🇺🇸 English](CONTRIBUTING.en.md)
+
 # Contribuindo para o toolbelt
 
 Obrigado pelo interesse em contribuir! Este documento explica como participar do desenvolvimento.
@@ -182,7 +184,8 @@ toolbelt/
 ### Documentação
 
 - Markdown para docs
-- Português brasileiro para documentação
+- Português brasileiro é a **fonte de verdade**; espelho em inglês em `docs/en/` (e `*.en.md` na raiz)
+- Ao mudar docs em PT, atualize o par em inglês no mesmo PR (ver [docs/en/TRANSLATION.md](docs/en/TRANSLATION.md))
 - Inglês para código (nomes de variáveis, comentários técnicos)
 - Diagramas em Mermaid quando possível
 

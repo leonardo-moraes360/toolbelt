@@ -1,3 +1,5 @@
+🇧🇷 Português | [🇺🇸 English](../en/campo/ky.md)
+
 # Estudo de campo: `tb` em sindresorhus/ky
 
 Evidência coletada em 2026-11-15 num clone local em `/tmp/target` (sem push, issue, PR ou comentário no upstream). `tb` compilado deste repo (`make build` → `bin/tb`, versão `c8aae04`). Mudança de produto só neste arquivo; o trabalho no ky ficou restrito à VM.

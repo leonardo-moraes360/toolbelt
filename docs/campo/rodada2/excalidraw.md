@@ -1,3 +1,5 @@
+🇧🇷 Português | [🇺🇸 English](../../en/campo/rodada2/excalidraw.md)
+
 # Campo rodada 2: excalidraw/excalidraw
 
 Estudo em 2026-11-16 com `tb` de `toolbelt@a46c295` (`make build` → `./bin/tb`). Clone local em `/tmp/target/excalidraw` (shallow). Grupo: **with existing AI-agent instrumentation**. **Nenhuma** interação com o remoto do Excalidraw. Evidências em `/tmp/campo2-evidence/`.
