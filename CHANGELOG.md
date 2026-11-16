@@ -33,6 +33,13 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 - `tb review`: goldfish distintos por papel (`scope`, `quality`, `acceptance`) em vez do mesmo checker clonado N vezes; `--reviewers` só limita papéis; qualidade cobre TODO/FIXME, funções grandes e código sem testes; aceite exige evidência em testes/arquivos de código
 
 ### Corrigido
+- `tb guard check`: renames (`R*`) checam origem e destino; matching de
+  `protected_paths` é case-insensitive; globs com `**` funcionam; regras
+  inválidas não entram em `rules_checked`; config lida da **base**
+  (`git show base:.toolbelt/guard.yaml`) e alteração nesse arquivo é
+  violação; YAML malformado falha fechado (exit ≠ 0); varredura usa o
+  diff/`git show head:path` (não o working tree); detecção de enfraquecimento
+  de testes JS/TS (`skip`/`only`/`xit`/asserções triviais)
 - `tb verify run` falha imediatamente (sem retries) quando o comando configurado não existe (exit 127), não é executável (exit 126) ou `exec` retorna `ErrNotFound`, com mensagem `comando não encontrado: … — ajuste verify.test_cmd` (e equivalentes para build/lint/hidden)
 - `tb init` em repos Node/TS sem `go.mod` não mantém mais `verify.test_cmd: go test ./...`:
   detecta o package manager (`pnpm-lock.yaml`/`yarn.lock`/`package-lock.json`/`bun.lockb`),
