@@ -74,6 +74,10 @@
 
 Veja a documentação completa em [docs/arquitetura.md](docs/arquitetura.md).
 
+## 🌐 Site
+
+Landing pública: [https://leonardo-moraes360.github.io/toolbelt/](https://leonardo-moraes360.github.io/toolbelt/) (fonte em [`site/`](site/); guia em [`docs/site.md`](docs/site.md)).
+
 ## 📚 Documentação
 
 | Documento | Descrição |
@@ -81,6 +85,7 @@ Veja a documentação completa em [docs/arquitetura.md](docs/arquitetura.md).
 | [docs/arquitetura.md](docs/arquitetura.md) | Arquitetura detalhada com diagramas Mermaid |
 | [docs/cli.md](docs/cli.md) | Árvore de comandos do `tb` (implementado + planejado) |
 | [docs/benchmark.md](docs/benchmark.md) | KPIs e metodologia de avaliação |
+| [docs/site.md](docs/site.md) | Landing page e deploy no GitHub Pages |
 | [docs/adr/](docs/adr/) | Registros de Decisão Arquitetural (ADRs) |
 | [docs/pesquisa/](docs/pesquisa/) | Fontes primárias, top 10 e achados da pesquisa (2026-11) |
 | [docs/campo/SINTESE.md](docs/campo/SINTESE.md) | Estudo de campo em 20 repos + ranking de melhorias |
@@ -203,6 +208,7 @@ tb guard check HEAD~1..HEAD
 - [x] Docs CLI alinhados aos comandos/flags reais (`docs/cli.md` / README)
 - [x] MCP com paridade do loop de campo (`mem` / `verify` / `review` / `drift` / `guard`)
 - [x] `tb stack` — empilha verify/review/drift/guard com diff/índice/memória compartilhados (+ MCP `tb_stack`)
+- [x] Landing page em [`site/`](site/) + GitHub Pages ([docs/site.md](docs/site.md) · [site ao vivo](https://leonardo-moraes360.github.io/toolbelt/))
 - [ ] Hierarquia de agentes / A2A / `tb md` (posterior)
 
 ### Entrada para a próxima fase (estudo de campo)

@@ -82,10 +82,10 @@ tb  (implementado hoje)
 ├── mem          Invariantes (add|list|show|edit|retire|search|check|init)
 ├── review       Revisão fresh-context
 ├── sandbox      Isolamento Landlock (check|run)
-├── stack        Empilha verify/review/drift/guard com contexto compartilhado
+├── stack        Empilha ops de verificação (verify/review/drift/guard); não é stack de branches
 ├── verify       Verificação adversarial (run; rulers tests|visual)
 ├── workspace    Workspaces via git worktree (create|list|remove; alias: ws)
-├── version      Mostra versão
+├── version      Mostra versão (também: tb --version)
 └── router       Stub (não implementado)
 
 tb  (planejado — Fase 3+)
@@ -209,7 +209,7 @@ Languages and docs (extensible via `LanguageIndexer`, light regex, no cgo):
 | `graph.languages` | Extensions |
 |-------------------|------------|
 | `go` | `.go` (AST; `calls` edges) |
-| `javascript` | covers TypeScript (`ts`/`tsx`): `.js`, `.mjs`, `.cjs`, `.ts`, `.tsx`, `.jsx` (functions/`const` arrow, JSX `<Comp />` as `calls`; resolves relative imports to the imported module symbol). There is no separate `typescript` language — use `javascript` |
+| `javascript` | covers TypeScript (`ts`/`tsx`): `.js`, `.mjs`, `.cjs`, `.ts`, `.tsx`, `.jsx` (generic functions `foo<T>`, `const` arrow, JSX `<Comp />` as `calls`; indexes `*.test.*`/`*.spec.*`/`__tests__`/`e2e`; resolves NodeNext relative imports (`.js`→`.ts`, no extension, `index`) and `tsconfig.json`/`jsconfig.json` aliases (`extends`/`baseUrl`/`paths`); follows `import { a as b }` and `import * as ns`). There is no separate `typescript` language — use `javascript` |
 | `python` | `.py` (defines/imports + `calls` edges by qualified module; `callers`/`impact` ignore edges with confidence &lt; 0.6) |
 | `java` | `.java` |
 | `kotlin` | `.kt`, `.kts` |
@@ -249,6 +249,7 @@ graph:
   docs: [markdown, html, txt]
   frameworks: [react, vue, svelte, astro, angular, routes, mdx]
   max_file_bytes: 524288   # ignora arquivos maiores
+  index_on_change: true    # reindexa em search/callers/deps/impact/stats se o fingerprint mudou
 ```
 
 Ignores subdirectories such as `node_modules`, `vendor`, `dist`, `build`,
@@ -258,6 +259,14 @@ a symlink (e.g. `/tmp/target` → real dir), it is resolved with
 `EvalSymlinks` before the walk — otherwise the index would be empty, because
 `filepath.Walk` does not descend into symlinks. The graph remains on demand (ADR-011):
 `TB_GRAPH=on` or `--enable`.
+
+Index freshness: each `graph.json` stores a `fingerprint` (mtime+size of
+indexable files). On `search`/`callers`/`deps`/`impact`/`stats`, if the
+fingerprint diverges and `graph.index_on_change` is `true` (default), the graph is
+reindexed automatically; if `false`, output warns and JSON includes
+`stale: true`. Query JSON outputs use the envelope
+`{"stale": false, "nodes": [...]}`; `stats`/`index` include `stale` in the
+statistics object.
 
 ```bash
 tb graph [--enable] <subcommand>
@@ -303,8 +312,10 @@ In Python/JS/TS, `--function` resolves by title or qualified id suffix
 (`func:pkg.mod.nome`; React components/hooks too). `calls` edges with
 confidence &lt; 0.6 (ambiguous targets / no import) are left out of the default
 `callers` and `impact` result. In TS/JS, relative imports
-(`../components/Layout`) resolve to the imported module symbol
-(`components.Layout`), including JSX use `<Layout />`.
+(`../components/Layout`, `./utils.js` → `utils.ts`, `./index`) and
+`tsconfig`/`jsconfig` aliases (`@/…`) resolve to the imported file/symbol;
+`import { helper as format }` and `import * as Utils` / `Utils.helper()` also
+feed `callers`/`impact` (including functions in test files).
 
 **`tb graph deps`:**
 
@@ -402,6 +413,10 @@ Flags:
   --ref <path>        Vínculo com ADR/decisions.md (ex: docs/adr/0001.md)
 ```
 
+Invalid category or `--ref` outside the ADR/decisions format exits ≠ 0 with the list
+of valid values (`anti_cheat, mandate, security`; refs like
+`docs/adr/<arquivo>.md` / `docs/decisions/<arquivo>.md`).
+
 **`tb mem list` / `search` / `check`:**
 
 ```bash
@@ -410,6 +425,8 @@ tb mem search <query> [--all]
 tb mem check [--expect-sha <sha>] [--all]
 ```
 
+`search` is case- and accent-insensitive (Unicode NFD + mark stripping).
+
 **`tb mem show` / `edit` / `retire`:**
 
 ```bash
@@ -417,6 +434,10 @@ tb mem show <id>
 tb mem edit <id> [--category <cat>] [--rule <texto>] [--ref <path>]
 tb mem retire <id>
 ```
+
+**`tb mem init`:** creates the default anti-cheat set and prints the path + the
+created invariants (or `já existiam N…` if the file already had entries). With
+`--json`, emits `path`/`created`/`count`/`invariants`.
 
 **`tb mem check` (implemented):**
 
@@ -440,15 +461,18 @@ tb mem list
 tb mem list --category anti_cheat
 tb mem list --all
 tb mem search thresholds
+tb mem search autenticacao   # encontra "autenticação"
 tb mem show inv-123
 tb mem edit inv-123 --ref docs/decisions/auth.md --rule "Escopo via ticket"
 tb mem retire inv-123
 tb mem check
 tb mem init
+tb mem init --json
 ```
 
 > Soft-retire keeps the entry in the YAML; `list`/`search`/`check` omit retired unless `--all`.
 > Vault flags `--type`/`--title` **do not exist** — `tb mem add` accepts a positional rule, `--category`, and `--ref`.
+> `tb mem init --json` returns `{path, created, count, invariants}`; empty lists come out as `[]`.
 
 ---
 
@@ -567,13 +591,18 @@ tb agent reject action-124 --reason "Não autorizado para rede externa"
 
 ---
 
-### `tb stack` — Operation Stacking (✓ Phase 2)
+### `tb stack` — Verification Operation Stacking (✓ Phase 2)
 
 Runs `verify`, `review`, `drift`, and/or `guard` in a single invocation, sharing
 expensive work (unified diff, changed-file index, memory/invariants, and
 config). Argument order is execution order. Output is always aggregated JSON
 (`ok`, `steps`, `total_duration_ms`); the process exit code is ≠ 0 if
-any step fails (same semantics as each standalone command).
+any step fails (same semantics as each standalone command). Durations are
+`float` milliseconds (with sub-ms fraction). Preparation or operation errors
+appear in `steps[].error` inside the JSON (not only on stderr).
+
+**Not a branch stack** (like Graphite or git-stack). `tb stack` only stacks
+verification/review operations with shared context.
 
 ```bash
 tb stack <op> [<op>...] [flags]
@@ -591,9 +620,12 @@ Flags:
   --timeout <duration>   verify: timeout (default: 10m)
   --reviewers <n>        review: máximo de goldfish
   --standards <csv>      review: papéis (scope,quality,acceptance)
+  --env <KEY>            (global) allowlist extra para o verify empilhado
+  --pass-env <KEY>       (global) opt-in explícito de segredo para o verify
 ```
 
-An unknown operation exits with a clear error (no `Usage` dump).
+With no operation, or an unknown operation, exits with a short error listing the valid
+ops (`verify`, `review`, `drift`, `guard`) — no `Usage` dump.
 
 **Examples:**
 
@@ -602,10 +634,14 @@ tb stack verify review drift guard
 tb stack guard drift --fail-fast
 tb stack review drift --base HEAD~1 --head HEAD --ticket rd.md
 tb stack verify guard --test-cmd "true" --max-iter 1
+tb stack verify --test-cmd "true" --env APP_ENV --pass-env GITHUB_TOKEN
 ```
 
-Each `steps` item carries `op`, `ok`, `exit_code`, `duration_ms`, and `result` (the JSON
-the standalone command would produce).
+Each `steps` item carries `op`, `ok`, `exit_code`, `duration_ms`, `result` (the JSON
+the standalone command would produce) and, on failure, `error`. Stacked `verify` uses the
+same shared `--base`/`--head`: if head diverges from the worktree `HEAD`,
+build/lint/test run in a temporary detached worktree (see `tb verify`);
+the step `result` includes `head_sha` and `workdir`.
 
 ---
 
@@ -667,7 +703,9 @@ Also reports scope and base-commit drift. Fresh isolation is mandatory.
 
 With `--approved-sha`, the JSON includes `pinned_approval` (`approved_sha`, `patch_id`,
 `head_patch_id`, `match`, and if they diverge, `range_diff`). A patch different from the approved one
-prints a `git range-diff` summary and exits with code ≠ 0.
+prints a `git range-diff` summary and exits with code ≠ 0. If `--approved-sha`
+coincides with the base (empty `base..approved` range), the CLI does **not** dump
+`git range-diff` usage — it shows a clear message about the invalid range.
 
 The ticket/rd.md accepts YAML frontmatter or Markdown: section `## Scope` / `## Escopo`
 (or `Scope:` / `Escopo:`) and `## Forbidden` / `## Proibido` (or `Forbidden:` /
@@ -683,17 +721,23 @@ Path invariants (e.g. `tests/hidden/`, `thresholds.yaml`) are matched against
 files **changed** by the same path/glob matcher (`tests/hidden/**`,
 `tests/hidden/*`) — not by substring in the diff or ticket text. Mentioning
 `forbidden: tests/hidden/**` in `rd.md` without touching that directory does not produce
-a critical finding.
+a critical finding. Mandate content invariants (e.g. forbid
+`console.log` or comments) are applied to added (`+`) lines of the diff.
 
 **Distinct reviewers (goldfish)**:
 
 | Reviewer | `--standards` | What it checks |
 |----------|---------------|----------------|
-| `goldfish-scope` | `scope` (+ `invariants`) | Files outside scope, touches on forbidden; `tb mem` invariants |
-| `goldfish-quality` | `quality` | Added TODO/FIXME; very large functions in the diff (≥80 lines +); changed source without tests |
-| `goldfish-acceptance` | `acceptance` (alias: `completeness`) | Each ticket acceptance criterion has evidence in changed tests/code files (does not count the ticket itself) |
+| `goldfish-scope` | `scope` (+ `invariants`) | Files outside scope, touches on forbidden; `tb mem` invariants applied to changed paths **and** to `+` lines of the diff (e.g. `console.log`, forbidden comments) |
+| `goldfish-quality` | `quality` | `TODO`/`FIXME`/`XXX`/`HACK` markers (whole uppercase word, in comments); very large functions in the diff (≥80 lines +); changed source without tests |
+| `goldfish-acceptance` | `acceptance` (alias: `completeness`) | Each ticket acceptance criterion has evidence in changed tests/code files (does not count the ticket itself); considers `Test*` (Go) and `test`/`it`/`describe` (JS/TS) added in the diff |
 
 Heuristics are deterministic and offline (no LLM).
+
+Each finding JSON includes `role` (goldfish role: `scope`, `quality`, `acceptance`, `invariants`).
+Acceptance findings also carry `criterion` and `evidence` (tests/files seen in the diff).
+`agreement` counts how many distinct roles agreed on the same finding (usually 1).
+In text mode, prints `papel=<role>` (and `papéis_acordo=N` only if N>1) — no longer uses `acordo=N/M`.
 
 **Examples:**
 
@@ -705,8 +749,8 @@ tb review --ticket rd.md
 #  Base..Head: HEAD~1..HEAD | Revisores: 3 | Fresh: true
 # ═══════════════════════════════════════════════════════════
 # FINDINGS:
-#   [warning] (goldfish-quality/quality) TODO/FIXME adicionado no diff [src/a.go]
-#   [warning] (goldfish-acceptance/acceptance) critério de aceite sem evidência...
+#   [warning] (goldfish-quality/quality) TODO/FIXME/XXX/HACK adicionado em comentário no diff [src/a.go]  papel=quality
+#   [warning] (goldfish-acceptance/acceptance) critério de aceite sem evidência...  papel=acceptance
 
 # Só escopo + qualidade (sem aceite)
 tb review --ticket rd.md --standards scope,quality --reviewers 2
@@ -727,16 +771,27 @@ tb review --base main --approved-sha abc1234 --ticket rd.md --json
 
 ### `tb drift` — Scope/Base Drift (✓ Phase 2)
 
-Compares files changed in `base..head` with the **scope** declared in the
-ticket/`rd.md`, detects touches on `Forbidden`/`Proibido` (`forbidden_hit`), and
-base-commit divergence (mandate). It does **not** compare the Markdown vault against
-code — the report is only scope/base/forbidden (+ optional `pinned_approval`).
+Compares files changed in `base...head` with the **scope** declared in the
+ticket/`rd.md`, detects touches on `Forbidden`/`Proibido` (`forbidden_hit`) and
+a base that is not an ancestor of head (`base_mismatch`). It does **not** compare the
+Markdown vault against code — the report is only scope/base/forbidden
+(+ optional `pinned_approval`).
 The scope/forbidden parser is the same as `tb review`
 (YAML frontmatter or Markdown `## Scope` / `## Forbidden` / lists / globs with `**`).
 
-`--base` / the ticket's `base_commit` (e.g. `HEAD^`, tags, short SHA) are
-resolved with `git rev-parse` before comparison — avoids a false
-`base_mismatch` from comparing the ref string with the declared SHA.
+The diff uses **three-dot** (`git diff base...head` ≡
+`git diff $(git merge-base base head) head`), the same criterion as GitHub PRs:
+after merge/squash on the base, only branch files enter — not what came from main.
+
+Explicit `--base` on the CLI/MCP **always** takes precedence over the ticket's `base_commit`.
+Without `--base`, the default `HEAD~1` yields to `base_commit` when the ticket declares one.
+Refs (`HEAD^`, tags, short SHA) are resolved with `git rev-parse`.
+`base_mismatch` is `true` when the ticket's declared `base_commit` (or the effective
+base, if the ticket does not declare one) is **not** an ancestor of head
+(`git merge-base --is-ancestor`) — so `--base main` on a divergent PR does not
+produce a false mismatch; a SHA from another line (not an ancestor) does. JSON exposes
+`actual_base` (resolved SHA of the base used in the diff) and `merge_base` (common
+ancestor with head).
 
 ```bash
 tb drift [ticket] [flags]
@@ -744,7 +799,7 @@ tb drift [ticket] [flags]
 Flags:
   --base <ref>          Commit base (default: HEAD~1 ou base_commit do ticket)
   --head <ref>          Commit head (default: HEAD)
-  --approved-sha <sha>  SHA aprovado; compara `git patch-id --stable` de base..approved vs base..head
+  --approved-sha <sha>  SHA aprovado; compara `git patch-id --stable` de base...approved vs base...head
   --ticket <path>       Ticket/rd.md (default: rd.md)
   --output <path>       Saída JSON (sem shorthand `-o`)
   --json                Saída em JSON (flag global)
@@ -752,6 +807,8 @@ Flags:
 
 With `--approved-sha`, the drift JSON includes `pinned_approval` (same format as
 `tb review`). Patch-id divergence exits with code ≠ 0 and shows `git range-diff`.
+`--approved-sha` equal to the base follows the same clear message as `tb review` (no
+usage dump).
 
 **Examples:**
 
@@ -803,11 +860,28 @@ Flags:
   --manifest <path>        Manifesto de telas (default: .toolbelt/screens.yaml)
   --skip-unavailable       Skip gracioso sem browser/refs/telas (default: true; veredicto SKIPPED)
   --base <ref>             Ref base
-  --head <ref>             Ref head
+  --head <ref>             Ref head (build/lint/test rodam neste commit)
   --ticket <path>          Ticket com Scope (exceção de `protected_paths` custom)
   --output <path> / -o     Arquivo de saída JSON
   --json                   Saída em JSON (flag global)
+  --env <KEY>              (global, repetível) inclui KEY na allowlist do filho
+  --pass-env <KEY>         (global, repetível) opt-in explícito para segredo no filho
 ```
+
+When `--head` (or the `--base`/`--head` pair) resolves to a SHA **different** from the
+current worktree `HEAD`, verify creates a temporary `git worktree add --detach`
+at that SHA, runs `build_cmd` / `lint_cmd` / `test_cmd` / `hidden_test_cmd` there, and
+removes the worktree when finished (also on error or signal). JSON includes
+`head_sha` and `workdir` (the directory where the commands ran). If
+`head == HEAD` and the worktree is dirty, it emits a warning — commands run in the
+current worktree and may see uncommitted changes.
+
+Verify child processes (`sh -c` of `test_cmd`/`build_cmd`/`lint_cmd`/`hidden_test_cmd`)
+receive only an environment **allowlist** (PATH, HOME, LANG, TMPDIR, GOPATH/GOCACHE,
+essential NODE/npm/pnpm, proxies, etc.). Names containing `TOKEN`, `SECRET`, `KEY`, or
+`PASSWORD` **never** pass, unless `--pass-env KEY` (or `env.pass` in
+`.toolbelt/config.yaml`). `--env KEY` extends the allowlist, but does **not** bypass
+the secret block.
 
 `tb init` fills `verify.test_cmd` from the repository toolchain
 (`go.mod` → `go test ./...`, `package.json` + scripts.test → `npm`/`pnpm`/`yarn`/`bun test`
@@ -844,19 +918,22 @@ by `tb guard`). The command configured in `verify.hidden_test_cmd` or
 `--hidden-test-cmd` **always runs**, even without the `tests/hidden/` directory
 (typical in JS/Python/Rust monorepos). If the command is empty and the
 directory exists, `go test ./tests/hidden/...` is used. With no command and no
-directory, the hidden suite is ignored (`hidden_available: false`). Optional
-`build_cmd` and `lint_cmd` fields run before tests (in that order) and
-make verify fail if the command exits with an error; absent = previous
-behavior (only `test_cmd` + hidden).
+directory, the hidden suite is ignored (`hidden_available: false`,
+`hidden_passed: null`). Optional `build_cmd` and `lint_cmd` fields run before
+tests (in that order) and make verify fail if the command exits with an error;
+absent = previous behavior (only `test_cmd` + hidden).
 
 If the `test_cmd` / `hidden_test_cmd` / `build_cmd` / `lint_cmd` binary does not
 exist (exit 127), is not executable (exit 126), or `exec` fails with
 `ErrNotFound`, verify **fails immediately** without retries, with a message like
-`comando não encontrado: X — ajuste verify.test_cmd`. Genuine command failures
-(exit ≠ 0/126/127) continue in the `--max-iter` loop.
+`comando não encontrado: X — ajuste verify.test_cmd`. The `tb` process exits with
+code **127**. With `--json` (or `--output`), it emits the normal `verify.Result`
+envelope including `error` (and `verdict: FAIL`), instead of exiting without JSON. Genuine
+command failures (exit ≠ 0/126/127) continue in the `--max-iter` loop.
 
 `ESCALATE` and `FAIL` verdicts exit with **exit ≠ 0** also with `--json`
 (same as text mode). Only `PASS` and `SKIPPED` (visual ruler) use exit 0.
+A missing command uses exit **127** (see the exit-code table).
 
 **Guard inside verify (anti-cheat vs mandate):**
 
@@ -1639,16 +1716,16 @@ Unix/tcp transport and `--socket`/`--port`/`--tls-*` flags are planned; today on
 | `tb_version` | `tb version` | |
 | `tb_echo` | — | smoke |
 | `tb_env` | — | cwd/os/arch |
-| `tb_run` | — | `sh -c` with timeout |
-| `tb_mem_add` / `tb_mem_list` / `tb_mem_show` / `tb_mem_edit` / `tb_mem_retire` / `tb_mem_search` / `tb_mem_check` / `tb_mem_init` | `tb mem …` | optional `cwd` arg; `ref`/`all` where applicable |
-| `tb_verify_run` | `tb verify run` | `ruler=tests\|visual`; args mirror flags |
+| `tb_run` | — | `sh -c` with timeout; filtered env; `env`/`pass_env` args (arrays) |
+| `tb_mem_add` / `tb_mem_list` / `tb_mem_show` / `tb_mem_edit` / `tb_mem_retire` / `tb_mem_search` / `tb_mem_check` / `tb_mem_init` | `tb mem …` | optional `cwd` arg; `ref`/`all` (boolean; legacy strings ok) where applicable |
+| `tb_verify_run` | `tb verify run` | `ruler=tests\|visual`; args mirror flags + `env`/`pass_env` |
 | `tb_review` | `tb review` | ticket/base/head/approved_sha/reviewers/standards |
 | `tb_drift` | `tb drift` | returns `{drift, has_drift, pinned_approval}` |
 | `tb_guard_check` | `tb guard check` | `base`/`head` or `range=A..B`; `strict_fail` by default on SeverityError; `warn_only=true` opt-out; `strict` deprecated (boolean) |
-| `tb_stack` | `tb stack` | `ops` (array), `base`/`head`, `fail_fast` (boolean); returns aggregated JSON |
+| `tb_stack` | `tb stack` | `ops` (array), `base`/`head`, `fail_fast` (boolean), `env`/`pass_env`; returns aggregated JSON |
 | `tb_graph_search` / `tb_graph_callers` / `tb_graph_deps` / `tb_graph_impact` / `tb_graph_index` | `tb graph …` | call requires `TB_GRAPH=on`; `depth`/`limit` integer; `transitive` boolean |
 
-Schemas type `depth`/`limit`/`reviewers`/`max_iter` as integer, `strict`/`warn_only`/`transitive`/`skip_unavailable` as boolean, `threshold` as number, and `standards` as a string array; legacy string values are still accepted. verify/review/drift/guard reports come back as JSON in `content` (without a process exit code).
+Schemas type `depth`/`limit`/`reviewers`/`max_iter` as integer, `strict`/`warn_only`/`transitive`/`skip_unavailable`/`all` (mem) as boolean, `threshold` as number, and `standards` as a string array; legacy string values are still accepted. verify/review/drift/guard reports come back as JSON in `content` (without a process exit code). Empty lists use `[]`; `hidden_passed` is `null` if the hidden suite does not apply.
 
 ---
 
@@ -1663,7 +1740,30 @@ Flags:
   --json           Saída em JSON (flag global)
 ```
 
+With `--json`, emits a payload with `path`, detected `test_cmd` / `build_cmd` / `lint_cmd`
+(when present), optional `warning`, and `agents` (`seeded`, `sources`, …).
+
 Toolchain detection details and `verify.*` population are in the `tb verify` section.
+
+**Local state vs config (`.git/info/exclude`):** in a Git repository (without `--global`),
+init writes to `.git/info/exclude` (does not change the project's `.gitignore`) the
+**cache/derived** patterns:
+
+- `.toolbelt/graph.json`
+- `.toolbelt/logs/`
+- `.toolbelt/vault/`
+- `.toolbelt/workspaces/`
+- `.toolbelt/captures/`
+- `.toolbelt/bench/`
+
+So `git stash -u` / `git clean` do not wipe the index/graph by mistake, without
+blocking config versioning.
+
+**Recommendation — version invariants:** `invariants.yaml` (and, when it makes
+sense for the team, `config.yaml` / `guard.yaml` / `thresholds.yaml`) should
+remain **versionable**. They are shared policy (ADR-010), not cache.
+Init does **not** put all of `.toolbelt/` in exclude precisely to separate
+cache from config.
 
 ---
 
@@ -1694,19 +1794,24 @@ tb workspace remove <id>
 
 ---
 
-### `tb version` ✅ IMPLEMENTED
+### `tb version` / `tb --version` ✅ IMPLEMENTED
 
 ```bash
 tb version [flags]
-
-Flags:
-  --json    Saída em JSON ✅
+tb --version
 ```
+
+Flags (subcommand `version`):
+  --json    Saída em JSON ✅
+
+The global `--version` flag prints the same textual output as `tb version`
+(version, commit, build, go, os/arch).
 
 **Examples:**
 
 ```bash
 tb version
+tb --version
 # toolbelt dev
 #   commit: unknown
 #   built:  unknown
@@ -1763,6 +1868,22 @@ Planned variables (not yet read by the CLI): `TB_VAULT`, `TB_LOG_LEVEL`,
 `TB_SANDBOX_DEFAULT`, `TB_JSON_OUTPUT`, `TB_TIMEOUT_DEFAULT`, `TB_COLOR`,
 `TB_COLOR_MODE`.
 
+### Environment allowlist for child processes
+
+`tb verify` / `tb stack` (verify step), MCP `tb_run` / `tb_verify_run` / `tb_stack`
+do not pass the full environment to `sh -c`. They only pass keys from the built-in allowlist
+(PATH, HOME, LANG, TMPDIR, Go/Node/npm/pnpm toolchain, proxies, XDG, etc.), plus:
+
+| Source | Effect |
+|--------|--------|
+| `.toolbelt/config.yaml` → `env.allow` | Extends the allowlist |
+| `.toolbelt/config.yaml` → `env.pass` | Explicit secret opt-in |
+| Global flag `--env KEY` / MCP arg `env` | Extends the allowlist (does not bypass secrets) |
+| Global flag `--pass-env KEY` / MCP arg `pass_env` | Explicit secret opt-in |
+
+Secrets: any name containing `TOKEN`, `SECRET`, `KEY`, or `PASSWORD`
+(case-insensitive) is blocked without opt-in.
+
 ---
 
 ## Errors and Usage
@@ -1770,6 +1891,8 @@ Planned variables (not yet read by the CLI): `TB_VAULT`, `TB_LOG_LEVEL`,
 - Expected domain/runtime errors (`RunE`, e.g. missing required business flag, git failure, missing file) exit with **exit ≠ 0** and a stderr message **without** a Cobra `Usage` dump.
 - Genuine **flag** or **args** parse errors (unknown flag, `ExactArgs`/`MinimumNArgs`, etc.) keep `Usage` on stderr to guide invocation.
 - An unknown subcommand at any level (e.g. `tb mem nao-existe`, `tb bench nope`) exits with **exit ≠ 0** and error `unknown command "…"`, instead of printing help with exit 0.
+- Git failures in `guard` / `review` / `drift` / `verify` (and in the `stack` that stacks them) do **not** show only `exit status 128/129`: the message includes git stderr, the missing ref (`ref ausente: …`), and a `git fetch origin <ref>` hint.
+- `--approved-sha` equal to the base (empty `base..approved` range) does not dump `git range-diff` usage; exits with a clear message about the invalid range.
 
 ## Exit Codes
 
@@ -1779,9 +1902,10 @@ The current CLI does not use a stable table of codes 2–7. In practice:
 |------|---------|
 | 0 | Success (`PASS`/`SKIPPED` in verify; guard without `SeverityError` or with `--warn-only`) |
 | ≠0 (typically 1) | Parse/domain error, `FAIL`/`ESCALATE` in verify, `SeverityError` in guard, unknown subcommand |
+| 127 | `tb verify run`: `test_cmd` / `build_cmd` / `lint_cmd` / `hidden_test_cmd` not found (or not executable / `ErrNotFound`); with `--json` emits the `verify.Result` envelope with an `error` field |
 | child exit | `tb sandbox run` propagates the process exit code when ≠ 0 and without timeout |
 
-When the configured verify command does not exist/is not executable, the **child process** reports 126/127 and verify fails immediately (no retries); `tb` exits ≠ 0.
+When the configured verify command does not exist/is not executable, verify fails immediately (no retries) and the `tb` process exits **127**.
 
 ---
 
@@ -1794,6 +1918,9 @@ Local configuration file at `.toolbelt/config.yaml` (global:
 # .toolbelt/config.yaml (exemplo)
 verify:
   test_cmd: "go test ./..."
+env:
+  allow: [APP_ENV, CUSTOM_OK]
+  pass: [GITHUB_TOKEN]
 bench:
   default_agent: "cursor-agent {prompt} --workdir {workdir}"
   tasks_dir: bench/tasks
