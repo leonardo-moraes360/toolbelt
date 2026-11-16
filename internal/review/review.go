@@ -111,6 +111,7 @@ func Run(cfg *Config) (*Report, error) {
 	}
 
 	drift := DetectDrift(ticket, changed, cfg.BaseRef)
+	reconcileDriftBase(cfg.RepoDir, drift)
 	report.Drift = drift
 
 	// Cada goldfish recebe apenas ticket + diff + invariantes (contexto fresco isolado).
@@ -256,6 +257,29 @@ func DetectDrift(ticket *TicketScope, changed []string, actualBase string) *Drif
 		}
 	}
 	return rep
+}
+
+func reconcileDriftBase(repo string, drift *DriftReport) {
+	if drift == nil || repo == "" || drift.DeclaredBase == "" || drift.ActualBase == "" {
+		return
+	}
+	declared, errD := resolveGitRef(repo, drift.DeclaredBase)
+	actual, errA := resolveGitRef(repo, drift.ActualBase)
+	if errD != nil || errA != nil {
+		return
+	}
+	drift.ActualBase = actual
+	drift.BaseMismatch = declared != actual
+}
+
+func resolveGitRef(repo, ref string) (string, error) {
+	cmd := exec.Command("git", "rev-parse", "--verify", ref) //nolint:gosec // refs do operador/ticket
+	cmd.Dir = repo
+	out, err := cmd.Output()
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(out)), nil
 }
 
 func LoadTicket(path string) (*TicketScope, error) {

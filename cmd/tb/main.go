@@ -106,10 +106,12 @@ claros também verify.build_cmd e verify.lint_cmd (scripts build/lint,
 golangci, ruff/mypy, cargo build/clippy, targets make).
 
 Se AGENTS.md ou CLAUDE.md existirem na raiz do repositório, o init lê esses
-arquivos, registra os caminhos em .toolbelt/agent_docs.yaml e extrai dicas de
-execução (nunca sobrescreve). Use --write-agents para semear um AGENTS.md
-mínimo que cita a toolchain detectada (verify.test_cmd e, se houver,
-build_cmd/lint_cmd) quando o arquivo ainda não existe.
+arquivos, registra os caminhos em .toolbelt/agent_docs.yaml e extrai dicas
+curtas de execução (ignora fences de código longos; nunca sobrescreve). O
+binário de verify.test_cmd é checado no PATH com fallback (ex. uv → pytest).
+Use --write-agents para semear um AGENTS.md mínimo que cita a toolchain
+detectada (verify.test_cmd e, se houver, build_cmd/lint_cmd) quando o
+arquivo ainda não existe.
 
 Exemplo:
   tb init                 Cria configuração básica
@@ -136,11 +138,18 @@ Exemplo:
 			dir = filepath.Join(cwd, config.DefaultConfigDir)
 		}
 
-		if err := config.Init(dir); err != nil {
+		detected, err := config.InitDetailed(dir)
+		if err != nil {
 			return fmt.Errorf("initializing config: %w", err)
 		}
 
 		log.Info("configuração inicializada", "path", dir)
+		if detected.Cmd != "" {
+			log.Info("toolchain detectada", "test_cmd", detected.Cmd)
+		}
+		if detected.Warning != "" {
+			log.Warn(detected.Warning)
+		}
 
 		if !global && repoRoot != "" {
 			docs, err := config.HandleAgentDocs(repoRoot, dir, writeAgents)

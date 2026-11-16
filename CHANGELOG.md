@@ -9,6 +9,9 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ### Adicionado
 - `tb init --write-agents` semeia `AGENTS.md` citando a toolchain detectada (`verify.test_cmd` e, se presentes, `build_cmd`/`lint_cmd`)
+- MCP: tools de paridade CLI `tb_mem_*`, `tb_verify_run`, `tb_review`, `tb_drift`, `tb_guard_check`
+- Indexador Rust emite arestas `calls` mínimas resolvíveis no repositório (`tb graph callers` / `impact`)
+- `tb graph callers`/`impact` retornam erro explícito em C/C++ (sem arestas `calls`) em vez de `(vazio)` silencioso
 - `tb init` preenche `verify.build_cmd` e `verify.lint_cmd` a partir da toolchain (scripts `build`/`lint`, golangci, ruff/mypy, `cargo build`/`clippy`, targets make)
 - `tb guard check` aceita `--base`/`--head` (como review/drift/verify) além do intervalo posicional `base..head`
 - Indexador Python emite arestas `calls` resolvíveis no repositório (`tb graph callers` / `impact`)
@@ -47,6 +50,12 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 ### Corrigido
 - `tb graph callers`/`impact` em Python: resolve por sufixo de nome qualificado e ignora arestas `calls` com confiança &lt; 0.6 (reduz alvos espúrios como `setup.py`→`tests.setup`)
 - docs/cli.md alinhado à CLI real: `graph index [path]` (sem `--path`), sem `graph query`, `review`/`drift` só `--output` (sem `-o`), flags de graph/mem verificadas contra `--help`
+- `tb drift` resolve refs git (`HEAD^`, tags, SHA curto) via `rev-parse` antes de
+  comparar com `base_commit` (evita falso `base_mismatch`)
+- `tb verify run --json` sai com exit ≠ 0 em `ESCALATE`/`FAIL` (alinhado ao modo texto)
+- `tb init`: hints de `AGENTS.md`/`CLAUDE.md` ignoram fences de código longos e
+  aceitam prosa curta (“use/run/prefer …”); `verify.test_cmd` valida o binário no
+  `PATH` com fallback (ex. `uv` ausente → `pytest` / `python -m pytest`)
 - `tb bench`: honra `bench.tasks_dir` / `fixtures_dir` / `output_dir` do config.yaml
   (precedência: flag CLI > YAML > default); a flag global `-c/--config` alimenta `config.Load()`
 - `protected_paths` com barra final (`secrets/`) passa a proteger filhos do diretório

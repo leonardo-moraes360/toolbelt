@@ -502,3 +502,120 @@ scope:
 		t.Fatal("expected drift report")
 	}
 }
+
+func TestDetectDriftHeadCaretResolvesToSHA(t *testing.T) {
+	repo := t.TempDir()
+	run := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = repo
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v (%s)", args, err, out)
+		}
+	}
+	run("init")
+	run("config", "user.email", "t@example.com")
+	run("config", "user.name", "t")
+	if err := os.WriteFile(filepath.Join(repo, "a.go"), []byte("package a\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	run("add", ".")
+	run("commit", "-m", "base")
+	baseSHA := gitRevParse(t, repo, "HEAD")
+	if err := os.WriteFile(filepath.Join(repo, "a.go"), []byte("package a\n\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	run("add", ".")
+	run("commit", "-m", "head")
+
+	ticket := &TicketScope{BaseCommit: baseSHA, Scope: []string{"a.go"}}
+	cfg := DefaultConfig(repo)
+	cfg.TicketPath = filepath.Join(repo, "rd.md")
+	cfg.BaseRef = "HEAD^"
+	cfg.HeadRef = "HEAD"
+	cfg.Reviewers = 1
+	cfg.Standards = []string{"scope"}
+	rd := "---\ntitle: t\nbase_commit: " + baseSHA + "\nscope:\n  - a.go\n---\n"
+	if err := os.WriteFile(cfg.TicketPath, []byte(rd), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	raw := DetectDrift(ticket, []string{"a.go"}, "HEAD^")
+	if !raw.BaseMismatch {
+		t.Fatal("sem resolve, HEAD^ vs SHA deveria mismatch por string")
+	}
+
+	rep, err := Run(&cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.Drift == nil {
+		t.Fatal("expected drift")
+	}
+	if rep.Drift.BaseMismatch {
+		t.Fatalf("HEAD^ deveria resolver para o mesmo SHA do ticket; actual=%q declared=%q",
+			rep.Drift.ActualBase, rep.Drift.DeclaredBase)
+	}
+	if rep.Drift.ActualBase != baseSHA {
+		t.Fatalf("actual_base=%q want resolved SHA %q", rep.Drift.ActualBase, baseSHA)
+	}
+}
+
+func TestDetectDriftResolvedStillMismatch(t *testing.T) {
+	repo := t.TempDir()
+	run := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = repo
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v (%s)", args, err, out)
+		}
+	}
+	run("init")
+	run("config", "user.email", "t@example.com")
+	run("config", "user.name", "t")
+	if err := os.WriteFile(filepath.Join(repo, "a.go"), []byte("package a\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	run("add", ".")
+	run("commit", "-m", "c1")
+	first := gitRevParse(t, repo, "HEAD")
+	if err := os.WriteFile(filepath.Join(repo, "a.go"), []byte("package a\nx\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	run("add", ".")
+	run("commit", "-m", "c2")
+	if err := os.WriteFile(filepath.Join(repo, "a.go"), []byte("package a\nxy\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	run("add", ".")
+	run("commit", "-m", "c3")
+
+	rd := "---\ntitle: t\nbase_commit: " + first + "\nscope:\n  - a.go\n---\n"
+	path := filepath.Join(repo, "rd.md")
+	if err := os.WriteFile(path, []byte(rd), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg := DefaultConfig(repo)
+	cfg.TicketPath = path
+	cfg.BaseRef = "HEAD^"
+	cfg.HeadRef = "HEAD"
+	cfg.Reviewers = 1
+	cfg.Standards = []string{"scope"}
+	rep, err := Run(&cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.Drift == nil || !rep.Drift.BaseMismatch {
+		t.Fatal("bases diferentes após resolve ainda devem mismatch")
+	}
+}
+
+func gitRevParse(t *testing.T, repo, ref string) string {
+	t.Helper()
+	out, err := exec.Command("git", "-C", repo, "rev-parse", ref).Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return strings.TrimSpace(string(out))
+}

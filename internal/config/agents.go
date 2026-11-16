@@ -15,13 +15,29 @@ const (
 	AgentsMDName  = "AGENTS.md"
 	ClaudeMDName  = "CLAUDE.md"
 	AgentDocsFile = "agent_docs.yaml"
+	maxHintLen    = 120
 )
 
 var (
 	agentDocNames = []string{AgentsMDName, ClaudeMDName}
 
-	hintCommandRe = regexp.MustCompile("(?i)`((?:go|npm|pnpm|yarn|bun|cargo|pytest|python|make|task|ruff|golangci-lint|tox|cmake|ninja|mvn|gradle|dotnet|poetry|uv)[^`]*)`")
-	fencedCmdRe   = regexp.MustCompile("(?im)^(?: {0,3})(?:\\$ )?((?:go|npm|pnpm|yarn|bun|cargo|pytest|python|make|task|ruff|golangci-lint|tox|cmake|ninja|mvn|gradle|dotnet|poetry|uv)\\b[^\\n`]*)$")
+	toolAlternation = `go|npm|pnpm|yarn|bun|cargo|pytest|python3|python|make|task|ruff|golangci-lint|tox|cmake|ninja|mvn|gradle|dotnet|poetry|uv`
+
+	hintCommandRe = regexp.MustCompile("(?i)`((?:" + toolAlternation + ")[^`]*)`")
+	fencedCmdRe   = regexp.MustCompile("(?im)^(?: {0,3})(?:\\$ )?((?:" + toolAlternation + ")\\b[^\\n`]*)$")
+	proseHintRe   = regexp.MustCompile("(?i)\\b(?:use|run|prefer|try|execute)\\s+((?:" + toolAlternation + ")\\b[^\\n]*)")
+
+	shellFenceLangs = map[string]bool{
+		"": true, "sh": true, "bash": true, "shell": true, "zsh": true,
+		"console": true, "terminal": true, "shellsession": true, "text": true,
+	}
+
+	proseStopWords = map[string]bool{
+		"when": true, "before": true, "after": true, "for": true, "to": true,
+		"if": true, "while": true, "with": true, "and": true, "or": true,
+		"as": true, "in": true, "on": true, "the": true, "a": true, "an": true,
+		"from": true, "into": true, "via": true, "instead": true, "rather": true,
+	}
 )
 
 type AgentDocsResult struct {
@@ -59,9 +75,8 @@ func ExtractCommandHints(content string) []string {
 	seen := map[string]struct{}{}
 	var hints []string
 	add := func(raw string) {
-		cmd := strings.TrimSpace(raw)
-		cmd = strings.Trim(cmd, "$ ")
-		if cmd == "" {
+		cmd := normalizeHint(raw)
+		if !isCommandHint(cmd) {
 			return
 		}
 		if _, ok := seen[cmd]; ok {
@@ -70,18 +85,121 @@ func ExtractCommandHints(content string) []string {
 		seen[cmd] = struct{}{}
 		hints = append(hints, cmd)
 	}
-	for _, m := range hintCommandRe.FindAllStringSubmatch(content, -1) {
+
+	stripped, fenceHints := extractShellFenceHints(content)
+	for _, h := range fenceHints {
+		add(h)
+	}
+	for _, m := range hintCommandRe.FindAllStringSubmatch(stripped, -1) {
 		if len(m) > 1 {
 			add(m[1])
 		}
 	}
-	for _, m := range fencedCmdRe.FindAllStringSubmatch(content, -1) {
+	for _, m := range fencedCmdRe.FindAllStringSubmatch(stripped, -1) {
 		if len(m) > 1 {
 			add(m[1])
+		}
+	}
+	for _, m := range proseHintRe.FindAllStringSubmatch(stripped, -1) {
+		if len(m) > 1 {
+			add(trimProseCommand(m[1]))
 		}
 	}
 	sort.Strings(hints)
 	return hints
+}
+
+func extractShellFenceHints(content string) (stripped string, hints []string) {
+	var b strings.Builder
+	i := 0
+	for i < len(content) {
+		if !strings.HasPrefix(content[i:], "```") {
+			b.WriteByte(content[i])
+			i++
+			continue
+		}
+		fenceStart := i
+		i += 3
+		for i < len(content) && content[i] == '`' {
+			i++
+		}
+		lineEnd := strings.IndexByte(content[i:], '\n')
+		lang := ""
+		bodyStart := i
+		if lineEnd >= 0 {
+			lang = strings.ToLower(strings.TrimSpace(content[i : i+lineEnd]))
+			if idx := strings.IndexAny(lang, " \t{"); idx >= 0 {
+				lang = lang[:idx]
+			}
+			bodyStart = i + lineEnd + 1
+		}
+		closeIdx := strings.Index(content[bodyStart:], "```")
+		if closeIdx < 0 {
+			b.WriteString(content[fenceStart:])
+			break
+		}
+		body := content[bodyStart : bodyStart+closeIdx]
+		closeEnd := bodyStart + closeIdx
+		for closeEnd < len(content) && content[closeEnd] == '`' {
+			closeEnd++
+		}
+		if shellFenceLangs[lang] {
+			for _, line := range strings.Split(body, "\n") {
+				line = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(line), "$ "))
+				norm := normalizeHint(line)
+				if isCommandHint(norm) {
+					hints = append(hints, norm)
+				}
+			}
+		}
+		b.WriteByte('\n')
+		i = closeEnd
+	}
+	return b.String(), hints
+}
+
+func looksLikeToolCommand(line string) bool {
+	return hintCommandRe.MatchString("`"+line+"`") || fencedCmdRe.MatchString(line)
+}
+
+func normalizeHint(raw string) string {
+	cmd := strings.TrimSpace(raw)
+	cmd = strings.Trim(cmd, "$ ")
+	cmd = strings.Join(strings.Fields(cmd), " ")
+	return cmd
+}
+
+func trimProseCommand(raw string) string {
+	fields := strings.Fields(raw)
+	var out []string
+	for i, f := range fields {
+		clean := strings.Trim(f, ".,;:`\"'")
+		if clean == "" {
+			continue
+		}
+		low := strings.ToLower(clean)
+		if i > 0 && proseStopWords[low] {
+			break
+		}
+		out = append(out, clean)
+	}
+	return strings.Join(out, " ")
+}
+
+func isCommandHint(cmd string) bool {
+	if cmd == "" || len(cmd) > maxHintLen {
+		return false
+	}
+	if strings.ContainsAny(cmd, "\n\r{}") || strings.Contains(cmd, ":=") {
+		return false
+	}
+	if strings.Contains(cmd, "func ") || strings.Contains(cmd, "=>") {
+		return false
+	}
+	if !looksLikeToolCommand(cmd) {
+		return false
+	}
+	return true
 }
 
 func MinimalAgentsMD(verify VerifyConfig) string {

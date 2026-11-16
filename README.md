@@ -113,8 +113,9 @@ make build
 # Inicializa configuração local (detecta toolchain → test/build/lint_cmd)
 tb init
 
-# Se existir AGENTS.md/CLAUDE.md, o init lê e registra dicas de comandos
-# (nunca sobrescreve). Semear AGENTS.md citando test_cmd (e build/lint se houver):
+# Se existir AGENTS.md/CLAUDE.md, o init lê e registra hints curtos de comandos
+# (filtra fences longos; nunca sobrescreve). Semear AGENTS.md citando test_cmd
+# (e build/lint se houver):
 tb init --write-agents
 
 # Mostra versão
@@ -170,6 +171,7 @@ tb bench compare --config-a bench/ab/graph-off.yaml \
 - [x] Parser Markdown de Scope (`## Scope` / listas) e globs com `**` no meio
 - [x] Ruler visual: screenshot + browser headless (skip gracioso; `skipped` agregado no relatório)
 - [x] Docs CLI alinhados aos comandos/flags reais (`docs/cli.md` / README)
+- [x] MCP com paridade do loop de campo (`mem` / `verify` / `review` / `drift` / `guard`)
 - [ ] Hierarquia de agentes / A2A / `tb md` (posterior)
 
 ### Entrada para a próxima fase (estudo de campo)
@@ -221,7 +223,7 @@ Este projeto está na **Fase 2**: CLI funcional com verify/guard/mem/graph/revie
 | Comando | Status | Descrição |
 |---------|--------|-----------|
 | `tb version` | ✅ | Mostra versão, commit e build time |
-| `tb init` | ✅ | Inicializa configuração local; detecta toolchain (`verify.test_cmd` / `build_cmd` / `lint_cmd`), lê `AGENTS.md`/`CLAUDE.md` (dicas) e opcionalmente semeia com `--write-agents` (seed cita test/build/lint detectados) |
+| `tb init` | ✅ | Inicializa configuração local; detecta toolchain (`verify.test_cmd` com checagem de `PATH`/fallback; `build_cmd` / `lint_cmd`), lê `AGENTS.md`/`CLAUDE.md` (hints filtrados) e opcionalmente semeia com `--write-agents` (seed cita test/build/lint detectados) |
 | `tb bench run` | ✅ | Executa benchmark |
 | `tb bench list` | ✅ | Lista tarefas disponíveis |
 | `tb bench report` | ✅ | Gera relatório Markdown |
@@ -235,4 +237,4 @@ Este projeto está na **Fase 2**: CLI funcional com verify/guard/mem/graph/revie
 | `tb drift` | ✅ | Drift de escopo / commit base |
 | `tb workspace` | ✅ | Workspaces isolados via git worktree |
 | `tb router` | 🚧 | Stub (não implementado) |
-| `tb mcp` | ✅ | Servidor MCP stateless (stdio) |
+| `tb mcp` | ✅ | Servidor MCP stateless (stdio); tools de mem/verify/review/drift/guard + graph |

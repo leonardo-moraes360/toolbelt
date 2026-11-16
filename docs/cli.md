@@ -143,8 +143,8 @@ Linguagens e docs (extensível via `LanguageIndexer`, regex leve, sem cgo):
 | `java` | `.java` |
 | `kotlin` | `.kt`, `.kts` |
 | `csharp` | `.cs` |
-| `cpp` | `.c`, `.h`, `.cc`, `.cpp`, `.cxx`, `.hpp`, `.hh`, `.hxx` |
-| `rust` | `.rs` |
+| `cpp` | `.c`, `.h`, `.cc`, `.cpp`, `.cxx`, `.hpp`, `.hh`, `.hxx` (defines/imports; sem arestas `calls` — `callers`/`impact` retornam erro explícito) |
+| `rust` | `.rs` (defines/imports + arestas `calls` mínimas resolvíveis no repositório) |
 | `php` | `.php` |
 | `ruby` | `.rb` |
 | `swift` | `.swift` |
@@ -199,8 +199,8 @@ Subcomandos:
   stats     Estatísticas do grafo ✅
 ```
 
-Ferramentas MCP (quando `TB_GRAPH=on`): `tb_graph_search`, `tb_graph_callers`,
-`tb_graph_deps`, `tb_graph_index`.
+Ferramentas MCP de grafo (chamada requer `TB_GRAPH=on`): `tb_graph_search`,
+`tb_graph_callers`, `tb_graph_deps`, `tb_graph_index`.
 
 Não há `tb graph query` — use `tb graph search`.
 
@@ -577,6 +577,10 @@ Detecta mudanças fora do scope declarado no ticket/rd.md, toques em
 (mandate). O parser de scope/forbidden é o mesmo do `tb review`
 (YAML frontmatter ou Markdown `## Scope` / `## Forbidden` / listas / globs com `**`).
 
+`--base` / `base_commit` do ticket (ex.: `HEAD^`, tags, SHA curto) são
+resolvidos com `git rev-parse` antes da comparação — evita falso
+`base_mismatch` por comparar a string da ref com o SHA declarado.
+
 ```bash
 tb drift [ticket] [flags]
 
@@ -675,7 +679,15 @@ Flags:
 (`go.mod` → `go test ./...`, `package.json` + scripts.test → `npm`/`pnpm`/`yarn test`,
 `pyproject.toml`/`uv.lock` → `pytest`/`uv run pytest`, `Cargo.toml` → `cargo test`,
 `Makefile` com target `test`/`check` → `make test`/`make check`). Sem marcadores
-reconhecidos, permanece o default Go.
+reconhecidos, permanece o default Go. O binário do comando escolhido é validado no
+`PATH`: se `uv` estiver ausente com `uv.lock`, faz fallback para `pytest` ou
+`python -m pytest` / `python3 -m pytest` (e avisa); managers Node ausentes
+caem para `npm test` quando possível.
+
+Quando há `AGENTS.md`/`CLAUDE.md`, o init grava `.toolbelt/agent_docs.yaml` com
+`sources` e `hints` de comandos curtos (inline, fences shell e prosa do tipo
+“use/run/prefer …”). Fences de código longo (ex. ` ```go `) são ignorados para
+não poluir as dicas.
 
 Quando há marcadores claros, o init também preenche `verify.build_cmd` e
 `verify.lint_cmd` de forma conservadora:
@@ -699,6 +711,9 @@ diretório, a suite oculta é ignorada (`hidden_available: false`). Campos
 opcionais `build_cmd` e `lint_cmd` rodam antes dos testes (nessa ordem) e
 fazem o verify falhar se o comando sair com erro; ausentes = comportamento
 anterior (só `test_cmd` + hidden).
+
+Veredictos `ESCALATE` e `FAIL` saem com **exit ≠ 0** também com `--json`
+(igual ao modo texto). Só `PASS` e `SKIPPED` (ruler visual) usam exit 0.
 
 **Guard dentro do verify (anti-cheat vs mandate):**
 
@@ -1501,6 +1516,23 @@ tb mcp
 ```
 
 Transporte unix/tcp e flags `--socket`/`--port`/`--tls-*` são planejados; hoje só stdio.
+
+**Ferramentas expostas em `tools/list` / `tools/call`:**
+
+| Tool | Paridade CLI | Notas |
+|------|--------------|-------|
+| `tb_version` | `tb version` | |
+| `tb_echo` | — | smoke |
+| `tb_env` | — | cwd/os/arch |
+| `tb_run` | — | `sh -c` com timeout |
+| `tb_mem_add` / `tb_mem_list` / `tb_mem_check` / `tb_mem_init` | `tb mem …` | arg opcional `cwd` |
+| `tb_verify_run` | `tb verify run` | `ruler=tests\|visual`; args espelham flags |
+| `tb_review` | `tb review` | ticket/base/head/reviewers/standards |
+| `tb_drift` | `tb drift` | retorna `{drift, has_drift}` |
+| `tb_guard_check` | `tb guard check` | `base`/`head` ou `range=A..B`; `strict` → `strict_fail` |
+| `tb_graph_search` / `tb_graph_callers` / `tb_graph_deps` / `tb_graph_index` | `tb graph …` | chamada requer `TB_GRAPH=on` |
+
+Args são strings (como nas tools de grafo). Relatórios de verify/review/drift/guard voltam como JSON no `content` (sem código de saída de processo).
 
 ---
 

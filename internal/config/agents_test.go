@@ -49,6 +49,48 @@ func TestExtractCommandHints(t *testing.T) {
 	}
 }
 
+func TestExtractCommandHints_DropsLongGoFences(t *testing.T) {
+	content := `# AGENTS
+
+Run ` + "`go test ./...`" + ` and ` + "`task lint:log`" + `.
+
+` + "```go\n" + `func CharmtonePantera() color.Color {
+	return lipgloss.Color("#FF278C")
+}
+` + "```\n\n" + "```go\n" + `func TestSomething(t *testing.T) {
+	mock := NewMock()
+	go func() {
+		mock.Run()
+	}()
+}
+` + "```\n\n" + "```\n" + `go test ./internal/stringext/
+task lint:log
+` + "```\n"
+	hints := ExtractCommandHints(content)
+	joined := strings.Join(hints, "\n")
+	for _, noise := range []string{"CharmtonePantera", "TestSomething", "lipgloss", "NewMock", "go func"} {
+		if strings.Contains(joined, noise) {
+			t.Fatalf("noisy hint %q leaked: %v", noise, hints)
+		}
+	}
+	for _, want := range []string{"go test ./...", "task lint:log", "go test ./internal/stringext/"} {
+		if !strings.Contains(joined, want) {
+			t.Fatalf("useful hint missing %q: %v", want, hints)
+		}
+	}
+}
+
+func TestExtractCommandHints_ProseWithoutBackticks(t *testing.T) {
+	content := "# Notes\nUse make test when changing args.\nPrefer pytest for the python suite.\nRun npm test before pushing.\n"
+	hints := ExtractCommandHints(content)
+	joined := strings.Join(hints, "\n")
+	for _, want := range []string{"make test", "pytest", "npm test"} {
+		if !strings.Contains(joined, want) {
+			t.Fatalf("prose hint missing %q: %v", want, hints)
+		}
+	}
+}
+
 func TestSeedAgentsMD_CreatesWhenAbsent(t *testing.T) {
 	root := t.TempDir()
 	seeded, err := SeedAgentsMD(root, VerifyConfig{TestCmd: "go test ./..."})
