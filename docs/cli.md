@@ -708,7 +708,7 @@ Flags:
   --timeout <dur>          Timeout (default: 10m)
   --threshold <float>      Threshold de similaridade visual (default: 0.95)
   --manifest <path>        Manifesto de telas (default: .toolbelt/screens.yaml)
-  --skip-unavailable       Skip gracioso sem browser/refs (default: true)
+  --skip-unavailable       Skip gracioso sem browser/refs/telas (default: true; veredicto SKIPPED)
   --base <ref>             Ref base
   --head <ref>             Ref head
   --output <path> / -o     Arquivo de saída JSON
@@ -759,8 +759,8 @@ tb verify run --test-cmd "go test ./..." --hidden-test-cmd "go test ./tests/hidd
 tb verify run --ruler visual --threshold 0.95
 tb verify run --ruler visual --manifest .toolbelt/screens.yaml --json -o verify-result.json
 
-# Skip gracioso (default): browser/refs ausentes ou todas as telas skipped
-# → relatório top-level skipped=true
+# Skip gracioso (default): browser/refs ausentes, screens: [] ou todas as telas skipped
+# → relatório top-level skipped=true e veredicto SKIPPED (não PASS)
 tb verify run --ruler visual --skip-unavailable
 ```
 

@@ -35,7 +35,7 @@ func init() {
 	verifyRunCmd.Flags().String("ruler", "tests", "ruler: tests|visual")
 	verifyRunCmd.Flags().String("manifest", "", "manifesto de telas (.toolbelt/screens.yaml)")
 	verifyRunCmd.Flags().Float64("threshold", 0.95, "threshold de similaridade visual")
-	verifyRunCmd.Flags().Bool("skip-unavailable", true, "passa com skip se browser/refs indisponíveis")
+	verifyRunCmd.Flags().Bool("skip-unavailable", true, "skip gracioso (veredicto SKIPPED) se browser/refs/telas indisponíveis")
 	verifyCmd.AddCommand(verifyRunCmd)
 }
 
@@ -122,7 +122,7 @@ func emitVerifyResult(cmd *cobra.Command, verdict verify.Verdict, payload any) e
 		return err
 	}
 	printTestsSummary(payload)
-	if verdict != verify.VerdictPass {
+	if verdict != verify.VerdictPass && verdict != verify.VerdictSkipped {
 		os.Exit(1)
 	}
 	return nil
