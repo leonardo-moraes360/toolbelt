@@ -71,13 +71,38 @@ func Run(ctx context.Context, cfg *Config) (*Result, error) {
 		return nil, err
 	}
 	res.Guard = gr
-	for _, v := range gr.Violations {
-		if v.Severity == guard.SeverityError {
-			res.Verdict = VerdictFail
+	if hasGuardError(gr) {
+		res.Verdict = VerdictFail
+		return res, nil
+	}
+
+	prepareHidden(cfg, res)
+
+	for i := 1; i <= cfg.MaxIterations; i++ {
+		res.Iterations = i
+		ok, err := runIteration(ctx, cfg, res)
+		if err != nil {
+			return nil, err
+		}
+		if ok {
+			res.Verdict = VerdictPass
 			return res, nil
 		}
 	}
+	res.Verdict = VerdictEscalate
+	return res, nil
+}
 
+func hasGuardError(gr *guard.CheckResult) bool {
+	for _, v := range gr.Violations {
+		if v.Severity == guard.SeverityError {
+			return true
+		}
+	}
+	return false
+}
+
+func prepareHidden(cfg *Config, res *Result) {
 	hiddenDir := filepath.Join(cfg.RepoDir, "tests", "hidden")
 	_, dirErr := os.Stat(hiddenDir)
 	dirExists := dirErr == nil
@@ -85,38 +110,35 @@ func Run(ctx context.Context, cfg *Config) (*Result, error) {
 		cfg.HiddenTest = DefaultHiddenTestCmd
 	}
 	res.HiddenAvailable = cfg.HiddenTest != "" || dirExists
+}
 
-	for i := 1; i <= cfg.MaxIterations; i++ {
-		res.Iterations = i
-		preOK, preErr := runBuildAndLint(ctx, cfg, res)
-		if preErr != nil {
-			return nil, preErr
-		}
-		if !preOK {
-			log.Info("iteração de verify falhou", "n", i, "step", "build_or_lint")
-			continue
-		}
-		visibleOK, err := runTest(ctx, cfg.RepoDir, cfg.VisibleTest, cfg.Timeout)
-		if err != nil {
-			return nil, err
-		}
-		res.VisiblePassed = visibleOK
-		hiddenOK := true
-		if res.HiddenAvailable {
-			hiddenOK, err = runTest(ctx, cfg.RepoDir, cfg.HiddenTest, cfg.Timeout)
-			if err != nil {
-				return nil, err
-			}
-			res.HiddenPassed = hiddenOK
-		}
-		if visibleOK && hiddenOK {
-			res.Verdict = VerdictPass
-			return res, nil
-		}
-		log.Info("iteração de verify falhou", "n", i)
+func runIteration(ctx context.Context, cfg *Config, res *Result) (bool, error) {
+	preOK, preErr := runBuildAndLint(ctx, cfg, res)
+	if preErr != nil {
+		return false, preErr
 	}
-	res.Verdict = VerdictEscalate
-	return res, nil
+	if !preOK {
+		log.Info("iteração de verify falhou", "n", res.Iterations, "step", "build_or_lint")
+		return false, nil
+	}
+	visibleOK, err := runTest(ctx, cfg.RepoDir, cfg.VisibleTest, cfg.Timeout)
+	if err != nil {
+		return false, err
+	}
+	res.VisiblePassed = visibleOK
+	hiddenOK := true
+	if res.HiddenAvailable {
+		hiddenOK, err = runTest(ctx, cfg.RepoDir, cfg.HiddenTest, cfg.Timeout)
+		if err != nil {
+			return false, err
+		}
+		res.HiddenPassed = hiddenOK
+	}
+	if visibleOK && hiddenOK {
+		return true, nil
+	}
+	log.Info("iteração de verify falhou", "n", res.Iterations)
+	return false, nil
 }
 
 func runBuildAndLint(ctx context.Context, cfg *Config, res *Result) (bool, error) {
