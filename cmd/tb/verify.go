@@ -28,7 +28,7 @@ func init() {
 	verifyRunCmd.Flags().String("base", "", "ref base")
 	verifyRunCmd.Flags().String("head", "", "ref head")
 	verifyRunCmd.Flags().String("test-cmd", "", "linha de testes visíveis")
-	verifyRunCmd.Flags().String("hidden-test-cmd", "", "linha de testes ocultos (default: go test ./tests/hidden/...)")
+	verifyRunCmd.Flags().String("hidden-test-cmd", "", "linha de testes ocultos (roda mesmo sem tests/hidden/; se o dir existir e o cmd estiver vazio: go test ./tests/hidden/...)")
 	verifyRunCmd.Flags().Int("max-iter", 0, "máximo de iterações")
 	verifyRunCmd.Flags().String("timeout", "10m", "timeout")
 	verifyRunCmd.Flags().StringP("output", "o", "", "arquivo JSON")

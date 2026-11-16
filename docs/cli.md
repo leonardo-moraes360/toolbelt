@@ -755,7 +755,7 @@ tb verify run [flags]
 Flags:
   --ruler <type>           Tipo de ruler: tests|visual (default: tests) ✅
   --test-cmd <cmd>         Testes visíveis (default: verify.test_cmd; `tb init` detecta go/npm/pnpm/yarn/pytest/cargo/make)
-  --hidden-test-cmd <cmd>  Suite oculta (default: go test ./tests/hidden/... ou verify.hidden_test_cmd)
+  --hidden-test-cmd <cmd>  Suite oculta (verify.hidden_test_cmd; se vazio e existir tests/hidden/: go test ./tests/hidden/...)
   --max-iter <n>           Máximo de iterações (default: 3)
   --threshold <pct>        Threshold de similaridade visual (default: 0.95) ✅
   --manifest <path>        Manifesto de telas (default: .toolbelt/screens.yaml) ✅
@@ -771,7 +771,11 @@ Flags:
 reconhecidos, permanece o default Go.
 
 A suite oculta permanece escondida do agente (paths em `tests/hidden/` protegidos
-pelo `tb guard`). Em monorepos não-Go, configure o comando oculto. Campos
+pelo `tb guard`). O comando configurado em `verify.hidden_test_cmd` ou
+`--hidden-test-cmd` **sempre executa**, mesmo sem o diretório `tests/hidden/`
+(caso típico em monorepos JS/Python/Rust). Se o comando estiver vazio e o
+diretório existir, usa-se `go test ./tests/hidden/...`. Sem comando e sem
+diretório, a suite oculta é ignorada (`hidden_available: false`). Campos
 opcionais `build_cmd` e `lint_cmd` rodam antes dos testes (nessa ordem) e
 fazem o verify falhar se o comando sair com erro; ausentes = comportamento
 anterior (só `test_cmd` + hidden).
@@ -787,6 +791,7 @@ verify:
 
 ```bash
 tb verify run --test-cmd "pnpm test" --hidden-test-cmd "pnpm test:hidden"
+# sem tests/hidden/: o hidden_test_cmd acima ainda roda
 ```
 
 Ruler `visual` (docs/verificacao-visual.md): captura headless + diff de pixels;
