@@ -15,10 +15,10 @@ tb  (implementado hoje)
 ├── mem          Invariantes (add|list|show|edit|retire|search|check|init)
 ├── review       Revisão fresh-context
 ├── sandbox      Isolamento Landlock (check|run)
-├── stack        Empilha verify/review/drift/guard com contexto compartilhado
+├── stack        Empilha ops de verificação (verify/review/drift/guard); não é stack de branches
 ├── verify       Verificação adversarial (run; rulers tests|visual)
 ├── workspace    Workspaces via git worktree (create|list|remove; alias: ws)
-├── version      Mostra versão
+├── version      Mostra versão (também: tb --version)
 └── router       Stub (não implementado)
 
 tb  (planejado — Fase 3+)
@@ -500,13 +500,16 @@ tb agent reject action-124 --reason "Não autorizado para rede externa"
 
 ---
 
-### `tb stack` — Empilhamento de Operações (✓ Fase 2)
+### `tb stack` — Empilhamento de Operações de Verificação (✓ Fase 2)
 
 Executa `verify`, `review`, `drift` e/ou `guard` numa única invocação, compartilhando
 o trabalho caro (diff unificado, índice de arquivos alterados, memória/invariantes e
 config). A ordem dos argumentos é a ordem de execução. A saída é sempre um JSON
 agregado (`ok`, `steps`, `total_duration_ms`); o exit code do processo é ≠ 0 se
 qualquer etapa falhar (mesma semântica de cada comando avulso).
+
+**Não é stack de branches** (como Graphite ou git-stack). `tb stack` só empilha
+operações de verificação/revisão com contexto compartilhado.
 
 ```bash
 tb stack <op> [<op>...] [flags]
@@ -526,7 +529,8 @@ Flags:
   --standards <csv>      review: papéis (scope,quality,acceptance)
 ```
 
-Operação desconhecida sai com erro claro (sem dump de `Usage`).
+Sem operação, ou com operação desconhecida, sai com erro curto listando as ops
+válidas (`verify`, `review`, `drift`, `guard`) — sem dump de `Usage`.
 
 **Exemplos:**
 
@@ -1655,19 +1659,24 @@ tb workspace remove <id>
 
 ---
 
-### `tb version` ✅ IMPLEMENTADO
+### `tb version` / `tb --version` ✅ IMPLEMENTADO
 
 ```bash
 tb version [flags]
-
-Flags:
-  --json    Saída em JSON ✅
+tb --version
 ```
+
+Flags (subcommand `version`):
+  --json    Saída em JSON ✅
+
+A flag global `--version` imprime a mesma saída textual de `tb version`
+(versão, commit, build, go, os/arch).
 
 **Exemplos:**
 
 ```bash
 tb version
+tb --version
 # toolbelt dev
 #   commit: unknown
 #   built:  unknown

@@ -7,6 +7,15 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Não Lançado]
 
+### Adicionado
+- Flag global `tb --version` (mesma saída textual de `tb version`)
+
+### Mudanças
+- `tb stack` sem operação: erro curto listando ops válidas (`verify`, `review`,
+  `drift`, `guard`), sem dump de `Usage` (alinhado ao padrão de erros de domínio)
+- Help/`docs/cli.md` de `tb stack` deixam explícito que empilha operações de
+  verificação e **não** é stack de branches (Graphite/git-stack)
+
 ## [0.0.2] - 2026-11-16
 
 ### Adicionado

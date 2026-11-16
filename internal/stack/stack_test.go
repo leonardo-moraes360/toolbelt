@@ -43,6 +43,22 @@ func TestParseOpsOrder(t *testing.T) {
 	}
 }
 
+func TestParseOpsEmptyListsValidOps(t *testing.T) {
+	_, err := ParseOps(nil)
+	if err == nil {
+		t.Fatal("esperava erro sem operações")
+	}
+	msg := err.Error()
+	for _, op := range []string{"verify", "review", "drift", "guard"} {
+		if !strings.Contains(msg, op) {
+			t.Fatalf("mensagem deveria listar %q: %v", op, err)
+		}
+	}
+	if strings.Contains(msg, "Usage") {
+		t.Fatalf("não deve citar Usage: %v", err)
+	}
+}
+
 func TestStackAggregateJSONAndOrder(t *testing.T) {
 	dir := gitRepo(t)
 	writeFile(t, filepath.Join(dir, "a.go"), "package a\n")

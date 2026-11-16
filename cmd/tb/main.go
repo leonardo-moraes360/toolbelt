@@ -39,7 +39,8 @@ grafo de dependências, roteamento multi-agente e benchmark.
 Exemplo:
   tb init                    Inicializa configuração local
   tb bench run               Executa benchmark baseline
-  tb version                 Mostra versão`,
+  tb version                 Mostra versão
+  tb --version               Mostra versão (flag global)`,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 		cmd.SilenceUsage = true
 
@@ -62,6 +63,10 @@ func init() {
 	rootCmd.PersistentFlags().StringVarP(&cfgFile, "config", "c", "", "arquivo de configuração")
 	rootCmd.PersistentFlags().BoolVar(&jsonOutput, "json", false, "saída em JSON")
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "saída verbose")
+
+	rootCmd.Version = version.Get().String()
+	rootCmd.SetVersionTemplate("{{.Version}}\n")
+	rootCmd.InitDefaultVersionFlag()
 
 	rootCmd.AddCommand(versionCmd)
 	rootCmd.AddCommand(initCmd)
