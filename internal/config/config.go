@@ -41,6 +41,9 @@ type Config struct {
 
 	// Verify configura a verificação adversarial.
 	Verify VerifyConfig `yaml:"verify"`
+
+	// Review configura review/drift (approved-sha).
+	Review ReviewConfig `yaml:"review"`
 }
 
 // Defaults são valores padrão para commands.
@@ -98,6 +101,11 @@ type VerifyConfig struct {
 	HiddenTestCmd string `yaml:"hidden_test_cmd"`
 	BuildCmd      string `yaml:"build_cmd,omitempty"`
 	LintCmd       string `yaml:"lint_cmd,omitempty"`
+}
+
+// ReviewConfig configura tb review / tb drift.
+type ReviewConfig struct {
+	RequireApprovedSHA bool `yaml:"require_approved_sha"`
 }
 
 // DefaultConfig retorna a configuração padrão.

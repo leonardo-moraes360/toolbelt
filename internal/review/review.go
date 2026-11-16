@@ -50,14 +50,15 @@ type Shared struct {
 }
 
 type Config struct {
-	RepoDir     string
-	BaseRef     string
-	HeadRef     string
-	ApprovedSHA string
-	TicketPath  string
-	Reviewers   int
-	Standards   []string
-	Shared      *Shared
+	RepoDir            string
+	BaseRef            string
+	HeadRef            string
+	ApprovedSHA        string
+	RequireApprovedSHA bool
+	TicketPath         string
+	Reviewers          int
+	Standards          []string
+	Shared             *Shared
 }
 
 type Report struct {
@@ -109,6 +110,9 @@ func Run(cfg *Config) (*Report, error) {
 	if ticket != nil && ticket.BaseCommit != "" && cfg.BaseRef == "HEAD~1" {
 		cfg.BaseRef = ticket.BaseCommit
 	}
+	if err := pinGitRefs(cfg); err != nil {
+		return nil, err
+	}
 
 	changed, err := resolveChanged(cfg)
 	if err != nil {
@@ -134,6 +138,9 @@ func Run(cfg *Config) (*Report, error) {
 	reconcileDriftBase(cfg.RepoDir, drift)
 	report.Drift = drift
 
+	if cfg.RequireApprovedSHA && strings.TrimSpace(cfg.ApprovedSHA) == "" {
+		return nil, fmt.Errorf("approved-sha obrigatório (require_approved_sha)")
+	}
 	pinned, err := CheckPinnedApproval(cfg.RepoDir, cfg.BaseRef, cfg.ApprovedSHA, cfg.HeadRef)
 	if err != nil {
 		return nil, err
@@ -870,6 +877,20 @@ func pathMarkerHit(file, marker string) bool {
 func loadInvariants(repo string) ([]mem.Invariant, error) {
 	dir := mem.LocateRepoToolbeltDir(repo)
 	return mem.NewStore(dir).List("", false)
+}
+
+func pinGitRefs(cfg *Config) error {
+	base, err := resolveGitRef(cfg.RepoDir, cfg.BaseRef)
+	if err != nil {
+		return fmt.Errorf("base: %w", err)
+	}
+	head, err := resolveGitRef(cfg.RepoDir, cfg.HeadRef)
+	if err != nil {
+		return fmt.Errorf("head: %w", err)
+	}
+	cfg.BaseRef = base
+	cfg.HeadRef = head
+	return nil
 }
 
 func resolveChanged(cfg *Config) ([]string, error) {

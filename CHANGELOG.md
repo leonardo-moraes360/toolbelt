@@ -7,6 +7,14 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Não Lançado]
 
+### Mudanças
+- `tb review` / `tb drift` / `tb stack`: `--approved-sha` passa a usar
+  `git patch-id --verbatim` (sensível a whitespace); JSON sempre expõe
+  `pinned_approval.checked` (`false` quando a checagem não rodou);
+  `--require-approved-sha` e config `review.require_approved_sha` falham se a
+  flag estiver ausente; base/head são resolvidos para SHA uma vez no início
+  (anti-TOCTOU) e reutilizados no fluxo
+
 ## [0.0.2] - 2026-11-16
 
 ### Adicionado
