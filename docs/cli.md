@@ -614,17 +614,23 @@ Invariantes de path (ex.: `tests/hidden/`, `thresholds.yaml`) são casadas contr
 arquivos **alterados** pelo mesmo matcher de path/glob (`tests/hidden/**`,
 `tests/hidden/*`) — não por substring no texto do diff ou do ticket. Mencionar
 `forbidden: tests/hidden/**` em `rd.md` sem tocar esse diretório não gera
-finding critical.
+finding critical. Invariantes de mandate sobre conteúdo (ex.: proibir
+`console.log` ou comentários) são aplicadas às linhas adicionadas (`+`) do diff.
 
 **Revisores (goldfish) distintos**:
 
 | Revisor | `--standards` | O que verifica |
 |---------|---------------|----------------|
-| `goldfish-scope` | `scope` (+ `invariants`) | Arquivos fora do scope, toques em forbidden; invariantes de `tb mem` |
-| `goldfish-quality` | `quality` | TODO/FIXME adicionados; funções muito grandes no diff (≥80 linhas +); código fonte alterado sem testes |
-| `goldfish-acceptance` | `acceptance` (alias: `completeness`) | Cada critério de aceite do ticket tem evidência em testes/arquivos de código alterados (não conta o próprio ticket) |
+| `goldfish-scope` | `scope` (+ `invariants`) | Arquivos fora do scope, toques em forbidden; invariantes de `tb mem` aplicadas a paths alterados **e** a linhas `+` do diff (ex.: `console.log`, comentários proibidos) |
+| `goldfish-quality` | `quality` | Marcadores `TODO`/`FIXME`/`XXX`/`HACK` (palavra inteira em maiúsculas, em comentários); funções muito grandes no diff (≥80 linhas +); código fonte alterado sem testes |
+| `goldfish-acceptance` | `acceptance` (alias: `completeness`) | Cada critério de aceite do ticket tem evidência em testes/arquivos de código alterados (não conta o próprio ticket); considera `Test*` (Go) e `test`/`it`/`describe` (JS/TS) adicionados no diff |
 
 Heurísticas são determinísticas e offline (sem LLM).
+
+Cada finding JSON inclui `role` (papel do goldfish: `scope`, `quality`, `acceptance`, `invariants`).
+Achados de aceite também trazem `criterion` e `evidence` (testes/arquivos vistos no diff).
+`agreement` conta quantos papéis distintos concordaram no mesmo achado (em geral 1).
+No modo texto, imprime `papel=<role>` (e `papéis_acordo=N` só se N>1) — não usa mais `acordo=N/M`.
 
 **Exemplos:**
 
@@ -636,8 +642,8 @@ tb review --ticket rd.md
 #  Base..Head: HEAD~1..HEAD | Revisores: 3 | Fresh: true
 # ═══════════════════════════════════════════════════════════
 # FINDINGS:
-#   [warning] (goldfish-quality/quality) TODO/FIXME adicionado no diff [src/a.go]
-#   [warning] (goldfish-acceptance/acceptance) critério de aceite sem evidência...
+#   [warning] (goldfish-quality/quality) TODO/FIXME/XXX/HACK adicionado em comentário no diff [src/a.go]  papel=quality
+#   [warning] (goldfish-acceptance/acceptance) critério de aceite sem evidência...  papel=acceptance
 
 # Só escopo + qualidade (sem aceite)
 tb review --ticket rd.md --standards scope,quality --reviewers 2

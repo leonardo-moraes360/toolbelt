@@ -373,7 +373,8 @@ func TestReviewForbiddenAndHiddenInvariant(t *testing.T) {
 	}
 	findings := Fresh(&ctx)
 	var forbidden, invariant bool
-	for _, f := range findings {
+	for i := range findings {
+		f := &findings[i]
 		if f.ID == "forbidden-tests/hidden/cheat.py" && f.Severity == SeverityCritical {
 			forbidden = true
 		}
@@ -703,7 +704,8 @@ func assertDistinctRoleFindings(t *testing.T, findings []Finding) {
 	t.Helper()
 	names := map[string]bool{}
 	hasQuality, hasAcceptance := false, false
-	for _, f := range findings {
+	for i := range findings {
+		f := &findings[i]
 		names[f.Reviewer] = true
 		if f.Reviewer == "goldfish-quality" && f.Category == "quality" {
 			hasQuality = true
@@ -742,7 +744,8 @@ func TestReviewQualityHeuristics(t *testing.T) {
 	}
 	findings := Fresh(&ctx)
 	var todo, large, noTest bool
-	for _, f := range findings {
+	for i := range findings {
+		f := &findings[i]
 		switch {
 		case strings.Contains(f.Message, "TODO") || strings.Contains(f.Message, "FIXME"):
 			todo = true
@@ -781,14 +784,209 @@ func TestReviewAcceptanceUsesChangedTestsOrFiles(t *testing.T) {
 	if findings[0].Reviewer != "goldfish-acceptance" || findings[0].Category != "acceptance" {
 		t.Fatalf("got %#v", findings[0])
 	}
+	if findings[0].Criterion == "" || findings[0].Evidence == "" {
+		t.Fatalf("acceptance finding must link criterion and evidence, got %#v", findings[0])
+	}
+	if findings[0].Role != "acceptance" {
+		t.Fatalf("role=%q want acceptance", findings[0].Role)
+	}
 
 	ctx.Changed = []string{"src/auth.go", "src/auth_test.go"}
 	ctx.Diff = "diff --git a/src/auth_test.go b/src/auth_test.go\n--- a/src/auth_test.go\n+++ b/src/auth_test.go\n@@ -0,0 +1,1 @@\n+func TestLoginReturns200OnSuccess(t *testing.T) {}\n"
 	findings = Fresh(&ctx)
-	for _, f := range findings {
+	for i := range findings {
+		f := &findings[i]
 		if f.ID == "accept-0" {
 			t.Fatalf("criterion evidenced in changed test should pass, got %#v", findings)
 		}
+	}
+}
+
+func TestReviewQualityTODOIgnoresPortugueseTodo(t *testing.T) {
+	ctx := FreshContext{
+		Reviewer: "goldfish-quality",
+		Changed:  []string{"src/a.go", "src/a_test.go"},
+		Diff: `diff --git a/src/a.go b/src/a.go
+--- a/src/a.go
++++ b/src/a.go
+@@ -1,3 +1,5 @@
+ package src
++// preciso fazer todo o trabalho amanhã
++return "todo mundo"
+`,
+		Standards: []string{"quality"},
+	}
+	findings := Fresh(&ctx)
+	for i := range findings {
+		f := &findings[i]
+		if strings.Contains(f.ID, "todo") || strings.Contains(f.Message, "TODO") {
+			t.Fatalf("palavra 'todo' em português não deve gerar finding: %#v", f)
+		}
+	}
+}
+
+func TestReviewQualityTODOUppercaseMarkersInComments(t *testing.T) {
+	ctx := FreshContext{
+		Reviewer: "goldfish-quality",
+		Changed:  []string{"src/a.go", "src/a_test.go"},
+		Diff: `diff --git a/src/a.go b/src/a.go
++++ b/src/a.go
++// TODO: wire
++// FIXME: later
++// XXX: risky
++// HACK: temp
++msg := "todo lowercase stays"
+`,
+		Standards: []string{"quality"},
+	}
+	findings := Fresh(&ctx)
+	var todo bool
+	for i := range findings {
+		f := &findings[i]
+		if strings.Contains(f.ID, "quality-todo") {
+			todo = true
+			if f.Role != "quality" {
+				t.Fatalf("role=%q", f.Role)
+			}
+		}
+	}
+	if !todo {
+		t.Fatal("expected TODO/FIXME/XXX/HACK finding in comments")
+	}
+}
+
+func TestReviewAcceptanceLinksCriterionAndEvidence(t *testing.T) {
+	ctx := FreshContext{
+		Reviewer: "goldfish-acceptance",
+		Ticket: &TicketScope{
+			Scope:      []string{"src/"},
+			Acceptance: []string{"session cookie is http-only"},
+		},
+		Changed: []string{"src/greet.go", "src/greet_test.go"},
+		Diff: `diff --git a/src/greet_test.go b/src/greet_test.go
++++ b/src/greet_test.go
++func TestGreet(t *testing.T) {}
+`,
+		Standards: []string{"acceptance"},
+	}
+	findings := Fresh(&ctx)
+	if len(findings) != 1 {
+		t.Fatalf("expected 1 finding for unrelated criterion, got %#v", findings)
+	}
+	f := findings[0]
+	if f.Criterion != "session cookie is http-only" {
+		t.Fatalf("criterion=%q", f.Criterion)
+	}
+	if !strings.Contains(f.Evidence, "TestGreet") {
+		t.Fatalf("evidence should list tests in diff: %q", f.Evidence)
+	}
+	if !strings.Contains(f.Message, "session cookie is http-only") {
+		t.Fatalf("message should name criterion: %q", f.Message)
+	}
+}
+
+func TestReviewInvariantsApplyToAddedLines(t *testing.T) {
+	ctx := FreshContext{
+		Reviewer: "goldfish-scope",
+		Ticket:   &TicketScope{Scope: []string{"src/"}},
+		Changed:  []string{"src/a.js"},
+		Diff: `diff --git a/src/a.js b/src/a.js
++++ b/src/a.js
++  // temporary note
++  console.log("debug")
++  return 1
+`,
+		Invariants: []mem.Invariant{
+			{ID: "1", Rule: "NUNCA use console.log"},
+			{ID: "2", Rule: "NUNCA adicione comentários no código"},
+		},
+		Standards: []string{"invariants"},
+	}
+	findings := Fresh(&ctx)
+	var consoleHit, commentHit bool
+	for i := range findings {
+		f := &findings[i]
+		if f.ID == "inv-1" && strings.Contains(f.Evidence, "console.log") {
+			consoleHit = true
+		}
+		if f.ID == "inv-2" && strings.Contains(strings.ToLower(f.Evidence), "coment") {
+			commentHit = true
+		}
+	}
+	if !consoleHit || !commentHit {
+		t.Fatalf("expected console.log and comment invariant hits on added lines, got %#v", findings)
+	}
+}
+
+func TestReviewAcceptanceSeesTestGreet(t *testing.T) {
+	ctx := FreshContext{
+		Reviewer: "goldfish-acceptance",
+		Ticket: &TicketScope{
+			Scope:      []string{"greet/"},
+			Acceptance: []string{"Greet personalizes the message for the user"},
+		},
+		Changed: []string{"greet/greet.go", "greet/greet_test.go"},
+		Diff: `diff --git a/greet/greet.go b/greet/greet.go
++++ b/greet/greet.go
++func Greet(n string) string { return "hello, " + n }
+diff --git a/greet/greet_test.go b/greet/greet_test.go
++++ b/greet/greet_test.go
++func TestGreet(t *testing.T) {
++	if Greet("x") != "hello, x" { t.Fatal(1) }
++}
+`,
+		Standards: []string{"acceptance"},
+	}
+	findings := Fresh(&ctx)
+	for i := range findings {
+		f := &findings[i]
+		if f.Category == "acceptance" {
+			t.Fatalf("TestGreet should cover Greet criterion, got %#v", f)
+		}
+	}
+}
+
+func TestReviewAcceptanceSeesJSTSTests(t *testing.T) {
+	ctx := FreshContext{
+		Reviewer: "goldfish-acceptance",
+		Ticket: &TicketScope{
+			Scope:      []string{"src/"},
+			Acceptance: []string{"Greet returns hello"},
+		},
+		Changed: []string{"src/greet.ts", "src/greet.test.ts"},
+		Diff: `diff --git a/src/greet.test.ts b/src/greet.test.ts
++++ b/src/greet.test.ts
++import { greet } from './greet'
++test('Greet returns hello', () => {
++  expect(greet('Ada')).toBe('hello, Ada')
++})
++it('covers edge', () => {})
+`,
+		Standards: []string{"acceptance"},
+	}
+	findings := Fresh(&ctx)
+	for i := range findings {
+		f := &findings[i]
+		if f.Category == "acceptance" {
+			t.Fatalf("JS/TS test title should cover Greet criterion, got %#v", f)
+		}
+	}
+}
+
+func TestFindingRoleInJSONAndAgreementSemantics(t *testing.T) {
+	f := Finding{
+		ID: "quality-todo-x", Category: "quality", Reviewer: "goldfish-quality", Agreement: 1,
+	}
+	normalizeFinding(&f)
+	if f.Role != "quality" {
+		t.Fatalf("role=%q want quality", f.Role)
+	}
+	all := aggregateFindings([]Finding{
+		{ID: "x", Category: "quality", Role: "quality", Message: "m", Reviewer: "a", Agreement: 1},
+		{ID: "x", Category: "quality", Role: "acceptance", Message: "m", Reviewer: "b", Agreement: 1},
+	})
+	if len(all) != 1 || all[0].Agreement != 2 {
+		t.Fatalf("expected role_agreement=2, got %#v", all)
 	}
 }
 
