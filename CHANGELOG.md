@@ -8,6 +8,7 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 ## [Não Lançado]
 
 ### Adicionado
+- MCP `tb_graph_impact` (paridade com `tb graph impact`)
 - `tb review` / `tb drift`: flag `--approved-sha` compara `git patch-id --stable`
   de `base..approved` vs `base..head`; em divergência mostra `git range-diff` e
   sai ≠ 0; JSON registra `pinned_approval` (`approved_sha`, `patch_id`,
@@ -17,6 +18,7 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 - MCP: `tb_mem_show`, `tb_mem_edit`, `tb_mem_retire`, `tb_mem_search` (+ `ref`/`all` em add/list/check)
 
 ### Mudanças
+- Schemas MCP tipam `depth`/`limit`/`reviewers`/`max_iter` como integer, `strict`/`warn_only`/`transitive`/`skip_unavailable` como boolean, `threshold` como number e `standards` como array; handlers ainda aceitam strings legadas
 - **Breaking:** saídas JSON da CLI (`--json`) e dos payloads de domínio no MCP usam
   exclusivamente chaves `snake_case`. Structs sem tag (`sandbox.Result`,
   `mem.Invariant`, `workspace.Workspace`/`Scope`) deixam de emitir PascalCase

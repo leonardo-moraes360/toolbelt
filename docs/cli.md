@@ -203,7 +203,7 @@ Subcomandos:
 ```
 
 Ferramentas MCP de grafo (chamada requer `TB_GRAPH=on`): `tb_graph_search`,
-`tb_graph_callers`, `tb_graph_deps`, `tb_graph_index`.
+`tb_graph_callers`, `tb_graph_deps`, `tb_graph_impact`, `tb_graph_index`.
 
 Não há `tb graph query` — use `tb graph search`.
 
@@ -1574,10 +1574,10 @@ Transporte unix/tcp e flags `--socket`/`--port`/`--tls-*` são planejados; hoje 
 | `tb_verify_run` | `tb verify run` | `ruler=tests\|visual`; args espelham flags |
 | `tb_review` | `tb review` | ticket/base/head/approved_sha/reviewers/standards |
 | `tb_drift` | `tb drift` | retorna `{drift, has_drift, pinned_approval}` |
-| `tb_guard_check` | `tb guard check` | `base`/`head` ou `range=A..B`; `strict_fail` por default em SeverityError; `warn_only=true` opt-out; `strict` deprecated |
-| `tb_graph_search` / `tb_graph_callers` / `tb_graph_deps` / `tb_graph_index` | `tb graph …` | chamada requer `TB_GRAPH=on` |
+| `tb_guard_check` | `tb guard check` | `base`/`head` ou `range=A..B`; `strict_fail` por default em SeverityError; `warn_only=true` opt-out; `strict` deprecated (boolean) |
+| `tb_graph_search` / `tb_graph_callers` / `tb_graph_deps` / `tb_graph_impact` / `tb_graph_index` | `tb graph …` | chamada requer `TB_GRAPH=on`; `depth`/`limit` integer; `transitive` boolean |
 
-Args são strings (como nas tools de grafo). Relatórios de verify/review/drift/guard voltam como JSON no `content` (sem código de saída de processo).
+Schemas tipam `depth`/`limit`/`reviewers`/`max_iter` como integer, `strict`/`transitive`/`skip_unavailable` como boolean, `threshold` como number e `standards` como array de strings; valores string legados ainda são aceitos. Relatórios de verify/review/drift/guard voltam como JSON no `content` (sem código de saída de processo).
 
 ---
 

@@ -24,6 +24,7 @@ func TestDefaultHasCLIParityTools(t *testing.T) {
 		"tb_review",
 		"tb_drift",
 		"tb_guard_check",
+		"tb_graph_impact",
 	}
 	names := map[string]bool{}
 	for _, tool := range Default().List() {

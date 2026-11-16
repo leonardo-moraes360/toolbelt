@@ -22,7 +22,7 @@ func RegisterGraphTools() {
 			Type: "object",
 			Properties: map[string]Property{
 				"query": {Type: "string", Description: "Consulta"},
-				"limit": {Type: "string", Description: "Máximo de resultados", Default: "20"},
+				"limit": {Type: "integer", Description: "Máximo de resultados", Default: 20},
 			},
 			Required: []string{"query"},
 		},
@@ -35,7 +35,7 @@ func RegisterGraphTools() {
 			Type: "object",
 			Properties: map[string]Property{
 				"function": {Type: "string", Description: "Nome da função"},
-				"depth":    {Type: "string", Description: "Profundidade", Default: "1"},
+				"depth":    {Type: "integer", Description: "Profundidade", Default: 1},
 			},
 			Required: []string{"function"},
 		},
@@ -49,10 +49,23 @@ func RegisterGraphTools() {
 			Properties: map[string]Property{
 				"module":     {Type: "string", Description: "Módulo ou pacote"},
 				"file":       {Type: "string", Description: "Arquivo"},
-				"transitive": {Type: "string", Description: "true/false", Default: "false"},
+				"transitive": {Type: "boolean", Description: "Inclui dependências transitivas", Default: false},
 			},
 		},
 		Handler: handleGraphDeps,
+	})
+	Register(&Tool{
+		Name:        "tb_graph_impact",
+		Description: "Analisa impacto de mudanças em um arquivo (paridade com tb graph impact)",
+		InputSchema: &InputSchema{
+			Type: "object",
+			Properties: map[string]Property{
+				"file":  {Type: "string", Description: "Arquivo modificado"},
+				"depth": {Type: "integer", Description: "Profundidade", Default: 2},
+			},
+			Required: []string{"file"},
+		},
+		Handler: handleGraphImpact,
 	})
 	Register(&Tool{
 		Name:        "tb_graph_index",
@@ -84,10 +97,7 @@ func handleGraphSearch(_ context.Context, args map[string]any) (any, error) {
 		return nil, err
 	}
 	q := StringArg(args, "query")
-	limit := 20
-	if v := StringArg(args, "limit"); v != "" {
-		_, _ = fmt.Sscanf(v, "%d", &limit)
-	}
+	limit := IntArg(args, "limit", 20)
 	return s.Search(q, limit), nil
 }
 
@@ -97,10 +107,7 @@ func handleGraphCallers(_ context.Context, args map[string]any) (any, error) {
 		return nil, err
 	}
 	fn := StringArg(args, "function")
-	depth := 1
-	if v := StringArg(args, "depth"); v != "" {
-		_, _ = fmt.Sscanf(v, "%d", &depth)
-	}
+	depth := IntArg(args, "depth", 1)
 	nodes := s.Callers(fn, depth)
 	if len(nodes) == 0 {
 		if reason := s.EmptyCallersReason(fn); reason != nil {
@@ -122,8 +129,27 @@ func handleGraphDeps(_ context.Context, args map[string]any) (any, error) {
 	if target == "" {
 		return nil, fmt.Errorf("module ou file é obrigatório")
 	}
-	transitive := StringArg(args, "transitive") == "true"
+	transitive := BoolArg(args, "transitive", false)
 	return s.Deps(target, transitive), nil
+}
+
+func handleGraphImpact(_ context.Context, args map[string]any) (any, error) {
+	s, err := openGraphStore()
+	if err != nil {
+		return nil, err
+	}
+	file := StringArg(args, "file")
+	if file == "" {
+		return nil, fmt.Errorf("file é obrigatório")
+	}
+	depth := IntArg(args, "depth", 2)
+	nodes := s.Impact(file, depth)
+	if len(nodes) == 0 {
+		if reason := s.EmptyImpactReason(file); reason != nil {
+			return nil, reason
+		}
+	}
+	return nodes, nil
 }
 
 func handleGraphIndex(_ context.Context, args map[string]any) (any, error) {
