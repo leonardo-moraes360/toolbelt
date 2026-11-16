@@ -7,7 +7,14 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Não Lançado]
 
+Nada ainda.
+
+## [0.0.1] - 2026-11-16
+
 ### Adicionado
+- CI de release: GoReleaser (`.goreleaser.yaml`) + workflow em tags `v*` publicando binários `tb` (linux/darwin/windows × amd64/arm64), `checksums.txt` e changelog
+- Documentação de instalação via GitHub Releases e guia `docs/release.md`
+- Versão padrão `dev` injetável via ldflags (`tb version` / MCP `tb_version`)
 - `tb init --write-agents` semeia `AGENTS.md` citando a toolchain detectada (`verify.test_cmd` e, se presentes, `build_cmd`/`lint_cmd`)
 - MCP: tools de paridade CLI `tb_mem_*`, `tb_verify_run`, `tb_review`, `tb_drift`, `tb_guard_check`
 - Indexador Rust emite arestas `calls` mínimas resolvíveis no repositório (`tb graph callers` / `impact`)

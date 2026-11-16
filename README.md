@@ -86,11 +86,27 @@ Veja a documentação completa em [docs/arquitetura.md](docs/arquitetura.md).
 
 ## 🚀 Instalação
 
+### Binários (GitHub Releases)
+
+Baixe o arquivo da [página de Releases](https://github.com/leonardo-moraes360/toolbelt/releases) para o seu SO/arch (`linux`, `darwin` ou `windows` × `amd64`/`arm64`), extraia e coloque `tb` no `PATH`:
+
+```bash
+# Exemplo (Linux amd64, ajuste a tag/arquivo)
+curl -sL "https://github.com/leonardo-moraes360/toolbelt/releases/download/v0.0.1/toolbelt_0.0.1_linux_amd64.tar.gz" \
+  | tar -xz tb
+sudo mv tb /usr/local/bin/
+tb version
+```
+
+Confira a integridade com `checksums.txt` no mesmo release.
+
 ### Via Go
 
 ```bash
 go install github.com/leonardo-moraes360/toolbelt/cmd/tb@latest
 ```
+
+> `go install` usa a versão embutida padrão (`dev`) a menos que a tag/módulo injete ldflags. Prefira o binário do Release se precisar da versão da tag.
 
 ### Via Homebrew (em breve)
 
@@ -156,6 +172,7 @@ tb bench compare --config-a bench/ab/graph-off.yaml \
 - [x] Agente fake determinístico para CI
 - [x] GitHub Actions CI
 - [x] Makefile, golangci-lint, goreleaser
+- [x] GitHub Releases via GoReleaser (tags `v*`)
 
 ### Fase 1 (concluída) ✅
 - [x] `tb mcp` — servidor MCP stateless
