@@ -402,6 +402,19 @@ func runBenchmark(cmd *cobra.Command, args []string) error {
 	summary.EndTime = endTime
 	printBenchSummary(summary, variant, outputPath)
 	writeBenchMarkdown(outputPath, summary, results)
+	return agentCommandNotFoundErr(results, agent.Command)
+}
+
+func agentCommandNotFoundErr(results []bench.Result, agentCmd string) error {
+	for i := range results {
+		if results[i].ExitCode == 127 {
+			cmd := strings.TrimSpace(agentCmd)
+			if cmd == "" {
+				cmd = results[i].AgentID
+			}
+			return fmt.Errorf("agent command not found (exit 127): %s", cmd)
+		}
+	}
 	return nil
 }
 
