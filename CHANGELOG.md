@@ -9,6 +9,7 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ### Adicionado
 - `tb guard` carrega `protected_paths` de `.toolbelt/guard.yaml` (unidos aos defaults; arquivo ausente mantém só os defaults)
+- `tb init` detecta toolchain (`go.mod`, `package.json`/npm/pnpm/yarn, pyproject/uv/pytest, `Cargo.toml`, `Makefile`) e preenche `verify.test_cmd`
 - Ruler visual em `tb verify run --ruler visual` (screenshot headless, similaridade pixel, skip gracioso)
 - `tb review` fresh-context (Elephant-Goldfish) contra ticket/rd.md e invariantes de `tb mem`
 - `tb drift` para mudanças fora do scope declarado e divergência de commit base
@@ -37,6 +38,11 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 - Configuração goreleaser para releases
 - ADR-012: Framework CLI - Cobra
 - Stubs para comandos futuros: `sandbox`, `verify`, `mem`, `graph`, `router`, `mcp`
+
+### Corrigido
+- `tb review`: invariante `tests/hidden` (e `thresholds.yaml`) casa por prefixo/segmento
+  de path nos arquivos alterados, não por substring no diff (evita FP quando o ticket
+  só menciona a regra)
 
 ### Mudanças
 - README atualizado com instalação, uso rápido e comandos implementados

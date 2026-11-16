@@ -360,12 +360,40 @@ func hitForbidden(file string, forbidden []string) bool {
 }
 
 func suggestsViolation(rule, lowerDiff string, changed []string) bool {
-	joined := lowerDiff + " " + strings.ToLower(strings.Join(changed, " "))
-	checks := []string{"tests/hidden", "thresholds.yaml", "t.skip", "__eq__"}
-	for _, c := range checks {
-		if strings.Contains(rule, c) && strings.Contains(joined, c) {
+	pathMarkers := []string{"tests/hidden", "thresholds.yaml"}
+	for _, marker := range pathMarkers {
+		if !strings.Contains(rule, marker) {
+			continue
+		}
+		for _, f := range changed {
+			if pathMarkerHit(f, marker) {
+				return true
+			}
+		}
+	}
+	contentMarkers := []string{"t.skip", "__eq__"}
+	for _, c := range contentMarkers {
+		if strings.Contains(rule, c) && strings.Contains(lowerDiff, c) {
 			return true
 		}
+	}
+	return false
+}
+
+func pathMarkerHit(file, marker string) bool {
+	file = filepath.ToSlash(strings.ToLower(file))
+	marker = filepath.ToSlash(strings.ToLower(strings.Trim(marker, "/")))
+	if marker == "" {
+		return false
+	}
+	if !strings.Contains(marker, "/") {
+		return filepath.Base(file) == marker
+	}
+	if file == marker || strings.HasPrefix(file, marker+"/") {
+		return true
+	}
+	if strings.Contains(file, "/"+marker+"/") || strings.HasSuffix(file, "/"+marker) {
+		return true
 	}
 	return false
 }

@@ -110,7 +110,7 @@ make build
 ## 📖 Uso Rápido
 
 ```bash
-# Inicializa configuração local
+# Inicializa configuração local (detecta toolchain → verify.test_cmd)
 tb init
 
 # Mostra versão
@@ -124,6 +124,9 @@ tb bench run --fake
 
 # Executa benchmark com agente externo ({prompt} com quoting seguro)
 tb bench run --agent "cursor-agent {prompt} --workdir {workdir}" -r 3
+
+# Sem --agent: usa bench.default_agent de .toolbelt/config.yaml
+tb bench run -r 1
 
 # Gera relatório de resultados existentes
 tb bench report --input bench/results/2026-01-01-120000.jsonl
@@ -211,14 +214,14 @@ Este projeto está na **Fase 0**: fundação implementada com CLI funcional, con
 | Comando | Status | Descrição |
 |---------|--------|-----------|
 | `tb version` | ✅ | Mostra versão, commit e build time |
-| `tb init` | ✅ | Inicializa configuração local |
+| `tb init` | ✅ | Inicializa configuração local (detecta toolchain e preenche `verify.test_cmd`) |
 | `tb bench run` | ✅ | Executa benchmark |
 | `tb bench list` | ✅ | Lista tarefas disponíveis |
 | `tb bench report` | ✅ | Gera relatório Markdown |
 | `tb bench compare` | ✅ | Compara dois benchmarks |
 | `tb sandbox` | ✅ | Worktrees + Landlock (Linux) |
 | `tb guard` | ✅ | Check anti-trapaça em diff |
-| `tb verify` | ✅ | Ruler de testes + suíte oculta (`--hidden-test-cmd` / `verify.hidden_test_cmd`) |
+| `tb verify` | ✅ | Ruler de testes + suíte oculta + `verify.build_cmd` / `verify.lint_cmd` opcionais |
 | `tb mem` | ✅ | Invariantes fora da compactação |
 | `tb graph` | ✅ | Grafo sob demanda multi-linguagem + frameworks + docs (ADR-011) |
 | `tb router` | 🚧 | Stub (Fase 5) |

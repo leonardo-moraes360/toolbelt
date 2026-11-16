@@ -154,6 +154,56 @@ const helper = () => run('x');
 	}
 }
 
+func TestBuildFromRootDoesNotSkipRootNamedLikeSkipDir(t *testing.T) {
+	parent := t.TempDir()
+	for _, name := range []string{"target", "build", "dist"} {
+		t.Run(name, func(t *testing.T) {
+			root := filepath.Join(parent, name)
+			mustWrite(t, filepath.Join(root, "pkg", "hello.go"), `package pkg
+func Hello() string { return "hi" }
+`)
+			mustWrite(t, filepath.Join(root, "node_modules", "lib", "index.js"), `
+export function ignored() { return 1; }
+`)
+			mustWrite(t, filepath.Join(root, "nested", "target", "src", "skip.go"), `package skip
+func SkipMe() {}
+`)
+
+			idx, err := BuildFromRoot(root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(idx.Nodes) == 0 {
+				t.Fatalf("expected nodes when root basename is %q", name)
+			}
+
+			foundHello := false
+			foundIgnored := false
+			foundNestedSkip := false
+			for _, n := range idx.Nodes {
+				if n.Type == NodeFunction && n.Title == "Hello" {
+					foundHello = true
+				}
+				if strings.Contains(n.Path, "node_modules") || n.Title == "ignored" {
+					foundIgnored = true
+				}
+				if strings.Contains(n.Path, filepath.Join("nested", "target")) || n.Title == "SkipMe" {
+					foundNestedSkip = true
+				}
+			}
+			if !foundHello {
+				t.Fatalf("expected Hello from root named %q", name)
+			}
+			if foundIgnored {
+				t.Fatal("node_modules child should still be skipped")
+			}
+			if foundNestedSkip {
+				t.Fatal("nested target/ child should still be skipped")
+			}
+		})
+	}
+}
+
 func TestIndexerRegistryExtensible(t *testing.T) {
 	names := map[string]bool{}
 	for _, idx := range Indexers() {
