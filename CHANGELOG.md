@@ -7,7 +7,15 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Não Lançado]
 
-Nada ainda.
+### Corrigido
+- `tb init` em repos Node/TS sem `go.mod` não mantém mais `verify.test_cmd: go test ./...`:
+  detecta o package manager (`pnpm-lock.yaml`/`yarn.lock`/`package-lock.json`/`bun.lockb`),
+  preenche `test`/`build`|`typecheck`/`lint` a partir de `package.json`, e se nada for
+  detectável deixa `test_cmd` vazio com aviso; o seed de `AGENTS.md` reflete isso
+
+### Mudanças
+- `verify.build_cmd` em Node também aceita scripts `typecheck` / `type-check` quando
+  `build` está ausente
 
 ## [0.0.1] - 2026-11-16
 
