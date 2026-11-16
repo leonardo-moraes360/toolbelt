@@ -454,10 +454,12 @@ tb mem edit inv-123 --ref docs/decisions/auth.md --rule "Escopo via ticket"
 tb mem retire inv-123
 tb mem check
 tb mem init
+tb mem init --json
 ```
 
 > Soft-retire mantém a entrada no YAML; `list`/`search`/`check` omitem retired a menos que `--all`.
 > Flags vault `--type`/`--title` **não existem** — `tb mem add` aceita regra posicional, `--category` e `--ref`.
+> `tb mem init --json` devolve `{path, created, count, invariants}`; listas vazias saem como `[]`.
 
 ---
 
@@ -582,7 +584,9 @@ Executa `verify`, `review`, `drift` e/ou `guard` numa única invocação, compar
 o trabalho caro (diff unificado, índice de arquivos alterados, memória/invariantes e
 config). A ordem dos argumentos é a ordem de execução. A saída é sempre um JSON
 agregado (`ok`, `steps`, `total_duration_ms`); o exit code do processo é ≠ 0 se
-qualquer etapa falhar (mesma semântica de cada comando avulso).
+qualquer etapa falhar (mesma semântica de cada comando avulso). Durações são
+`float` em milissegundos (com fração sub-ms). Erros de preparação ou de uma
+operação aparecem em `steps[].error` dentro do JSON (não só no stderr).
 
 **Não é stack de branches** (como Graphite ou git-stack). `tb stack` só empilha
 operações de verificação/revisão com contexto compartilhado.
@@ -620,11 +624,11 @@ tb stack verify guard --test-cmd "true" --max-iter 1
 tb stack verify --test-cmd "true" --env APP_ENV --pass-env GITHUB_TOKEN
 ```
 
-Cada item de `steps` traz `op`, `ok`, `exit_code`, `duration_ms` e `result` (o JSON
-que o comando avulso produziria). O `verify` empilhado usa o mesmo `--base`/`--head`
-do contexto compartilhado: se o head divergir do `HEAD` do worktree, build/lint/test
-rodam num worktree detach temporário (ver `tb verify`); o `result` do passo inclui
-`head_sha` e `workdir`.
+Cada item de `steps` traz `op`, `ok`, `exit_code`, `duration_ms`, `result` (o JSON
+que o comando avulso produziria) e, em falha, `error`. O `verify` empilhado usa o
+mesmo `--base`/`--head` do contexto compartilhado: se o head divergir do `HEAD` do
+worktree, build/lint/test rodam num worktree detach temporário (ver `tb verify`);
+o `result` do passo inclui `head_sha` e `workdir`.
 
 ---
 
@@ -891,10 +895,10 @@ pelo `tb guard`). O comando configurado em `verify.hidden_test_cmd` ou
 `--hidden-test-cmd` **sempre executa**, mesmo sem o diretório `tests/hidden/`
 (caso típico em monorepos JS/Python/Rust). Se o comando estiver vazio e o
 diretório existir, usa-se `go test ./tests/hidden/...`. Sem comando e sem
-diretório, a suite oculta é ignorada (`hidden_available: false`). Campos
-opcionais `build_cmd` e `lint_cmd` rodam antes dos testes (nessa ordem) e
-fazem o verify falhar se o comando sair com erro; ausentes = comportamento
-anterior (só `test_cmd` + hidden).
+diretório, a suite oculta é ignorada (`hidden_available: false`,
+`hidden_passed: null`). Campos opcionais `build_cmd` e `lint_cmd` rodam antes
+dos testes (nessa ordem) e fazem o verify falhar se o comando sair com erro;
+ausentes = comportamento anterior (só `test_cmd` + hidden).
 
 Se o binário do `test_cmd` / `hidden_test_cmd` / `build_cmd` / `lint_cmd` não
 existe (exit 127), não é executável (exit 126) ou o `exec` falha com
@@ -1687,7 +1691,7 @@ Transporte unix/tcp e flags `--socket`/`--port`/`--tls-*` são planejados; hoje 
 | `tb_echo` | — | smoke |
 | `tb_env` | — | cwd/os/arch |
 | `tb_run` | — | `sh -c` com timeout; env filtrado; args `env`/`pass_env` (arrays) |
-| `tb_mem_add` / `tb_mem_list` / `tb_mem_show` / `tb_mem_edit` / `tb_mem_retire` / `tb_mem_search` / `tb_mem_check` / `tb_mem_init` | `tb mem …` | arg opcional `cwd`; `ref`/`all` onde aplicável |
+| `tb_mem_add` / `tb_mem_list` / `tb_mem_show` / `tb_mem_edit` / `tb_mem_retire` / `tb_mem_search` / `tb_mem_check` / `tb_mem_init` | `tb mem …` | arg opcional `cwd`; `ref`/`all` (boolean; strings legadas ok) onde aplicável |
 | `tb_verify_run` | `tb verify run` | `ruler=tests\|visual`; args espelham flags + `env`/`pass_env` |
 | `tb_review` | `tb review` | ticket/base/head/approved_sha/reviewers/standards |
 | `tb_drift` | `tb drift` | retorna `{drift, has_drift, pinned_approval}` |
@@ -1695,7 +1699,7 @@ Transporte unix/tcp e flags `--socket`/`--port`/`--tls-*` são planejados; hoje 
 | `tb_stack` | `tb stack` | `ops` (array), `base`/`head`, `fail_fast` (boolean), `env`/`pass_env`; retorna JSON agregado |
 | `tb_graph_search` / `tb_graph_callers` / `tb_graph_deps` / `tb_graph_impact` / `tb_graph_index` | `tb graph …` | chamada requer `TB_GRAPH=on`; `depth`/`limit` integer; `transitive` boolean |
 
-Schemas tipam `depth`/`limit`/`reviewers`/`max_iter` como integer, `strict`/`warn_only`/`transitive`/`skip_unavailable` como boolean, `threshold` como number e `standards` como array de strings; valores string legados ainda são aceitos. Relatórios de verify/review/drift/guard voltam como JSON no `content` (sem código de saída de processo).
+Schemas tipam `depth`/`limit`/`reviewers`/`max_iter` como integer, `strict`/`warn_only`/`transitive`/`skip_unavailable`/`all` (mem) como boolean, `threshold` como number e `standards` como array de strings; valores string legados ainda são aceitos. Relatórios de verify/review/drift/guard voltam como JSON no `content` (sem código de saída de processo). Listas vazias usam `[]`; `hidden_passed` é `null` se a suíte oculta não se aplica.
 
 ---
 
@@ -1709,6 +1713,9 @@ Flags:
   --write-agents   Semeia AGENTS.md mínimo se ausente (nunca sobrescreve)
   --json           Saída em JSON (flag global)
 ```
+
+Com `--json`, emite payload com `path`, `test_cmd` / `build_cmd` / `lint_cmd` detectados
+(quando presentes), `warning` opcional e `agents` (`seeded`, `sources`, …).
 
 Detalhes de detecção de toolchain e preenchimento de `verify.*` estão na seção `tb verify`.
 
