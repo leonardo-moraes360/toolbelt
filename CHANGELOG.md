@@ -7,6 +7,13 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Não Lançado]
 
+### Corrigido
+- `tb verify run --base/--head`: quando o head resolve para um SHA diferente do
+  `HEAD` do worktree, build/lint/test/hidden rodam num `git worktree add --detach`
+  temporário (removido ao final, inclusive em erro/sinal); o JSON expõe `head_sha`
+  e `workdir`. Se `head == HEAD` com worktree sujo, emite aviso. O mesmo vale para
+  `tb stack verify` via contexto compartilhado.
+
 ## [0.0.2] - 2026-11-16
 
 ### Adicionado
