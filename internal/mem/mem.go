@@ -44,14 +44,14 @@ type CheckReport struct {
 	Count       int      `json:"count"`
 	Retention   float64  `json:"retention"`
 	CompactSafe bool     `json:"compact_safe"`
-	Missing     []string `json:"missing,omitempty"`
+	Missing     []string `json:"missing"`
 }
 
 type InitResult struct {
 	Path       string      `json:"path"`
 	Created    bool        `json:"created"`
 	Count      int         `json:"count"`
-	Invariants []Invariant `json:"invariants,omitempty"`
+	Invariants []Invariant `json:"invariants"`
 }
 
 type Store struct {
@@ -229,7 +229,7 @@ func (s *Store) List(category string, includeRetired bool) ([]Invariant, error) 
 	if err != nil {
 		return nil, err
 	}
-	var out []Invariant
+	out := []Invariant{}
 	for _, inv := range f.Invariants {
 		if !includeRetired && inv.Retired {
 			continue
@@ -252,7 +252,7 @@ func (s *Store) Search(query string, includeRetired bool) ([]Invariant, error) {
 		return nil, err
 	}
 	q := normalizeForSearch(query)
-	var out []Invariant
+	out := []Invariant{}
 	for _, inv := range f.Invariants {
 		if !includeRetired && inv.Retired {
 			continue
@@ -282,6 +282,7 @@ func (s *Store) Check(expectedSHA string, requiredIDs []string, includeRetired b
 		Count:       len(visible),
 		CompactSafe: true,
 		Retention:   1.0,
+		Missing:     []string{},
 	}
 	if expectedSHA != "" && !strings.EqualFold(expectedSHA, sha) {
 		report.Retention = 0
@@ -314,11 +315,12 @@ func EnsureDefaultAntiCheat(toolbeltDir string) (*InitResult, error) {
 		return nil, err
 	}
 	if len(f.Invariants) > 0 {
+		invs := append([]Invariant(nil), f.Invariants...)
 		return &InitResult{
 			Path:       s.Path(),
 			Created:    false,
-			Count:      len(f.Invariants),
-			Invariants: append([]Invariant(nil), f.Invariants...),
+			Count:      len(invs),
+			Invariants: invs,
 		}, nil
 	}
 	defaults := []struct {

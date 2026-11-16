@@ -59,7 +59,7 @@ type Result struct {
 	LintRan         bool               `json:"lint_ran"`
 	LintPassed      bool               `json:"lint_passed"`
 	VisiblePassed   bool               `json:"visible_passed"`
-	HiddenPassed    bool               `json:"hidden_passed"`
+	HiddenPassed    *bool              `json:"hidden_passed"`
 	HiddenAvailable bool               `json:"hidden_available"`
 	Reason          string             `json:"reason,omitempty"`
 	Error           string             `json:"error,omitempty"`
@@ -336,10 +336,12 @@ func runVerifyIteration(ctx context.Context, cfg *Config, res *Result, cache *cm
 			setFailure(res, "verify.hidden_test_cmd", err.Error())
 			return false, true, err
 		}
-		res.HiddenPassed = hiddenOK
+		res.HiddenPassed = boolPtr(hiddenOK)
 		if !hiddenOK {
 			setFailure(res, "verify.hidden_test_cmd", failReason("verify.hidden_test_cmd", out))
 		}
+	} else {
+		res.HiddenPassed = nil
 	}
 	if visibleOK && hiddenOK {
 		return true, false, nil
@@ -457,4 +459,8 @@ func ApplyCmdOverrides(cfg *Config, buildCmd string, buildSet, noBuild bool, lin
 	} else if lintSet {
 		cfg.LintCmd = lintCmd
 	}
+}
+
+func boolPtr(v bool) *bool {
+	return &v
 }
