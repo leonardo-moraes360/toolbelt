@@ -7,6 +7,16 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Não Lançado]
 
+### Mudanças
+- Docs: `tb drift` deixa de ser descrito como “vault vs código”; o relatório real é
+  escopo / forbidden / commit base (+ `pinned_approval` opcional)
+- Docs: deixa explícito que o `tb` **não fala com o GitHub** (100% local) e precisa
+  de um `rd.md`/ticket no disco; exemplos de como gerar a partir de issue/PR via `gh`
+- Docs: linguagem `graph.languages: javascript` cobre TypeScript (`ts`/`tsx`); não há
+  linguagem `typescript` separada
+- Docs: anota a depreciação de `tb guard check --strict` (substituído pelo default
+  estrito e por `--warn-only`); remove o exemplo invocável com `--strict`
+
 ### Segurança
 - Processos filhos de `tb verify` / `tb stack` (verify) e MCP `tb_run` /
   `tb_verify_run` / `tb_stack` passam a receber ambiente filtrado por allowlist
