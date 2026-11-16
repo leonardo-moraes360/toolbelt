@@ -857,43 +857,28 @@ metrics:
 Verifica mudanças em paths protegidos entre dois commits.
 
 ```bash
-tb guard check <base>..<head> [flags]
+tb guard check [base..head] [flags]
 
 Flags:
-  --manifest <path>     Manifesto de paths protegidos (default: .toolbelt/guard.yaml)
+  --base <ref>          Commit/ref base (default: HEAD~1; ignorado se base..head for passado)
+  --head <ref>          Commit/ref head (default: HEAD; ignorado se base..head for passado)
   --strict              Falha se qualquer path protegido foi modificado sem decisão
   --json                Saída em JSON
-  --output <path>       Arquivo de saída
 ```
+
+Aceita o intervalo posicional `base..head` (forma clássica) ou as flags `--base`/`--head`, alinhadas a `tb review` / `tb drift` / `tb verify`.
 
 **Exemplos:**
 
 ```bash
 # Verificar mudanças entre main e branch atual
 tb guard check main..HEAD
-# ═══════════════════════════════════════════════════════════════
-# GUARD CHECK: main..HEAD
-# ═══════════════════════════════════════════════════════════════
-# 
-# Paths protegidos modificados: 2
-# 
-# ┌───────────────────────────────────────────────────────────────┐
-# │ references/login-light.png                                    │
-# │ ├── Regra: "Referências visuais requerem decisão"             │
-# │ ├── Modificação: DELETED                                      │
-# │ └── Decisão: ⚠ NÃO ENCONTRADA                                 │
-# ├───────────────────────────────────────────────────────────────┤
-# │ .toolbelt/thresholds.yaml                                     │
-# │ ├── Regra: "Thresholds não podem ser relaxados"               │
-# │ ├── Modificação: min_similarity 95 → 90                       │
-# │ └── Decisão: ⚠ NÃO ENCONTRADA                                 │
-# └───────────────────────────────────────────────────────────────┘
-# 
-# ⚠ 2 modificações requerem justificativa
-# 
-# Para aprovar, crie decisões em:
-#   tb mem add --category mandate "Remoção de login-light.png aprovada"
-#   tb mem add --category mandate "Relaxamento de threshold aprovado"
+
+# Mesmo intervalo via flags (como review/drift)
+tb guard check --base main --head HEAD
+
+# Defaults HEAD~1..HEAD quando nenhum intervalo é passado
+tb guard check --json
 
 # Modo strict para CI
 tb guard check origin/main..HEAD --strict
@@ -908,13 +893,21 @@ tb guard check origin/main..HEAD --strict --json
 
 **Manifesto de paths protegidos (`.toolbelt/guard.yaml`):**
 
-O guard carrega `protected_paths` de `.toolbelt/guard.yaml` (quando presente) e **une** aos defaults embutidos (`tests/hidden/*`, `benchmarks/*`, `.toolbelt/thresholds.yaml`). Cada entrada pode ser uma string (`lib/help.js`) ou um objeto com `pattern`. Sem o arquivo, só os defaults valem.
+O guard carrega `protected_paths` de `.toolbelt/guard.yaml` (quando presente) e **une** aos defaults embutidos (`tests/hidden/*`, `benchmarks/*`, `.toolbelt/thresholds.yaml`). Cada entrada pode ser uma string (`lib/help.js`) ou um objeto com `pattern`. Entrada com barra final (`secrets/`) protege o diretório e todos os filhos (prefixo). `secrets/*` continua válido para um nível via glob. Sem o arquivo, só os defaults valem.
 
 ```yaml
 # .toolbelt/guard.yaml
 version: 1
 
 protected_paths:
+  # Diretório inteiro (barra final = prefixo; protege filhos)
+  - secrets/
+  # Glob de um nível
+  - pattern: "secrets/*"
+    reason: "Segredos não podem ser editados"
+  # Path literal
+  - lib/help.js
+
   # Referências visuais
   - pattern: "references/**"
     reason: "Referências visuais não podem ser editadas sem decisão registrada"
