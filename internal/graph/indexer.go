@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/leonardo-moraes360/toolbelt/internal/log"
 )
 
 const (
@@ -140,6 +142,10 @@ func BuildFromRootOpts(root string, opts *BuildOptions) (*Index, error) {
 	if err != nil {
 		return nil, err
 	}
+	abs, err = resolveIndexRoot(abs)
+	if err != nil {
+		return nil, err
+	}
 	idx := &Index{Root: abs}
 	nodes := map[string]Node{}
 	var edges []Edge
@@ -162,6 +168,17 @@ func BuildFromRootOpts(root string, opts *BuildOptions) (*Index, error) {
 	}
 	idx.Edges = edges
 	return idx, nil
+}
+
+func resolveIndexRoot(abs string) (string, error) {
+	resolved, err := filepath.EvalSymlinks(abs)
+	if err != nil {
+		return "", err
+	}
+	if resolved != abs {
+		log.Warn("raiz do grafo é symlink; usando caminho real antes do walk", "from", abs, "to", resolved)
+	}
+	return resolved, nil
 }
 
 func walkSourceFile(

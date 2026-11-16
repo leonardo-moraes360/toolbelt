@@ -180,8 +180,11 @@ graph:
 
 Ignora subdiretórios como `node_modules`, `vendor`, `dist`, `build`,
 `target`, `.git`, etc. A raiz do walk nunca é pulada pelo nome (ex.: indexar
-`/tmp/target` funciona; um `target/` filho continua ignorado). O grafo
-continua sob demanda (ADR-011): `TB_GRAPH=on` ou `--enable`.
+`/tmp/target` funciona; um `target/` filho continua ignorado). Se a raiz for
+um symlink (ex.: `/tmp/target` → dir real), ela é resolvida com
+`EvalSymlinks` antes do walk — caso contrário o índice ficaria vazio, pois
+`filepath.Walk` não desce symlinks. O grafo continua sob demanda (ADR-011):
+`TB_GRAPH=on` ou `--enable`.
 
 ```bash
 tb graph [--enable] <subcommand>
