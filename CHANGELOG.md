@@ -7,7 +7,8 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Não Lançado]
 
-Nada ainda.
+### Corrigido
+- CLI: erros esperados de `RunE` (domínio/runtime) não imprimem mais o dump de `Usage` do Cobra no stderr; `Usage` permanece só em erros genuínos de parse de flags/args. Subcomandos desconhecidos em qualquer nível saem com exit ≠ 0 e mensagem clara.
 
 ## [0.0.1] - 2026-11-16
 

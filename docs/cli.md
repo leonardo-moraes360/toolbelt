@@ -1600,6 +1600,12 @@ Consulte `assets/theme/tokens.json` para a tabela completa de mapeamento ANSI/25
 
 ---
 
+## Erros e Usage
+
+- Erros esperados de domínio/runtime (`RunE`, ex.: flag de negócio obrigatória ausente, falha de git, arquivo inexistente) saem com **exit ≠ 0** e mensagem em stderr **sem** dump de `Usage` do Cobra.
+- Erros genuínos de parse de **flags** ou **args** (flag desconhecida, `ExactArgs`/`MinimumNArgs`, etc.) mantêm `Usage` no stderr para orientar a invocação.
+- Subcomando desconhecido em qualquer nível (ex.: `tb mem show`, `tb bench nope`) sai com **exit ≠ 0** e erro `unknown command "…"`, em vez de imprimir help com exit 0.
+
 ## Códigos de Saída
 
 | Código | Significado |
