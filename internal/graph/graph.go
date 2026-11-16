@@ -364,7 +364,9 @@ func (s *Store) findFunctionIDs(name string) []string {
 	var ids []string
 	seen := map[string]bool{}
 	for _, n := range s.index.Nodes {
-		if n.Type != NodeFunction {
+		switch n.Type {
+		case NodeFunction, NodeComponent, NodeHook:
+		default:
 			continue
 		}
 		if !functionQueryMatches(&n, name) {

@@ -260,6 +260,31 @@ func TestDetectBuildLintCmd(t *testing.T) {
 			wantLint:  "npm run lint",
 		},
 		{
+			name: "npm typecheck when no build script",
+			files: map[string]string{
+				"package.json":      `{"scripts":{"typecheck":"tsc --noEmit","lint":"eslint ."}}`,
+				"package-lock.json": "{}\n",
+			},
+			wantBuild: "npm run typecheck",
+			wantLint:  "npm run lint",
+		},
+		{
+			name: "npm type-check when no build or typecheck",
+			files: map[string]string{
+				"package.json": `{"scripts":{"type-check":"tsc","lint":"next lint"}}`,
+			},
+			wantBuild: "npm run type-check",
+			wantLint:  "npm run lint",
+		},
+		{
+			name: "build preferred over typecheck",
+			files: map[string]string{
+				"package.json": `{"scripts":{"build":"next build","typecheck":"tsc --noEmit"}}`,
+			},
+			wantBuild: "npm run build",
+			wantLint:  "",
+		},
+		{
 			name: "npm test only no build/lint scripts",
 			files: map[string]string{
 				"package.json": `{"scripts":{"test":"mocha"}}`,
@@ -405,6 +430,42 @@ func TestInitDetectsToolchain(t *testing.T) {
 			wantLint:  "npm run lint",
 		},
 		{
+			name: "next with-typescript: package.json without test must not keep go test",
+			files: map[string]string{
+				"package.json": `{
+  "private": true,
+  "scripts": {
+    "dev": "next",
+    "build": "next build",
+    "start": "next start",
+    "type-check": "tsc"
+  }
+}`,
+			},
+			wantTest:  "",
+			wantBuild: "npm run build",
+			wantLint:  "",
+		},
+		{
+			name: "node typecheck+lint without test clears go default",
+			files: map[string]string{
+				"package.json":      `{"scripts":{"typecheck":"tsc --noEmit","lint":"eslint ."}}`,
+				"package-lock.json": "{}\n",
+			},
+			wantTest:  "",
+			wantBuild: "npm run typecheck",
+			wantLint:  "npm run lint",
+		},
+		{
+			name: "empty repo without markers clears go default",
+			files: map[string]string{
+				"README.md": "# hello\n",
+			},
+			wantTest:  "",
+			wantBuild: "",
+			wantLint:  "",
+		},
+		{
 			name: "python fixture like typer/click",
 			files: map[string]string{
 				"pyproject.toml": "[project]\nname = \"typer\"\n",
@@ -506,5 +567,37 @@ func TestInitGlobalSkipsDetection(t *testing.T) {
 	}
 	if loaded.Verify.TestCmd != "go test ./..." {
 		t.Fatalf("global init should keep go default, got %q", loaded.Verify.TestCmd)
+	}
+}
+
+func TestInitDetailed_WarnsWhenNoTestToolchain(t *testing.T) {
+	withLookPath(t, map[string]bool{"npm": true})
+
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "package.json"), []byte(`{"scripts":{"build":"next build"}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	detected, err := InitDetailed(filepath.Join(root, DefaultConfigDir))
+	if err != nil {
+		t.Fatalf("InitDetailed: %v", err)
+	}
+	if detected.Cmd != "" {
+		t.Fatalf("cmd = %q, want empty", detected.Cmd)
+	}
+	if detected.Warning == "" {
+		t.Fatal("expected warning when no test toolchain is detectable")
+	}
+	if !strings.Contains(detected.Warning, "vazio") {
+		t.Fatalf("warning should explain empty test_cmd, got %q", detected.Warning)
+	}
+	loaded := DefaultConfig()
+	if err := loadFromFile(filepath.Join(root, DefaultConfigDir, DefaultConfigFile), loaded); err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if loaded.Verify.TestCmd != "" {
+		t.Fatalf("test_cmd = %q, want empty (never fall back to go without go.mod)", loaded.Verify.TestCmd)
+	}
+	if loaded.Verify.BuildCmd != "npm run build" {
+		t.Fatalf("build_cmd = %q, want npm run build", loaded.Verify.BuildCmd)
 	}
 }
