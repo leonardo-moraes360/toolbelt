@@ -188,6 +188,57 @@ func TestGuardCheckTool(t *testing.T) {
 		!strings.Contains(res.Content[0].Text, "base_ref") {
 		t.Fatalf("esperava check result, got: %s", res.Content[0].Text)
 	}
+	if !strings.Contains(res.Content[0].Text, `"strict_fail": false`) {
+		t.Fatalf("sem SeverityError, strict_fail deveria ser false: %s", res.Content[0].Text)
+	}
+}
+
+func TestGuardCheckToolStrictFailDefault(t *testing.T) {
+	dir := gitRepo(t)
+	hidden := filepath.Join(dir, "tests", "hidden")
+	if err := os.MkdirAll(hidden, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(hidden, "sentinel.txt"), "ok\n")
+	git(t, dir, "add", "-A")
+	git(t, dir, "commit", "-m", "base")
+	writeFile(t, filepath.Join(hidden, "sentinel.txt"), "changed\n")
+	git(t, dir, "add", "-A")
+	git(t, dir, "commit", "-m", "touch protected")
+
+	res, err := Default().Call(context.Background(), "tb_guard_check", map[string]any{
+		"cwd":  dir,
+		"base": "HEAD~1",
+		"head": "HEAD",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.IsError {
+		t.Fatalf("tb_guard_check: %s", res.Content[0].Text)
+	}
+	if !strings.Contains(res.Content[0].Text, `"strict_fail": true`) {
+		t.Fatalf("SeverityError deveria marcar strict_fail por default: %s", res.Content[0].Text)
+	}
+	if !strings.Contains(res.Content[0].Text, "rules_checked") {
+		t.Fatalf("esperava rules_checked: %s", res.Content[0].Text)
+	}
+
+	res, err = Default().Call(context.Background(), "tb_guard_check", map[string]any{
+		"cwd":       dir,
+		"base":      "HEAD~1",
+		"head":      "HEAD",
+		"warn_only": "true",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.IsError {
+		t.Fatalf("tb_guard_check warn_only: %s", res.Content[0].Text)
+	}
+	if !strings.Contains(res.Content[0].Text, `"strict_fail": false`) {
+		t.Fatalf("warn_only deveria zerar strict_fail: %s", res.Content[0].Text)
+	}
 }
 
 func gitRepo(t *testing.T) string {

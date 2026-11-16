@@ -10,16 +10,19 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 ### Adicionado
 - Indexador JS/TS emite arestas `calls` resolvíveis (chamadas + JSX `<Comp />`) via imports relativos; `tb graph callers`/`impact` funcionam em fixtures Next/React (`pages/` → `components/`/`lib/`)
 
+### Mudanças
+- Frameworks (ex. `react` em `.tsx`) rodam em paralelo com o indexador de linguagem, não no lugar dele
+- `verify.build_cmd` em Node também aceita scripts `typecheck` / `type-check` quando
+  `build` está ausente
+- `tb guard check` sai com exit ≠ 0 por default quando há `SeverityError` (CI-safe); opt-out via `--warn-only`; `--strict` permanece como alias deprecated
+- Modo texto limpo imprime `guard: ok (N regras, 0 violações)`; JSON/MCP incluem `rules_checked`
+- MCP `tb_guard_check`: `strict_fail` por default em SeverityError; `warn_only=true` para opt-out (`strict` deprecated)
+
 ### Corrigido
 - `tb init` em repos Node/TS sem `go.mod` não mantém mais `verify.test_cmd: go test ./...`:
   detecta o package manager (`pnpm-lock.yaml`/`yarn.lock`/`package-lock.json`/`bun.lockb`),
   preenche `test`/`build`|`typecheck`/`lint` a partir de `package.json`, e se nada for
   detectável deixa `test_cmd` vazio com aviso; o seed de `AGENTS.md` reflete isso
-
-### Mudanças
-- Frameworks (ex. `react` em `.tsx`) rodam em paralelo com o indexador de linguagem, não no lugar dele
-- `verify.build_cmd` em Node também aceita scripts `typecheck` / `type-check` quando
-  `build` está ausente
 
 ## [0.0.1] - 2026-11-16
 

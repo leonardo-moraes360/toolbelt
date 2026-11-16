@@ -475,15 +475,19 @@ Analisa o diff entre commits em busca de paths protegidos e padrões anti-trapa�
 tb guard check <base>..<head> [flags]
 
 Flags:
-  --strict    Exit ≠ 0 quando há violações de severidade erro
-  --json      Saída em JSON (flag global)
+  --warn-only   Exit 0 mesmo com SeverityError (opt-out do default CI-safe)
+  --strict      Deprecated: falha em SeverityError já é o default
+  --json        Saída em JSON (flag global)
 ```
+
+Por default, exit ≠ 0 quando há `SeverityError`. No modo texto limpo imprime
+`guard: ok (N regras, 0 violações)`.
 
 **Exemplos:**
 
 ```bash
 tb guard check HEAD~1..HEAD
-tb guard check --strict HEAD~1..HEAD
+tb guard check --warn-only HEAD~1..HEAD
 tb guard check --json HEAD~1..HEAD
 ```
 
@@ -733,9 +737,10 @@ de **abortar antes de build/test** depende da origem do `protected_path`:
 | Defaults embutidos (`tests/hidden/*`, `benchmarks/*`, `.toolbelt/thresholds.yaml`) | **aborta** (FAIL, 0 iterações) | **aborta** | **aborta** |
 | `protected_paths` de `.toolbelt/guard.yaml` (custom) | reporta como **warning** e **continua** build/test | reporta warning (exceção de Scope) e **continua** | **aborta** |
 
-`tb guard check --strict` continua tratando violações custom como `SeverityError`
-(CI não muda). Só o loop de `tb verify run` aplica a exceção acima para não
-matar o mandate quando o manifesto lista o próprio arquivo da tarefa.
+`tb guard check` (e o alias deprecated `--strict`) trata violações custom como
+`SeverityError` e falha o exit code por default; use `--warn-only` para opt-out.
+Só o loop de `tb verify run` aplica a exceção acima para não matar o mandate
+quando o manifesto lista o próprio arquivo da tarefa.
 
 ```yaml
 # .toolbelt/config.yaml
@@ -868,16 +873,21 @@ tb guard check [base..head] [flags]
 Flags:
   --base <ref>          Commit/ref base (default: HEAD~1; ignorado se base..head for passado)
   --head <ref>          Commit/ref head (default: HEAD; ignorado se base..head for passado)
-  --strict              Falha se qualquer path protegido foi modificado sem decisão
+  --warn-only           Exit 0 mesmo com SeverityError (opt-out do default CI-safe)
+  --strict              Deprecated: falha em SeverityError já é o default (alias sem efeito)
   --json                Saída em JSON
 ```
 
 Aceita o intervalo posicional `base..head` (forma clássica) ou as flags `--base`/`--head`, alinhadas a `tb review` / `tb drift` / `tb verify`.
 
+Por default, exit ≠ 0 quando há `SeverityError` (CI-safe). No modo texto sem
+violações imprime `guard: ok (N regras, 0 violações)` (`N` = paths protegidos
+carregados: defaults + `.toolbelt/guard.yaml`).
+
 **Exemplos:**
 
 ```bash
-# Verificar mudanças entre main e branch atual
+# Verificar mudanças entre main e branch atual (exit ≠ 0 se SeverityError)
 tb guard check main..HEAD
 
 # Mesmo intervalo via flags (como review/drift)
@@ -886,14 +896,13 @@ tb guard check --base main --head HEAD
 # Defaults HEAD~1..HEAD quando nenhum intervalo é passado
 tb guard check --json
 
-# Modo strict para CI
-tb guard check origin/main..HEAD --strict
-# Exit code 1 se houver SeverityError
+# Opt-out: lista violações mas exit 0
+tb guard check origin/main..HEAD --warn-only
 
-# Saída JSON (exit 0 mesmo com violações)
+# JSON + exit ≠ 0 se houver SeverityError (default)
 tb guard check main..HEAD --json
 
-# Strict + JSON: imprime JSON válido e sai ≠ 0 se houver SeverityError
+# Alias deprecated --strict (mesmo comportamento do default)
 tb guard check origin/main..HEAD --strict --json
 ```
 
@@ -1537,7 +1546,7 @@ Transporte unix/tcp e flags `--socket`/`--port`/`--tls-*` são planejados; hoje 
 | `tb_verify_run` | `tb verify run` | `ruler=tests\|visual`; args espelham flags |
 | `tb_review` | `tb review` | ticket/base/head/reviewers/standards |
 | `tb_drift` | `tb drift` | retorna `{drift, has_drift}` |
-| `tb_guard_check` | `tb guard check` | `base`/`head` ou `range=A..B`; `strict` → `strict_fail` |
+| `tb_guard_check` | `tb guard check` | `base`/`head` ou `range=A..B`; `strict_fail` por default em SeverityError; `warn_only=true` opt-out; `strict` deprecated |
 | `tb_graph_search` / `tb_graph_callers` / `tb_graph_deps` / `tb_graph_index` | `tb graph …` | chamada requer `TB_GRAPH=on` |
 
 Args são strings (como nas tools de grafo). Relatórios de verify/review/drift/guard voltam como JSON no `content` (sem código de saída de processo).

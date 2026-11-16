@@ -50,9 +50,10 @@ type Violation struct {
 }
 
 type CheckResult struct {
-	BaseRef    string      `json:"base_ref"`
-	HeadRef    string      `json:"head_ref"`
-	Violations []Violation `json:"violations"`
+	BaseRef      string      `json:"base_ref"`
+	HeadRef      string      `json:"head_ref"`
+	RulesChecked int         `json:"rules_checked"`
+	Violations   []Violation `json:"violations"`
 }
 
 type protectedEntry struct {
@@ -126,7 +127,11 @@ func (c *Checker) Check(baseRef, headRef string) (*CheckResult, error) {
 	if err != nil {
 		return nil, err
 	}
-	res := &CheckResult{BaseRef: baseRef, HeadRef: headRef}
+	res := &CheckResult{
+		BaseRef:      baseRef,
+		HeadRef:      headRef,
+		RulesChecked: len(c.protectedPaths),
+	}
 	for _, cf := range parseDiff(diff) {
 		if cf.deleted && isTestFile(cf.path) {
 			res.Violations = append(res.Violations, Violation{
