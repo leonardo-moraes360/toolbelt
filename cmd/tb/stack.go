@@ -81,6 +81,8 @@ func runStack(cmd *cobra.Command, args []string) error {
 		Timeout:       timeout,
 		Reviewers:     reviewers,
 		Standards:     splitCSV(standardsCSV),
+		EnvAllow:      envAllow,
+		EnvPass:       envPass,
 	}
 	res, err := stack.Run(context.Background(), opts)
 	if err != nil {

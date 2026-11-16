@@ -7,7 +7,18 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Não Lançado]
 
+### Adicionado
+- `tb init` grava padrões de cache/derivados em `.git/info/exclude` (grafo, logs,
+  vault, workspaces, captures, bench) sem tocar no `.gitignore` do projeto;
+  invariantes/config permanecem versionáveis (recomendação documentada em
+  `docs/cli.md`)
+- `tb mem init` reporta caminho e invariantes criadas (ou já existentes); JSON com
+  `created`/`count`/`invariants`
+
 ### Mudanças
+- `tb mem add|edit|list`: rejeitam `--category` inválida e `--ref` fora de
+  ADR/decisions, com lista dos valores válidos no erro
+- `tb mem search`: busca case- e accent-insensitive (Unicode NFD)
 - Docs: `tb drift` deixa de ser descrito como “vault vs código”; o relatório real é
   escopo / forbidden / commit base (+ `pinned_approval` opcional)
 - Docs: deixa explícito que o `tb` **não fala com o GitHub** (100% local) e precisa
@@ -23,6 +34,14 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
   temporário (removido ao final, inclusive em erro/sinal); o JSON expõe `head_sha`
   e `workdir`. Se `head == HEAD` com worktree sujo, emite aviso. O mesmo vale para
   `tb stack verify` via contexto compartilhado.
+
+### Segurança
+- Processos filhos de `tb verify` / `tb stack` (verify) e MCP `tb_run` /
+  `tb_verify_run` / `tb_stack` passam a receber ambiente filtrado por allowlist
+  (PATH, HOME, LANG, TMPDIR, GOPATH/GOCACHE, NODE/npm/pnpm, etc.). Segredos
+  (`*TOKEN*`/`*SECRET*`/`*KEY*`/`*PASSWORD*`) nunca passam sem opt-in explícito
+  (`--pass-env` / `env.pass` / arg MCP `pass_env`). Extensão via `--env` /
+  `env.allow` / arg MCP `env`.
 
 ## [0.0.2] - 2026-11-16
 

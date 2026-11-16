@@ -69,7 +69,11 @@ func runTestsVerify(cmd *cobra.Command) error {
 		if fileCfg.Verify.LintCmd != "" {
 			cfg.LintCmd = fileCfg.Verify.LintCmd
 		}
+		cfg.EnvAllow = append(cfg.EnvAllow, fileCfg.Env.Allow...)
+		cfg.EnvPass = append(cfg.EnvPass, fileCfg.Env.Pass...)
 	}
+	cfg.EnvAllow = append(cfg.EnvAllow, envAllow...)
+	cfg.EnvPass = append(cfg.EnvPass, envPass...)
 	if v, _ := cmd.Flags().GetString("base"); v != "" {
 		cfg.BaseRef = v
 	}
