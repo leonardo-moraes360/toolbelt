@@ -162,6 +162,7 @@ tb bench compare --config-a bench/ab/graph-off.yaml \
 - [x] `tb graph` sob demanda (CLI + MCP) com A/B graph-on vs graph-off
 - [x] `tb review` — revisão fresh-context contra ticket/rd.md + invariantes
 - [x] `tb drift` — detecção de drift (escopo / commit base)
+- [x] Parser Markdown de Scope (`## Scope` / listas) e globs com `**` no meio
 - [x] Ruler visual: screenshot + browser headless (skip gracioso; `skipped` agregado no relatório)
 - [x] Docs CLI alinhados aos comandos/flags reais (`docs/cli.md` / README)
 - [ ] Hierarquia de agentes / A2A / `tb md` (posterior)
@@ -222,7 +223,7 @@ Este projeto está na **Fase 2**: CLI funcional com verify/guard/mem/graph/revie
 | `tb bench compare` | ✅ | Compara dois benchmarks |
 | `tb sandbox` | ✅ | Worktrees + Landlock (Linux) |
 | `tb guard` | ✅ | Check anti-trapaça em diff |
-| `tb verify` | ✅ | Rulers `tests` + `visual` (`tb verify run`; suíte oculta / manifesto; `verify.build_cmd` / `verify.lint_cmd` opcionais) |
+| `tb verify` | ✅ | Rulers `tests` + `visual` (`tb verify run`; suíte oculta via `--hidden-test-cmd` / `verify.hidden_test_cmd` sem exigir `tests/hidden/`; manifesto; `verify.build_cmd` / `verify.lint_cmd` opcionais) |
 | `tb mem` | ✅ | Invariantes (`tb mem add <regra> [--category]`) |
 | `tb graph` | ✅ | Grafo sob demanda multi-linguagem + frameworks + docs (ADR-011) |
 | `tb review` | ✅ | Revisão fresh-context contra ticket/rd.md |
