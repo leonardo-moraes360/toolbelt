@@ -1634,10 +1634,34 @@ Isolamento Landlock no Linux (`check` / `run`). Não cria worktrees — use `tb 
 
 ```bash
 tb sandbox check
-tb sandbox run <command> [args...] [--workdir <path>] [--timeout <dur>]
+tb sandbox run <command> [args...] [flags]
 ```
 
-`--timeout` default `30s`. Sem `--workdir`, usa o cwd. Com `--json`, `sandbox check` emite `os`/`arch`/`landlock`/`version`/`error`; `sandbox run` emite o `Result` em snake_case (`exit_code`, `timed_out`, `duration_ns`, …). Se o filho sai ≠ 0 sem timeout, `tb` propaga esse exit code.
+**Flags de `tb sandbox run`:**
+
+| Flag | Default | Descrição |
+|------|---------|-----------|
+| `--workdir <path>` | cwd | Diretório de trabalho (escrita permitida) |
+| `--timeout <dur>` | `30s` | Timeout do processo |
+| `--allow-unsandboxed` | `false` | Opt-in explícito para rodar **sem** Landlock |
+
+Comportamento **fail-closed**: se o kernel não tiver Landlock (ou a aplicação do ruleset falhar), `tb sandbox run` **recusa** executar e devolve erro claro pedindo `--allow-unsandboxed`. Não há fallback silencioso para execução sem isolamento.
+
+No Linux com Landlock, a escrita fica restrita ao `--workdir` e ao diretório temporário do sistema (`os.TempDir()`, tipicamente `/tmp`) quando este não é ancestral do workdir. Paths de sistema necessários à execução (`/bin`, `/usr`, `/lib`, `/etc`, `/dev`, `/proc`, …) entram somente leitura. O ruleset é aplicado no processo filho (re-exec + `PR_SET_NO_NEW_PRIVS` + `landlock_restrict_self`) **antes** do `exec` do comando.
+
+```bash
+tb sandbox check
+# Landlock: true
+# ABI: 6
+
+tb sandbox run --workdir /tmp/job sh -c 'echo ok > out.txt'
+# escrita fora do workdir → Permission denied
+
+# Sem Landlock (ou para CI sem LSM): opt-in explícito
+tb sandbox run --allow-unsandboxed echo hello
+```
+
+Com `--json`, `sandbox check` emite `os`/`arch`/`landlock`/`version`/`error`; `sandbox run` emite o `Result` em snake_case (`exit_code`, `timed_out`, `duration_ns`, `sandboxed`, …). Se o filho sai ≠ 0 sem timeout, `tb` propaga esse exit code.
 
 ---
 

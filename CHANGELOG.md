@@ -7,6 +7,13 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Não Lançado]
 
+### Adicionado
+- `tb sandbox run --allow-unsandboxed`: opt-in explícito para executar sem isolamento Landlock
+- Teste de integração que tenta escrever fora do workdir (pula se o kernel não tiver Landlock)
+
+### Corrigido
+- **Sandbox Landlock (fail-closed):** probe de ABI usa `LANDLOCK_CREATE_RULESET_VERSION` (antes `flags=0` → `EFAULT` e falso “sem Landlock”); `PR_SET_NO_NEW_PRIVS` antes de `landlock_restrict_self`; rights FS completos por ABI (incl. truncate/make_*); ruleset aplicado no filho via re-exec antes do `exec` do comando; erros de ruleset não são mais engolidos; sem Landlock a execução recusa com erro claro (use `--allow-unsandboxed`)
+
 ## [0.0.2] - 2026-11-16
 
 ### Adicionado
