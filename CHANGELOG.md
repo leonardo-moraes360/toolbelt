@@ -7,6 +7,15 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Não Lançado]
 
+### Adicionado
+- `tb verify run` / `tb stack`: flags `--build-cmd`, `--lint-cmd`, `--no-build`, `--no-lint` e `--dry-run` (plano com `dir`/`commands` sem executar); MCP `tb_verify_run` / `tb_stack` com os mesmos campos
+- JSON de verify e de cada etapa do stack expõem `reason`/`error` no ESCALATE/FAIL (não só DEBUG no stderr)
+
+### Corrigido
+- Stack/verify respeitam overrides de comando: `--test-cmd` + `--no-build`/`--no-lint` (ou `--build-cmd`/`--lint-cmd` vazios) pulam o `build_cmd`/`lint_cmd` do config
+- `tests/hidden/` sem toolchain aplicável deixa de forçar `go test` (marca `hidden_available: false`); detecta Go/Python/JS quando há suíte
+- Build/lint bem-sucedidos são cacheados na mesma execução; falha determinística de build/lint não entra no retry de `--max-iter`
+
 ## [0.0.2] - 2026-11-16
 
 ### Adicionado

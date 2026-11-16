@@ -128,6 +128,11 @@ func StringArg(args map[string]any, key string) string {
 	return strings.TrimSpace(v)
 }
 
+func HasArg(args map[string]any, key string) bool {
+	_, ok := args[key]
+	return ok
+}
+
 func IntArg(args map[string]any, key string, def int) int {
 	v, ok := args[key]
 	if !ok || v == nil {

@@ -67,6 +67,13 @@ type Options struct {
 	WarnOnly      bool
 	TestCmd       string
 	HiddenTestCmd string
+	BuildCmd      string
+	LintCmd       string
+	BuildCmdSet   bool
+	LintCmdSet    bool
+	NoBuild       bool
+	NoLint        bool
+	DryRun        bool
 	MaxIter       int
 	Timeout       time.Duration
 	Reviewers     int
@@ -107,6 +114,8 @@ type StepResult struct {
 	OK         bool   `json:"ok"`
 	ExitCode   int    `json:"exit_code"`
 	DurationMs int64  `json:"duration_ms"`
+	Reason     string `json:"reason,omitempty"`
+	Error      string `json:"error,omitempty"`
 	Result     any    `json:"result"`
 }
 
@@ -144,10 +153,13 @@ func Run(ctx context.Context, opts *Options) (*Result, error) {
 				Op:       string(op),
 				OK:       false,
 				ExitCode: 1,
+				Reason:   runErr.Error(),
+				Error:    runErr.Error(),
 				Result:   map[string]any{"error": runErr.Error()},
 			}
 		}
 		step.DurationMs = time.Since(stepStart).Milliseconds()
+		annotateStepReason(&step)
 		out.Steps = append(out.Steps, step)
 		if !step.OK {
 			out.OK = false
@@ -313,6 +325,7 @@ func runVerify(ctx context.Context, opts *Options, shared *Shared) (StepResult, 
 	cfg.BaseRef = shared.Base
 	cfg.HeadRef = shared.Head
 	cfg.NameStatusDiff = shared.NameStatus
+	cfg.DryRun = opts.DryRun
 	if shared.FileConfig != nil {
 		if shared.FileConfig.Verify.TestCmd != "" {
 			cfg.VisibleTest = shared.FileConfig.Verify.TestCmd
@@ -333,6 +346,7 @@ func runVerify(ctx context.Context, opts *Options, shared *Shared) (StepResult, 
 	if opts.HiddenTestCmd != "" {
 		cfg.HiddenTest = opts.HiddenTestCmd
 	}
+	verify.ApplyCmdOverrides(&cfg, opts.BuildCmd, opts.BuildCmdSet, opts.NoBuild, opts.LintCmd, opts.LintCmdSet, opts.NoLint)
 	if opts.MaxIter > 0 {
 		cfg.MaxIterations = opts.MaxIter
 	}
@@ -351,7 +365,30 @@ func runVerify(ctx context.Context, opts *Options, shared *Shared) (StepResult, 
 	if !ok {
 		exit = 1
 	}
-	return StepResult{Op: string(OpVerify), OK: ok, ExitCode: exit, Result: res}, nil
+	step := StepResult{Op: string(OpVerify), OK: ok, ExitCode: exit, Result: res}
+	if res.Reason != "" {
+		step.Reason = res.Reason
+		step.Error = res.Error
+	}
+	return step, nil
+}
+
+func annotateStepReason(step *StepResult) {
+	if step == nil || step.Reason != "" {
+		return
+	}
+	switch res := step.Result.(type) {
+	case *verify.Result:
+		if res != nil && res.Reason != "" {
+			step.Reason = res.Reason
+			step.Error = res.Error
+		}
+	case map[string]any:
+		if errMsg, ok := res["error"].(string); ok && errMsg != "" {
+			step.Reason = errMsg
+			step.Error = errMsg
+		}
+	}
 }
 
 func runReview(opts *Options, shared *Shared) (StepResult, error) {

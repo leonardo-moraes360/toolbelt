@@ -29,7 +29,12 @@ func init() {
 	verifyRunCmd.Flags().String("head", "", "ref head")
 	verifyRunCmd.Flags().String("ticket", "", "ticket com Scope (exceção de protected_paths custom do guard.yaml)")
 	verifyRunCmd.Flags().String("test-cmd", "", "linha de testes visíveis")
-	verifyRunCmd.Flags().String("hidden-test-cmd", "", "linha de testes ocultos (roda mesmo sem tests/hidden/; se o dir existir e o cmd estiver vazio: go test ./tests/hidden/...)")
+	verifyRunCmd.Flags().String("hidden-test-cmd", "", "linha de testes ocultos (roda mesmo sem tests/hidden/; se o dir existir e o cmd estiver vazio: detecta toolchain ou marca N/A)")
+	verifyRunCmd.Flags().String("build-cmd", "", "comando de build (vazio + flag explícita ou --no-build para pular)")
+	verifyRunCmd.Flags().String("lint-cmd", "", "comando de lint (vazio + flag explícita ou --no-lint para pular)")
+	verifyRunCmd.Flags().Bool("no-build", false, "pula build_cmd (config e default)")
+	verifyRunCmd.Flags().Bool("no-lint", false, "pula lint_cmd (config e default)")
+	verifyRunCmd.Flags().Bool("dry-run", false, "mostra o plano (cmds e diretório) sem executar")
 	verifyRunCmd.Flags().Int("max-iter", 0, "máximo de iterações")
 	verifyRunCmd.Flags().String("timeout", "10m", "timeout")
 	verifyRunCmd.Flags().StringP("output", "o", "", "arquivo JSON")
@@ -82,12 +87,20 @@ func runTestsVerify(cmd *cobra.Command) error {
 	if v, _ := cmd.Flags().GetString("test-cmd"); v != "" {
 		cfg.VisibleTest = v
 	}
-	if v, _ := cmd.Flags().GetString("hidden-test-cmd"); v != "" {
+	if cmd.Flags().Changed("hidden-test-cmd") {
+		v, _ := cmd.Flags().GetString("hidden-test-cmd")
 		cfg.HiddenTest = v
 	}
+	buildCmd, _ := cmd.Flags().GetString("build-cmd")
+	lintCmd, _ := cmd.Flags().GetString("lint-cmd")
+	noBuild, _ := cmd.Flags().GetBool("no-build")
+	noLint, _ := cmd.Flags().GetBool("no-lint")
+	verify.ApplyCmdOverrides(&cfg, buildCmd, cmd.Flags().Changed("build-cmd"), noBuild, lintCmd, cmd.Flags().Changed("lint-cmd"), noLint)
 	if v, _ := cmd.Flags().GetInt("max-iter"); v > 0 {
 		cfg.MaxIterations = v
 	}
+	dryRun, _ := cmd.Flags().GetBool("dry-run")
+	cfg.DryRun = dryRun
 	timeout, _ := time.ParseDuration(mustStringFlag(cmd, "timeout", "10m"))
 	cfg.Timeout = timeout
 	res, err := verify.Run(context.Background(), &cfg)
@@ -159,6 +172,13 @@ func printTestsSummary(payload any) {
 	if !ok {
 		return
 	}
+	if res.DryRun && res.Plan != nil {
+		fmt.Printf("Dry-run: dir=%s\n", res.Plan.Dir)
+		for step, cmd := range res.Plan.Commands {
+			fmt.Printf("  %s: %s\n", step, cmd)
+		}
+		return
+	}
 	fmt.Printf("Veredicto: %s (iterações: %d)\n", res.Verdict, res.Iterations)
 	if res.BuildRan {
 		fmt.Printf("Build: %v\n", res.BuildPassed)
@@ -167,6 +187,9 @@ func printTestsSummary(payload any) {
 		fmt.Printf("Lint: %v\n", res.LintPassed)
 	}
 	fmt.Printf("Visível: %v  Oculto: %v (disponível: %v)\n", res.VisiblePassed, res.HiddenPassed, res.HiddenAvailable)
+	if res.Reason != "" && res.Verdict != verify.VerdictPass {
+		fmt.Printf("Motivo: %s\n", res.Reason)
+	}
 }
 
 func printVisualReport(rep *verify.VisualReport) {

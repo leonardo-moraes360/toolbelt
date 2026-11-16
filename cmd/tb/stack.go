@@ -34,6 +34,11 @@ func init() {
 	stackCmd.Flags().Bool("warn-only", false, "guard: não falha exit em SeverityError")
 	stackCmd.Flags().String("test-cmd", "", "verify: linha de testes visíveis")
 	stackCmd.Flags().String("hidden-test-cmd", "", "verify: linha de testes ocultos")
+	stackCmd.Flags().String("build-cmd", "", "verify: comando de build (vazio + flag explícita ou --no-build para pular)")
+	stackCmd.Flags().String("lint-cmd", "", "verify: comando de lint (vazio + flag explícita ou --no-lint para pular)")
+	stackCmd.Flags().Bool("no-build", false, "verify: pula build_cmd")
+	stackCmd.Flags().Bool("no-lint", false, "verify: pula lint_cmd")
+	stackCmd.Flags().Bool("dry-run", false, "verify: mostra o plano (cmds/dir) sem executar")
 	stackCmd.Flags().Int("max-iter", 0, "verify: máximo de iterações")
 	stackCmd.Flags().String("timeout", "10m", "verify: timeout")
 	stackCmd.Flags().Int("reviewers", 0, "review: máximo de goldfish")
@@ -62,6 +67,11 @@ func runStack(cmd *cobra.Command, args []string) error {
 	warnOnly, _ := cmd.Flags().GetBool("warn-only")
 	testCmd, _ := cmd.Flags().GetString("test-cmd")
 	hiddenCmd, _ := cmd.Flags().GetString("hidden-test-cmd")
+	buildCmd, _ := cmd.Flags().GetString("build-cmd")
+	lintCmd, _ := cmd.Flags().GetString("lint-cmd")
+	noBuild, _ := cmd.Flags().GetBool("no-build")
+	noLint, _ := cmd.Flags().GetBool("no-lint")
+	dryRun, _ := cmd.Flags().GetBool("dry-run")
 	maxIter, _ := cmd.Flags().GetInt("max-iter")
 	reviewers, _ := cmd.Flags().GetInt("reviewers")
 	standardsCSV, _ := cmd.Flags().GetString("standards")
@@ -77,6 +87,13 @@ func runStack(cmd *cobra.Command, args []string) error {
 		WarnOnly:      warnOnly,
 		TestCmd:       testCmd,
 		HiddenTestCmd: hiddenCmd,
+		BuildCmd:      buildCmd,
+		LintCmd:       lintCmd,
+		BuildCmdSet:   cmd.Flags().Changed("build-cmd"),
+		LintCmdSet:    cmd.Flags().Changed("lint-cmd"),
+		NoBuild:       noBuild,
+		NoLint:        noLint,
+		DryRun:        dryRun,
 		MaxIter:       maxIter,
 		Timeout:       timeout,
 		Reviewers:     reviewers,

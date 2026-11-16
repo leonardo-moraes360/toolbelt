@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/leonardo-moraes360/toolbelt/internal/guard"
@@ -41,6 +42,7 @@ type Config struct {
 	Scope          []string
 	TicketPath     string
 	NameStatusDiff string
+	DryRun         bool
 }
 
 type Result struct {
@@ -54,7 +56,23 @@ type Result struct {
 	VisiblePassed   bool               `json:"visible_passed"`
 	HiddenPassed    bool               `json:"hidden_passed"`
 	HiddenAvailable bool               `json:"hidden_available"`
+	Reason          string             `json:"reason,omitempty"`
+	Error           string             `json:"error,omitempty"`
 	Metrics         map[string]string  `json:"metrics,omitempty"`
+	DryRun          bool               `json:"dry_run,omitempty"`
+	Plan            *Plan              `json:"plan,omitempty"`
+}
+
+type Plan struct {
+	Dir      string            `json:"dir"`
+	Commands map[string]string `json:"commands"`
+}
+
+type cmdCache struct {
+	buildDone bool
+	buildOK   bool
+	lintDone  bool
+	lintOK    bool
 }
 
 func DefaultConfig(repo string) Config {
@@ -79,24 +97,69 @@ func Run(ctx context.Context, cfg *Config) (*Result, error) {
 		return nil, err
 	}
 	if abort {
+		if res.Reason == "" {
+			res.Reason = "guard abortou verify (path protegido)"
+			res.Error = res.Reason
+		}
 		return res, nil
 	}
 
 	res.HiddenAvailable = resolveHiddenAvailable(cfg)
 
+	if cfg.DryRun {
+		res.DryRun = true
+		res.Plan = BuildPlan(cfg)
+		res.Verdict = VerdictSkipped
+		res.Reason = "dry-run: plano gerado sem executar"
+		return res, nil
+	}
+
+	cache := &cmdCache{}
 	for i := 1; i <= cfg.MaxIterations; i++ {
 		res.Iterations = i
-		passed, iterErr := runVerifyIteration(ctx, cfg, res)
+		passed, stop, iterErr := runVerifyIteration(ctx, cfg, res, cache)
 		if iterErr != nil {
+			if res.Reason == "" {
+				res.Reason = iterErr.Error()
+				res.Error = res.Reason
+			}
 			return nil, iterErr
 		}
 		if passed {
 			res.Verdict = VerdictPass
+			res.Reason = ""
+			res.Error = ""
+			return res, nil
+		}
+		if stop {
+			res.Verdict = VerdictEscalate
 			return res, nil
 		}
 	}
 	res.Verdict = VerdictEscalate
+	if res.Reason == "" {
+		res.Reason = fmt.Sprintf("ESCALATE após %d iterações sem PASS", res.Iterations)
+		res.Error = res.Reason
+	}
 	return res, nil
+}
+
+func BuildPlan(cfg *Config) *Plan {
+	_ = resolveHiddenAvailable(cfg)
+	cmds := map[string]string{}
+	if cfg.BuildCmd != "" {
+		cmds["build"] = cfg.BuildCmd
+	}
+	if cfg.LintCmd != "" {
+		cmds["lint"] = cfg.LintCmd
+	}
+	if cfg.VisibleTest != "" {
+		cmds["test"] = cfg.VisibleTest
+	}
+	if cfg.HiddenTest != "" {
+		cmds["hidden"] = cfg.HiddenTest
+	}
+	return &Plan{Dir: cfg.RepoDir, Commands: cmds}
 }
 
 func applyGuard(cfg *Config, res *Result) (bool, error) {
@@ -160,81 +223,169 @@ func resolveHiddenAvailable(cfg *Config) bool {
 	hiddenDir := filepath.Join(cfg.RepoDir, "tests", "hidden")
 	_, dirErr := os.Stat(hiddenDir)
 	dirExists := dirErr == nil
-	if cfg.HiddenTest == "" && dirExists {
-		cfg.HiddenTest = DefaultHiddenTestCmd
+	if cfg.HiddenTest != "" {
+		return true
 	}
-	return cfg.HiddenTest != "" || dirExists
+	if !dirExists {
+		return false
+	}
+	cmd := detectHiddenTestCmd(cfg.RepoDir, hiddenDir)
+	if cmd == "" {
+		return false
+	}
+	cfg.HiddenTest = cmd
+	return true
 }
 
-func runVerifyIteration(ctx context.Context, cfg *Config, res *Result) (bool, error) {
-	preOK, preErr := runBuildAndLint(ctx, cfg, res)
+func detectHiddenTestCmd(repoDir, hiddenDir string) string {
+	entries, err := os.ReadDir(hiddenDir)
+	if err != nil {
+		return ""
+	}
+	hasGo, hasPy, hasJS := false, false, false
+	for _, e := range entries {
+		name := e.Name()
+		if e.IsDir() {
+			continue
+		}
+		ext := strings.ToLower(filepath.Ext(name))
+		switch ext {
+		case ".go":
+			hasGo = true
+		case ".py":
+			hasPy = true
+		case ".js", ".mjs", ".cjs", ".ts", ".tsx":
+			hasJS = true
+		}
+	}
+	if hasGo {
+		if fileExists(filepath.Join(repoDir, "go.mod")) {
+			return DefaultHiddenTestCmd
+		}
+		return ""
+	}
+	if hasPy {
+		return "pytest tests/hidden"
+	}
+	if hasJS {
+		return "node --test tests/hidden"
+	}
+	return ""
+}
+
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
+}
+
+func runVerifyIteration(ctx context.Context, cfg *Config, res *Result, cache *cmdCache) (passed, stop bool, err error) {
+	preOK, deterministic, preErr := runBuildAndLint(ctx, cfg, res, cache)
 	if preErr != nil {
-		return false, preErr
+		return false, true, preErr
 	}
 	if !preOK {
 		log.Info("iteração de verify falhou", "n", res.Iterations, "step", "build_or_lint")
-		return false, nil
+		return false, deterministic, nil
 	}
-	visibleOK, err := runConfiguredCmd(ctx, cfg.RepoDir, cfg.VisibleTest, cfg.Timeout, "verify.test_cmd")
+	visibleOK, out, err := runConfiguredCmd(ctx, cfg.RepoDir, cfg.VisibleTest, cfg.Timeout, "verify.test_cmd")
 	if err != nil {
-		return false, err
+		setFailure(res, "verify.test_cmd", err.Error())
+		return false, true, err
 	}
 	res.VisiblePassed = visibleOK
+	if !visibleOK {
+		setFailure(res, "verify.test_cmd", failReason("verify.test_cmd", out))
+	}
 	hiddenOK := true
 	if res.HiddenAvailable {
-		hiddenOK, err = runConfiguredCmd(ctx, cfg.RepoDir, cfg.HiddenTest, cfg.Timeout, "verify.hidden_test_cmd")
+		hiddenOK, out, err = runConfiguredCmd(ctx, cfg.RepoDir, cfg.HiddenTest, cfg.Timeout, "verify.hidden_test_cmd")
 		if err != nil {
-			return false, err
+			setFailure(res, "verify.hidden_test_cmd", err.Error())
+			return false, true, err
 		}
 		res.HiddenPassed = hiddenOK
+		if !hiddenOK {
+			setFailure(res, "verify.hidden_test_cmd", failReason("verify.hidden_test_cmd", out))
+		}
 	}
 	if visibleOK && hiddenOK {
-		return true, nil
+		return true, false, nil
 	}
 	log.Info("iteração de verify falhou", "n", res.Iterations)
-	return false, nil
+	return false, false, nil
 }
 
-func runBuildAndLint(ctx context.Context, cfg *Config, res *Result) (bool, error) {
+func runBuildAndLint(ctx context.Context, cfg *Config, res *Result, cache *cmdCache) (ok, deterministic bool, err error) {
 	if cfg.BuildCmd != "" {
-		res.BuildRan = true
-		ok, err := runConfiguredCmd(ctx, cfg.RepoDir, cfg.BuildCmd, cfg.Timeout, "verify.build_cmd")
-		if err != nil {
-			return false, err
-		}
-		res.BuildPassed = ok
-		if !ok {
-			return false, nil
+		ok, err = runCachedStep(ctx, cfg, res, &cache.buildDone, &cache.buildOK, &res.BuildRan, &res.BuildPassed, cfg.BuildCmd, "verify.build_cmd")
+		if err != nil || !ok {
+			return false, true, err
 		}
 	}
 	if cfg.LintCmd != "" {
-		res.LintRan = true
-		ok, err := runConfiguredCmd(ctx, cfg.RepoDir, cfg.LintCmd, cfg.Timeout, "verify.lint_cmd")
-		if err != nil {
-			return false, err
+		ok, err = runCachedStep(ctx, cfg, res, &cache.lintDone, &cache.lintOK, &res.LintRan, &res.LintPassed, cfg.LintCmd, "verify.lint_cmd")
+		if err != nil || !ok {
+			return false, true, err
 		}
-		res.LintPassed = ok
-		if !ok {
-			return false, nil
-		}
+	}
+	return true, false, nil
+}
+
+func runCachedStep(ctx context.Context, cfg *Config, res *Result, done, cachedOK, ran, passed *bool, command, key string) (bool, error) {
+	*ran = true
+	if *done {
+		*passed = *cachedOK
+		return *cachedOK, nil
+	}
+	ok, out, runErr := runConfiguredCmd(ctx, cfg.RepoDir, command, cfg.Timeout, key)
+	*done = true
+	*cachedOK = ok && runErr == nil
+	*passed = *cachedOK
+	if runErr != nil {
+		setFailure(res, key, runErr.Error())
+		return false, runErr
+	}
+	if !ok {
+		setFailure(res, key, failReason(key, out))
+		return false, nil
 	}
 	return true, nil
 }
 
-func runConfiguredCmd(ctx context.Context, dir, command string, timeout time.Duration, configKey string) (bool, error) {
+func setFailure(res *Result, step, reason string) {
+	if reason == "" {
+		reason = step + " falhou"
+	}
+	res.Reason = reason
+	res.Error = reason
+}
+
+func failReason(step, output string) string {
+	out := strings.TrimSpace(output)
+	if out == "" {
+		return step + " falhou"
+	}
+	if len(out) > 512 {
+		out = out[:512] + "…"
+	}
+	return step + " falhou: " + out
+}
+
+func runConfiguredCmd(ctx context.Context, dir, command string, timeout time.Duration, configKey string) (ok bool, output string, err error) {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "sh", "-c", command) //nolint:gosec // ruler configurado pelo operador
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
+	output = string(out)
 	if err == nil {
-		return true, nil
+		return true, output, nil
 	}
 	if isCommandMissing(err) {
-		return false, fmt.Errorf(errMissingCmdFmt, command, configKey)
+		return false, output, fmt.Errorf(errMissingCmdFmt, command, configKey)
 	}
-	log.Debug("teste falhou", "output", string(out), "error", err)
-	return false, nil
+	log.Debug("teste falhou", "output", output, "error", err)
+	return false, output, nil
 }
 
 func isCommandMissing(err error) bool {
@@ -259,4 +410,17 @@ func (r *Result) JSON() ([]byte, error) {
 func LoadHiddenSuite(repo string) bool {
 	_, err := os.Stat(filepath.Join(repo, "tests", "hidden"))
 	return err == nil
+}
+
+func ApplyCmdOverrides(cfg *Config, buildCmd string, buildSet, noBuild bool, lintCmd string, lintSet, noLint bool) {
+	if noBuild || (buildSet && buildCmd == "") {
+		cfg.BuildCmd = ""
+	} else if buildSet {
+		cfg.BuildCmd = buildCmd
+	}
+	if noLint || (lintSet && lintCmd == "") {
+		cfg.LintCmd = ""
+	} else if lintSet {
+		cfg.LintCmd = lintCmd
+	}
 }

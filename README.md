@@ -248,7 +248,7 @@ Este projeto está na **Fase 2**: CLI funcional com verify/guard/mem/graph/revie
 | `tb bench compare` | ✅ | Compara dois benchmarks |
 | `tb sandbox` | ✅ | Worktrees + Landlock (Linux) |
 | `tb guard` | ✅ | Check anti-trapaça em diff |
-| `tb verify` | ✅ | Rulers `tests` + `visual` (`tb verify run`; suíte oculta via `--hidden-test-cmd` / `verify.hidden_test_cmd` sem exigir `tests/hidden/`; manifesto; `verify.build_cmd` / `verify.lint_cmd` opcionais; fail-fast se o comando não existe/não é executável; `protected_paths` custom do `guard.yaml` não abortam o loop — exceção de Scope via `--ticket`) |
+| `tb verify` | ✅ | Rulers `tests` + `visual` (`tb verify run`; `--build-cmd`/`--lint-cmd`/`--no-build`/`--no-lint`/`--dry-run`; suíte oculta via `--hidden-test-cmd` ou detecção de toolchain em `tests/hidden/` — N/A se inaplicável; cache de build/lint na execução; `reason`/`error` no JSON; fail-fast se o comando não existe/não é executável; `protected_paths` custom do `guard.yaml` não abortam o loop — exceção de Scope via `--ticket`) |
 | `tb mem` | ✅ | Invariantes (`add`/`list`/`show`/`edit`/`retire`/`search`/`check`/`init`; `--ref` ADR; soft-retire + `--all`) |
 | `tb graph` | ✅ | Grafo sob demanda multi-linguagem + frameworks + docs (ADR-011) |
 | `tb review` | ✅ | Revisão fresh-context contra ticket/rd.md; `--approved-sha` |

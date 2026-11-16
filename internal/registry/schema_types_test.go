@@ -40,9 +40,13 @@ func TestMCPSchemaTypesAndGraphImpact(t *testing.T) {
 		{"tb_verify_run", "max_iter", "integer"},
 		{"tb_verify_run", "threshold", "number"},
 		{"tb_verify_run", "skip_unavailable", "boolean"},
+		{"tb_verify_run", "no_build", "boolean"},
+		{"tb_verify_run", "dry_run", "boolean"},
 		{"tb_stack", "fail_fast", "boolean"},
 		{"tb_stack", "max_iter", "integer"},
 		{"tb_stack", "ops", "array"},
+		{"tb_stack", "no_lint", "boolean"},
+		{"tb_stack", "dry_run", "boolean"},
 	}
 	for _, tc := range cases {
 		tool, ok := tools[tc.tool]

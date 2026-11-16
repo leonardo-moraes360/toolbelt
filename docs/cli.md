@@ -520,6 +520,11 @@ Flags:
   --warn-only            guard: exit 0 mesmo com SeverityError
   --test-cmd <cmd>       verify: testes visíveis
   --hidden-test-cmd <cmd> verify: testes ocultos
+  --build-cmd <cmd>      verify: build (vazio + flag explícita ou --no-build para pular o do config)
+  --lint-cmd <cmd>       verify: lint (vazio + flag explícita ou --no-lint para pular)
+  --no-build             verify: não roda build_cmd
+  --no-lint              verify: não roda lint_cmd
+  --dry-run              verify: mostra o plano (comandos/dir) sem executar
   --max-iter <n>         verify: máximo de iterações
   --timeout <duration>   verify: timeout (default: 10m)
   --reviewers <n>        review: máximo de goldfish
@@ -535,10 +540,12 @@ tb stack verify review drift guard
 tb stack guard drift --fail-fast
 tb stack review drift --base HEAD~1 --head HEAD --ticket rd.md
 tb stack verify guard --test-cmd "true" --max-iter 1
+tb stack verify --test-cmd "pnpm test" --no-build --no-lint --max-iter 1
+tb stack verify --dry-run --test-cmd "go test ./..."
 ```
 
-Cada item de `steps` traz `op`, `ok`, `exit_code`, `duration_ms` e `result` (o JSON
-que o comando avulso produziria).
+Cada item de `steps` traz `op`, `ok`, `exit_code`, `duration_ms`, `reason`/`error`
+(quando a etapa falha) e `result` (o JSON que o comando avulso produziria).
 
 ---
 
@@ -755,7 +762,12 @@ tb verify run [flags]
 Flags:
   --ruler <type>           Tipo de ruler: tests|visual (default: tests)
   --test-cmd <cmd>         Testes visíveis (default: verify.test_cmd; `tb init` detecta go/npm/pnpm/yarn/pytest/cargo/make e também build_cmd/lint_cmd)
-  --hidden-test-cmd <cmd>  Suite oculta (verify.hidden_test_cmd; se vazio e existir tests/hidden/: go test ./tests/hidden/...)
+  --hidden-test-cmd <cmd>  Suite oculta (verify.hidden_test_cmd; se vazio e existir tests/hidden/: detecta toolchain ou marca N/A)
+  --build-cmd <cmd>        Build (default: verify.build_cmd; vazio + flag explícita ou --no-build para pular)
+  --lint-cmd <cmd>         Lint (default: verify.lint_cmd; vazio + flag explícita ou --no-lint para pular)
+  --no-build               Não executa build_cmd
+  --no-lint                Não executa lint_cmd
+  --dry-run                Mostra o plano (comandos e diretório) sem executar
   --max-iter <n>           Máximo de iterações (default: 3)
   --timeout <dur>          Timeout (default: 10m)
   --threshold <float>      Threshold de similaridade visual (default: 0.95)
@@ -802,20 +814,28 @@ A suite oculta permanece escondida do agente (paths em `tests/hidden/` protegido
 pelo `tb guard`). O comando configurado em `verify.hidden_test_cmd` ou
 `--hidden-test-cmd` **sempre executa**, mesmo sem o diretório `tests/hidden/`
 (caso típico em monorepos JS/Python/Rust). Se o comando estiver vazio e o
-diretório existir, usa-se `go test ./tests/hidden/...`. Sem comando e sem
-diretório, a suite oculta é ignorada (`hidden_available: false`). Campos
-opcionais `build_cmd` e `lint_cmd` rodam antes dos testes (nessa ordem) e
-fazem o verify falhar se o comando sair com erro; ausentes = comportamento
-anterior (só `test_cmd` + hidden).
+diretório existir, o verify **detecta a toolchain** da suíte (`.go`+`go.mod` →
+`go test ./tests/hidden/...`; `.py` → `pytest tests/hidden`; `.js`/`.mjs`/`.ts` →
+`node --test tests/hidden`). Sem suíte aplicável, marca `hidden_available: false`
+(N/A) e não roda `go test` fora de projeto Go. Sem comando e sem diretório, a
+suite oculta também é ignorada. Campos opcionais `build_cmd` e `lint_cmd` (YAML
+ou `--build-cmd`/`--lint-cmd`) rodam antes dos testes (nessa ordem); `--no-build` /
+`--no-lint` ou valor vazio com a flag explícita pulam o comando do config.
+Build/lint bem-sucedidos são **cacheados** dentro da mesma execução (não
+repetem a cada iteração); falha determinística de build/lint **não** entra no
+retry de `--max-iter` (ESCALATE imediato). `--dry-run` devolve o plano
+(`dir` + `commands`) com veredicto `SKIPPED` sem executar nada.
 
 Se o binário do `test_cmd` / `hidden_test_cmd` / `build_cmd` / `lint_cmd` não
 existe (exit 127), não é executável (exit 126) ou o `exec` falha com
 `ErrNotFound`, o verify **falha imediatamente** sem retries, com mensagem do tipo
-`comando não encontrado: X — ajuste verify.test_cmd`. Falhas genuínas do comando
-(exit ≠ 0/126/127) continuam no loop de `--max-iter`.
+`comando não encontrado: X — ajuste verify.test_cmd`. Falhas genuínas do
+`test_cmd`/`hidden_test_cmd` (exit ≠ 0/126/127) continuam no loop de `--max-iter`.
 
 Veredictos `ESCALATE` e `FAIL` saem com **exit ≠ 0** também com `--json`
-(igual ao modo texto). Só `PASS` e `SKIPPED` (ruler visual) usam exit 0.
+(igual ao modo texto). Só `PASS` e `SKIPPED` (ruler visual / `--dry-run`) usam
+exit 0. O JSON de verify (e cada etapa do `tb stack`) inclui `reason`/`error`
+com o motivo da falha ou do ESCALATE (não só em DEBUG no stderr).
 
 **Guard dentro do verify (anti-cheat vs mandate):**
 
@@ -844,6 +864,9 @@ verify:
 ```bash
 tb verify run --test-cmd "pnpm test" --hidden-test-cmd "pnpm test:hidden"
 # sem tests/hidden/: o hidden_test_cmd acima ainda roda
+tb verify run --test-cmd "pnpm test" --no-build --no-lint
+tb verify run --build-cmd "pnpm build" --lint-cmd "pnpm lint" --test-cmd "pnpm test"
+tb verify run --dry-run --test-cmd "go test ./..."
 ```
 
 Ruler `visual` (docs/verificacao-visual.md): captura headless + diff de pixels;
@@ -855,6 +878,8 @@ se Chromium/Chrome ou referências estiverem ausentes, faz skip gracioso.
 # Verificação com ruler de testes
 tb verify run
 tb verify run --test-cmd "go test ./..." --hidden-test-cmd "go test ./tests/hidden/..."
+tb verify run --test-cmd "true" --no-build --no-lint --max-iter 1
+tb verify run --dry-run --build-cmd "go build ./..." --test-cmd "go test ./..."
 
 # Verificação visual (threshold é fração 0–1, não porcentagem inteira)
 tb verify run --ruler visual --threshold 0.95
