@@ -8,9 +8,14 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 ## [Não Lançado]
 
 ### Adicionado
+- Indexador Rust emite arestas `calls` mínimas resolvíveis no repositório (`tb graph callers` / `impact`)
+- `tb graph callers`/`impact` retornam erro explícito em C/C++ (sem arestas `calls`) em vez de `(vazio)` silencioso
 - `tb init` preenche `verify.build_cmd` e `verify.lint_cmd` a partir da toolchain (scripts `build`/`lint`, golangci, ruff/mypy, `cargo build`/`clippy`, targets make)
 - `tb guard check` aceita `--base`/`--head` (como review/drift/verify) além do intervalo posicional `base..head`
 - Indexador Python emite arestas `calls` resolvíveis no repositório (`tb graph callers` / `impact`)
+
+### Corrigido
+- `tb graph callers`/`impact` em Python: resolve por sufixo de nome qualificado e ignora arestas `calls` com confiança &lt; 0.6 (reduz alvos espúrios como `setup.py`→`tests.setup`)
 - `tb init` lê `AGENTS.md`/`CLAUDE.md` na raiz (registra em `.toolbelt/agent_docs.yaml` e extrai dicas de comandos; nunca sobrescreve) e aceita `--write-agents` para semear um `AGENTS.md` mínimo apontando ao tb
 - `tb guard` carrega `protected_paths` de `.toolbelt/guard.yaml` (unidos aos defaults; arquivo ausente mantém só os defaults)
 - `tb init` detecta toolchain (`go.mod`, `package.json`/npm/pnpm/yarn, pyproject/uv/pytest, `Cargo.toml`, `Makefile`) e preenche `verify.test_cmd`
@@ -47,6 +52,9 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 - `tb drift` resolve refs git (`HEAD^`, tags, SHA curto) via `rev-parse` antes de
   comparar com `base_commit` (evita falso `base_mismatch`)
 - `tb verify run --json` sai com exit ≠ 0 em `ESCALATE`/`FAIL` (alinhado ao modo texto)
+- `tb init`: hints de `AGENTS.md`/`CLAUDE.md` ignoram fences de código longos e
+  aceitam prosa curta (“use/run/prefer …”); `verify.test_cmd` valida o binário no
+  `PATH` com fallback (ex. `uv` ausente → `pytest` / `python -m pytest`)
 - `tb bench`: honra `bench.tasks_dir` / `fixtures_dir` / `output_dir` do config.yaml
   (precedência: flag CLI > YAML > default); a flag global `-c/--config` alimenta `config.Load()`
 - `protected_paths` com barra final (`secrets/`) passa a proteger filhos do diretório

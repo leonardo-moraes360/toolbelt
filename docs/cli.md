@@ -139,12 +139,12 @@ Linguagens e docs (extensível via `LanguageIndexer`, regex leve, sem cgo):
 |-------------------|-----------|
 | `go` | `.go` (AST; arestas `calls`) |
 | `javascript` | `.js`, `.mjs`, `.cjs`, `.ts` (`.tsx`/`.jsx` via `react` quando ligado; arestas `calls`) |
-| `python` | `.py` (defines/imports + arestas `calls` resolvíveis no repositório) |
+| `python` | `.py` (defines/imports + arestas `calls` por módulo qualificado; `callers`/`impact` ignoram arestas com confiança &lt; 0.6) |
 | `java` | `.java` |
 | `kotlin` | `.kt`, `.kts` |
 | `csharp` | `.cs` |
-| `cpp` | `.c`, `.h`, `.cc`, `.cpp`, `.cxx`, `.hpp`, `.hh`, `.hxx` |
-| `rust` | `.rs` |
+| `cpp` | `.c`, `.h`, `.cc`, `.cpp`, `.cxx`, `.hpp`, `.hh`, `.hxx` (defines/imports; sem arestas `calls` — `callers`/`impact` retornam erro explícito) |
+| `rust` | `.rs` (defines/imports + arestas `calls` mínimas resolvíveis no repositório) |
 | `php` | `.php` |
 | `ruby` | `.rb` |
 | `swift` | `.swift` |
@@ -220,11 +220,15 @@ Flags:
 tb graph callers [flags]
 
 Flags:
-  --function <name>   Nome da função
+  --function <name>   Nome da função (aceita sufixo qualificado, ex. scrubber.redact_secrets)
   --file <path>       Arquivo da função
   --depth <n>         Profundidade do grafo (default: 1)
   --transitive        Inclui chamadores indiretos
 ```
+
+Em Python, `--function` resolve por título ou sufixo do id qualificado
+(`func:pkg.mod.nome`). Arestas `calls` com confiança &lt; 0.6 (alvos ambíguos /
+sem import) ficam de fora do resultado default de `callers` e `impact`.
 
 **`tb graph deps`:**
 
@@ -733,7 +737,15 @@ Flags:
 (`go.mod` → `go test ./...`, `package.json` + scripts.test → `npm`/`pnpm`/`yarn test`,
 `pyproject.toml`/`uv.lock` → `pytest`/`uv run pytest`, `Cargo.toml` → `cargo test`,
 `Makefile` com target `test`/`check` → `make test`/`make check`). Sem marcadores
-reconhecidos, permanece o default Go.
+reconhecidos, permanece o default Go. O binário do comando escolhido é validado no
+`PATH`: se `uv` estiver ausente com `uv.lock`, faz fallback para `pytest` ou
+`python -m pytest` / `python3 -m pytest` (e avisa); managers Node ausentes
+caem para `npm test` quando possível.
+
+Quando há `AGENTS.md`/`CLAUDE.md`, o init grava `.toolbelt/agent_docs.yaml` com
+`sources` e `hints` de comandos curtos (inline, fences shell e prosa do tipo
+“use/run/prefer …”). Fences de código longo (ex. ` ```go `) são ignorados para
+não poluir as dicas.
 
 Quando há marcadores claros, o init também preenche `verify.build_cmd` e
 `verify.lint_cmd` de forma conservadora:
