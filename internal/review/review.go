@@ -286,8 +286,12 @@ func parseTicketFrontmatter(text string) (*TicketScope, bool, error) {
 	if err := yaml.Unmarshal([]byte(parts[1]), &t); err != nil {
 		return nil, false, err
 	}
+	body := parts[2]
 	if t.Description == "" {
-		t.Description = strings.TrimSpace(parts[2])
+		t.Description = strings.TrimSpace(body)
+	}
+	if len(t.Scope) == 0 {
+		t.Scope = parseMarkdownScope(body)
 	}
 	return &t, true, nil
 }

@@ -200,11 +200,21 @@ func (c *Checker) protectedMatch(path string) (protectedEntry, bool) {
 }
 
 func matchProtectedPattern(pattern, path string) bool {
+	path = filepath.ToSlash(path)
+	pattern = filepath.ToSlash(strings.TrimSpace(pattern))
+	if pattern == "" {
+		return false
+	}
 	if ok, _ := filepath.Match(pattern, path); ok {
 		return true
 	}
-	if strings.HasSuffix(pattern, "/*") && strings.HasPrefix(path, strings.TrimSuffix(pattern, "/*")) {
-		return true
+	if strings.HasSuffix(pattern, "/") {
+		dir := strings.TrimSuffix(pattern, "/")
+		return path == dir || strings.HasPrefix(path, pattern)
+	}
+	if strings.HasSuffix(pattern, "/*") {
+		prefix := strings.TrimSuffix(pattern, "/*")
+		return path == prefix || strings.HasPrefix(path, prefix+"/")
 	}
 	return false
 }
