@@ -130,7 +130,8 @@ tb proc stop --all
 ### `tb graph` — Grafo Sob Demanda (✓ Fase 2, ADR-011)
 
 Consulta e indexa o grafo de código **sob demanda**. Desabilitado por padrão;
-ative com `TB_GRAPH=on` ou `--enable`. Medir ROI via
+ative com `TB_GRAPH=on` ou `--enable` (sem isso, CLI e MCP respondem
+`grafo desabilitado (ative com --enable ou TB_GRAPH=on; ADR-011)`). Medir ROI via
 `tb bench compare --config-a bench/ab/graph-off.yaml --config-b bench/ab/graph-on.yaml`.
 
 Linguagens e docs (extensível via `LanguageIndexer`, regex leve, sem cgo):

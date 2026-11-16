@@ -26,6 +26,7 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
   detecta o package manager (`pnpm-lock.yaml`/`yarn.lock`/`package-lock.json`/`bun.lockb`),
   preenche `test`/`build`|`typecheck`/`lint` a partir de `package.json`, e se nada for
   detectável deixa `test_cmd` vazio com aviso; o seed de `AGENTS.md` reflete isso
+- Erro de grafo desabilitado (CLI e MCP) cita como ligar: `--enable` ou `TB_GRAPH=on`
 
 ## [0.0.1] - 2026-11-16
 
