@@ -2,9 +2,11 @@ package verify
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -554,6 +556,95 @@ func TestOutOfScopeCustomProtectedPathAbortsVerify(t *testing.T) {
 	}
 	if res.BuildRan {
 		t.Fatal("build must not run on out-of-scope custom abort")
+	}
+}
+
+func TestRunFailFastMissingCommand(t *testing.T) {
+	dir := t.TempDir()
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "a@b.c")
+	runGit(t, dir, "config", "user.name", "t")
+	runGit(t, dir, "commit", "--allow-empty", "-m", "c")
+
+	cfg := DefaultConfig(dir)
+	cfg.BaseRef = "HEAD"
+	cfg.HeadRef = "HEAD"
+	cfg.Timeout = 30 * time.Second
+	cfg.MaxIterations = 3
+	cfg.VisibleTest = "tb-verify-missing-bin-xyz-9f3a"
+
+	res, err := Run(context.Background(), &cfg)
+	if err == nil {
+		t.Fatal("expected error when test_cmd binary is missing")
+	}
+	if !strings.Contains(err.Error(), "não encontrado") {
+		t.Fatalf("error should mention missing command, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "verify.test_cmd") {
+		t.Fatalf("error should mention verify.test_cmd, got %v", err)
+	}
+	if !strings.Contains(err.Error(), cfg.VisibleTest) {
+		t.Fatalf("error should include command %q, got %v", cfg.VisibleTest, err)
+	}
+	if want := fmt.Sprintf(errMissingCmdFmt, cfg.VisibleTest, "verify.test_cmd"); err.Error() != want {
+		t.Fatalf("error=%q want %q", err.Error(), want)
+	}
+	if res != nil && res.Iterations > 1 {
+		t.Fatalf("missing command must fail-fast without retries, iterations=%d", res.Iterations)
+	}
+}
+
+func TestRunFailFastNotExecutable(t *testing.T) {
+	dir := t.TempDir()
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "a@b.c")
+	runGit(t, dir, "config", "user.name", "t")
+	runGit(t, dir, "commit", "--allow-empty", "-m", "c")
+
+	script := filepath.Join(dir, "not-exec.sh")
+	if err := os.WriteFile(script, []byte("#!/bin/sh\necho hi\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := DefaultConfig(dir)
+	cfg.BaseRef = "HEAD"
+	cfg.HeadRef = "HEAD"
+	cfg.Timeout = 30 * time.Second
+	cfg.MaxIterations = 3
+	cfg.VisibleTest = script
+
+	_, err := Run(context.Background(), &cfg)
+	if err == nil {
+		t.Fatal("expected error when test_cmd is not executable")
+	}
+	if !strings.Contains(err.Error(), "não encontrado") || !strings.Contains(err.Error(), "verify.test_cmd") {
+		t.Fatalf("error should fail-fast for exit 126, got %v", err)
+	}
+}
+
+func TestRunRetriesGenuineFailure(t *testing.T) {
+	dir := t.TempDir()
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "a@b.c")
+	runGit(t, dir, "config", "user.name", "t")
+	runGit(t, dir, "commit", "--allow-empty", "-m", "c")
+
+	cfg := DefaultConfig(dir)
+	cfg.BaseRef = "HEAD"
+	cfg.HeadRef = "HEAD"
+	cfg.Timeout = 30 * time.Second
+	cfg.MaxIterations = 3
+	cfg.VisibleTest = "false"
+
+	res, err := Run(context.Background(), &cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Iterations != 3 {
+		t.Fatalf("genuine failures must retry, iterations=%d want 3", res.Iterations)
+	}
+	if res.Verdict != VerdictEscalate {
+		t.Fatalf("verdict=%s want ESCALATE", res.Verdict)
 	}
 }
 
