@@ -69,7 +69,11 @@ func runTestsVerify(cmd *cobra.Command) error {
 		if fileCfg.Verify.LintCmd != "" {
 			cfg.LintCmd = fileCfg.Verify.LintCmd
 		}
+		cfg.EnvAllow = append(cfg.EnvAllow, fileCfg.Env.Allow...)
+		cfg.EnvPass = append(cfg.EnvPass, fileCfg.Env.Pass...)
 	}
+	cfg.EnvAllow = append(cfg.EnvAllow, envAllow...)
+	cfg.EnvPass = append(cfg.EnvPass, envPass...)
 	if v, _ := cmd.Flags().GetString("base"); v != "" {
 		cfg.BaseRef = v
 	}
@@ -180,6 +184,12 @@ func printTestsSummary(payload any) {
 		return
 	}
 	fmt.Printf("Veredicto: %s (iterações: %d)\n", res.Verdict, res.Iterations)
+	if res.HeadSHA != "" {
+		fmt.Printf("Head: %s\n", res.HeadSHA)
+	}
+	if res.WorkDir != "" {
+		fmt.Printf("Workdir: %s\n", res.WorkDir)
+	}
 	if res.BuildRan {
 		fmt.Printf("Build: %v\n", res.BuildPassed)
 	}
