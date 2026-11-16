@@ -162,6 +162,7 @@ tb bench compare --config-a bench/ab/graph-off.yaml \
 - [x] `tb graph` sob demanda (CLI + MCP) com A/B graph-on vs graph-off
 - [x] `tb review` — revisão fresh-context contra ticket/rd.md + invariantes
 - [x] `tb drift` — detecção de drift (escopo / commit base)
+- [x] Parser Markdown de Scope (`## Scope` / listas) e globs com `**` no meio
 - [x] Ruler visual: screenshot + browser headless (skip gracioso)
 - [ ] Hierarquia de agentes / A2A / `tb md` (posterior)
 
@@ -221,7 +222,7 @@ Este projeto está na **Fase 0**: fundação implementada com CLI funcional, con
 | `tb bench compare` | ✅ | Compara dois benchmarks |
 | `tb sandbox` | ✅ | Worktrees + Landlock (Linux) |
 | `tb guard` | ✅ | Check anti-trapaça em diff |
-| `tb verify` | ✅ | Ruler de testes + suíte oculta + `verify.build_cmd` / `verify.lint_cmd` opcionais |
+| `tb verify` | ✅ | Ruler de testes + suíte oculta (`--hidden-test-cmd` / `verify.hidden_test_cmd` rodam sem exigir `tests/hidden/`) + `verify.build_cmd` / `verify.lint_cmd` opcionais |
 | `tb mem` | ✅ | Invariantes fora da compactação |
 | `tb graph` | ✅ | Grafo sob demanda multi-linguagem + frameworks + docs (ADR-011) |
 | `tb router` | 🚧 | Stub (Fase 5) |
