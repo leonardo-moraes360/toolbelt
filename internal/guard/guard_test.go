@@ -188,3 +188,52 @@ func TestLoadProtectedPathsHelpers(t *testing.T) {
 		t.Fatalf("custom no fim: got %v", got)
 	}
 }
+
+func TestDirectoryTrailingSlashProtectsChildren(t *testing.T) {
+	dir := setupRepo(t)
+	_ = os.WriteFile(filepath.Join(dir, "ok.go"), []byte("package x\n"), 0o644)
+	base := commitAll(t, dir, "base")
+
+	_ = os.MkdirAll(filepath.Join(dir, ".toolbelt"), 0o755)
+	_ = os.WriteFile(filepath.Join(dir, ".toolbelt", "guard.yaml"), []byte("protected_paths:\n  - secrets/\n"), 0o644)
+	_ = os.MkdirAll(filepath.Join(dir, "secrets", "nested"), 0o755)
+	_ = os.WriteFile(filepath.Join(dir, "secrets", "token"), []byte("s3cret\n"), 0o644)
+	_ = os.WriteFile(filepath.Join(dir, "secrets", "nested", "key"), []byte("k\n"), 0o644)
+	head := commitAll(t, dir, "add secrets")
+
+	chk := NewChecker(dir)
+	res, err := chk.Check(base, head)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasViolation(res, ViolationProtectedPath, "secrets/token") {
+		t.Fatalf("secrets/ deveria proteger secrets/token; got %#v", res.Violations)
+	}
+	if !hasViolation(res, ViolationProtectedPath, "secrets/nested/key") {
+		t.Fatalf("secrets/ deveria proteger secrets/nested/key; got %#v", res.Violations)
+	}
+}
+
+func TestIsProtectedDirectoryPrefix(t *testing.T) {
+	c := &Checker{protectedPaths: []string{"secrets/", "lib/help.js", "tests/hidden/*"}}
+	cases := []struct {
+		path string
+		want bool
+	}{
+		{"secrets/token", true},
+		{"secrets/a/b", true},
+		{"secrets", true},
+		{"secretsfoo", false},
+		{"lib/help.js", true},
+		{"lib/other.js", false},
+		{"tests/hidden/x", true},
+		{"tests/hidden", true},
+		{"tests/hiddenX", false},
+		{"ok.go", false},
+	}
+	for _, tc := range cases {
+		if got := c.isProtected(tc.path); got != tc.want {
+			t.Fatalf("isProtected(%q)=%v want %v", tc.path, got, tc.want)
+		}
+	}
+}

@@ -172,12 +172,27 @@ func isTestFile(path string) bool {
 }
 
 func (c *Checker) isProtected(path string) bool {
+	path = filepath.ToSlash(path)
 	for _, pattern := range c.protectedPaths {
+		pattern = filepath.ToSlash(strings.TrimSpace(pattern))
+		if pattern == "" {
+			continue
+		}
 		if ok, _ := filepath.Match(pattern, path); ok {
 			return true
 		}
-		if strings.HasSuffix(pattern, "/*") && strings.HasPrefix(path, strings.TrimSuffix(pattern, "/*")) {
-			return true
+		if strings.HasSuffix(pattern, "/") {
+			dir := strings.TrimSuffix(pattern, "/")
+			if path == dir || strings.HasPrefix(path, pattern) {
+				return true
+			}
+			continue
+		}
+		if strings.HasSuffix(pattern, "/*") {
+			prefix := strings.TrimSuffix(pattern, "/*")
+			if path == prefix || strings.HasPrefix(path, prefix+"/") {
+				return true
+			}
 		}
 	}
 	return false

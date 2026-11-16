@@ -18,6 +18,7 @@ const (
 	VerdictPass     Verdict = "PASS"
 	VerdictFail     Verdict = "FAIL"
 	VerdictEscalate Verdict = "ESCALATE"
+	VerdictSkipped  Verdict = "SKIPPED"
 )
 
 const DefaultHiddenTestCmd = "go test ./tests/hidden/..."
