@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -139,7 +140,7 @@ func DefaultConfig() *Config {
 		Bench: BenchConfig{
 			TasksDir:     "bench/tasks",
 			FixturesDir:  "bench/fixtures",
-			OutputDir:    ".toolbelt/bench",
+			OutputDir:    "bench/results",
 			DefaultAgent: "",
 			Repetitions:  5,
 			Timeout:      "10m",
@@ -151,9 +152,31 @@ func DefaultConfig() *Config {
 	}
 }
 
+// overrideFile, quando não vazio, faz Load usar só esse arquivo (flag -c/--config).
+var overrideFile string
+
+// SetFile define o arquivo de configuração explícito (ex.: -c/--config).
+// Passe "" para limpar e voltar ao merge global+local.
+func SetFile(path string) {
+	overrideFile = strings.TrimSpace(path)
+}
+
+// File retorna o caminho explícito definido por SetFile, ou "".
+func File() string {
+	return overrideFile
+}
+
 // Load carrega a configuração, mesclando global e local.
+// Se SetFile tiver sido chamado com um path, carrega só esse arquivo sobre os defaults.
 func Load() (*Config, error) {
 	cfg := DefaultConfig()
+
+	if overrideFile != "" {
+		if err := loadFromFile(overrideFile, cfg); err != nil {
+			return nil, fmt.Errorf("loading config %s: %w", overrideFile, err)
+		}
+		return cfg, nil
+	}
 
 	// Carrega configuração global
 	globalPath := GlobalConfigPath()
@@ -231,20 +254,36 @@ func InitDetailed(dir string) (DetectedCmd, error) {
 	}
 
 	configPath := filepath.Join(dir, DefaultConfigFile)
-	if _, err := os.Stat(configPath); errors.Is(err, os.ErrNotExist) {
-		cfg := DefaultConfig()
-		if root, ok := projectRootForInit(dir); ok {
-			detected = DetectTestCmdDetailed(root)
-			if detected.Cmd != "" {
-				cfg.Verify.TestCmd = detected.Cmd
-			}
-		}
-		if err := Save(cfg, configPath); err != nil {
-			return detected, fmt.Errorf("saving default config: %w", err)
-		}
+	if _, err := os.Stat(configPath); !errors.Is(err, os.ErrNotExist) {
+		return detected, nil
+	}
+
+	cfg := DefaultConfig()
+	detected = applyDetectedVerifyCmds(cfg, dir)
+	if err := Save(cfg, configPath); err != nil {
+		return detected, fmt.Errorf("saving default config: %w", err)
 	}
 
 	return detected, nil
+}
+
+func applyDetectedVerifyCmds(cfg *Config, dir string) DetectedCmd {
+	var detected DetectedCmd
+	root, ok := projectRootForInit(dir)
+	if !ok {
+		return detected
+	}
+	detected = DetectTestCmdDetailed(root)
+	if detected.Cmd != "" {
+		cfg.Verify.TestCmd = detected.Cmd
+	}
+	if cmd := DetectBuildCmd(root); cmd != "" {
+		cfg.Verify.BuildCmd = cmd
+	}
+	if cmd := DetectLintCmd(root); cmd != "" {
+		cfg.Verify.LintCmd = cmd
+	}
+	return detected
 }
 
 // Exists verifica se o diretório de configuração existe.

@@ -180,8 +180,11 @@ graph:
 
 Ignora subdiretórios como `node_modules`, `vendor`, `dist`, `build`,
 `target`, `.git`, etc. A raiz do walk nunca é pulada pelo nome (ex.: indexar
-`/tmp/target` funciona; um `target/` filho continua ignorado). O grafo
-continua sob demanda (ADR-011): `TB_GRAPH=on` ou `--enable`.
+`/tmp/target` funciona; um `target/` filho continua ignorado). Se a raiz for
+um symlink (ex.: `/tmp/target` → dir real), ela é resolvida com
+`EvalSymlinks` antes do walk — caso contrário o índice ficaria vazio, pois
+`filepath.Walk` não desce symlinks. O grafo continua sob demanda (ADR-011):
+`TB_GRAPH=on` ou `--enable`.
 
 ```bash
 tb graph [--enable] <subcommand>
@@ -516,14 +519,18 @@ Flags:
 Também reporta drift de escopo e commit base. Isolamento fresco é obrigatório.
 
 O ticket/rd.md aceita frontmatter YAML ou Markdown: seção `## Scope` / `## Escopo`
-(ou `Scope:` / `Escopo:`) com listas (`-`, `*`, numeradas) e paths entre backticks.
+(ou `Scope:` / `Escopo:`) e `## Forbidden` / `## Proibido` (ou `Forbidden:` /
+`Proibido:`) com listas (`-`, `*`, numeradas) e paths entre backticks.
 Se o frontmatter YAML não declara `scope:`, o body Markdown ainda é lido para preencher o escopo.
-Globs no scope incluem `src/*.go`, `src/**` e padrões com `**` no meio (ex.: `src/**/foo.go`).
+Globs no scope/forbidden incluem `src/*.go`, `src/**`, `tests/hidden/**` e
+padrões com `**` no meio (ex.: `src/**/foo.go`). Toques em paths do Forbidden
+preenchem `forbidden_hit` no drift e geram finding critical no review.
 
 Invariantes de path (ex.: `tests/hidden/`, `thresholds.yaml`) são casadas contra
-arquivos **alterados** por prefixo/segmento de caminho — não por substring no
-texto do diff ou do ticket. Mencionar `forbidden: tests/hidden/**` em `rd.md`
-sem tocar esse diretório não gera finding critical.
+arquivos **alterados** pelo mesmo matcher de path/glob (`tests/hidden/**`,
+`tests/hidden/*`) — não por substring no texto do diff ou do ticket. Mencionar
+`forbidden: tests/hidden/**` em `rd.md` sem tocar esse diretório não gera
+finding critical.
 
 **Exemplos:**
 
@@ -599,9 +606,10 @@ tb review docs/spec.md --json --output review-results.json
 
 ### `tb drift` — Drift de Escopo/Base (✓ Fase 2)
 
-Detecta mudanças fora do scope declarado no ticket/rd.md e divergência
-do commit base (mandate). O parser de scope é o mesmo do `tb review`
-(YAML frontmatter ou Markdown `## Scope` / listas / globs com `**`).
+Detecta mudanças fora do scope declarado no ticket/rd.md, toques em
+`Forbidden`/`Proibido` (`forbidden_hit`) e divergência do commit base
+(mandate). O parser de scope/forbidden é o mesmo do `tb review`
+(YAML frontmatter ou Markdown `## Scope` / `## Forbidden` / listas / globs com `**`).
 
 ```bash
 tb drift [ticket] [flags]
@@ -703,7 +711,7 @@ tb verify run [flags]
 
 Flags:
   --ruler <type>           Tipo de ruler: tests|visual (default: tests)
-  --test-cmd <cmd>         Testes visíveis (default: verify.test_cmd; `tb init` detecta go/npm/pnpm/yarn/pytest/cargo/make)
+  --test-cmd <cmd>         Testes visíveis (default: verify.test_cmd; `tb init` detecta go/npm/pnpm/yarn/pytest/cargo/make e também build_cmd/lint_cmd)
   --hidden-test-cmd <cmd>  Suite oculta (verify.hidden_test_cmd; se vazio e existir tests/hidden/: go test ./tests/hidden/...)
   --max-iter <n>           Máximo de iterações (default: 3)
   --timeout <dur>          Timeout (default: 10m)
@@ -712,6 +720,7 @@ Flags:
   --skip-unavailable       Skip gracioso sem browser/refs/telas (default: true; veredicto SKIPPED)
   --base <ref>             Ref base
   --head <ref>             Ref head
+  --ticket <path>          Ticket com Scope (exceção de `protected_paths` custom)
   --output <path> / -o     Arquivo de saída JSON
   --json                   Saída em JSON (flag global)
 ```
@@ -730,6 +739,19 @@ Quando há `AGENTS.md`/`CLAUDE.md`, o init grava `.toolbelt/agent_docs.yaml` com
 “use/run/prefer …”). Fences de código longo (ex. ` ```go `) são ignorados para
 não poluir as dicas.
 
+Quando há marcadores claros, o init também preenche `verify.build_cmd` e
+`verify.lint_cmd` de forma conservadora:
+
+| Toolchain | `build_cmd` | `lint_cmd` |
+|-----------|-------------|------------|
+| `go.mod` | `go build ./...` | `.golangci.y*ml`/`.toml` → `golangci-lint run`; senão target `make lint` |
+| `package.json` | script `build` → `npm run build` / `pnpm run build` / `yarn build` | script `lint` → análogo |
+| `Cargo.toml` | `cargo build` | `cargo clippy` |
+| Python (`pyproject`/`uv.lock`/…) | (vazio) | `[tool.ruff]`/`ruff.toml` → `ruff check .` (ou `uv run …`); senão mypy |
+| só `Makefile` | target `build` → `make build` | target `lint` → `make lint` |
+
+Ausência de script/config → campo omitido (verify continua só com `test_cmd`).
+
 A suite oculta permanece escondida do agente (paths em `tests/hidden/` protegidos
 pelo `tb guard`). O comando configurado em `verify.hidden_test_cmd` ou
 `--hidden-test-cmd` **sempre executa**, mesmo sem o diretório `tests/hidden/`
@@ -739,6 +761,20 @@ diretório, a suite oculta é ignorada (`hidden_available: false`). Campos
 opcionais `build_cmd` e `lint_cmd` rodam antes dos testes (nessa ordem) e
 fazem o verify falhar se o comando sair com erro; ausentes = comportamento
 anterior (só `test_cmd` + hidden).
+
+**Guard dentro do verify (anti-cheat vs mandate):**
+
+O verify sempre roda `tb guard` no diff e inclui o resultado em `guard`. A decisão
+de **abortar antes de build/test** depende da origem do `protected_path`:
+
+| Origem | Sem `--ticket` | Com `--ticket` e path no Scope | Com `--ticket` e path fora do Scope |
+|--------|----------------|--------------------------------|-------------------------------------|
+| Defaults embutidos (`tests/hidden/*`, `benchmarks/*`, `.toolbelt/thresholds.yaml`) | **aborta** (FAIL, 0 iterações) | **aborta** | **aborta** |
+| `protected_paths` de `.toolbelt/guard.yaml` (custom) | reporta como **warning** e **continua** build/test | reporta warning (exceção de Scope) e **continua** | **aborta** |
+
+`tb guard check --strict` continua tratando violações custom como `SeverityError`
+(CI não muda). Só o loop de `tb verify run` aplica a exceção acima para não
+matar o mandate quando o manifesto lista o próprio arquivo da tarefa.
 
 ```yaml
 # .toolbelt/config.yaml
@@ -902,7 +938,7 @@ tb guard check origin/main..HEAD --strict --json
 
 **Manifesto de paths protegidos (`.toolbelt/guard.yaml`):**
 
-O guard carrega `protected_paths` de `.toolbelt/guard.yaml` (quando presente) e **une** aos defaults embutidos (`tests/hidden/*`, `benchmarks/*`, `.toolbelt/thresholds.yaml`). Cada entrada pode ser uma string (`lib/help.js`) ou um objeto com `pattern`. Entrada com barra final (`secrets/`) protege o diretório e todos os filhos (prefixo). `secrets/*` continua válido para um nível via glob. Sem o arquivo, só os defaults valem.
+O guard carrega `protected_paths` de `.toolbelt/guard.yaml` (quando presente) e **une** aos defaults embutidos (`tests/hidden/*`, `benchmarks/*`, `.toolbelt/thresholds.yaml`). Cada entrada pode ser uma string (`lib/help.js`) ou um objeto com `pattern`. Entrada com barra final (`secrets/`) protege o diretório e todos os filhos (prefixo). `secrets/*` continua válido para um nível via glob. Sem o arquivo, só os defaults valem. Violações ganham `source: default` (anti-cheat embutido) ou `source: custom` (YAML). Em `tb verify run`, só `default` (e custom fora do Scope do `--ticket`) abortam o loop; custom no mandate é reportado e o verify segue — ver seção verify acima.
 
 ```yaml
 # .toolbelt/guard.yaml
@@ -1449,21 +1485,30 @@ tb bench run [flags]
 Flags:
   --fake               Usa agente fake embutido no binário `tb` (portátil, qualquer repo)
   --agent <cmd>        Comando do agente externo (fallback: bench.default_agent)
+  -t, --tasks-dir      Diretório das tarefas (fallback: bench.tasks_dir)
+  -f, --fixtures-dir   Diretório das fixtures (fallback: bench.fixtures_dir)
   --repetitions <n>    Número de repetições (default: 1)
-  --output <path>      Arquivo de saída JSONL
+  --output <path>      Arquivo de saída JSONL (sem flag: sob bench.output_dir)
   --label <name>       Rótulo da variante A/B
   --flag key=value     Feature flag (repetível)
   --ab-config <yaml>   Variante A/B a partir de YAML
   --task <id>          Filtra tarefas
 ```
 
+Precedência dos paths e do agente: **flag CLI explícita** > **`config.yaml`** > **default**.
+A flag global `-c/--config` alimenta `config.Load()` (inclui `bench.*`).
+
 Se `--agent` e `--fake` forem omitidos, `tb bench run` usa `bench.default_agent`
-de `.toolbelt/config.yaml` (quando definido).
+do YAML carregado (quando definido). Sem `-t`/`-f`/`-o`, usa
+`bench.tasks_dir` / `bench.fixtures_dir` / `bench.output_dir`.
 
 ```yaml
 # .toolbelt/config.yaml
 bench:
   default_agent: "cursor-agent {prompt} --workdir {workdir}"
+  tasks_dir: /abs/path/to/bench/tasks
+  fixtures_dir: /abs/path/to/bench/fixtures
+  output_dir: /abs/path/to/bench/results
 ```
 
 Placeholders `{prompt}`, `{workdir}` e `{timeout}` são interpolados com
@@ -1499,7 +1544,8 @@ O relatório Markdown e o JSONL incluem métricas de **sucesso (pass@1)**, **tem
 ```bash
 tb bench run --fake --label graph-off --flag graph=off
 tb bench run --fake --ab-config bench/ab/graph-on.yaml
-tb bench run -r 1   # usa bench.default_agent do config
+tb bench run -r 1   # usa bench.default_agent / tasks_dir do config
+tb -c /tmp/alt-config.yaml bench run -r 1   # -c alimenta config.Load()
 tb bench compare --before bench/results/graph-off.jsonl \
                  --after bench/results/graph-on.jsonl
 tb bench list

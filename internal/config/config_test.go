@@ -181,6 +181,41 @@ func TestSaveAndLoad(t *testing.T) {
 	}
 }
 
+func TestLoadHonorsSetFile(t *testing.T) {
+	tmpDir := t.TempDir()
+	cfgPath := filepath.Join(tmpDir, "explicit.yaml")
+	cfg := DefaultConfig()
+	cfg.Bench.DefaultAgent = "echo FROM_SET_FILE"
+	cfg.Bench.TasksDir = "/abs/tasks"
+	if err := Save(cfg, cfgPath); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	SetFile(cfgPath)
+	t.Cleanup(func() { SetFile("") })
+
+	loaded, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if loaded.Bench.DefaultAgent != "echo FROM_SET_FILE" {
+		t.Fatalf("DefaultAgent = %q", loaded.Bench.DefaultAgent)
+	}
+	if loaded.Bench.TasksDir != "/abs/tasks" {
+		t.Fatalf("TasksDir = %q", loaded.Bench.TasksDir)
+	}
+	if File() != cfgPath {
+		t.Fatalf("File() = %q, want %q", File(), cfgPath)
+	}
+}
+
+func TestDefaultBenchOutputDir(t *testing.T) {
+	cfg := DefaultConfig()
+	if cfg.Bench.OutputDir != "bench/results" {
+		t.Fatalf("OutputDir = %q, want bench/results", cfg.Bench.OutputDir)
+	}
+}
+
 func TestLocalOverridesGlobal(t *testing.T) {
 	tmpDir := t.TempDir()
 

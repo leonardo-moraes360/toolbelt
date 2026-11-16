@@ -21,6 +21,13 @@ type DetectedCmd struct {
 	Warning string
 }
 
+var golangciConfigFiles = []string{
+	".golangci.yml",
+	".golangci.yaml",
+	".golangci.toml",
+	".golangci.json",
+}
+
 // DetectTestCmd inspeciona a raiz do projeto e devolve o test_cmd adequado
 // ao toolchain detectado. Retorna string vazia se nada for reconhecido.
 func DetectTestCmd(root string) string {
@@ -38,7 +45,7 @@ func DetectTestCmdDetailed(root string) DetectedCmd {
 	}
 
 	if fileExists(filepath.Join(root, "package.json")) {
-		if cmd := detectNodeTestCmd(root); cmd != "" {
+		if cmd := detectNodeScriptCmd(root, "test"); cmd != "" {
 			return resolveNodeCmd(cmd)
 		}
 	}
@@ -51,14 +58,77 @@ func DetectTestCmdDetailed(root string) DetectedCmd {
 		return d
 	}
 
-	if cmd := detectMakeTestCmd(root); cmd != "" {
+	if cmd := detectMakeTargetCmd(root, "test", "check"); cmd != "" {
 		return resolveCmd(cmd)
 	}
 
 	return DetectedCmd{}
 }
 
-func detectNodeTestCmd(root string) string {
+// DetectBuildCmd inspeciona a raiz e devolve o build_cmd adequado ao toolchain.
+// Conservador: só preenche quando há marcador claro (go.mod, scripts.build,
+// Cargo.toml, target make build). Retorna string vazia se nada for reconhecido.
+func DetectBuildCmd(root string) string {
+	if root == "" {
+		return ""
+	}
+
+	if fileExists(filepath.Join(root, "go.mod")) {
+		return "go build ./..."
+	}
+
+	if fileExists(filepath.Join(root, "package.json")) {
+		return detectNodeScriptCmd(root, "build")
+	}
+
+	if fileExists(filepath.Join(root, "Cargo.toml")) {
+		return "cargo build"
+	}
+
+	if isPythonProject(root) {
+		return ""
+	}
+
+	return detectMakeTargetCmd(root, "build")
+}
+
+// DetectLintCmd inspeciona a raiz e devolve o lint_cmd adequado ao toolchain.
+// Conservador: golangci config / make lint, scripts.lint, cargo clippy,
+// ruff/mypy em pyproject. Retorna string vazia se nada for reconhecido.
+func DetectLintCmd(root string) string {
+	if root == "" {
+		return ""
+	}
+
+	if fileExists(filepath.Join(root, "go.mod")) {
+		return detectGoLintCmd(root)
+	}
+
+	if fileExists(filepath.Join(root, "package.json")) {
+		return detectNodeScriptCmd(root, "lint")
+	}
+
+	if fileExists(filepath.Join(root, "Cargo.toml")) {
+		return "cargo clippy"
+	}
+
+	if cmd := detectPythonLintCmd(root); cmd != "" {
+		return cmd
+	}
+
+	return detectMakeTargetCmd(root, "lint")
+}
+
+func detectGoLintCmd(root string) string {
+	for _, name := range golangciConfigFiles {
+		if fileExists(filepath.Join(root, name)) {
+			return "golangci-lint run"
+		}
+	}
+	return detectMakeTargetCmd(root, "lint")
+}
+
+func detectNodeScriptCmd(root, script string) string {
 	data, err := os.ReadFile(filepath.Join(root, "package.json"))
 	if err != nil {
 		return ""
@@ -71,20 +141,36 @@ func detectNodeTestCmd(root string) string {
 	if err := json.Unmarshal(data, &pkg); err != nil {
 		return ""
 	}
-	if _, ok := pkg.Scripts["test"]; !ok {
+	if _, ok := pkg.Scripts[script]; !ok {
 		return ""
 	}
 
 	pm := nodePackageManager(root, pkg.PackageManager)
+	return nodeScriptCommand(pm, script)
+}
+
+func nodeScriptCommand(pm, script string) string {
 	switch pm {
 	case "pnpm":
-		return "pnpm test"
+		if script == "test" {
+			return "pnpm test"
+		}
+		return "pnpm run " + script
 	case "yarn":
-		return "yarn test"
+		if script == "test" {
+			return "yarn test"
+		}
+		return "yarn " + script
 	case "bun":
-		return "bun test"
+		if script == "test" {
+			return "bun test"
+		}
+		return "bun run " + script
 	default:
-		return "npm test"
+		if script == "test" {
+			return "npm test"
+		}
+		return "npm run " + script
 	}
 }
 
@@ -128,17 +214,10 @@ func packageManagerFromField(field string) string {
 }
 
 func detectPythonTestCmd(root string) DetectedCmd {
-	hasPyProject := fileExists(filepath.Join(root, "pyproject.toml"))
-	hasPytestIni := fileExists(filepath.Join(root, "pytest.ini"))
-	hasTox := fileExists(filepath.Join(root, "tox.ini"))
-	hasSetupCfg := fileExists(filepath.Join(root, "setup.cfg"))
-	hasUvLock := fileExists(filepath.Join(root, "uv.lock"))
-
-	if !hasPyProject && !hasPytestIni && !hasTox && !hasSetupCfg && !hasUvLock {
+	if !isPythonProject(root) {
 		return DetectedCmd{}
 	}
-
-	if hasUvLock {
+	if fileExists(filepath.Join(root, "uv.lock")) {
 		return resolveCmd(
 			"uv run pytest",
 			"pytest",
@@ -190,17 +269,62 @@ func commandBinary(cmd string) string {
 	return fields[0]
 }
 
-func detectMakeTestCmd(root string) string {
+func detectPythonLintCmd(root string) string {
+	if !isPythonProject(root) {
+		return ""
+	}
+
+	pyproject, _ := os.ReadFile(filepath.Join(root, "pyproject.toml"))
+	content := string(pyproject)
+	useUV := fileExists(filepath.Join(root, "uv.lock"))
+
+	switch {
+	case hasPythonTool(content, "ruff") ||
+		fileExists(filepath.Join(root, "ruff.toml")) ||
+		fileExists(filepath.Join(root, ".ruff.toml")):
+		return pythonToolCmd(useUV, "ruff check .")
+	case hasPythonTool(content, "mypy") ||
+		fileExists(filepath.Join(root, "mypy.ini")) ||
+		fileExists(filepath.Join(root, ".mypy.ini")):
+		return pythonToolCmd(useUV, "mypy .")
+	default:
+		return ""
+	}
+}
+
+func isPythonProject(root string) bool {
+	return fileExists(filepath.Join(root, "pyproject.toml")) ||
+		fileExists(filepath.Join(root, "pytest.ini")) ||
+		fileExists(filepath.Join(root, "tox.ini")) ||
+		fileExists(filepath.Join(root, "setup.cfg")) ||
+		fileExists(filepath.Join(root, "uv.lock"))
+}
+
+func hasPythonTool(pyproject, tool string) bool {
+	if pyproject == "" {
+		return false
+	}
+	return strings.Contains(pyproject, "[tool."+tool+"]") ||
+		strings.Contains(pyproject, "[tool."+tool+".")
+}
+
+func pythonToolCmd(useUV bool, cmd string) string {
+	if useUV {
+		return "uv run " + cmd
+	}
+	return cmd
+}
+
+func detectMakeTargetCmd(root string, names ...string) string {
 	data, err := os.ReadFile(filepath.Join(root, "Makefile"))
 	if err != nil {
 		return ""
 	}
 	targets := makeTargets(string(data))
-	if targets["test"] {
-		return "make test"
-	}
-	if targets["check"] {
-		return "make check"
+	for _, name := range names {
+		if targets[name] {
+			return "make " + name
+		}
 	}
 	return ""
 }
