@@ -38,16 +38,23 @@ var guardCheckCmd = &cobra.Command{
 				return err
 			}
 		} else {
-			for _, v := range res.Violations {
-				fmt.Printf("%s %s %s\n", v.Severity, v.Type, v.File)
-			}
+			printGuardText(res)
 		}
-		strict, _ := cmd.Flags().GetBool("strict")
-		if strict && hasStrictError(res.Violations) {
+		warnOnly, _ := cmd.Flags().GetBool("warn-only")
+		if hasStrictError(res.Violations) && !warnOnly {
 			os.Exit(1)
 		}
 		return nil
 	},
+}
+
+func printGuardText(res *guard.CheckResult) {
+	for _, v := range res.Violations {
+		fmt.Printf("%s %s %s\n", v.Severity, v.Type, v.File)
+	}
+	if len(res.Violations) == 0 {
+		fmt.Printf("guard: ok (%d regras, 0 violações)\n", res.RulesChecked)
+	}
 }
 
 func resolveGuardRange(cmd *cobra.Command, args []string) (base, head string, err error) {
@@ -76,7 +83,9 @@ func hasStrictError(violations []guard.Violation) bool {
 }
 
 func init() {
-	guardCheckCmd.Flags().Bool("strict", false, "falha em erros")
+	guardCheckCmd.Flags().Bool("warn-only", false, "não falha o exit code em SeverityError (opt-out do default CI-safe)")
+	guardCheckCmd.Flags().Bool("strict", false, "falha em SeverityError (já é o default)")
+	_ = guardCheckCmd.Flags().MarkDeprecated("strict", "falha em SeverityError já é o default; use --warn-only para opt-out")
 	guardCheckCmd.Flags().String("base", "HEAD~1", "ref base")
 	guardCheckCmd.Flags().String("head", "HEAD", "ref head")
 	guardCmd.AddCommand(guardCheckCmd)

@@ -16,9 +16,12 @@ var reviewCmd = &cobra.Command{
 	Short: "Revisão fresh-context (Elephant-Goldfish)",
 	Long: `Revisa um diff contra ticket/rd.md e invariantes de tb mem.
 
-Cada goldfish recebe apenas o ticket, o diff e as invariantes
-(contexto fresco obrigatório). Também reporta drift de escopo
-e commit base.`,
+Goldfish distintos (contexto fresco cada um):
+  scope       — escopo declarado e paths forbidden (+ invariantes de tb mem)
+  quality     — TODO/FIXME adicionados, funções muito grandes, código sem testes
+  acceptance  — critérios de aceite do ticket evidenciados em testes/arquivos
+
+Também reporta drift de escopo e commit base.`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: runReview,
 }
@@ -26,9 +29,10 @@ e commit base.`,
 func init() {
 	reviewCmd.Flags().String("base", "HEAD~1", "commit/ref base")
 	reviewCmd.Flags().String("head", "HEAD", "commit/ref head")
+	reviewCmd.Flags().String("approved-sha", "", "SHA aprovado; compara patch-id estável com o head")
 	reviewCmd.Flags().String("ticket", "rd.md", "caminho do ticket/rd.md")
-	reviewCmd.Flags().Int("reviewers", 3, "número de goldfish")
-	reviewCmd.Flags().String("standards", "scope,invariants,completeness", "padrões de revisão")
+	reviewCmd.Flags().Int("reviewers", 3, "máximo de goldfish distintos (não clona o mesmo)")
+	reviewCmd.Flags().String("standards", "scope,quality,acceptance", "papéis: scope,quality,acceptance (aliases: invariants,completeness)")
 	reviewCmd.Flags().String("output", "", "arquivo de saída JSON")
 }
 
@@ -58,6 +62,7 @@ func reviewConfigFromFlags(cmd *cobra.Command, args []string) (*review.Config, e
 	cfg := review.DefaultConfig(cwd)
 	cfg.BaseRef, _ = cmd.Flags().GetString("base")
 	cfg.HeadRef, _ = cmd.Flags().GetString("head")
+	cfg.ApprovedSHA, _ = cmd.Flags().GetString("approved-sha")
 	cfg.TicketPath, _ = cmd.Flags().GetString("ticket")
 	cfg.Reviewers, _ = cmd.Flags().GetInt("reviewers")
 	stds, _ := cmd.Flags().GetString("standards")
@@ -86,6 +91,9 @@ func emitReview(cmd *cobra.Command, rep *review.Report) error {
 }
 
 func reviewBlockingError(rep *review.Report) error {
+	if pinnedApprovalMismatch(rep.PinnedApproval) {
+		return fmt.Errorf("patch do head diverge do SHA aprovado")
+	}
 	if rep.Drift != nil && (len(rep.Drift.OutOfScope) > 0 || len(rep.Drift.ForbiddenHit) > 0 || rep.Drift.BaseMismatch) {
 		return fmt.Errorf("drift detectado no escopo/base")
 	}
@@ -97,11 +105,16 @@ func reviewBlockingError(rep *review.Report) error {
 	return nil
 }
 
+func pinnedApprovalMismatch(p *review.PinnedApproval) bool {
+	return p != nil && !p.Match
+}
+
 func printReviewReport(rep *review.Report) {
 	fmt.Println("═══════════════════════════════════════════════════════════")
 	fmt.Printf(" RELATÓRIO DE REVISÃO: %s\n", rep.Target)
-	fmt.Printf(" Base..Head: %s..%s | Goldfish: %d | Fresh: %v\n", rep.BaseRef, rep.HeadRef, rep.Reviewers, rep.FreshOK)
+	fmt.Printf(" Base..Head: %s..%s | Revisores: %d | Fresh: %v\n", rep.BaseRef, rep.HeadRef, rep.Reviewers, rep.FreshOK)
 	fmt.Println("═══════════════════════════════════════════════════════════")
+	printPinnedApproval(rep.PinnedApproval)
 	printDriftSection(rep.Drift)
 	if len(rep.Findings) == 0 {
 		fmt.Println("Nenhum finding.")
@@ -109,12 +122,30 @@ func printReviewReport(rep *review.Report) {
 	}
 	fmt.Println("FINDINGS:")
 	for _, f := range rep.Findings {
-		fmt.Printf("  [%s] (%s) %s", f.Severity, f.Category, f.Message)
+		fmt.Printf("  [%s] (%s/%s) %s", f.Severity, f.Reviewer, f.Category, f.Message)
 		if f.File != "" {
 			fmt.Printf(" [%s]", f.File)
 		}
 		fmt.Printf("  acordo=%d/%d\n", f.Agreement, rep.Reviewers)
 	}
+}
+
+func printPinnedApproval(p *review.PinnedApproval) {
+	if p == nil {
+		return
+	}
+	fmt.Println("PINNED APPROVAL:")
+	fmt.Printf("  approved_sha: %s\n", p.ApprovedSHA)
+	fmt.Printf("  patch_id: %s\n", p.PatchID)
+	fmt.Printf("  head_patch_id: %s\n", p.HeadPatchID)
+	fmt.Printf("  match: %v\n", p.Match)
+	if !p.Match && p.RangeDiffSummary != "" {
+		fmt.Println("  range-diff:")
+		for _, line := range strings.Split(p.RangeDiffSummary, "\n") {
+			fmt.Printf("    %s\n", line)
+		}
+	}
+	fmt.Println()
 }
 
 func printDriftSection(d *review.DriftReport) {

@@ -274,14 +274,15 @@ func applyDetectedVerifyCmds(cfg *Config, dir string) DetectedCmd {
 		return detected
 	}
 	detected = DetectTestCmdDetailed(root)
-	if detected.Cmd != "" {
-		cfg.Verify.TestCmd = detected.Cmd
-	}
+	cfg.Verify.TestCmd = detected.Cmd
 	if cmd := DetectBuildCmd(root); cmd != "" {
 		cfg.Verify.BuildCmd = cmd
 	}
 	if cmd := DetectLintCmd(root); cmd != "" {
 		cfg.Verify.LintCmd = cmd
+	}
+	if detected.Cmd == "" && detected.Warning == "" {
+		detected.Warning = "nenhuma toolchain de teste detectada; verify.test_cmd ficou vazio (não usa go test sem go.mod)"
 	}
 	return detected
 }
