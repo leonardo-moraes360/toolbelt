@@ -193,6 +193,134 @@ func TestDetectDriftWithMarkdownScopeGlobs(t *testing.T) {
 	}
 }
 
+func TestLoadTicketMarkdownForbiddenHeading(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "rd.md")
+	content := `## Scope
+
+- src/a.py
+
+## Forbidden
+
+- tests/hidden/**
+- secrets/**
+`
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ticket, err := LoadTicket(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"tests/hidden/**", "secrets/**"}
+	if len(ticket.Forbidden) != len(want) {
+		t.Fatalf("forbidden=%v want %v", ticket.Forbidden, want)
+	}
+	for i, s := range want {
+		if ticket.Forbidden[i] != s {
+			t.Fatalf("forbidden[%d]=%q want %q", i, ticket.Forbidden[i], s)
+		}
+	}
+}
+
+func TestLoadTicketMarkdownProibidoLists(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "rd.md")
+	content := `## Proibido
+
+* tests/hidden/**
+1. ` + "`thresholds.yaml`" + `
+`
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ticket, err := LoadTicket(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ticket.Forbidden) != 2 || ticket.Forbidden[0] != "tests/hidden/**" || ticket.Forbidden[1] != "thresholds.yaml" {
+		t.Fatalf("forbidden=%v", ticket.Forbidden)
+	}
+}
+
+func TestLoadTicketMarkdownForbiddenMultilineLabel(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "rd.md")
+	content := `Forbidden:
+- tests/hidden/**
+- .env
+`
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ticket, err := LoadTicket(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ticket.Forbidden) != 2 || ticket.Forbidden[0] != "tests/hidden/**" || ticket.Forbidden[1] != ".env" {
+		t.Fatalf("forbidden=%v", ticket.Forbidden)
+	}
+}
+
+func TestDetectDriftForbiddenHitFromMarkdownGlob(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "rd.md")
+	content := `## Scope
+
+- src/a.py
+
+## Forbidden
+
+- tests/hidden/**
+`
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ticket, err := LoadTicket(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rep := DetectDrift(ticket, []string{"src/a.py", "tests/hidden/cheat.py"}, "HEAD")
+	if len(rep.OutOfScope) != 1 || rep.OutOfScope[0] != "tests/hidden/cheat.py" {
+		t.Fatalf("out of scope=%v", rep.OutOfScope)
+	}
+	if len(rep.ForbiddenHit) != 1 || rep.ForbiddenHit[0] != "tests/hidden/cheat.py" {
+		t.Fatalf("forbidden_hit=%v", rep.ForbiddenHit)
+	}
+}
+
+func TestReviewForbiddenAndHiddenInvariant(t *testing.T) {
+	ctx := FreshContext{
+		Reviewer: "goldfish-1",
+		Ticket: &TicketScope{
+			Scope:     []string{"src/"},
+			Forbidden: []string{"tests/hidden/**"},
+		},
+		Changed: []string{"src/a.py", "tests/hidden/cheat.py"},
+		Diff:    "diff --git a/tests/hidden/cheat.py\n+cheat\n",
+		Invariants: []mem.Invariant{
+			{ID: "1", Rule: "NUNCA modifique arquivos em tests/hidden/"},
+		},
+		Standards: []string{"scope", "invariants"},
+	}
+	findings := Fresh(&ctx)
+	var forbidden, invariant bool
+	for _, f := range findings {
+		if f.ID == "forbidden-tests/hidden/cheat.py" && f.Severity == SeverityCritical {
+			forbidden = true
+		}
+		if f.ID == "inv-1" && f.Severity == SeverityCritical {
+			invariant = true
+		}
+	}
+	if !forbidden {
+		t.Fatalf("expected forbidden finding, got %#v", findings)
+	}
+	if !invariant {
+		t.Fatalf("expected hidden invariant finding, got %#v", findings)
+	}
+}
+
 func TestReviewFreshInvariants(t *testing.T) {
 	ctx := FreshContext{
 		Reviewer: "goldfish-1",
