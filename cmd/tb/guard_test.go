@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/leonardo-moraes360/toolbelt/internal/guard"
@@ -22,7 +23,7 @@ func TestHasStrictError(t *testing.T) {
 	}
 }
 
-func TestGuardStrictJSONExitCode(t *testing.T) {
+func TestGuardDefaultExitOnError(t *testing.T) {
 	if testing.Short() {
 		t.Skip()
 	}
@@ -30,20 +31,81 @@ func TestGuardStrictJSONExitCode(t *testing.T) {
 	dir, base, head := setupProtectedDiff(t)
 	rangeArg := base + ".." + head
 
-	out := runGuard(t, tbBin, dir, rangeArg, "--json")
-	assertGuardJSON(t, out, true)
-
-	out, err := runGuardErr(tbBin, dir, rangeArg, "--strict", "--json")
+	out, err := runGuardErr(tbBin, dir, rangeArg)
 	if err == nil {
-		t.Fatalf("--strict --json com SeverityError deveria sair ≠ 0\n%s", out)
+		t.Fatalf("default com SeverityError deveria sair ≠ 0\n%s", out)
 	}
 	if _, ok := err.(*exec.ExitError); !ok {
 		t.Fatalf("exit code inesperado: %v\n%s", err, out)
 	}
+	if !strings.Contains(string(out), "protected_path") {
+		t.Fatalf("esperava violação no stdout:\n%s", out)
+	}
+
+	out, err = runGuardErr(tbBin, dir, rangeArg, "--json")
+	if err == nil {
+		t.Fatalf("default --json com SeverityError deveria sair ≠ 0\n%s", out)
+	}
 	assertGuardJSON(t, out, true)
 
-	if _, err := runGuardErr(tbBin, dir, rangeArg, "--strict"); err == nil {
-		t.Fatal("--strict sem --json também deveria sair ≠ 0")
+	out, err = runGuardErr(tbBin, dir, rangeArg, "--warn-only")
+	if err != nil {
+		t.Fatalf("--warn-only deveria sair 0: %v\n%s", err, out)
+	}
+	if !strings.Contains(string(out), "protected_path") {
+		t.Fatalf("--warn-only deveria ainda listar violações:\n%s", out)
+	}
+
+	out, err = runGuardErr(tbBin, dir, rangeArg, "--warn-only", "--json")
+	if err != nil {
+		t.Fatalf("--warn-only --json deveria sair 0: %v\n%s", err, out)
+	}
+	assertGuardJSON(t, out, true)
+
+	out, err = runGuardErr(tbBin, dir, rangeArg, "--strict", "--json")
+	if err == nil {
+		t.Fatalf("--strict --json com SeverityError deveria sair ≠ 0\n%s", out)
+	}
+	assertGuardJSON(t, out, true)
+}
+
+func TestGuardTextOKLine(t *testing.T) {
+	if testing.Short() {
+		t.Skip()
+	}
+	tbBin := buildTB(t)
+	dir := t.TempDir()
+	git := func(args ...string) {
+		t.Helper()
+		c := exec.Command("git", args...)
+		c.Dir = dir
+		if out, err := c.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	git("init")
+	git("config", "user.email", "t@t")
+	git("config", "user.name", "t")
+	if err := os.WriteFile(filepath.Join(dir, "ok.go"), []byte("package ok\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	git("add", "ok.go")
+	git("commit", "-m", "base")
+	base := gitRev(t, dir)
+	if err := os.WriteFile(filepath.Join(dir, "ok.go"), []byte("package ok\nfunc X() {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	git("add", "ok.go")
+	git("commit", "-m", "change")
+	head := gitRev(t, dir)
+
+	out := runGuard(t, tbBin, dir, base+".."+head)
+	got := strings.TrimSpace(string(out))
+	if !strings.HasPrefix(got, "guard: ok (") || !strings.Contains(got, "0 violações") {
+		t.Fatalf("esperava linha OK no modo texto, got: %q", got)
+	}
+	if strings.Contains(got, "error ") || strings.Contains(got, "warning ") {
+		t.Fatalf("não esperava violações: %q", got)
 	}
 }
 
@@ -55,8 +117,14 @@ func TestGuardCheckBaseHeadFlags(t *testing.T) {
 	dir, base, head := setupProtectedDiff(t)
 
 	out, err := runGuardFlags(tbBin, dir, "--base", base, "--head", head, "--json")
+	if err == nil {
+		t.Fatalf("--base/--head com SeverityError deveria sair ≠ 0\n%s", out)
+	}
+	assertGuardJSON(t, out, true)
+
+	out, err = runGuardFlags(tbBin, dir, "--base", base, "--head", head, "--warn-only", "--json")
 	if err != nil {
-		t.Fatalf("--base/--head deveria funcionar: %v\n%s", err, out)
+		t.Fatalf("--base/--head --warn-only --json deveria sair 0: %v\n%s", err, out)
 	}
 	assertGuardJSON(t, out, true)
 
@@ -170,13 +238,27 @@ func runGuardFlags(tbBin, dir string, flags ...string) ([]byte, error) {
 
 func assertGuardJSON(t *testing.T, out []byte, wantViolations bool) {
 	t.Helper()
+	raw := extractJSONObject(out)
 	var res guard.CheckResult
-	if err := json.Unmarshal(out, &res); err != nil {
+	if err := json.Unmarshal(raw, &res); err != nil {
 		t.Fatalf("JSON inválido: %v\n%s", err, out)
 	}
 	if wantViolations && len(res.Violations) == 0 {
 		t.Fatal("esperava violações no JSON")
 	}
+	if res.RulesChecked <= 0 {
+		t.Fatal("esperava rules_checked > 0")
+	}
+}
+
+func extractJSONObject(out []byte) []byte {
+	s := string(out)
+	start := strings.Index(s, "{")
+	end := strings.LastIndex(s, "}")
+	if start < 0 || end < start {
+		return out
+	}
+	return []byte(s[start : end+1])
 }
 
 func findModuleRoot(t *testing.T) string {

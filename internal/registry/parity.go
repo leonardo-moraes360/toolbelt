@@ -27,6 +27,11 @@ func RegisterParityTools() {
 }
 
 func registerMemTools() {
+	registerMemMutateTools()
+	registerMemQueryTools()
+}
+
+func registerMemMutateTools() {
 	Register(&Tool{
 		Name:        "tb_mem_add",
 		Description: "Adiciona invariante em .toolbelt/invariants.yaml (paridade com tb mem add)",
@@ -35,6 +40,7 @@ func registerMemTools() {
 			Properties: map[string]Property{
 				"rule":     {Type: "string", Description: "Texto da invariante"},
 				"category": {Type: "string", Description: "anti_cheat|mandate|security", Default: "anti_cheat"},
+				"ref":      {Type: "string", Description: "Caminho ADR/decisions.md"},
 				"cwd":      {Type: "string", Description: "Diretório do repositório"},
 			},
 			Required: []string{"rule"},
@@ -42,28 +48,33 @@ func registerMemTools() {
 		Handler: handleMemAdd,
 	})
 	Register(&Tool{
-		Name:        "tb_mem_list",
-		Description: "Lista invariantes (paridade com tb mem list)",
+		Name:        "tb_mem_edit",
+		Description: "Edita campos de uma invariante (paridade com tb mem edit)",
 		InputSchema: &InputSchema{
 			Type: "object",
 			Properties: map[string]Property{
-				"category": {Type: "string", Description: "Filtrar categoria"},
+				"id":       {Type: "string", Description: "ID da invariante"},
+				"category": {Type: "string", Description: "Nova categoria"},
+				"rule":     {Type: "string", Description: "Nova regra"},
+				"ref":      {Type: "string", Description: "Novo caminho ADR/decisions.md"},
 				"cwd":      {Type: "string", Description: "Diretório do repositório"},
 			},
+			Required: []string{"id"},
 		},
-		Handler: handleMemList,
+		Handler: handleMemEdit,
 	})
 	Register(&Tool{
-		Name:        "tb_mem_check",
-		Description: "Verifica integridade das invariantes (paridade com tb mem check)",
+		Name:        "tb_mem_retire",
+		Description: "Aposenta invariante (soft-retire; paridade com tb mem retire)",
 		InputSchema: &InputSchema{
 			Type: "object",
 			Properties: map[string]Property{
-				"expect_sha": {Type: "string", Description: "SHA256 esperado"},
-				"cwd":        {Type: "string", Description: "Diretório do repositório"},
+				"id":  {Type: "string", Description: "ID da invariante"},
+				"cwd": {Type: "string", Description: "Diretório do repositório"},
 			},
+			Required: []string{"id"},
 		},
-		Handler: handleMemCheck,
+		Handler: handleMemRetire,
 	})
 	Register(&Tool{
 		Name:        "tb_mem_init",
@@ -75,6 +86,62 @@ func registerMemTools() {
 			},
 		},
 		Handler: handleMemInit,
+	})
+}
+
+func registerMemQueryTools() {
+	Register(&Tool{
+		Name:        "tb_mem_list",
+		Description: "Lista invariantes (paridade com tb mem list)",
+		InputSchema: &InputSchema{
+			Type: "object",
+			Properties: map[string]Property{
+				"category": {Type: "string", Description: "Filtrar categoria"},
+				"all":      {Type: "string", Description: "true para incluir aposentadas", Default: "false"},
+				"cwd":      {Type: "string", Description: "Diretório do repositório"},
+			},
+		},
+		Handler: handleMemList,
+	})
+	Register(&Tool{
+		Name:        "tb_mem_show",
+		Description: "Exibe invariante por id (paridade com tb mem show)",
+		InputSchema: &InputSchema{
+			Type: "object",
+			Properties: map[string]Property{
+				"id":  {Type: "string", Description: "ID da invariante"},
+				"cwd": {Type: "string", Description: "Diretório do repositório"},
+			},
+			Required: []string{"id"},
+		},
+		Handler: handleMemShow,
+	})
+	Register(&Tool{
+		Name:        "tb_mem_search",
+		Description: "Busca invariantes (paridade com tb mem search)",
+		InputSchema: &InputSchema{
+			Type: "object",
+			Properties: map[string]Property{
+				"query": {Type: "string", Description: "Texto a buscar em id/categoria/regra/ref"},
+				"all":   {Type: "string", Description: "true para incluir aposentadas", Default: "false"},
+				"cwd":   {Type: "string", Description: "Diretório do repositório"},
+			},
+			Required: []string{"query"},
+		},
+		Handler: handleMemSearch,
+	})
+	Register(&Tool{
+		Name:        "tb_mem_check",
+		Description: "Verifica integridade das invariantes (paridade com tb mem check)",
+		InputSchema: &InputSchema{
+			Type: "object",
+			Properties: map[string]Property{
+				"expect_sha": {Type: "string", Description: "SHA256 esperado"},
+				"all":        {Type: "string", Description: "true para incluir aposentadas", Default: "false"},
+				"cwd":        {Type: "string", Description: "Diretório do repositório"},
+			},
+		},
+		Handler: handleMemCheck,
 	})
 }
 
@@ -109,12 +176,13 @@ func registerReviewTools() {
 		InputSchema: &InputSchema{
 			Type: "object",
 			Properties: map[string]Property{
-				"cwd":       {Type: "string", Description: "Diretório do repositório"},
-				"ticket":    {Type: "string", Description: "Caminho do ticket/rd.md", Default: "rd.md"},
-				"base":      {Type: "string", Description: "Ref base", Default: "HEAD~1"},
-				"head":      {Type: "string", Description: "Ref head", Default: "HEAD"},
-				"reviewers": {Type: "string", Description: "Número de goldfish", Default: "3"},
-				"standards": {Type: "string", Description: "CSV de padrões", Default: "scope,invariants,completeness"},
+				"cwd":          {Type: "string", Description: "Diretório do repositório"},
+				"ticket":       {Type: "string", Description: "Caminho do ticket/rd.md", Default: "rd.md"},
+				"base":         {Type: "string", Description: "Ref base", Default: "HEAD~1"},
+				"head":         {Type: "string", Description: "Ref head", Default: "HEAD"},
+				"approved_sha": {Type: "string", Description: "SHA aprovado para comparar patch-id estável com o head"},
+				"reviewers":    {Type: "string", Description: "Máximo de goldfish distintos", Default: "3"},
+				"standards":    {Type: "string", Description: "CSV de papéis: scope,quality,acceptance", Default: "scope,quality,acceptance"},
 			},
 		},
 		Handler: handleReview,
@@ -125,10 +193,11 @@ func registerReviewTools() {
 		InputSchema: &InputSchema{
 			Type: "object",
 			Properties: map[string]Property{
-				"cwd":    {Type: "string", Description: "Diretório do repositório"},
-				"ticket": {Type: "string", Description: "Caminho do ticket/rd.md", Default: "rd.md"},
-				"base":   {Type: "string", Description: "Ref base", Default: "HEAD~1"},
-				"head":   {Type: "string", Description: "Ref head", Default: "HEAD"},
+				"cwd":          {Type: "string", Description: "Diretório do repositório"},
+				"ticket":       {Type: "string", Description: "Caminho do ticket/rd.md", Default: "rd.md"},
+				"base":         {Type: "string", Description: "Ref base", Default: "HEAD~1"},
+				"head":         {Type: "string", Description: "Ref head", Default: "HEAD"},
+				"approved_sha": {Type: "string", Description: "SHA aprovado para comparar patch-id estável com o head"},
 			},
 		},
 		Handler: handleDrift,
@@ -142,11 +211,12 @@ func registerGuardTools() {
 		InputSchema: &InputSchema{
 			Type: "object",
 			Properties: map[string]Property{
-				"cwd":    {Type: "string", Description: "Diretório do repositório"},
-				"base":   {Type: "string", Description: "Ref base", Default: "HEAD~1"},
-				"head":   {Type: "string", Description: "Ref head", Default: "HEAD"},
-				"range":  {Type: "string", Description: "Intervalo base..head (alternativa a base/head)"},
-				"strict": {Type: "string", Description: "true para marcar strict_fail em erros", Default: "false"},
+				"cwd":       {Type: "string", Description: "Diretório do repositório"},
+				"base":      {Type: "string", Description: "Ref base", Default: "HEAD~1"},
+				"head":      {Type: "string", Description: "Ref head", Default: "HEAD"},
+				"range":     {Type: "string", Description: "Intervalo base..head (alternativa a base/head)"},
+				"warn_only": {Type: "string", Description: "true para não marcar strict_fail em SeverityError (opt-out)", Default: "false"},
+				"strict":    {Type: "string", Description: "deprecated: strict_fail já é o default em SeverityError; use warn_only=true para opt-out", Default: "false"},
 			},
 		},
 		Handler: handleGuardCheck,
@@ -183,7 +253,7 @@ func handleMemAdd(_ context.Context, args map[string]any) (any, error) {
 	if category == "" {
 		category = "anti_cheat"
 	}
-	return s.Add(category, rule)
+	return s.Add(category, rule, StringArg(args, "ref"))
 }
 
 func handleMemList(_ context.Context, args map[string]any) (any, error) {
@@ -191,7 +261,49 @@ func handleMemList(_ context.Context, args map[string]any) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	return s.List(StringArg(args, "category"))
+	return s.List(StringArg(args, "category"), boolArgTrue(args, "all"))
+}
+
+func handleMemShow(_ context.Context, args map[string]any) (any, error) {
+	s, _, err := memStoreFromArgs(args)
+	if err != nil {
+		return nil, err
+	}
+	return s.Get(StringArg(args, "id"))
+}
+
+func handleMemEdit(_ context.Context, args map[string]any) (any, error) {
+	s, _, err := memStoreFromArgs(args)
+	if err != nil {
+		return nil, err
+	}
+	fields := mem.EditFields{}
+	if v, ok := stringArgPresent(args, "category"); ok {
+		fields.Category = &v
+	}
+	if v, ok := stringArgPresent(args, "rule"); ok {
+		fields.Rule = &v
+	}
+	if v, ok := stringArgPresent(args, "ref"); ok {
+		fields.Ref = &v
+	}
+	return s.Edit(StringArg(args, "id"), fields)
+}
+
+func handleMemRetire(_ context.Context, args map[string]any) (any, error) {
+	s, _, err := memStoreFromArgs(args)
+	if err != nil {
+		return nil, err
+	}
+	return s.Retire(StringArg(args, "id"))
+}
+
+func handleMemSearch(_ context.Context, args map[string]any) (any, error) {
+	s, _, err := memStoreFromArgs(args)
+	if err != nil {
+		return nil, err
+	}
+	return s.Search(StringArg(args, "query"), boolArgTrue(args, "all"))
 }
 
 func handleMemCheck(_ context.Context, args map[string]any) (any, error) {
@@ -200,18 +312,19 @@ func handleMemCheck(_ context.Context, args map[string]any) (any, error) {
 		return nil, err
 	}
 	sha := StringArg(args, "expect_sha")
-	rep, err := memCheckReport(s, sha)
+	all := boolArgTrue(args, "all")
+	rep, err := memCheckReport(s, sha, all)
 	if err != nil {
 		if initErr := mem.EnsureDefaultAntiCheat(dir); initErr == nil && sha == "" {
-			return memCheckReport(s, "")
+			return memCheckReport(s, "", all)
 		}
 		return nil, err
 	}
 	return rep, nil
 }
 
-func memCheckReport(s *mem.Store, sha string) (*mem.CheckReport, error) {
-	list, err := s.List("")
+func memCheckReport(s *mem.Store, sha string, includeRetired bool) (*mem.CheckReport, error) {
+	list, err := s.List("", includeRetired)
 	if err != nil {
 		return nil, err
 	}
@@ -219,7 +332,24 @@ func memCheckReport(s *mem.Store, sha string) (*mem.CheckReport, error) {
 	for _, inv := range list {
 		ids = append(ids, inv.ID)
 	}
-	return s.Check(sha, ids)
+	return s.Check(sha, ids, includeRetired)
+}
+
+func boolArgTrue(args map[string]any, key string) bool {
+	v := strings.ToLower(strings.TrimSpace(StringArg(args, key)))
+	return v == "true" || v == "1" || v == "yes"
+}
+
+func stringArgPresent(args map[string]any, key string) (string, bool) {
+	raw, ok := args[key]
+	if !ok || raw == nil {
+		return "", false
+	}
+	s, ok := raw.(string)
+	if !ok {
+		return "", false
+	}
+	return s, true
 }
 
 func handleMemInit(_ context.Context, args map[string]any) (any, error) {
@@ -320,6 +450,22 @@ func handleReview(_ context.Context, args map[string]any) (any, error) {
 }
 
 func handleDrift(_ context.Context, args map[string]any) (any, error) {
+	cfg, err := driftConfigFromArgs(args)
+	if err != nil {
+		return nil, err
+	}
+	rep, err := review.Run(cfg)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{
+		"drift":           rep.Drift,
+		"has_drift":       driftHasProblems(rep),
+		"pinned_approval": rep.PinnedApproval,
+	}, nil
+}
+
+func driftConfigFromArgs(args map[string]any) (*review.Config, error) {
 	cwd, err := resolveToolCWD(args)
 	if err != nil {
 		return nil, err
@@ -349,19 +495,22 @@ func handleDrift(_ context.Context, args map[string]any) (any, error) {
 	cfg := review.DefaultConfig(cwd)
 	cfg.BaseRef = base
 	cfg.HeadRef = head
+	cfg.ApprovedSHA = StringArg(args, "approved_sha")
 	cfg.TicketPath = ticketPath
 	cfg.Reviewers = 1
 	cfg.Standards = []string{"scope"}
-	rep, err := review.Run(&cfg)
-	if err != nil {
-		return nil, err
+	return &cfg, nil
+}
+
+func driftHasProblems(rep *review.Report) bool {
+	if rep == nil {
+		return false
 	}
-	drift := rep.Drift
-	hasDrift := drift != nil && (len(drift.OutOfScope) > 0 || len(drift.ForbiddenHit) > 0 || drift.BaseMismatch)
-	return map[string]any{
-		"drift":     drift,
-		"has_drift": hasDrift,
-	}, nil
+	if rep.PinnedApproval != nil && !rep.PinnedApproval.Match {
+		return true
+	}
+	d := rep.Drift
+	return d != nil && (len(d.OutOfScope) > 0 || len(d.ForbiddenHit) > 0 || d.BaseMismatch)
 }
 
 func reviewConfigFromArgs(args map[string]any) (*review.Config, error) {
@@ -376,6 +525,7 @@ func reviewConfigFromArgs(args map[string]any) (*review.Config, error) {
 	if v := StringArg(args, "head"); v != "" {
 		cfg.HeadRef = v
 	}
+	cfg.ApprovedSHA = StringArg(args, "approved_sha")
 	ticket := StringArg(args, "ticket")
 	if ticket == "" {
 		ticket = "rd.md"
@@ -393,7 +543,7 @@ func reviewConfigFromArgs(args map[string]any) (*review.Config, error) {
 	}
 	stds := StringArg(args, "standards")
 	if stds == "" {
-		stds = "scope,invariants,completeness"
+		stds = "scope,quality,acceptance"
 	}
 	cfg.Standards = splitCSVArg(stds)
 	return &cfg, nil
@@ -424,12 +574,14 @@ func handleGuardCheck(_ context.Context, args map[string]any) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	strictFail := StringArg(args, "strict") == "true" && hasGuardStrictError(res.Violations)
+	warnOnly := StringArg(args, "warn_only") == "true"
+	strictFail := hasGuardStrictError(res.Violations) && !warnOnly
 	return map[string]any{
-		"base_ref":    res.BaseRef,
-		"head_ref":    res.HeadRef,
-		"violations":  res.Violations,
-		"strict_fail": strictFail,
+		"base_ref":      res.BaseRef,
+		"head_ref":      res.HeadRef,
+		"rules_checked": res.RulesChecked,
+		"violations":    res.Violations,
+		"strict_fail":   strictFail,
 	}, nil
 }
 

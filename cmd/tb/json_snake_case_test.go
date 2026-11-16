@@ -30,8 +30,22 @@ func TestJSONOutputSnakeCaseKeys(t *testing.T) {
 			ID:        "inv-1",
 			Category:  "anti_cheat",
 			Rule:      "não apague testes",
+			Ref:       "docs/adr/001.md",
 			AddedAt:   time.Unix(0, 0).UTC(),
 			Immutable: true,
+			Retired:   true,
+			RetiredAt: ptrTime(time.Unix(1, 0).UTC()),
+		},
+		mem.File{
+			Version: 1,
+			Invariants: []mem.Invariant{{
+				ID:        "inv-1",
+				Category:  "anti_cheat",
+				Rule:      "não apague testes",
+				Ref:       "docs/adr/001.md",
+				AddedAt:   time.Unix(0, 0).UTC(),
+				Immutable: true,
+			}},
 		},
 		mem.CheckReport{
 			Path:        ".toolbelt/invariants.yaml",
@@ -53,8 +67,9 @@ func TestJSONOutputSnakeCaseKeys(t *testing.T) {
 			},
 		},
 		guard.CheckResult{
-			BaseRef: "HEAD~1",
-			HeadRef: "HEAD",
+			BaseRef:      "HEAD~1",
+			HeadRef:      "HEAD",
+			RulesChecked: 3,
 			Violations: []guard.Violation{{
 				Type:     guard.ViolationProtectedPath,
 				File:     "tests/hidden/x_test.go",
@@ -78,6 +93,19 @@ func TestJSONOutputSnakeCaseKeys(t *testing.T) {
 			Drift: &review.DriftReport{
 				BaseMismatch: false,
 				ActualBase:   "HEAD~1",
+				PinnedApproval: &review.PinnedApproval{
+					ApprovedSHA:      "abc",
+					PatchID:          "p1",
+					HeadPatchID:      "p2",
+					Match:            false,
+					RangeDiffSummary: "1:  aaa ! 1:  bbb",
+				},
+			},
+			PinnedApproval: &review.PinnedApproval{
+				ApprovedSHA: "abc",
+				PatchID:     "p1",
+				HeadPatchID: "p1",
+				Match:       true,
 			},
 			FreshOK:   true,
 			Reviewers: 3,
@@ -142,4 +170,8 @@ func isPascalCaseKey(key string) bool {
 	}
 	r, _ := utf8.DecodeRuneInString(key)
 	return unicode.IsUpper(r)
+}
+
+func ptrTime(t time.Time) *time.Time {
+	return &t
 }
