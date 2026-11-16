@@ -797,7 +797,7 @@ func TestHiddenSuiteDetectsGoToolchain(t *testing.T) {
 	if !res.HiddenAvailable {
 		t.Fatal("Go hidden suite with go.mod must be available")
 	}
-	if !res.HiddenPassed || res.Verdict != VerdictPass {
+	if res.HiddenPassed == nil || !*res.HiddenPassed || res.Verdict != VerdictPass {
 		t.Fatalf("hidden_passed=%v verdict=%s", res.HiddenPassed, res.Verdict)
 	}
 }
