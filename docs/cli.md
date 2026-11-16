@@ -517,6 +517,7 @@ Também reporta drift de escopo e commit base. Isolamento fresco é obrigatório
 
 O ticket/rd.md aceita frontmatter YAML ou Markdown: seção `## Scope` / `## Escopo`
 (ou `Scope:` / `Escopo:`) com listas (`-`, `*`, numeradas) e paths entre backticks.
+Se o frontmatter YAML não declara `scope:`, o body Markdown ainda é lido para preencher o escopo.
 Globs no scope incluem `src/*.go`, `src/**` e padrões com `**` no meio (ex.: `src/**/foo.go`).
 
 Invariantes de path (ex.: `tests/hidden/`, `thresholds.yaml`) são casadas contra
