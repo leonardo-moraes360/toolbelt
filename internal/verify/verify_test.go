@@ -157,7 +157,7 @@ func TestHiddenTestCmdRunsWithoutHiddenDir(t *testing.T) {
 	if !res.HiddenAvailable {
 		t.Fatal("expected hidden suite available when hidden_test_cmd is set without tests/hidden/")
 	}
-	if res.HiddenPassed {
+	if res.HiddenPassed == nil || *res.HiddenPassed {
 		t.Fatal("expected hidden cmd false to fail")
 	}
 	if res.Verdict == VerdictPass {
@@ -187,7 +187,7 @@ func TestHiddenTestCmdPassWithoutHiddenDir(t *testing.T) {
 	if !res.HiddenAvailable {
 		t.Fatal("expected hidden suite available when hidden_test_cmd is set without tests/hidden/")
 	}
-	if !res.HiddenPassed {
+	if res.HiddenPassed == nil || !*res.HiddenPassed {
 		t.Fatal("expected hidden cmd true to pass")
 	}
 	if res.Verdict != VerdictPass {
@@ -216,6 +216,9 @@ func TestHiddenSkippedWithoutDirOrCmd(t *testing.T) {
 	}
 	if res.HiddenAvailable {
 		t.Fatal("expected hidden suite unavailable without tests/hidden/ and without hidden_test_cmd")
+	}
+	if res.HiddenPassed != nil {
+		t.Fatalf("hidden_passed should be null when suite absent, got %v", *res.HiddenPassed)
 	}
 	if res.Verdict != VerdictPass {
 		t.Fatalf("veredicto %s", res.Verdict)
@@ -249,7 +252,7 @@ func TestHiddenDefaultGoCmdWhenDirExists(t *testing.T) {
 	if !res.HiddenAvailable {
 		t.Fatal("expected hidden suite when tests/hidden/ exists")
 	}
-	if res.HiddenPassed {
+	if res.HiddenPassed == nil || *res.HiddenPassed {
 		t.Fatal("default go hidden cmd should fail on empty/non-Go suite")
 	}
 	if res.Verdict == VerdictPass {
@@ -285,7 +288,7 @@ func TestHiddenTestCmdConfigurableNonGo(t *testing.T) {
 	if !res.HiddenAvailable {
 		t.Fatal("expected hidden suite available")
 	}
-	if !res.HiddenPassed {
+	if res.HiddenPassed == nil || !*res.HiddenPassed {
 		t.Fatal("expected hidden suite to pass with custom cmd")
 	}
 	if res.Verdict != VerdictPass {
@@ -466,7 +469,7 @@ func TestHiddenTestCmdDefaultFailsNonGoSuite(t *testing.T) {
 	if !res.HiddenAvailable {
 		t.Fatal("expected hidden suite available")
 	}
-	if res.HiddenPassed {
+	if res.HiddenPassed == nil || *res.HiddenPassed {
 		t.Fatal("default go hidden cmd should fail on non-Go suite")
 	}
 	if res.Verdict == VerdictPass {

@@ -10,6 +10,10 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 ### Adicionado
 - `tb stack --jobs N`: concorrência para etapas somente leitura (`guard`/`drift`/`review`);
   default = nº de CPUs (máx. 32); `--jobs 1` força serial; MCP `tb_stack` aceita `jobs`
+- Landing page estática em `site/` (HTML/CSS/JS, tema Synthwave, PT/EN) publicada via
+  GitHub Pages (`https://leonardo-moraes360.github.io/toolbelt/`)
+- Workflow `.github/workflows/pages.yml` (configure/upload/deploy-pages; sem `enablement`)
+- Guia `docs/site.md` (preview local e como habilitar Pages em Settings)
 - Flag global `tb --version` (mesma saída textual de `tb version`)
 - `tb init` grava padrões de cache/derivados em `.git/info/exclude` (grafo, logs,
   vault, workspaces, captures, bench) sem tocar no `.gitignore` do projeto;
@@ -22,6 +26,16 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 - `tb stack`: etapas `guard`/`drift`/`review` rodam em paralelo (errgroup); `verify` permanece
   isolado; JSON preserva a ordem pedida; `--fail-fast` cancela as demais via context;
   `Prepare` paraleliza git/IO independentes
+- Saídas JSON usam listas vazias `[]` (nunca `null`) para `violations`, `out_of_scope`,
+  `forbidden_hit`, `missing` e resultados vazios de `tb mem list|search`
+- `tb init --json` e `tb mem init --json` emitem payload do que foi criado/detectado
+  (path, cmds detectados / invariantes)
+- `hidden_passed` é `null` quando não há suíte oculta (`hidden_available: false`)
+- `duration_ms` / `total_duration_ms` no `tb stack` passam a float com fração sub-ms
+- Erros de preparação/operação do `tb stack` ficam em `steps[].error` dentro do JSON
+  (incluindo op desconhecida); não só no stderr
+- MCP: `all` em `tb_mem_list` / `tb_mem_search` / `tb_mem_check` tipado como boolean
+  (default `false`); handlers ainda aceitam strings legadas `"true"`/`"false"`
 - `tb stack` sem operação: erro curto listando ops válidas (`verify`, `review`,
   `drift`, `guard`), sem dump de `Usage` (alinhado ao padrão de erros de domínio)
 - Help/`docs/cli.md` de `tb stack` deixam explícito que empilha operações de
@@ -39,6 +53,13 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
   estrito e por `--warn-only`); remove o exemplo invocável com `--strict`
 
 ### Corrigido
+- `tb drift` / `tb review` / `tb stack`: diff de arquivos passa a usar three-dot
+  (`base...head` / merge-base), evitando falsos `out_of_scope` após merge da main
+  ou squash de outro PR na base
+- `tb drift`: `--base` explícito na CLI/MCP não é mais sobrescrito por
+  `base_commit` do ticket; `base_mismatch` usa `git merge-base --is-ancestor`
+  no `base_commit` declarado (ou na base efetiva se ausente), em vez de
+  igualdade de string com `--base`; JSON inclui `actual_base` e `merge_base`
 - `tb verify run --base/--head`: quando o head resolve para um SHA diferente do
   `HEAD` do worktree, build/lint/test/hidden rodam num `git worktree add --detach`
   temporário (removido ao final, inclusive em erro/sinal); o JSON expõe `head_sha`
