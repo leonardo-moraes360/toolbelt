@@ -8,6 +8,7 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 ## [Não Lançado]
 
 ### Adicionado
+- Flag global `tb --version` (mesma saída textual de `tb version`)
 - `tb init` grava padrões de cache/derivados em `.git/info/exclude` (grafo, logs,
   vault, workspaces, captures, bench) sem tocar no `.gitignore` do projeto;
   invariantes/config permanecem versionáveis (recomendação documentada em
@@ -16,6 +17,10 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
   `created`/`count`/`invariants`
 
 ### Mudanças
+- `tb stack` sem operação: erro curto listando ops válidas (`verify`, `review`,
+  `drift`, `guard`), sem dump de `Usage` (alinhado ao padrão de erros de domínio)
+- Help/`docs/cli.md` de `tb stack` deixam explícito que empilha operações de
+  verificação e **não** é stack de branches (Graphite/git-stack)
 - `tb mem add|edit|list`: rejeitam `--category` inválida e `--ref` fora de
   ADR/decisions, com lista dos valores válidos no erro
 - `tb mem search`: busca case- e accent-insensitive (Unicode NFD)

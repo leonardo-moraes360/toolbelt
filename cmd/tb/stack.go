@@ -14,14 +14,17 @@ import (
 
 var stackCmd = &cobra.Command{
 	Use:   "stack <op> [<op>...]",
-	Short: "Empilha verify/review/drift/guard numa execução com contexto compartilhado",
-	Long: `Executa uma ou mais operações em sequência compartilhando o trabalho caro
+	Short: "Empilha operações de verificação (verify/review/drift/guard), não branches",
+	Long: `Empilha operações de verificação numa execução com contexto compartilhado
 (diff, índice de arquivos alterados, memória e config).
 
+Não é stack de branches (como Graphite ou git-stack): só orquestra verify,
+review, drift e/ou guard na ordem dada.
+
 Operações: verify, review, drift, guard.
-A ordem dada é respeitada. Por padrão roda todas; --fail-fast para na primeira falha.
-A saída é sempre um único JSON agregado.`,
-	Args: cobra.MinimumNArgs(1),
+Por padrão roda todas; --fail-fast para na primeira falha.
+A saída é sempre um único JSON agregado.
+Sem operação, sai com erro curto listando as ops válidas (sem dump de Usage).`,
 	RunE: runStack,
 }
 

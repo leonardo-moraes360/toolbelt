@@ -43,7 +43,7 @@ func ParseOp(name string) (Op, error) {
 
 func ParseOps(names []string) ([]Op, error) {
 	if len(names) == 0 {
-		return nil, fmt.Errorf("informe ao menos uma operação")
+		return nil, fmt.Errorf("informe ao menos uma operação (verify, review, drift, guard)")
 	}
 	ops := make([]Op, 0, len(names))
 	for _, name := range names {
