@@ -53,13 +53,84 @@ func TestMemShowAndEditCLI(t *testing.T) {
 	}
 }
 
+func TestMemImmutableForceReasonCLI(t *testing.T) {
+	if testing.Short() {
+		t.Skip()
+	}
+	tbBin := buildTB(t)
+	dir := memFixtureDir(t)
+	id := memAddJSON(t, tbBin, dir, "--immutable", "--category", "mandate", "--json", "protegida")
+
+	out, err := runMem(tbBin, dir, "edit", id, "--rule", "hack")
+	if err == nil {
+		t.Fatalf("edit sem force deveria falhar\n%s", out)
+	}
+	out, err = runMem(tbBin, dir, "edit", id, "--rule", "ok", "--force", "--reason", "ajuste")
+	if err != nil {
+		t.Fatalf("edit force: %v\n%s", err, out)
+	}
+	hist, err := os.ReadFile(filepath.Join(dir, ".toolbelt", "invariants_history.jsonl"))
+	if err != nil || !strings.Contains(string(hist), "protegida") {
+		t.Fatalf("histórico ausente: %v %s", err, hist)
+	}
+}
+
+func TestMemAddDefaultMutableCLI(t *testing.T) {
+	if testing.Short() {
+		t.Skip()
+	}
+	tbBin := buildTB(t)
+	dir := memFixtureDir(t)
+	out, err := runMem(tbBin, dir, "add", "--category", "security", "--json", "mutavel")
+	if err != nil {
+		t.Fatalf("add: %v\n%s", err, out)
+	}
+	if !strings.Contains(string(out), `"immutable":false`) {
+		t.Fatalf("default deveria ser mutável: %s", out)
+	}
+}
+
+func TestMemCheckFailClosedCLI(t *testing.T) {
+	if testing.Short() {
+		t.Skip()
+	}
+	tbBin := buildTB(t)
+	dir := memFixtureDir(t)
+	if err := os.WriteFile(filepath.Join(dir, ".toolbelt", "invariants.yaml"), []byte("not: yaml: [["), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	out, err := runMem(tbBin, dir, "check")
+	if err == nil {
+		t.Fatalf("check corrompido deveria falhar\n%s", out)
+	}
+}
+
+func TestMemRedactSecretsCLI(t *testing.T) {
+	if testing.Short() {
+		t.Skip()
+	}
+	tbBin := buildTB(t)
+	dir := memFixtureDir(t)
+	id := memAddJSON(t, tbBin, dir, "--category", "security", "--json", "ghp_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+	out, err := runMem(tbBin, dir, "show", id)
+	if err != nil {
+		t.Fatalf("show: %v\n%s", err, out)
+	}
+	if strings.Contains(string(out), "ghp_AAAA") {
+		t.Fatalf("segredo vazou: %s", out)
+	}
+	if !strings.Contains(string(out), "[REDACTED]") {
+		t.Fatalf("esperava redação: %s", out)
+	}
+}
+
 func TestMemRetireExcludedFromListCLI(t *testing.T) {
 	if testing.Short() {
 		t.Skip()
 	}
 	tbBin := buildTB(t)
 	dir := memFixtureDir(t)
-	id := memAddJSON(t, tbBin, dir, "--json", "regra")
+	id := memAddJSON(t, tbBin, dir, "--category", "mandate", "--json", "regra")
 
 	if _, err := runMem(tbBin, dir, "retire", id); err != nil {
 		t.Fatalf("retire: %v", err)

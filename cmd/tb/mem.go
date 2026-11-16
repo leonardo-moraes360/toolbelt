@@ -41,16 +41,18 @@ var memAddCmd = &cobra.Command{
 			category = "anti_cheat"
 		}
 		ref, _ := cmd.Flags().GetString("ref")
+		immutable, _ := cmd.Flags().GetBool("immutable")
 		rule := strings.Join(args, " ")
 		s := mem.NewStore(dir)
-		inv, err := s.Add(category, rule, ref)
+		inv, err := s.Add(category, rule, ref, immutable)
 		if err != nil {
 			return err
 		}
+		out := mem.RedactInvariant(inv)
 		if jsonOutput {
-			return json.NewEncoder(os.Stdout).Encode(inv)
+			return json.NewEncoder(os.Stdout).Encode(out)
 		}
-		fmt.Printf("invariante %s adicionada\n", inv.ID)
+		fmt.Printf("invariante %s adicionada\n", out.ID)
 		return nil
 	},
 }
@@ -68,6 +70,7 @@ var memListCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		list = mem.RedactInvariants(list)
 		if jsonOutput {
 			return json.NewEncoder(os.Stdout).Encode(list)
 		}
@@ -88,10 +91,11 @@ var memShowCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		out := mem.RedactInvariant(inv)
 		if jsonOutput {
-			return json.NewEncoder(os.Stdout).Encode(inv)
+			return json.NewEncoder(os.Stdout).Encode(out)
 		}
-		printInvariant(inv)
+		printInvariant(&out)
 		return nil
 	},
 }
@@ -114,15 +118,18 @@ var memEditCmd = &cobra.Command{
 			v, _ := cmd.Flags().GetString("ref")
 			fields.Ref = &v
 		}
+		force, _ := cmd.Flags().GetBool("force")
+		reason, _ := cmd.Flags().GetString("reason")
 		s := memStoreFromCWD()
-		inv, err := s.Edit(args[0], fields)
+		inv, err := s.Edit(args[0], fields, mem.MutateOpts{Force: force, Reason: reason})
 		if err != nil {
 			return err
 		}
+		out := mem.RedactInvariant(inv)
 		if jsonOutput {
-			return json.NewEncoder(os.Stdout).Encode(inv)
+			return json.NewEncoder(os.Stdout).Encode(out)
 		}
-		fmt.Printf("invariante %s atualizada\n", inv.ID)
+		fmt.Printf("invariante %s atualizada\n", out.ID)
 		return nil
 	},
 }
@@ -132,15 +139,18 @@ var memRetireCmd = &cobra.Command{
 	Short: "Aposenta invariante (soft-retire)",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		force, _ := cmd.Flags().GetBool("force")
+		reason, _ := cmd.Flags().GetString("reason")
 		s := memStoreFromCWD()
-		inv, err := s.Retire(args[0])
+		inv, err := s.Retire(args[0], mem.MutateOpts{Force: force, Reason: reason})
 		if err != nil {
 			return err
 		}
+		out := mem.RedactInvariant(inv)
 		if jsonOutput {
-			return json.NewEncoder(os.Stdout).Encode(inv)
+			return json.NewEncoder(os.Stdout).Encode(out)
 		}
-		fmt.Printf("invariante %s aposentada\n", inv.ID)
+		fmt.Printf("invariante %s aposentada\n", out.ID)
 		return nil
 	},
 }
@@ -157,6 +167,7 @@ var memSearchCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		list = mem.RedactInvariants(list)
 		if jsonOutput {
 			return json.NewEncoder(os.Stdout).Encode(list)
 		}
@@ -176,36 +187,29 @@ var memCheckCmd = &cobra.Command{
 		sha, _ := cmd.Flags().GetString("expect-sha")
 		all, _ := cmd.Flags().GetBool("all")
 		s := mem.NewStore(dir)
-		list, _ := s.List("", all)
+		list, err := s.List("", all)
+		if err != nil {
+			return err
+		}
 		ids := make([]string, 0, len(list))
 		for _, inv := range list {
 			ids = append(ids, inv.ID)
 		}
 		rep, err := s.Check(sha, ids, all)
+		if rep != nil && jsonOutput {
+			_ = json.NewEncoder(os.Stdout).Encode(rep)
+		}
 		if err != nil {
-			if initErr := mem.EnsureDefaultAntiCheat(dir); initErr == nil && sha == "" {
-				list, _ = s.List("", all)
-				ids = ids[:0]
-				for _, inv := range list {
-					ids = append(ids, inv.ID)
-				}
-				rep, err = s.Check("", ids, all)
-			}
-			if err != nil {
-				return err
-			}
+			return err
 		}
 		if jsonOutput {
-			return json.NewEncoder(os.Stdout).Encode(rep)
+			return nil
 		}
 		fmt.Printf("arquivo: %s\n", rep.Path)
 		fmt.Printf("sha256: %s\n", rep.SHA256)
 		fmt.Printf("invariantes: %d\n", rep.Count)
 		fmt.Printf("compactacao_segura: %v\n", rep.CompactSafe)
 		fmt.Printf("retencao: %.2f\n", rep.Retention)
-		if len(rep.Missing) > 0 {
-			return fmt.Errorf("invariantes ausentes: %v", rep.Missing)
-		}
 		return nil
 	},
 }
@@ -254,11 +258,16 @@ func printInvariant(inv *mem.Invariant) {
 func init() {
 	memAddCmd.Flags().String("category", "anti_cheat", "categoria: anti_cheat, mandate, security")
 	memAddCmd.Flags().String("ref", "", "caminho ADR/decisions.md (ex: docs/adr/0001.md)")
+	memAddCmd.Flags().Bool("immutable", false, "marca a invariante como imutável (default: mutável)")
 	memListCmd.Flags().String("category", "", "filtrar categoria")
 	memListCmd.Flags().Bool("all", false, "incluir invariantes aposentadas")
 	memEditCmd.Flags().String("category", "", "nova categoria")
 	memEditCmd.Flags().String("rule", "", "nova regra")
 	memEditCmd.Flags().String("ref", "", "novo caminho ADR/decisions.md")
+	memEditCmd.Flags().Bool("force", false, "permite editar invariante imutável/anti_cheat")
+	memEditCmd.Flags().String("reason", "", "motivo obrigatório com --force")
+	memRetireCmd.Flags().Bool("force", false, "permite aposentar invariante imutável/anti_cheat")
+	memRetireCmd.Flags().String("reason", "", "motivo obrigatório com --force")
 	memSearchCmd.Flags().Bool("all", false, "incluir invariantes aposentadas")
 	memCheckCmd.Flags().String("expect-sha", "", "hash esperado pós-compactação")
 	memCheckCmd.Flags().Bool("all", false, "incluir invariantes aposentadas")

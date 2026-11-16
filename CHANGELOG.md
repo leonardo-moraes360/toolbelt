@@ -7,6 +7,12 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Não Lançado]
 
+### Segurança
+- `tb mem`: invariantes `immutable` ou categoria `anti_cheat` exigem `--force` + `--reason` em `edit`/`retire`; histórico append-only em `.toolbelt/invariants_history.jsonl`
+- `tb mem add`: novas invariantes nascem **mutáveis**; use `--immutable` (MCP: `immutable`) para proteger; `mem init` continua criando defaults imutáveis
+- `tb mem check`: falha **fechado** (arquivo ilegível/corrompido, SHA divergente, IDs ausentes, regra não avaliável → exit ≠ 0); não auto-inicializa defaults
+- Redação de segredos (`ghp_`/`gho_`/`github_pat_`, `AKIA`, PEM, `Bearer`, `xox*`, `*_TOKEN=`) em `mem show`/`list`/`search` (CLI `--json` e MCP)
+
 ## [0.0.2] - 2026-11-16
 
 ### Adicionado

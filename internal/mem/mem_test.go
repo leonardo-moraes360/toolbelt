@@ -1,14 +1,17 @@
 package mem
 
 import (
+	"encoding/json"
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
 func TestAddListCheck(t *testing.T) {
 	dir := t.TempDir()
 	s := NewStore(dir)
-	inv, err := s.Add("anti_cheat", "NUNCA apague testes", "")
+	inv, err := s.Add("anti_cheat", "NUNCA apague testes", "", false)
 	if err != nil || inv.ID == "" {
 		t.Fatal(err)
 	}
@@ -31,20 +34,20 @@ func TestAddListCheck(t *testing.T) {
 func TestCheckMissingID(t *testing.T) {
 	dir := t.TempDir()
 	s := NewStore(dir)
-	_, _ = s.Add("security", "regra", "")
+	_, _ = s.Add("security", "regra", "", false)
 	rep, err := s.Check("", []string{"inv-missing"}, false)
-	if err != nil {
-		t.Fatal(err)
+	if err == nil {
+		t.Fatal("check com id ausente deveria falhar fechado")
 	}
-	if len(rep.Missing) != 1 {
-		t.Fatal("esperava missing")
+	if rep == nil || len(rep.Missing) != 1 {
+		t.Fatalf("esperava missing no report: %+v", rep)
 	}
 }
 
 func TestGetAndEditWithRef(t *testing.T) {
 	dir := t.TempDir()
 	s := NewStore(dir)
-	inv, err := s.Add("mandate", "usar ADR", "docs/adr/0001.md")
+	inv, err := s.Add("mandate", "usar ADR", "docs/adr/0001.md", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -59,7 +62,7 @@ func TestGetAndEditWithRef(t *testing.T) {
 	rule := "usar ADR e decisions.md"
 	cat := "security"
 	ref := "docs/decisions/auth.md"
-	edited, err := s.Edit(inv.ID, EditFields{Rule: &rule, Category: &cat, Ref: &ref})
+	edited, err := s.Edit(inv.ID, EditFields{Rule: &rule, Category: &cat, Ref: &ref}, MutateOpts{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,11 +79,11 @@ func TestGetAndEditWithRef(t *testing.T) {
 func TestRetireExcludedFromList(t *testing.T) {
 	dir := t.TempDir()
 	s := NewStore(dir)
-	inv, err := s.Add("mandate", "usar ADR", "docs/adr/0001.md")
+	inv, err := s.Add("mandate", "usar ADR", "docs/adr/0001.md", false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	retired, err := s.Retire(inv.ID)
+	retired, err := s.Retire(inv.ID, MutateOpts{})
 	if err != nil || !retired.Retired || retired.RetiredAt == nil {
 		t.Fatalf("retire: %+v err=%v", retired, err)
 	}
@@ -97,11 +100,11 @@ func TestRetireExcludedFromList(t *testing.T) {
 func TestRetireExcludedFromSearchAndCheck(t *testing.T) {
 	dir := t.TempDir()
 	s := NewStore(dir)
-	inv, err := s.Add("mandate", "usar ADR", "docs/adr/0001.md")
+	inv, err := s.Add("mandate", "usar ADR", "docs/adr/0001.md", false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.Retire(inv.ID); err != nil {
+	if _, err := s.Retire(inv.ID, MutateOpts{}); err != nil {
 		t.Fatal(err)
 	}
 	hits, err := s.Search("ADR", false)
@@ -125,14 +128,156 @@ func TestRetireExcludedFromSearchAndCheck(t *testing.T) {
 func TestEditRequiresFields(t *testing.T) {
 	dir := t.TempDir()
 	s := NewStore(dir)
-	inv, err := s.Add("anti_cheat", "x", "")
+	inv, err := s.Add("anti_cheat", "x", "", false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.Edit(inv.ID, EditFields{}); err == nil {
+	if _, err := s.Edit(inv.ID, EditFields{}, MutateOpts{}); err == nil {
 		t.Fatal("edit sem campos deveria falhar")
 	}
 	if _, err := s.Get("missing"); err == nil {
 		t.Fatal("get missing deveria falhar")
+	}
+}
+
+func TestImmutableRequiresForceAndReason(t *testing.T) {
+	dir := t.TempDir()
+	s := NewStore(dir)
+	inv, err := s.Add("mandate", "regra imutável", "", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rule := "alterada"
+	if _, err := s.Edit(inv.ID, EditFields{Rule: &rule}, MutateOpts{}); err == nil {
+		t.Fatal("edit sem --force deveria falhar")
+	}
+	if _, err := s.Edit(inv.ID, EditFields{Rule: &rule}, MutateOpts{Force: true}); err == nil {
+		t.Fatal("edit com --force sem --reason deveria falhar")
+	}
+	if _, err := s.Retire(inv.ID, MutateOpts{}); err == nil {
+		t.Fatal("retire sem --force deveria falhar")
+	}
+	edited, err := s.Edit(inv.ID, EditFields{Rule: &rule}, MutateOpts{Force: true, Reason: "incidente", Who: "tester"})
+	if err != nil || edited.Rule != rule {
+		t.Fatalf("edit forçado: %+v err=%v", edited, err)
+	}
+	data, err := os.ReadFile(filepath.Join(dir, DefaultHistoryFile))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var entry HistoryEntry
+	if err := json.Unmarshal(data[:len(data)-1], &entry); err != nil {
+		t.Fatal(err)
+	}
+	if entry.Action != "edit" || entry.Who != "tester" || entry.Reason != "incidente" || entry.OldValue == nil || entry.OldValue.Rule != "regra imutável" {
+		t.Fatalf("histórico: %+v", entry)
+	}
+	if _, err := s.Retire(inv.ID, MutateOpts{Force: true, Reason: "aposentar"}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestAntiCheatRequiresForce(t *testing.T) {
+	dir := t.TempDir()
+	s := NewStore(dir)
+	inv, err := s.Add("anti_cheat", "não trapacear", "", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rule := "trapacear"
+	if _, err := s.Edit(inv.ID, EditFields{Rule: &rule}, MutateOpts{}); err == nil {
+		t.Fatal("anti_cheat deveria exigir --force")
+	}
+}
+
+func TestAddDefaultMutable(t *testing.T) {
+	dir := t.TempDir()
+	s := NewStore(dir)
+	inv, err := s.Add("security", "regra nova", "", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if inv.Immutable {
+		t.Fatal("nova invariante deve nascer mutável por default")
+	}
+	flagged, err := s.Add("security", "fixada", "", true)
+	if err != nil || !flagged.Immutable {
+		t.Fatalf("com immutable=true deveria marcar: %+v err=%v", flagged, err)
+	}
+}
+
+func TestCheckFailClosedCorruptAndUnevaluable(t *testing.T) {
+	dir := t.TempDir()
+	s := NewStore(dir)
+	if err := os.WriteFile(s.Path(), []byte("not: yaml: [["), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Check("", nil, false); err == nil {
+		t.Fatal("yaml corrompido deveria falhar fechado")
+	}
+
+	missing := NewStore(filepath.Join(dir, "missing-dir"))
+	if _, err := missing.Check("", nil, false); err == nil {
+		t.Fatal("arquivo ausente deveria falhar fechado")
+	}
+
+	good := NewStore(filepath.Join(dir, "good"))
+	if err := os.MkdirAll(filepath.Join(dir, "good"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	payload := []byte("version: 1\ninvariants:\n  - id: inv-bad\n    category: anti_cheat\n    rule: \"\"\n    immutable: true\n")
+	if err := os.WriteFile(good.Path(), payload, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	rep, err := good.Check("", nil, false)
+	if err == nil {
+		t.Fatal("regra vazia deveria falhar fechado")
+	}
+	if rep == nil || len(rep.Errors) == 0 {
+		t.Fatalf("esperava errors no report: %+v", rep)
+	}
+}
+
+func TestCheckFailClosedWrongSHA(t *testing.T) {
+	dir := t.TempDir()
+	s := NewStore(dir)
+	inv, err := s.Add("security", "ok", "", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rep, err := s.Check("deadbeef", []string{inv.ID}, false)
+	if err == nil {
+		t.Fatal("sha divergente deveria falhar fechado")
+	}
+	if rep == nil || rep.CompactSafe {
+		t.Fatalf("esperava compact_safe=false: %+v", rep)
+	}
+}
+
+func TestRedactSecrets(t *testing.T) {
+	in := "token ghp_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA aws AKIAIOSFODNN7EXAMPLE Bearer abc.def xoxb-123-secret API_TOKEN=supersecret"
+	out := RedactText(in)
+	for _, leak := range []string{
+		"ghp_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+		"AKIAIOSFODNN7EXAMPLE",
+		"Bearer abc.def",
+		"xoxb-123-secret",
+		"API_TOKEN=supersecret",
+	} {
+		if strings.Contains(out, leak) {
+			t.Fatalf("vazou %q em %q", leak, out)
+		}
+	}
+	if !strings.Contains(out, "[REDACTED]") {
+		t.Fatalf("esperava placeholder: %q", out)
+	}
+	pem := "-----BEGIN RSA PRIVATE KEY-----\nABC\n-----END RSA PRIVATE KEY-----"
+	if RedactText(pem) == pem {
+		t.Fatal("PEM deveria ser redigido")
+	}
+	src := Invariant{Rule: "ghp_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"}
+	inv := RedactInvariant(&src)
+	if strings.Contains(inv.Rule, "ghp_AAAA") {
+		t.Fatalf("RedactInvariant: %q", inv.Rule)
 	}
 }

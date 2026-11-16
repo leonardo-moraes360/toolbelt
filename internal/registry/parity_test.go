@@ -316,6 +316,88 @@ func TestGuardCheckToolStrictFailDefault(t *testing.T) {
 	}
 }
 
+func TestMemImmutableRequiresForceMCP(t *testing.T) {
+	dir := memToolDir(t)
+	id := memToolAdd(t, dir, map[string]any{
+		"rule":      "não alterar",
+		"category":  "mandate",
+		"immutable": true,
+	})
+	res, err := Default().Call(context.Background(), "tb_mem_edit", map[string]any{
+		"cwd":  dir,
+		"id":   id,
+		"rule": "alterada",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.IsError {
+		t.Fatal("edit sem force deveria falhar")
+	}
+	res, err = Default().Call(context.Background(), "tb_mem_edit", map[string]any{
+		"cwd":    dir,
+		"id":     id,
+		"rule":   "alterada",
+		"force":  true,
+		"reason": "revisão",
+	})
+	if err != nil || res.IsError {
+		t.Fatalf("edit com force+reason: %v %v", err, res)
+	}
+}
+
+func TestMemAddDefaultMutableMCP(t *testing.T) {
+	dir := memToolDir(t)
+	id := memToolAdd(t, dir, map[string]any{
+		"rule":     "mutável por default",
+		"category": "security",
+	})
+	res, err := Default().Call(context.Background(), "tb_mem_show", map[string]any{"cwd": dir, "id": id})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.IsError || !strings.Contains(res.Content[0].Text, `"immutable": false`) {
+		t.Fatalf("esperava immutable false: %s", res.Content[0].Text)
+	}
+}
+
+func TestMemCheckFailClosedMCP(t *testing.T) {
+	dir := memToolDir(t)
+	path := filepath.Join(dir, ".toolbelt", "invariants.yaml")
+	if err := os.WriteFile(path, []byte("not: yaml: [["), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	res, err := Default().Call(context.Background(), "tb_mem_check", map[string]any{"cwd": dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.IsError {
+		t.Fatal("check com yaml corrompido deveria falhar fechado")
+	}
+}
+
+func TestMemRedactSecretsMCP(t *testing.T) {
+	dir := memToolDir(t)
+	id := memToolAdd(t, dir, map[string]any{
+		"rule":     "ghp_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA AKIAIOSFODNN7EXAMPLE",
+		"category": "security",
+	})
+	res, err := Default().Call(context.Background(), "tb_mem_show", map[string]any{"cwd": dir, "id": id})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.IsError {
+		t.Fatalf("tb_mem_show: %s", res.Content[0].Text)
+	}
+	text := res.Content[0].Text
+	if strings.Contains(text, "ghp_AAAA") || strings.Contains(text, "AKIAIOSFODNN7EXAMPLE") {
+		t.Fatalf("segredo vazou no MCP: %s", text)
+	}
+	if !strings.Contains(text, "[REDACTED]") {
+		t.Fatalf("esperava redação: %s", text)
+	}
+}
+
 func memToolDir(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
