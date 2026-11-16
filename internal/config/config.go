@@ -232,6 +232,12 @@ func Init(dir string) error {
 			if cmd := DetectTestCmd(root); cmd != "" {
 				cfg.Verify.TestCmd = cmd
 			}
+			if cmd := DetectBuildCmd(root); cmd != "" {
+				cfg.Verify.BuildCmd = cmd
+			}
+			if cmd := DetectLintCmd(root); cmd != "" {
+				cfg.Verify.LintCmd = cmd
+			}
 		}
 		if err := Save(cfg, configPath); err != nil {
 			return fmt.Errorf("saving default config: %w", err)

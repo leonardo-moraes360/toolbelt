@@ -702,7 +702,7 @@ tb verify run [flags]
 
 Flags:
   --ruler <type>           Tipo de ruler: tests|visual (default: tests)
-  --test-cmd <cmd>         Testes visíveis (default: verify.test_cmd; `tb init` detecta go/npm/pnpm/yarn/pytest/cargo/make)
+  --test-cmd <cmd>         Testes visíveis (default: verify.test_cmd; `tb init` detecta go/npm/pnpm/yarn/pytest/cargo/make e também build_cmd/lint_cmd)
   --hidden-test-cmd <cmd>  Suite oculta (verify.hidden_test_cmd; se vazio e existir tests/hidden/: go test ./tests/hidden/...)
   --max-iter <n>           Máximo de iterações (default: 3)
   --timeout <dur>          Timeout (default: 10m)
@@ -720,6 +720,19 @@ Flags:
 `pyproject.toml`/`uv.lock` → `pytest`/`uv run pytest`, `Cargo.toml` → `cargo test`,
 `Makefile` com target `test`/`check` → `make test`/`make check`). Sem marcadores
 reconhecidos, permanece o default Go.
+
+Quando há marcadores claros, o init também preenche `verify.build_cmd` e
+`verify.lint_cmd` de forma conservadora:
+
+| Toolchain | `build_cmd` | `lint_cmd` |
+|-----------|-------------|------------|
+| `go.mod` | `go build ./...` | `.golangci.y*ml`/`.toml` → `golangci-lint run`; senão target `make lint` |
+| `package.json` | script `build` → `npm run build` / `pnpm run build` / `yarn build` | script `lint` → análogo |
+| `Cargo.toml` | `cargo build` | `cargo clippy` |
+| Python (`pyproject`/`uv.lock`/…) | (vazio) | `[tool.ruff]`/`ruff.toml` → `ruff check .` (ou `uv run …`); senão mypy |
+| só `Makefile` | target `build` → `make build` | target `lint` → `make lint` |
+
+Ausência de script/config → campo omitido (verify continua só com `test_cmd`).
 
 A suite oculta permanece escondida do agente (paths em `tests/hidden/` protegidos
 pelo `tb guard`). O comando configurado em `verify.hidden_test_cmd` ou

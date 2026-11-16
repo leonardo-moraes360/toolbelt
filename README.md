@@ -110,7 +110,7 @@ make build
 ## 📖 Uso Rápido
 
 ```bash
-# Inicializa configuração local (detecta toolchain → verify.test_cmd)
+# Inicializa configuração local (detecta toolchain → test/build/lint_cmd)
 tb init
 
 # Se existir AGENTS.md/CLAUDE.md, o init lê e registra dicas de comandos
@@ -220,7 +220,7 @@ Este projeto está na **Fase 2**: CLI funcional com verify/guard/mem/graph/revie
 | Comando | Status | Descrição |
 |---------|--------|-----------|
 | `tb version` | ✅ | Mostra versão, commit e build time |
-| `tb init` | ✅ | Inicializa configuração local; detecta toolchain (`verify.test_cmd`), lê `AGENTS.md`/`CLAUDE.md` (dicas) e opcionalmente semeia com `--write-agents` |
+| `tb init` | ✅ | Inicializa configuração local; detecta toolchain (`verify.test_cmd` / `build_cmd` / `lint_cmd`), lê `AGENTS.md`/`CLAUDE.md` (dicas) e opcionalmente semeia com `--write-agents` |
 | `tb bench run` | ✅ | Executa benchmark |
 | `tb bench list` | ✅ | Lista tarefas disponíveis |
 | `tb bench report` | ✅ | Gera relatório Markdown |
