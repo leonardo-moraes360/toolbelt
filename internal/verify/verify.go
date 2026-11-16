@@ -7,10 +7,13 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
+	"github.com/leonardo-moraes360/toolbelt/internal/execenv"
 	"github.com/leonardo-moraes360/toolbelt/internal/guard"
 	"github.com/leonardo-moraes360/toolbelt/internal/log"
 	"github.com/leonardo-moraes360/toolbelt/internal/review"
@@ -43,6 +46,8 @@ type Config struct {
 	TicketPath     string
 	NameStatusDiff string
 	DryRun         bool
+	EnvAllow       []string
+	EnvPass        []string
 }
 
 type Result struct {
@@ -58,6 +63,8 @@ type Result struct {
 	HiddenAvailable bool               `json:"hidden_available"`
 	Reason          string             `json:"reason,omitempty"`
 	Error           string             `json:"error,omitempty"`
+	HeadSHA         string             `json:"head_sha,omitempty"`
+	WorkDir         string             `json:"workdir,omitempty"`
 	Metrics         map[string]string  `json:"metrics,omitempty"`
 	DryRun          bool               `json:"dry_run,omitempty"`
 	Plan            *Plan              `json:"plan,omitempty"`
@@ -91,7 +98,14 @@ func Run(ctx context.Context, cfg *Config) (*Result, error) {
 	if cfg.MaxIterations == 0 {
 		cfg.MaxIterations = 3
 	}
-	res := &Result{Verdict: VerdictFail}
+	res := &Result{Verdict: VerdictFail, WorkDir: cfg.RepoDir}
+
+	headSHA, err := gitRevParse(cfg.RepoDir, cfg.HeadRef)
+	if err != nil {
+		return nil, fmt.Errorf("resolver --head %q: %w", cfg.HeadRef, err)
+	}
+	res.HeadSHA = headSHA
+
 	abort, err := applyGuard(cfg, res)
 	if err != nil {
 		return nil, err
@@ -104,20 +118,39 @@ func Run(ctx context.Context, cfg *Config) (*Result, error) {
 		return res, nil
 	}
 
-	res.HiddenAvailable = resolveHiddenAvailable(cfg)
+	hw, err := attachHeadWorkDir(cfg.RepoDir, headSHA)
+	if err != nil {
+		return nil, err
+	}
+	defer hw.Cleanup()
+	res.WorkDir = hw.WorkDir
+	res.HeadSHA = hw.HeadSHA
+	if hw.Temporary {
+		var stop context.CancelFunc
+		ctx, stop = signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
+		defer stop()
+	}
+	if hw.DirtyWarn {
+		log.Warn("worktree sujo com head igual ao HEAD; build/lint/test podem incluir mudanças não commitadas",
+			"workdir", hw.WorkDir, "head_sha", hw.HeadSHA)
+	}
+
+	execCfg := *cfg
+	execCfg.RepoDir = hw.WorkDir
+	res.HiddenAvailable = resolveHiddenAvailable(&execCfg)
 
 	if cfg.DryRun {
 		res.DryRun = true
-		res.Plan = BuildPlan(cfg)
+		res.Plan = BuildPlan(&execCfg)
 		res.Verdict = VerdictSkipped
 		res.Reason = "dry-run: plano gerado sem executar"
 		return res, nil
 	}
 
 	cache := &cmdCache{}
-	for i := 1; i <= cfg.MaxIterations; i++ {
+	for i := 1; i <= execCfg.MaxIterations; i++ {
 		res.Iterations = i
-		passed, stop, iterErr := runVerifyIteration(ctx, cfg, res, cache)
+		passed, stopIter, iterErr := runVerifyIteration(ctx, &execCfg, res, cache)
 		if iterErr != nil {
 			if res.Reason == "" {
 				res.Reason = iterErr.Error()
@@ -131,7 +164,7 @@ func Run(ctx context.Context, cfg *Config) (*Result, error) {
 			res.Error = ""
 			return res, nil
 		}
-		if stop {
+		if stopIter {
 			res.Verdict = VerdictEscalate
 			return res, nil
 		}
@@ -287,7 +320,7 @@ func runVerifyIteration(ctx context.Context, cfg *Config, res *Result, cache *cm
 		log.Info("iteração de verify falhou", "n", res.Iterations, "step", "build_or_lint")
 		return false, deterministic, nil
 	}
-	visibleOK, out, err := runConfiguredCmd(ctx, cfg.RepoDir, cfg.VisibleTest, cfg.Timeout, "verify.test_cmd")
+	visibleOK, out, err := runConfiguredCmd(ctx, cfg, cfg.VisibleTest, "verify.test_cmd")
 	if err != nil {
 		setFailure(res, "verify.test_cmd", err.Error())
 		return false, true, err
@@ -298,7 +331,7 @@ func runVerifyIteration(ctx context.Context, cfg *Config, res *Result, cache *cm
 	}
 	hiddenOK := true
 	if res.HiddenAvailable {
-		hiddenOK, out, err = runConfiguredCmd(ctx, cfg.RepoDir, cfg.HiddenTest, cfg.Timeout, "verify.hidden_test_cmd")
+		hiddenOK, out, err = runConfiguredCmd(ctx, cfg, cfg.HiddenTest, "verify.hidden_test_cmd")
 		if err != nil {
 			setFailure(res, "verify.hidden_test_cmd", err.Error())
 			return false, true, err
@@ -337,7 +370,7 @@ func runCachedStep(ctx context.Context, cfg *Config, res *Result, done, cachedOK
 		*passed = *cachedOK
 		return *cachedOK, nil
 	}
-	ok, out, runErr := runConfiguredCmd(ctx, cfg.RepoDir, command, cfg.Timeout, key)
+	ok, out, runErr := runConfiguredCmd(ctx, cfg, command, key)
 	*done = true
 	*cachedOK = ok && runErr == nil
 	*passed = *cachedOK
@@ -371,20 +404,21 @@ func failReason(step, output string) string {
 	return step + " falhou: " + out
 }
 
-func runConfiguredCmd(ctx context.Context, dir, command string, timeout time.Duration, configKey string) (ok bool, output string, err error) {
-	ctx, cancel := context.WithTimeout(ctx, timeout)
+func runConfiguredCmd(ctx context.Context, cfg *Config, command, configKey string) (ok bool, output string, err error) {
+	ctx, cancel := context.WithTimeout(ctx, cfg.Timeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "sh", "-c", command) //nolint:gosec // ruler configurado pelo operador
-	cmd.Dir = dir
-	out, err := cmd.CombinedOutput()
+	cmd.Dir = cfg.RepoDir
+	cmd.Env = execenv.Environ(execenv.Options{Allow: cfg.EnvAllow, Pass: cfg.EnvPass})
+	out, runErr := cmd.CombinedOutput()
 	output = string(out)
-	if err == nil {
+	if runErr == nil {
 		return true, output, nil
 	}
-	if isCommandMissing(err) {
+	if isCommandMissing(runErr) {
 		return false, output, fmt.Errorf(errMissingCmdFmt, command, configKey)
 	}
-	log.Debug("teste falhou", "output", output, "error", err)
+	log.Debug("teste falhou", "output", output, "error", runErr)
 	return false, output, nil
 }
 

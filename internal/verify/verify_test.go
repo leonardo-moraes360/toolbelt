@@ -36,6 +36,90 @@ func TestRunPass(t *testing.T) {
 	if res.Verdict != VerdictPass {
 		t.Fatalf("veredicto %s", res.Verdict)
 	}
+	if res.HeadSHA == "" {
+		t.Fatal("expected head_sha in result")
+	}
+	if res.WorkDir != dir {
+		t.Fatalf("workdir=%q want repo %q when head == HEAD", res.WorkDir, dir)
+	}
+}
+
+func TestRunOnHeadWorktreeWhenHeadDiffers(t *testing.T) {
+	if testing.Short() {
+		t.Skip()
+	}
+	dir := t.TempDir()
+	_ = os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module demo\ngo 1.22\n"), 0o644)
+	_ = os.WriteFile(filepath.Join(dir, "demo.go"), []byte("package demo\nfunc Add(a, b int) int { return a + b }\n"), 0o644)
+	_ = os.WriteFile(filepath.Join(dir, "demo_test.go"), []byte("package demo\nimport \"testing\"\nfunc TestAdd(t *testing.T) {\n\tif Add(1, 2) != 3 { t.Fatal() }\n}\n"), 0o644)
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "a@b.c")
+	runGit(t, dir, "config", "user.name", "t")
+	runGit(t, dir, "add", "-A")
+	runGit(t, dir, "commit", "-m", "base")
+	base := gitRev(t, dir)
+
+	_ = os.WriteFile(filepath.Join(dir, "marker_test.go"), []byte("package demo\nimport \"testing\"\nfunc TestMarkerOnlyOnHead(t *testing.T) {\n\tt.Fatal(\"marker: only on head\")\n}\n"), 0o644)
+	runGit(t, dir, "add", "-A")
+	runGit(t, dir, "commit", "-m", "head-with-failing-marker")
+	head := gitRev(t, dir)
+
+	runGit(t, dir, "checkout", "-q", base)
+
+	cfg := DefaultConfig(dir)
+	cfg.BaseRef = base
+	cfg.HeadRef = head
+	cfg.Timeout = time.Minute
+	cfg.MaxIterations = 1
+	cfg.VisibleTest = "go test ./..."
+
+	res, err := Run(context.Background(), &cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Verdict == VerdictPass {
+		t.Fatalf("verify must fail when head has a failing test absent from the current worktree; got PASS (workdir=%q head_sha=%q)", res.WorkDir, res.HeadSHA)
+	}
+	if res.HeadSHA != head {
+		t.Fatalf("head_sha=%q want %q", res.HeadSHA, head)
+	}
+	if res.WorkDir == "" || res.WorkDir == dir {
+		t.Fatalf("expected detached head workdir different from repo %q, got %q", dir, res.WorkDir)
+	}
+	if _, err := os.Stat(res.WorkDir); !os.IsNotExist(err) {
+		t.Fatalf("detached worktree should be removed after verify, path=%q err=%v", res.WorkDir, err)
+	}
+}
+
+func TestRunDirtyHeadWarnsButUsesRepo(t *testing.T) {
+	dir := t.TempDir()
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "a@b.c")
+	runGit(t, dir, "config", "user.name", "t")
+	runGit(t, dir, "commit", "--allow-empty", "-m", "c")
+	_ = os.WriteFile(filepath.Join(dir, "dirty.txt"), []byte("uncommitted\n"), 0o644)
+
+	cfg := DefaultConfig(dir)
+	cfg.BaseRef = "HEAD"
+	cfg.HeadRef = "HEAD"
+	cfg.Timeout = 30 * time.Second
+	cfg.MaxIterations = 1
+	cfg.VisibleTest = "true"
+
+	res, err := Run(context.Background(), &cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Verdict != VerdictPass {
+		t.Fatalf("veredicto %s", res.Verdict)
+	}
+	if res.WorkDir != dir {
+		t.Fatalf("workdir=%q want %q", res.WorkDir, dir)
+	}
+	head := gitRev(t, dir)
+	if res.HeadSHA != head {
+		t.Fatalf("head_sha=%q want %q", res.HeadSHA, head)
+	}
 }
 
 func TestDefaultHiddenTestCmd(t *testing.T) {

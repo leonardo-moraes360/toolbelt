@@ -11,6 +11,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/leonardo-moraes360/toolbelt/internal/config"
+	"github.com/leonardo-moraes360/toolbelt/internal/execenv"
 	"github.com/leonardo-moraes360/toolbelt/internal/version"
 )
 
@@ -43,13 +45,23 @@ func RegisterBuiltins() {
 	})
 	Register(&Tool{
 		Name:        "tb_run",
-		Description: "Executa processo no shell com timeout opcional",
+		Description: "Executa processo no shell com timeout opcional (env filtrado por allowlist)",
 		InputSchema: &InputSchema{
 			Type: "object",
 			Properties: map[string]Property{
 				"command": {Type: "string", Description: "Processo a executar"},
 				"timeout": {Type: "string", Description: "Timeout (ex: 30s)", Default: "30s"},
 				"cwd":     {Type: "string", Description: "Diretório de trabalho"},
+				"env": {
+					Type:        "array",
+					Description: "Chaves extras na allowlist de ambiente",
+					Items:       &Property{Type: "string"},
+				},
+				"pass_env": {
+					Type:        "array",
+					Description: "Opt-in explícito para segredos (*TOKEN*/SECRET/KEY/PASSWORD)",
+					Items:       &Property{Type: "string"},
+				},
 			},
 			Required: []string{"command"},
 		},
@@ -99,6 +111,7 @@ func handleRun(ctx context.Context, args map[string]any) (any, error) {
 	if cwd != "" {
 		cmd.Dir = cwd
 	}
+	cmd.Env = execenv.Environ(resolveExecEnv(args))
 
 	output, err := cmd.CombinedOutput()
 	exitCode := 0
@@ -121,6 +134,17 @@ func handleRun(ctx context.Context, args map[string]any) (any, error) {
 		"output":    string(output),
 		"timeout":   false,
 	}, nil
+}
+
+func resolveExecEnv(args map[string]any) execenv.Options {
+	opts := execenv.Options{
+		Allow: StringSliceArg(args, "env", nil),
+		Pass:  StringSliceArg(args, "pass_env", nil),
+	}
+	if fileCfg, err := config.Load(); err == nil {
+		opts = execenv.Merge(execenv.Options{Allow: fileCfg.Env.Allow, Pass: fileCfg.Env.Pass}, opts.Allow, opts.Pass)
+	}
+	return opts
 }
 
 func StringArg(args map[string]any, key string) string {

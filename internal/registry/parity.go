@@ -170,6 +170,16 @@ func registerVerifyTools() {
 				"manifest":         {Type: "string", Description: "Manifesto visual"},
 				"threshold":        {Type: "number", Description: "Threshold visual", Default: 0.95},
 				"skip_unavailable": {Type: "boolean", Description: "Skip gracioso se ruler indisponível", Default: true},
+				"env": {
+					Type:        "array",
+					Description: "Chaves extras na allowlist de ambiente",
+					Items:       &Property{Type: "string"},
+				},
+				"pass_env": {
+					Type:        "array",
+					Description: "Opt-in explícito para segredos (*TOKEN*/SECRET/KEY/PASSWORD)",
+					Items:       &Property{Type: "string"},
+				},
 			},
 		},
 		Handler: handleVerifyRun,
@@ -267,6 +277,16 @@ func registerStackTools() {
 				"standards": {
 					Type:        "array",
 					Description: "review: papéis scope/quality/acceptance",
+					Items:       &Property{Type: "string"},
+				},
+				"env": {
+					Type:        "array",
+					Description: "Chaves extras na allowlist de ambiente (verify)",
+					Items:       &Property{Type: "string"},
+				},
+				"pass_env": {
+					Type:        "array",
+					Description: "Opt-in explícito para segredos no verify",
 					Items:       &Property{Type: "string"},
 				},
 			},
@@ -368,7 +388,7 @@ func handleMemCheck(_ context.Context, args map[string]any) (any, error) {
 	all := boolArgTrue(args, "all")
 	rep, err := memCheckReport(s, sha, all)
 	if err != nil {
-		if initErr := mem.EnsureDefaultAntiCheat(dir); initErr == nil && sha == "" {
+		if _, initErr := mem.EnsureDefaultAntiCheat(dir); initErr == nil && sha == "" {
 			return memCheckReport(s, "", all)
 		}
 		return nil, err
@@ -410,10 +430,11 @@ func handleMemInit(_ context.Context, args map[string]any) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := mem.EnsureDefaultAntiCheat(dir); err != nil {
+	result, err := mem.EnsureDefaultAntiCheat(dir)
+	if err != nil {
 		return nil, err
 	}
-	return map[string]any{"ok": true, "path": filepath.Join(dir, mem.DefaultInvariantsFile)}, nil
+	return result, nil
 }
 
 func handleVerifyRun(ctx context.Context, args map[string]any) (any, error) {
@@ -464,6 +485,8 @@ func runVerifyTests(ctx context.Context, cwd string, args map[string]any) (any, 
 		return nil, fmt.Errorf("timeout inválido: %w", err)
 	}
 	cfg.Timeout = timeout
+	cfg.EnvAllow = append(cfg.EnvAllow, StringSliceArg(args, "env", nil)...)
+	cfg.EnvPass = append(cfg.EnvPass, StringSliceArg(args, "pass_env", nil)...)
 	return verify.Run(ctx, &cfg)
 }
 
@@ -484,6 +507,8 @@ func applyVerifyFileConfig(cfg *verify.Config) {
 	if fileCfg.Verify.LintCmd != "" {
 		cfg.LintCmd = fileCfg.Verify.LintCmd
 	}
+	cfg.EnvAllow = append(cfg.EnvAllow, fileCfg.Env.Allow...)
+	cfg.EnvPass = append(cfg.EnvPass, fileCfg.Env.Pass...)
 }
 
 func runVerifyVisual(ctx context.Context, cwd string, args map[string]any) (any, error) {
@@ -714,6 +739,8 @@ func handleStack(ctx context.Context, args map[string]any) (any, error) {
 		Timeout:       timeout,
 		Reviewers:     IntArg(args, "reviewers", 0),
 		Standards:     StringSliceArg(args, "standards", nil),
+		EnvAllow:      StringSliceArg(args, "env", nil),
+		EnvPass:       StringSliceArg(args, "pass_env", nil),
 	}
 	return stack.Run(ctx, opts)
 }

@@ -125,6 +125,12 @@ make build
 
 ## 📖 Uso Rápido
 
+O `tb` é **100% local**: **não fala com o GitHub**. `review` / `drift` /
+`verify --ticket` / `stack` leem um `rd.md` (ou `--ticket`) no disco. Para
+partir de uma issue/PR, exporte o texto com `gh issue view` / `gh pr view` e
+monte o arquivo (scope, forbidden, acceptance) — detalhes em
+[docs/cli.md](docs/cli.md#local-first-sem-github).
+
 ```bash
 # Inicializa configuração local (detecta toolchain → test/build/lint_cmd)
 tb init
@@ -159,6 +165,11 @@ tb bench compare --before results-v1.jsonl --after results-v2.jsonl
 # Comparação A/B entre configs/feature flags
 tb bench compare --config-a bench/ab/graph-off.yaml \
                  --config-b bench/ab/graph-on.yaml --fake
+
+# Drift/review contra ticket local (não há fetch de issue/PR)
+tb drift --ticket rd.md
+tb review --ticket rd.md
+tb guard check HEAD~1..HEAD
 ```
 
 ## 🗺️ Roadmap / Status
@@ -247,12 +258,12 @@ Este projeto está na **Fase 2**: CLI funcional com verify/guard/mem/graph/revie
 | `tb bench report` | ✅ | Gera relatório Markdown |
 | `tb bench compare` | ✅ | Compara dois benchmarks |
 | `tb sandbox` | ✅ | Worktrees + Landlock (Linux) |
-| `tb guard` | ✅ | Check anti-trapaça em diff |
-| `tb verify` | ✅ | Rulers `tests` + `visual` (`tb verify run`; `--build-cmd`/`--lint-cmd`/`--no-build`/`--no-lint`/`--dry-run`; suíte oculta via `--hidden-test-cmd` ou detecção de toolchain em `tests/hidden/` — N/A se inaplicável; cache de build/lint na execução; `reason`/`error` no JSON; fail-fast se o comando não existe/não é executável; `protected_paths` custom do `guard.yaml` não abortam o loop — exceção de Scope via `--ticket`) |
+| `tb guard` | ✅ | Check anti-trapaça em diff (default estrito / exit ≠ 0 em `SeverityError`; `--warn-only` opt-out; `--strict` deprecated) |
+| `tb verify` | ✅ | Rulers `tests` + `visual` (`tb verify run`; `--build-cmd`/`--lint-cmd`/`--no-build`/`--no-lint`/`--dry-run`; suíte oculta via `--hidden-test-cmd` ou detecção de toolchain em `tests/hidden/` — N/A se inaplicável; cache de build/lint na execução; `reason`/`error` no JSON; `--base`/`--head` rodam no worktree do head; fail-fast se o comando não existe/não é executável; `protected_paths` custom do `guard.yaml` não abortam o loop — exceção de Scope via `--ticket`) |
 | `tb mem` | ✅ | Invariantes (`add`/`list`/`show`/`edit`/`retire`/`search`/`check`/`init`; `--ref` ADR; soft-retire + `--all`) |
-| `tb graph` | ✅ | Grafo sob demanda multi-linguagem + frameworks + docs (ADR-011) |
-| `tb review` | ✅ | Revisão fresh-context contra ticket/rd.md; `--approved-sha` |
-| `tb drift` | ✅ | Drift de escopo / commit base / patch pinado |
+| `tb graph` | ✅ | Grafo sob demanda multi-linguagem + frameworks + docs (ADR-011); `javascript` cobre TypeScript (`ts`/`tsx`) |
+| `tb review` | ✅ | Revisão fresh-context contra ticket/`rd.md` local (sem GitHub); `--approved-sha` |
+| `tb drift` | ✅ | Drift de escopo / commit base / patch pinado contra `rd.md` (não é vault vs código) |
 | `tb stack` | ✅ | Empilha verify/review/drift/guard com contexto compartilhado (JSON agregado; MCP `tb_stack`) |
 | `tb workspace` | ✅ | Workspaces isolados via git worktree |
 | `tb router` | 🚧 | Stub (não implementado) |
