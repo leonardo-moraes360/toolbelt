@@ -80,6 +80,65 @@ func TestRunVisualSkipWithoutManifest(t *testing.T) {
 	}
 }
 
+func TestRunVisualAllScreensSkippedAggregates(t *testing.T) {
+	dir := t.TempDir()
+	bin := filepath.Join(dir, "bin")
+	if err := os.MkdirAll(bin, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	fake := filepath.Join(bin, "chromium")
+	if err := os.WriteFile(fake, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("TB_BROWSER", fake)
+	t.Setenv("PATH", bin)
+
+	toolbelt := filepath.Join(dir, ".toolbelt")
+	if err := os.MkdirAll(toolbelt, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	manifest := filepath.Join(toolbelt, "screens.yaml")
+	content := []byte("version: 1\nbase_url: http://127.0.0.1:9\nscreens:\n  - name: login\n    route: /login\n    modes: [light]\n  - name: home\n    route: /\n    modes: [dark]\n")
+	if err := os.WriteFile(manifest, content, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	rep, err := RunVisual(context.Background(), dir, VisualConfig{SkipOK: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !rep.Skipped {
+		t.Fatalf("expected top-level skipped=true when all screens skipped, got %+v", rep)
+	}
+	if rep.SkipReason == "" {
+		t.Fatal("expected skip_reason when all screens skipped")
+	}
+	if rep.Verdict != VerdictPass {
+		t.Fatalf("expected PASS with skip-unavailable, got %s", rep.Verdict)
+	}
+	if len(rep.Screens) != 2 {
+		t.Fatalf("expected 2 screen results, got %d", len(rep.Screens))
+	}
+	for _, s := range rep.Screens {
+		if !s.Skipped {
+			t.Fatalf("expected screen skipped: %+v", s)
+		}
+	}
+}
+
+func TestAggregateVisualSkippedPartial(t *testing.T) {
+	rep := &VisualReport{
+		Screens: []ScreenResult{
+			{Screen: "a", Skipped: true, Passed: true},
+			{Screen: "b", Skipped: false, Passed: true, Similarity: 0.99},
+		},
+	}
+	aggregateVisualSkipped(rep)
+	if rep.Skipped {
+		t.Fatal("partial skip must not set top-level skipped")
+	}
+}
+
 func TestLoadScreensManifest(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "screens.yaml")
