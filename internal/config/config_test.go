@@ -27,6 +27,12 @@ func TestDefaultConfig(t *testing.T) {
 	if cfg.Verify.HiddenTestCmd != "go test ./tests/hidden/..." {
 		t.Errorf("Default verify hidden_test_cmd = %q", cfg.Verify.HiddenTestCmd)
 	}
+	if cfg.Verify.BuildCmd != "" {
+		t.Errorf("Default verify build_cmd = %q, want empty", cfg.Verify.BuildCmd)
+	}
+	if cfg.Verify.LintCmd != "" {
+		t.Errorf("Default verify lint_cmd = %q, want empty", cfg.Verify.LintCmd)
+	}
 	if len(cfg.Graph.Languages) < 12 {
 		t.Errorf("expected default graph languages, got %v", cfg.Graph.Languages)
 	}
@@ -47,6 +53,8 @@ func TestVerifyConfigLoad(t *testing.T) {
 	cfg := DefaultConfig()
 	cfg.Verify.TestCmd = "pnpm --filter @auditaja/core test"
 	cfg.Verify.HiddenTestCmd = "pnpm --filter @auditaja/core test:hidden"
+	cfg.Verify.BuildCmd = "pnpm --filter @auditaja/core build"
+	cfg.Verify.LintCmd = "pnpm --filter @auditaja/core lint"
 	if err := Save(cfg, configPath); err != nil {
 		t.Fatalf("Save failed: %v", err)
 	}
@@ -59,6 +67,12 @@ func TestVerifyConfigLoad(t *testing.T) {
 	}
 	if loaded.Verify.HiddenTestCmd != cfg.Verify.HiddenTestCmd {
 		t.Errorf("hidden_test_cmd = %q", loaded.Verify.HiddenTestCmd)
+	}
+	if loaded.Verify.BuildCmd != cfg.Verify.BuildCmd {
+		t.Errorf("build_cmd = %q", loaded.Verify.BuildCmd)
+	}
+	if loaded.Verify.LintCmd != cfg.Verify.LintCmd {
+		t.Errorf("lint_cmd = %q", loaded.Verify.LintCmd)
 	}
 }
 
