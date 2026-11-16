@@ -95,6 +95,8 @@ type BenchConfig struct {
 type VerifyConfig struct {
 	TestCmd       string `yaml:"test_cmd"`
 	HiddenTestCmd string `yaml:"hidden_test_cmd"`
+	BuildCmd      string `yaml:"build_cmd,omitempty"`
+	LintCmd       string `yaml:"lint_cmd,omitempty"`
 }
 
 // DefaultConfig retorna a configuração padrão.
@@ -226,6 +228,11 @@ func Init(dir string) error {
 	configPath := filepath.Join(dir, DefaultConfigFile)
 	if _, err := os.Stat(configPath); errors.Is(err, os.ErrNotExist) {
 		cfg := DefaultConfig()
+		if root, ok := projectRootForInit(dir); ok {
+			if cmd := DetectTestCmd(root); cmd != "" {
+				cfg.Verify.TestCmd = cmd
+			}
+		}
 		if err := Save(cfg, configPath); err != nil {
 			return fmt.Errorf("saving default config: %w", err)
 		}

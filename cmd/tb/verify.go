@@ -62,6 +62,12 @@ func runTestsVerify(cmd *cobra.Command) error {
 		if fileCfg.Verify.HiddenTestCmd != "" {
 			cfg.HiddenTest = fileCfg.Verify.HiddenTestCmd
 		}
+		if fileCfg.Verify.BuildCmd != "" {
+			cfg.BuildCmd = fileCfg.Verify.BuildCmd
+		}
+		if fileCfg.Verify.LintCmd != "" {
+			cfg.LintCmd = fileCfg.Verify.LintCmd
+		}
 	}
 	if v, _ := cmd.Flags().GetString("base"); v != "" {
 		cfg.BaseRef = v
@@ -146,6 +152,12 @@ func printTestsSummary(payload any) {
 		return
 	}
 	fmt.Printf("Veredicto: %s (iterações: %d)\n", res.Verdict, res.Iterations)
+	if res.BuildRan {
+		fmt.Printf("Build: %v\n", res.BuildPassed)
+	}
+	if res.LintRan {
+		fmt.Printf("Lint: %v\n", res.LintPassed)
+	}
 	fmt.Printf("Visível: %v  Oculto: %v (disponível: %v)\n", res.VisiblePassed, res.HiddenPassed, res.HiddenAvailable)
 }
 
