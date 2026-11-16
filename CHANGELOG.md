@@ -7,6 +7,25 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Não Lançado]
 
+### Adicionado
+- Grafo TS/JS: fingerprint no `graph.json` e detecção de índice desatualizado;
+  com `graph.index_on_change: true` (default) `search`/`callers`/`deps`/`impact`/`stats`
+  reindexam automaticamente; com `false`, avisam na saída e expõem `stale: true` no JSON
+- Resolução de `tsconfig.json`/`jsconfig.json` (`extends`, `baseUrl`, `paths`) no indexador JS/TS
+
+### Mudanças
+- **Breaking (JSON grafo):** consultas MCP/CLI (`search`/`callers`/`deps`/`impact`) passam a
+  emitir `{"stale": bool, "nodes": [...]}` em vez de um array nu; `stats`/`index` incluem `stale`
+- Indexador JS/TS indexa `*.test.*`, `*.spec.*`, `__tests__` e `e2e` (antes eram omitidos);
+  `impact`/`callers` passam a listar testes que importam o símbolo
+
+### Corrigido
+- Funções genéricas TS (`function foo<T>(…)`) voltam a aparecer no índice
+- Imports relativos estilo NodeNext (`.js`→`.ts`/`.tsx`, sem extensão, `index`) deixam de
+  ficar como `pkg:./…` e resolvem para `file:…`
+- Aliases de import (`import { a as b }`) e namespaces (`import * as ns`, `ns.fn()`) alimentam
+  arestas `calls` resolvíveis
+
 ## [0.0.2] - 2026-11-16
 
 ### Adicionado

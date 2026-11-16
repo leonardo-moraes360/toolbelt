@@ -142,7 +142,7 @@ Linguagens e docs (extensível via `LanguageIndexer`, regex leve, sem cgo):
 | `graph.languages` | Extensões |
 |-------------------|-----------|
 | `go` | `.go` (AST; arestas `calls`) |
-| `javascript` | `.js`, `.mjs`, `.cjs`, `.ts`, `.tsx`, `.jsx` (funções/`const` arrow, JSX `<Comp />` como `calls`; resolve imports relativos ao símbolo do módulo importado) |
+| `javascript` | `.js`, `.mjs`, `.cjs`, `.ts`, `.tsx`, `.jsx` (funções genéricas `foo<T>`, `const` arrow, JSX `<Comp />` como `calls`; indexa `*.test.*`/`*.spec.*`/`__tests__`/`e2e`; resolve imports relativos NodeNext (`.js`→`.ts`, sem extensão, `index`) e aliases de `tsconfig.json`/`jsconfig.json` (`extends`/`baseUrl`/`paths`); segue `import { a as b }` e `import * as ns`) |
 | `python` | `.py` (defines/imports + arestas `calls` por módulo qualificado; `callers`/`impact` ignoram arestas com confiança &lt; 0.6) |
 | `java` | `.java` |
 | `kotlin` | `.kt`, `.kts` |
@@ -182,6 +182,7 @@ graph:
   docs: [markdown, html, txt]
   frameworks: [react, vue, svelte, astro, angular, routes, mdx]
   max_file_bytes: 524288   # ignora arquivos maiores
+  index_on_change: true    # reindexa em search/callers/deps/impact/stats se o fingerprint mudou
 ```
 
 Ignora subdiretórios como `node_modules`, `vendor`, `dist`, `build`,
@@ -191,6 +192,14 @@ um symlink (ex.: `/tmp/target` → dir real), ela é resolvida com
 `EvalSymlinks` antes do walk — caso contrário o índice ficaria vazio, pois
 `filepath.Walk` não desce symlinks. O grafo continua sob demanda (ADR-011):
 `TB_GRAPH=on` ou `--enable`.
+
+Frescor do índice: cada `graph.json` guarda um `fingerprint` (mtime+tamanho dos
+arquivos indexáveis). Em `search`/`callers`/`deps`/`impact`/`stats`, se o
+fingerprint divergir e `graph.index_on_change` for `true` (default), o grafo é
+reindexado automaticamente; se for `false`, a saída avisa e o JSON inclui
+`stale: true`. Saídas JSON de consulta usam o envelope
+`{"stale": false, "nodes": [...]}`; `stats`/`index` incluem `stale` no objeto
+de estatísticas.
 
 ```bash
 tb graph [--enable] <subcommand>
@@ -236,8 +245,10 @@ Em Python/JS/TS, `--function` resolve por título ou sufixo do id qualificado
 (`func:pkg.mod.nome`; componentes/hooks React também). Arestas `calls` com
 confiança &lt; 0.6 (alvos ambíguos / sem import) ficam de fora do resultado
 default de `callers` e `impact`. Em TS/JS, imports relativos
-(`../components/Layout`) resolvem para o símbolo do módulo importado
-(`components.Layout`), inclusive uso JSX `<Layout />`.
+(`../components/Layout`, `./utils.js` → `utils.ts`, `./index`) e aliases de
+`tsconfig`/`jsconfig` (`@/…`) resolvem para o arquivo/símbolo importado;
+`import { helper as format }` e `import * as Utils` / `Utils.helper()` também
+alimentam `callers`/`impact` (incluindo funções em arquivos de teste).
 
 **`tb graph deps`:**
 

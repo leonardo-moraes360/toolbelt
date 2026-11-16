@@ -103,11 +103,14 @@ func TestGraphImpactToolAcceptsTypedAndLegacyArgs(t *testing.T) {
 	if res.IsError {
 		t.Fatalf("tb_graph_impact typed: %s", res.Content[0].Text)
 	}
-	var nodes []graph.Node
-	if err := json.Unmarshal([]byte(res.Content[0].Text), &nodes); err != nil {
+	var payload struct {
+		Stale bool         `json:"stale"`
+		Nodes []graph.Node `json:"nodes"`
+	}
+	if err := json.Unmarshal([]byte(res.Content[0].Text), &payload); err != nil {
 		t.Fatal(err)
 	}
-	if len(nodes) == 0 {
+	if len(payload.Nodes) == 0 {
 		t.Fatalf("esperava impacto tipado, got: %s", res.Content[0].Text)
 	}
 
