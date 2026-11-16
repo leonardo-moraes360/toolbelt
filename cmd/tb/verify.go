@@ -92,9 +92,29 @@ func runTestsVerify(cmd *cobra.Command) error {
 	cfg.Timeout = timeout
 	res, err := verify.Run(context.Background(), &cfg)
 	if err != nil {
+		if verify.IsMissingCommand(err) {
+			return emitMissingCommand(cmd, res, err)
+		}
 		return err
 	}
 	return emitVerifyResult(cmd, res.Verdict, res)
+}
+
+func emitMissingCommand(cmd *cobra.Command, res *verify.Result, err error) error {
+	if res == nil {
+		res = &verify.Result{Verdict: verify.VerdictFail, Error: err.Error()}
+	} else if res.Error == "" {
+		res.Error = err.Error()
+	}
+	outPath, _ := cmd.Flags().GetString("output")
+	if werr := writeVerifyPayload(outPath, res); werr != nil {
+		return werr
+	}
+	if !jsonOutput {
+		fmt.Fprintf(os.Stderr, "Error: %s\n", res.Error)
+	}
+	os.Exit(127)
+	return nil
 }
 
 func runVisualVerify(cmd *cobra.Command) error {

@@ -3,11 +3,11 @@ package review
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
 
+	"github.com/leonardo-moraes360/toolbelt/internal/git"
 	"github.com/leonardo-moraes360/toolbelt/internal/mem"
 	"gopkg.in/yaml.v3"
 )
@@ -544,9 +544,7 @@ func reconcileDriftBase(repo string, drift *DriftReport) {
 }
 
 func resolveGitRef(repo, ref string) (string, error) {
-	cmd := exec.Command("git", "rev-parse", "--verify", ref) //nolint:gosec // refs do operador/ticket
-	cmd.Dir = repo
-	out, err := cmd.Output()
+	out, err := git.Output(repo, "rev-parse", "--verify", ref)
 	if err != nil {
 		return "", err
 	}
@@ -895,11 +893,9 @@ func resolveInvariants(cfg *Config) []mem.Invariant {
 }
 
 func listChangedFiles(repo, base, head string) ([]string, error) {
-	cmd := exec.Command("git", "diff", "--name-only", base+".."+head) //nolint:gosec // refs do operador
-	cmd.Dir = repo
-	out, err := cmd.Output()
+	out, err := git.Output(repo, "diff", "--name-only", base+".."+head)
 	if err != nil {
-		return nil, fmt.Errorf("git diff: %w", err)
+		return nil, err
 	}
 	var files []string
 	for _, line := range strings.Split(string(out), "\n") {
@@ -912,11 +908,9 @@ func listChangedFiles(repo, base, head string) ([]string, error) {
 }
 
 func gitDiff(repo, base, head string) (string, error) {
-	cmd := exec.Command("git", "diff", base+".."+head) //nolint:gosec // refs do operador
-	cmd.Dir = repo
-	out, err := cmd.Output()
+	out, err := git.Output(repo, "diff", base+".."+head)
 	if err != nil {
-		return "", fmt.Errorf("git diff: %w", err)
+		return "", err
 	}
 	return string(out), nil
 }

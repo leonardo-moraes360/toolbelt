@@ -46,12 +46,12 @@ func TestParseOpsOrder(t *testing.T) {
 func TestStackAggregateJSONAndOrder(t *testing.T) {
 	dir := gitRepo(t)
 	writeFile(t, filepath.Join(dir, "a.go"), "package a\n")
-	git(t, dir, "add", "-A")
-	git(t, dir, "commit", "-m", "base")
+	runGit(t, dir, "add", "-A")
+	runGit(t, dir, "commit", "-m", "base")
 	writeFile(t, filepath.Join(dir, "a.go"), "package a\nfunc X() {}\n")
 	writeFile(t, filepath.Join(dir, "rd.md"), "---\ntitle: t\nscope:\n  - a.go\n  - rd.md\n---\n")
-	git(t, dir, "add", "-A")
-	git(t, dir, "commit", "-m", "head")
+	runGit(t, dir, "add", "-A")
+	runGit(t, dir, "commit", "-m", "head")
 
 	res, err := Run(context.Background(), &Options{
 		RepoDir: dir,
@@ -105,12 +105,12 @@ func TestStackFailFast(t *testing.T) {
 		t.Fatal(err)
 	}
 	writeFile(t, filepath.Join(hidden, "sentinel.txt"), "ok\n")
-	git(t, dir, "add", "-A")
-	git(t, dir, "commit", "-m", "base")
+	runGit(t, dir, "add", "-A")
+	runGit(t, dir, "commit", "-m", "base")
 	writeFile(t, filepath.Join(hidden, "sentinel.txt"), "changed\n")
 	writeFile(t, filepath.Join(dir, "rd.md"), "---\ntitle: t\nscope:\n  - tests/\n---\n")
-	git(t, dir, "add", "-A")
-	git(t, dir, "commit", "-m", "touch protected")
+	runGit(t, dir, "add", "-A")
+	runGit(t, dir, "commit", "-m", "touch protected")
 
 	res, err := Run(context.Background(), &Options{
 		RepoDir:  dir,
@@ -155,12 +155,12 @@ func TestStackFailFast(t *testing.T) {
 func TestSharedDiffAndIndexOnce(t *testing.T) {
 	dir := gitRepo(t)
 	writeFile(t, filepath.Join(dir, "a.go"), "package a\n")
-	git(t, dir, "add", "-A")
-	git(t, dir, "commit", "-m", "base")
+	runGit(t, dir, "add", "-A")
+	runGit(t, dir, "commit", "-m", "base")
 	writeFile(t, filepath.Join(dir, "a.go"), "package a\nfunc Y() {}\n")
 	writeFile(t, filepath.Join(dir, "rd.md"), "---\ntitle: t\nscope:\n  - a.go\n  - rd.md\n---\n")
-	git(t, dir, "add", "-A")
-	git(t, dir, "commit", "-m", "head")
+	runGit(t, dir, "add", "-A")
+	runGit(t, dir, "commit", "-m", "head")
 
 	var diffCalls, indexCalls, memCalls, nameCalls int
 	loaders := &Loaders{
@@ -271,14 +271,14 @@ func BenchmarkStackVsSequential(b *testing.B) {
 func gitRepo(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
-	git(t, dir, "init")
-	git(t, dir, "config", "user.email", "t@t")
-	git(t, dir, "config", "user.name", "t")
-	git(t, dir, "commit", "--allow-empty", "-m", "root")
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "t@t")
+	runGit(t, dir, "config", "user.name", "t")
+	runGit(t, dir, "commit", "--allow-empty", "-m", "root")
 	return dir
 }
 
-func git(t *testing.T, dir string, args ...string) {
+func runGit(t *testing.T, dir string, args ...string) {
 	t.Helper()
 	cmd := exec.Command("git", args...)
 	cmd.Dir = dir

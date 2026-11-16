@@ -4,12 +4,12 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/leonardo-moraes360/toolbelt/internal/config"
+	"github.com/leonardo-moraes360/toolbelt/internal/git"
 	"github.com/leonardo-moraes360/toolbelt/internal/graph"
 	"github.com/leonardo-moraes360/toolbelt/internal/guard"
 	"github.com/leonardo-moraes360/toolbelt/internal/mem"
@@ -244,31 +244,25 @@ func defaultLoaders() *Loaders {
 }
 
 func gitUnifiedDiff(repo, base, head string) (string, error) {
-	cmd := exec.Command("git", "diff", base+".."+head) //nolint:gosec // refs do operador
-	cmd.Dir = repo
-	out, err := cmd.Output()
+	out, err := git.Output(repo, "diff", base+".."+head)
 	if err != nil {
-		return "", fmt.Errorf("git diff: %w", err)
+		return "", err
 	}
 	return string(out), nil
 }
 
 func gitNameStatus(repo, base, head string) (string, error) {
-	cmd := exec.Command("git", "diff", "--name-status", base+".."+head) //nolint:gosec // refs do operador
-	cmd.Dir = repo
-	out, err := cmd.Output()
+	out, err := git.Output(repo, "diff", "--name-status", base+".."+head)
 	if err != nil {
-		return "", fmt.Errorf("git diff --name-status: %w", err)
+		return "", err
 	}
 	return string(out), nil
 }
 
 func gitChangedFiles(repo, base, head string) ([]string, error) {
-	cmd := exec.Command("git", "diff", "--name-only", base+".."+head) //nolint:gosec // refs do operador
-	cmd.Dir = repo
-	out, err := cmd.Output()
+	out, err := git.Output(repo, "diff", "--name-only", base+".."+head)
 	if err != nil {
-		return nil, fmt.Errorf("git diff --name-only: %w", err)
+		return nil, err
 	}
 	var files []string
 	for _, line := range strings.Split(string(out), "\n") {
