@@ -24,7 +24,7 @@ type Result struct {
 	// Repetition número da repetição (1-based).
 	Repetition int `json:"repetition"`
 
-	// Passed indica se a verificação passou.
+	// Passed indica se a tarefa passou: agente exit 0 e verificação no expected_exit_code.
 	Passed bool `json:"passed"`
 
 	// StartTime quando a execução começou.

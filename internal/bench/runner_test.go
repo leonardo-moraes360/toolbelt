@@ -83,6 +83,111 @@ func TestExecuteAgentPromptInjectionSafe(t *testing.T) {
 	}
 }
 
+func TestRunTaskAgentNonZeroExitNotPassed(t *testing.T) {
+	tmp := t.TempDir()
+	agent := AgentConfig{
+		ID:           "failing-agent",
+		Command:      `printf 'agent ran\n' && false`,
+		OutputParser: "none",
+	}
+	runner := NewRunner(agent, tmp, tmp, tmp, 1)
+	task := &Task{
+		ID:      "agent-exit-fail",
+		Prompt:  "noop",
+		Timeout: "10s",
+		Verification: Verification{
+			Command:          "true",
+			ExpectedExitCode: 0,
+			Timeout:          "5s",
+		},
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	result, err := runner.runTask(ctx, task, 1)
+	if err != nil {
+		t.Fatalf("runTask: %v", err)
+	}
+	if result.ExitCode == 0 {
+		t.Fatal("expected agent exit_code != 0")
+	}
+	if result.Passed {
+		t.Fatalf("passed must be false when agent exit_code=%d even if verification succeeds", result.ExitCode)
+	}
+	if result.VerificationExitCode != 0 {
+		t.Fatalf("verification should still succeed for diagnostics, got exit %d", result.VerificationExitCode)
+	}
+}
+
+func TestRunTaskAgentZeroExitAndVerifyPass(t *testing.T) {
+	tmp := t.TempDir()
+	agent := AgentConfig{
+		ID:           "ok-agent",
+		Command:      `printf 'ok\n'`,
+		OutputParser: "none",
+	}
+	runner := NewRunner(agent, tmp, tmp, tmp, 1)
+	task := &Task{
+		ID:      "agent-exit-ok",
+		Prompt:  "noop",
+		Timeout: "10s",
+		Verification: Verification{
+			Command:          "true",
+			ExpectedExitCode: 0,
+			Timeout:          "5s",
+		},
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	result, err := runner.runTask(ctx, task, 1)
+	if err != nil {
+		t.Fatalf("runTask: %v", err)
+	}
+	if result.ExitCode != 0 {
+		t.Fatalf("exit_code=%d, want 0", result.ExitCode)
+	}
+	if !result.Passed {
+		t.Fatal("expected passed=true when agent and verification both exit 0")
+	}
+}
+
+func TestRunTaskAgentExit127NotPassed(t *testing.T) {
+	tmp := t.TempDir()
+	agent := AgentConfig{
+		ID:           "missing-bin",
+		Command:      `command-that-does-not-exist-tb-bench-xyz`,
+		OutputParser: "none",
+	}
+	runner := NewRunner(agent, tmp, tmp, tmp, 1)
+	task := &Task{
+		ID:      "agent-exit-127",
+		Prompt:  "noop",
+		Timeout: "10s",
+		Verification: Verification{
+			Command:          "true",
+			ExpectedExitCode: 0,
+			Timeout:          "5s",
+		},
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	result, err := runner.runTask(ctx, task, 1)
+	if err != nil {
+		t.Fatalf("runTask: %v", err)
+	}
+	if result.ExitCode != 127 {
+		t.Fatalf("exit_code=%d, want 127", result.ExitCode)
+	}
+	if result.Passed {
+		t.Fatal("passed must be false when agent exit_code is 127")
+	}
+}
+
 func TestExpandAgentCommandResistsDollarAndSemicolon(t *testing.T) {
 	tmp := t.TempDir()
 	marker := filepath.Join(tmp, "pwned")

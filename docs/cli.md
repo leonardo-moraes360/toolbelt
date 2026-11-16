@@ -1469,6 +1469,11 @@ quoting POSIX (aspas simples), evitando injeção via aspas, `$()` ou `;`.
 O harness também exporta `TB_BENCH_PROMPT`, `TB_BENCH_WORKDIR` e
 `TB_BENCH_TIMEOUT` para agentes que preferem ler env em vez do argv.
 
+Uma tarefa só marca `passed: true` quando o **agente** sai com exit 0 **e** a
+verificação atinge `expected_exit_code`. Exit do agente ≠ 0 (ex.: `false`)
+força `passed: false` mesmo se a fixture passar. Se o comando do agente não
+existir (exit 127), `tb bench run` grava o JSONL e sai com código ≠ 0.
+
 **`tb bench compare` (A/B):**
 
 ```bash
