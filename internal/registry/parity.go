@@ -520,10 +520,10 @@ func driftConfigFromArgs(args map[string]any) (*review.Config, error) {
 		head = "HEAD"
 	}
 	ticket, err := review.LoadTicket(ticketPath)
-	if err != nil && !os.IsNotExist(err) {
+	if err != nil {
 		return nil, err
 	}
-	if ticket != nil && ticket.BaseCommit != "" && base == "HEAD~1" {
+	if ticket.BaseCommit != "" && base == "HEAD~1" {
 		base = ticket.BaseCommit
 	}
 	cfg := review.DefaultConfig(cwd)

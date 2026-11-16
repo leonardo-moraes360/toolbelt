@@ -7,6 +7,12 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Não Lançado]
 
+### Corrigido
+- `tb review` / `tb drift` / `tb stack` (e MCP `tb_review` / `tb_drift` / `tb_stack`):
+  ticket inexistente ou ilegível (`--ticket` / `ticket`) passa a falhar com exit ≠ 0
+  e mensagem clara citando o caminho procurado (`ticket não encontrado: …` /
+  `ticket ilegível (…): …`), em vez de seguir com exit 0
+
 ## [0.0.2] - 2026-11-16
 
 ### Adicionado

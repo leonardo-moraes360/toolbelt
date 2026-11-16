@@ -103,10 +103,10 @@ func Run(cfg *Config) (*Report, error) {
 		cfg.Reviewers = 3
 	}
 	ticket, err := LoadTicket(cfg.TicketPath)
-	if err != nil && !os.IsNotExist(err) {
+	if err != nil {
 		return nil, err
 	}
-	if ticket != nil && ticket.BaseCommit != "" && cfg.BaseRef == "HEAD~1" {
+	if ticket.BaseCommit != "" && cfg.BaseRef == "HEAD~1" {
 		cfg.BaseRef = ticket.BaseCommit
 	}
 
@@ -556,12 +556,15 @@ func resolveGitRef(repo, ref string) (string, error) {
 func LoadTicket(path string) (*TicketScope, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, err
+		if os.IsNotExist(err) {
+			return nil, fmt.Errorf("ticket não encontrado: %s", path)
+		}
+		return nil, fmt.Errorf("ticket ilegível (%s): %w", path, err)
 	}
 	text := string(data)
 	ticket, ok, err := parseTicketFrontmatter(text)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("ticket inválido (%s): %w", path, err)
 	}
 	if ok {
 		return ticket, nil

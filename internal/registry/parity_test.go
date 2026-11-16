@@ -371,3 +371,59 @@ func writeFile(t *testing.T, path, content string) {
 		t.Fatal(err)
 	}
 }
+
+func TestReviewDriftStackMissingTicket(t *testing.T) {
+	dir := gitRepo(t)
+	writeFile(t, filepath.Join(dir, "a.go"), "package a\n")
+	git(t, dir, "add", "-A")
+	git(t, dir, "commit", "-m", "init")
+	writeFile(t, filepath.Join(dir, "a.go"), "package a\nfunc X() {}\n")
+	git(t, dir, "add", "-A")
+	git(t, dir, "commit", "-m", "change")
+
+	missing := filepath.Join(dir, "absent-ticket.md")
+	for _, tool := range []string{"tb_review", "tb_drift"} {
+		res, err := Default().Call(context.Background(), tool, map[string]any{
+			"cwd":    dir,
+			"ticket": missing,
+			"base":   "HEAD~1",
+			"head":   "HEAD",
+		})
+		if err != nil {
+			t.Fatalf("%s: %v", tool, err)
+		}
+		if !res.IsError {
+			t.Fatalf("%s deveria retornar IsError com ticket ausente", tool)
+		}
+		msg := res.Content[0].Text
+		if !strings.Contains(msg, "ticket não encontrado") {
+			t.Fatalf("%s mensagem: %s", tool, msg)
+		}
+		if !strings.Contains(msg, missing) {
+			t.Fatalf("%s deveria citar o caminho %q: %s", tool, missing, msg)
+		}
+	}
+
+	res, err := Default().Call(context.Background(), "tb_stack", map[string]any{
+		"cwd":    dir,
+		"base":   "HEAD~1",
+		"head":   "HEAD",
+		"ops":    []any{"drift"},
+		"ticket": missing,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.IsError {
+		t.Fatalf("tb_stack agrega erro na etapa, não no envelope: %s", res.Content[0].Text)
+	}
+	if !strings.Contains(res.Content[0].Text, `"ok": false`) && !strings.Contains(res.Content[0].Text, `"ok":false`) {
+		t.Fatalf("tb_stack deveria ter ok=false: %s", res.Content[0].Text)
+	}
+	if !strings.Contains(res.Content[0].Text, "ticket não encontrado") {
+		t.Fatalf("tb_stack deveria citar ticket não encontrado: %s", res.Content[0].Text)
+	}
+	if !strings.Contains(res.Content[0].Text, missing) {
+		t.Fatalf("tb_stack deveria citar o caminho %q: %s", missing, res.Content[0].Text)
+	}
+}
