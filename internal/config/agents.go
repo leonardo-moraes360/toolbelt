@@ -204,18 +204,19 @@ func isCommandHint(cmd string) bool {
 
 func MinimalAgentsMD(verify VerifyConfig) string {
 	testCmd := strings.TrimSpace(verify.TestCmd)
-	if testCmd == "" {
-		testCmd = DefaultConfig().Verify.TestCmd
-	}
 
 	var b strings.Builder
 	b.WriteString("# AGENTS\n\n")
 	b.WriteString("## Toolbelt\n\n")
 	b.WriteString("Este repositório pode usar [toolbelt](https://github.com/leonardo-moraes360/toolbelt) (`tb`) como harness para agentes.\n\n")
 	b.WriteString("### Toolchain detectada\n\n")
-	b.WriteString("- testes (`verify.test_cmd`): `")
-	b.WriteString(testCmd)
-	b.WriteString("`\n")
+	if testCmd != "" {
+		b.WriteString("- testes (`verify.test_cmd`): `")
+		b.WriteString(testCmd)
+		b.WriteString("`\n")
+	} else {
+		b.WriteString("- testes (`verify.test_cmd`): _(não detectado — configure em `.toolbelt/config.yaml`)_\n")
+	}
 	if cmd := strings.TrimSpace(verify.BuildCmd); cmd != "" {
 		b.WriteString("- build (`verify.build_cmd`): `")
 		b.WriteString(cmd)
@@ -253,9 +254,9 @@ func verifyForAgentsSeed(repoRoot, toolbeltDir string) VerifyConfig {
 	if err := loadFromFile(configPath, cfg); err == nil {
 		return cfg.Verify
 	}
-	if cmd := DetectTestCmd(repoRoot); cmd != "" {
-		cfg.Verify.TestCmd = cmd
-	}
+	cfg.Verify.TestCmd = DetectTestCmd(repoRoot)
+	cfg.Verify.BuildCmd = DetectBuildCmd(repoRoot)
+	cfg.Verify.LintCmd = DetectLintCmd(repoRoot)
 	return cfg.Verify
 }
 

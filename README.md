@@ -240,7 +240,7 @@ Este projeto está na **Fase 2**: CLI funcional com verify/guard/mem/graph/revie
 | Comando | Status | Descrição |
 |---------|--------|-----------|
 | `tb version` | ✅ | Mostra versão, commit e build time |
-| `tb init` | ✅ | Inicializa configuração local; detecta toolchain (`verify.test_cmd` com checagem de `PATH`/fallback; `build_cmd` / `lint_cmd`), lê `AGENTS.md`/`CLAUDE.md` (hints filtrados) e opcionalmente semeia com `--write-agents` (seed cita test/build/lint detectados) |
+| `tb init` | ✅ | Inicializa configuração local; detecta toolchain (`verify.test_cmd` com checagem de `PATH`/fallback; Node/TS via lockfiles + scripts `test`/`build`|`typecheck`/`lint`; sem marcador → `test_cmd` vazio com aviso, nunca `go test` sem `go.mod`; `build_cmd` / `lint_cmd`), lê `AGENTS.md`/`CLAUDE.md` (hints filtrados) e opcionalmente semeia com `--write-agents` (seed cita test/build/lint detectados) |
 | `tb bench run` | ✅ | Executa benchmark |
 | `tb bench list` | ✅ | Lista tarefas disponíveis |
 | `tb bench report` | ✅ | Gera relatório Markdown |

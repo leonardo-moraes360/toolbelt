@@ -14,13 +14,15 @@ var (
 	reJSImportFrom = regexp.MustCompile(`(?m)(?:import|export)(?:[\s\w\{\}\*,]*)\s+from\s+['"]([^'"]+)['"]`)
 	reJSImportSide = regexp.MustCompile(`(?m)^\s*import\s+['"]([^'"]+)['"]`)
 	reJSRequire    = regexp.MustCompile(`require\(\s*['"]([^'"]+)['"]\s*\)`)
-	reJSFuncDecl   = regexp.MustCompile(`(?m)(?:export\s+)?(?:async\s+)?function\s+([A-Za-z_$][\w$]*)\s*\(`)
-	reJSFuncAssign = regexp.MustCompile(`(?m)(?:export\s+)?(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s*)?(?:function\b|\()`)
+	reJSFuncDecl   = regexp.MustCompile(`(?m)(?:export\s+)?(?:default\s+)?(?:async\s+)?function\s+([A-Za-z_$][\w$]*)\s*\(`)
+	reJSFuncAssign = regexp.MustCompile(`(?m)(?:export\s+)?(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*(?::\s*[^=]+)?=\s*(?:async\s*)?(?:function\b|\()`)
 	reJSCall       = regexp.MustCompile(`\b([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)?)\s*\(`)
+	reJSXCallTag   = regexp.MustCompile(`<([A-Z][A-Za-z0-9_]*)\b`)
 	jsCallKeywords = map[string]bool{
 		"if": true, "for": true, "while": true, "switch": true, "catch": true,
 		"function": true, "return": true, "typeof": true, "new": true, "await": true,
-		"import": true, "export": true, "class": true, "super": true,
+		"import": true, "export": true, "class": true, "super": true, "void": true,
+		"delete": true, "throw": true, "yield": true, "instanceof": true,
 	}
 )
 
@@ -62,7 +64,7 @@ func (JSIndexer) IndexFile(root, rel string) ([]Node, []Edge, error) {
 	impNodes, impEdges := extractJSImports(fileID, raw)
 	nodes = append(nodes, impNodes...)
 	edges = append(edges, impEdges...)
-	edges = append(edges, extractJSCalls(modName, fileID, funcIDs, code)...)
+	edges = append(edges, extractJSCalls(fileID, funcIDs, code)...)
 
 	return nodes, edges, nil
 }
@@ -117,38 +119,314 @@ func extractJSImports(fileID, raw string) ([]Node, []Edge) {
 	return nodes, edges
 }
 
-func extractJSCalls(modName, fileID string, funcIDs map[string]string, src string) []Edge {
-	seen := map[string]bool{}
-	var edges []Edge
-	for _, m := range reJSCall.FindAllStringSubmatch(src, -1) {
-		if len(m) < 2 {
-			continue
-		}
-		callee := m[1]
-		base := callee
-		if i := strings.IndexByte(callee, '.'); i >= 0 {
-			base = callee[:i]
-		}
-		if jsCallKeywords[base] || jsCallKeywords[callee] {
-			continue
-		}
-		targetID := "func:" + modName + "." + callee
-		if id, ok := funcIDs[callee]; ok {
-			targetID = id
-		} else if strings.Contains(callee, ".") {
-			targetID = "func:" + callee
-		}
-		key := fileID + "->" + targetID
-		if seen[key] {
-			continue
-		}
-		seen[key] = true
-		edges = append(edges, Edge{
-			SourceID: fileID, TargetID: targetID, Type: EdgeCalls,
-			Source: "extracted", Confidence: 0.55,
-		})
+type jsCallSink struct {
+	seen  map[string]bool
+	edges []Edge
+}
+
+func (s *jsCallSink) add(sourceID, targetID string, conf float64) {
+	if sourceID == targetID {
+		return
 	}
-	return edges
+	key := sourceID + "->" + targetID
+	if s.seen[key] {
+		return
+	}
+	s.seen[key] = true
+	s.edges = append(s.edges, Edge{
+		SourceID: sourceID, TargetID: targetID, Type: EdgeCalls,
+		Source: "extracted", Confidence: conf,
+	})
+}
+
+func (s *jsCallSink) addCallee(sourceID, callee string, funcIDs map[string]string) {
+	if id, ok := funcIDs[callee]; ok {
+		s.add(sourceID, id, 0.7)
+		return
+	}
+	s.add(sourceID, "sym:"+callee, 0.55)
+}
+
+func extractJSCalls(fileID string, funcIDs map[string]string, src string) []Edge {
+	spans := jsFunctionSpans(src, funcIDs)
+	sink := &jsCallSink{seen: map[string]bool{}}
+	appendJSCallExprs(sink, fileID, funcIDs, src, spans)
+	appendJSXCallEdges(sink, fileID, funcIDs, src, spans)
+	return sink.edges
+}
+
+func appendJSCallExprs(sink *jsCallSink, fileID string, funcIDs map[string]string, src string, spans []jsSpan) {
+	for _, m := range reJSCall.FindAllStringSubmatchIndex(src, -1) {
+		if len(m) < 4 {
+			continue
+		}
+		raw := src[m[2]:m[3]]
+		callee := jsCalleeName(raw)
+		if !jsCalleeAllowed(raw, callee) {
+			continue
+		}
+		at := m[0]
+		if jsIsDefSite(spans, at, callee) {
+			continue
+		}
+		sink.addCallee(jsCallerAt(spans, fileID, at), callee, funcIDs)
+	}
+}
+
+func jsCalleeAllowed(raw, callee string) bool {
+	if callee == "" || jsCallKeywords[callee] {
+		return false
+	}
+	base := raw
+	if i := strings.IndexByte(raw, '.'); i >= 0 {
+		base = raw[:i]
+	}
+	if jsCallKeywords[base] && !strings.Contains(raw, ".") {
+		return false
+	}
+	return true
+}
+
+func appendJSXCallEdges(sink *jsCallSink, fileID string, funcIDs map[string]string, src string, spans []jsSpan) {
+	for _, m := range reJSXCallTag.FindAllStringSubmatchIndex(src, -1) {
+		if len(m) < 4 {
+			continue
+		}
+		name := src[m[2]:m[3]]
+		if name == "" {
+			continue
+		}
+		sink.addCallee(jsCallerAt(spans, fileID, m[0]), name, funcIDs)
+	}
+}
+
+type jsSpan struct {
+	name      string
+	id        string
+	start     int
+	bodyStart int
+	end       int
+}
+
+func jsCallerAt(spans []jsSpan, fileID string, at int) string {
+	caller := fileID
+	bestStart := -1
+	for _, sp := range spans {
+		if at >= sp.bodyStart && at < sp.end && sp.start >= bestStart {
+			bestStart = sp.start
+			caller = sp.id
+		}
+	}
+	return caller
+}
+
+func jsIsDefSite(spans []jsSpan, at int, callee string) bool {
+	for _, sp := range spans {
+		if at >= sp.start && at < sp.bodyStart && sp.name == callee {
+			return true
+		}
+	}
+	return false
+}
+
+func jsFunctionSpans(src string, funcIDs map[string]string) []jsSpan {
+	var spans []jsSpan
+	for _, re := range []*regexp.Regexp{reJSFuncDecl, reJSFuncAssign} {
+		for _, m := range re.FindAllStringSubmatchIndex(src, -1) {
+			if len(m) < 4 {
+				continue
+			}
+			name := src[m[2]:m[3]]
+			id, ok := funcIDs[name]
+			if !ok {
+				continue
+			}
+			bodyStart, end, ok := jsFindBody(src, m[1])
+			if !ok {
+				continue
+			}
+			spans = append(spans, jsSpan{
+				name: name, id: id,
+				start: m[0], bodyStart: bodyStart, end: end,
+			})
+		}
+	}
+	return spans
+}
+
+func jsFindBody(src string, afterSig int) (bodyStart, end int, ok bool) {
+	i := afterSig
+	if afterSig > 0 && src[afterSig-1] == '(' {
+		endParen, okParen := jsMatchParen(src, afterSig-1)
+		if !okParen {
+			return 0, 0, false
+		}
+		i = endParen + 1
+	}
+	for i < len(src) {
+		c := src[i]
+		switch {
+		case c == '(':
+			endParen, okParen := jsMatchParen(src, i)
+			if !okParen {
+				return 0, 0, false
+			}
+			i = endParen + 1
+		case c == ':':
+			i = jsSkipTSType(src, i+1)
+		case c == '{':
+			bodyStart = i + 1
+			end, ok = jsMatchBrace(src, i)
+			return bodyStart, end, ok
+		case c == '=' && i+1 < len(src) && src[i+1] == '>':
+			return jsArrowBody(src, i+2)
+		case c == ';':
+			return 0, 0, false
+		default:
+			i++
+		}
+	}
+	return 0, 0, false
+}
+
+func jsArrowBody(src string, i int) (bodyStart, end int, ok bool) {
+	for i < len(src) && (src[i] == ' ' || src[i] == '\t' || src[i] == '\n' || src[i] == '\r') {
+		i++
+	}
+	if i < len(src) && src[i] == '{' {
+		bodyStart = i + 1
+		end, ok = jsMatchBrace(src, i)
+		return bodyStart, end, ok
+	}
+	bodyStart = i
+	end = jsExprEnd(src, i)
+	return bodyStart, end, end > bodyStart
+}
+
+type jsTypeDepth struct {
+	angle, brace, paren, bracket int
+}
+
+func (d *jsTypeDepth) zero() bool {
+	return d.angle|d.brace|d.paren|d.bracket == 0
+}
+
+func (d *jsTypeDepth) feed(c byte) {
+	switch c {
+	case '<':
+		d.angle++
+	case '>':
+		if d.angle > 0 {
+			d.angle--
+		}
+	case '{':
+		d.brace++
+	case '}':
+		if d.brace > 0 {
+			d.brace--
+		}
+	case '(':
+		d.paren++
+	case ')':
+		if d.paren > 0 {
+			d.paren--
+		}
+	case '[':
+		d.bracket++
+	case ']':
+		if d.bracket > 0 {
+			d.bracket--
+		}
+	}
+}
+
+func jsSkipTSType(src string, i int) int {
+	var depth jsTypeDepth
+	for i < len(src) {
+		if depth.zero() && jsTypeBodyStart(src, i) {
+			return i
+		}
+		depth.feed(src[i])
+		i++
+	}
+	return i
+}
+
+func jsTypeBodyStart(src string, i int) bool {
+	if src[i] == '{' {
+		return true
+	}
+	return src[i] == '=' && i+1 < len(src) && src[i+1] == '>'
+}
+
+func jsMatchParen(src string, open int) (int, bool) {
+	depth := 0
+	for i := open; i < len(src); i++ {
+		switch src[i] {
+		case '(':
+			depth++
+		case ')':
+			depth--
+			if depth == 0 {
+				return i, true
+			}
+		}
+	}
+	return 0, false
+}
+
+func jsMatchBrace(src string, open int) (int, bool) {
+	depth := 0
+	for i := open; i < len(src); i++ {
+		switch src[i] {
+		case '{':
+			depth++
+		case '}':
+			depth--
+			if depth == 0 {
+				return i, true
+			}
+		}
+	}
+	return 0, false
+}
+
+func jsExprEnd(src string, start int) int {
+	depthParen, depthBrace, depthBracket := 0, 0, 0
+	for i := start; i < len(src); i++ {
+		switch src[i] {
+		case '(':
+			depthParen++
+		case ')':
+			if depthParen > 0 {
+				depthParen--
+			}
+		case '{':
+			depthBrace++
+		case '}':
+			if depthBrace > 0 {
+				depthBrace--
+			}
+		case '[':
+			depthBracket++
+		case ']':
+			if depthBracket > 0 {
+				depthBracket--
+			}
+		case ',', ';', '\n':
+			if depthParen == 0 && depthBrace == 0 && depthBracket == 0 {
+				return i
+			}
+		}
+	}
+	return len(src)
+}
+
+func jsCalleeName(raw string) string {
+	if i := strings.LastIndexByte(raw, '.'); i >= 0 {
+		return raw[i+1:]
+	}
+	return raw
 }
 
 func stripJSComments(src string) string {
