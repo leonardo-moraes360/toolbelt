@@ -80,9 +80,12 @@ func init() {
 
 func rejectUnknownSubcommands(cmd *cobra.Command) {
 	for _, c := range cmd.Commands() {
-		if c.HasSubCommands() && !c.Runnable() && c.Args == nil {
-			c.Args = cobra.NoArgs
-			c.RunE = parentHelpRunE
+		if c.HasSubCommands() {
+			c.SilenceUsage = true
+			if !c.Runnable() && c.Args == nil {
+				c.Args = cobra.NoArgs
+				c.RunE = parentHelpRunE
+			}
 		}
 		rejectUnknownSubcommands(c)
 	}

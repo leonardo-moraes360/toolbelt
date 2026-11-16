@@ -73,7 +73,7 @@ func TestUnknownSubcommandExitsNonZero(t *testing.T) {
 		want string
 	}{
 		{name: "root", args: []string{"nonexistent"}, want: `unknown command "nonexistent"`},
-		{name: "mem", args: []string{"mem", "show"}, want: `unknown command "show"`},
+		{name: "mem", args: []string{"mem", "nao-existe"}, want: `unknown command "nao-existe"`},
 		{name: "bench", args: []string{"bench", "nope"}, want: `unknown command "nope"`},
 		{name: "graph", args: []string{"graph", "query"}, want: `unknown command "query"`},
 	}
@@ -86,7 +86,28 @@ func TestUnknownSubcommandExitsNonZero(t *testing.T) {
 			if !strings.Contains(stderr, tc.want) {
 				t.Fatalf("stderr deveria conter %q:\n%s", tc.want, stderr)
 			}
+			if strings.Contains(stderr, "Usage:") {
+				t.Fatalf("subcommand desconhecido não deve dumpar Usage:\n%s", stderr)
+			}
 		})
+	}
+}
+
+func TestMemShowMissingArgKeepsUsage(t *testing.T) {
+	if testing.Short() {
+		t.Skip()
+	}
+	tbBin := buildTB(t)
+
+	stderr, code := runTBCapture(t, tbBin, "", "mem", "show")
+	if code == 0 {
+		t.Fatalf("mem show sem id deveria sair ≠ 0\n%s", stderr)
+	}
+	if !strings.Contains(stderr, "accepts") {
+		t.Fatalf("stderr deveria mencionar erro de args: %s", stderr)
+	}
+	if !strings.Contains(stderr, "Usage:") {
+		t.Fatalf("erro de ExactArgs deve manter Usage (parse de args):\n%s", stderr)
 	}
 }
 
