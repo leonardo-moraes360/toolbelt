@@ -109,7 +109,8 @@ Se AGENTS.md ou CLAUDE.md existirem na raiz do repositório, o init lê esses
 arquivos, registra os caminhos em .toolbelt/agent_docs.yaml e extrai dicas
 curtas de execução (ignora fences de código longos; nunca sobrescreve). O
 binário de verify.test_cmd é checado no PATH com fallback (ex. uv → pytest).
-Use --write-agents para semear um AGENTS.md mínimo apontando ao tb quando o
+Use --write-agents para semear um AGENTS.md mínimo que cita a toolchain
+detectada (verify.test_cmd e, se houver, build_cmd/lint_cmd) quando o
 arquivo ainda não existe.
 
 Exemplo:

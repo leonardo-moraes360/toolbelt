@@ -93,7 +93,7 @@ func TestExtractCommandHints_ProseWithoutBackticks(t *testing.T) {
 
 func TestSeedAgentsMD_CreatesWhenAbsent(t *testing.T) {
 	root := t.TempDir()
-	seeded, err := SeedAgentsMD(root)
+	seeded, err := SeedAgentsMD(root, VerifyConfig{TestCmd: "go test ./..."})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -104,8 +104,63 @@ func TestSeedAgentsMD_CreatesWhenAbsent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(data), "tb verify") {
+	text := string(data)
+	if !strings.Contains(text, "tb verify") {
 		t.Fatalf("seed content missing tb verify: %s", data)
+	}
+	if !strings.Contains(text, "go test ./...") {
+		t.Fatalf("seed must mention detected test_cmd: %s", data)
+	}
+}
+
+func TestSeedAgentsMD_MentionsToolchainCmds(t *testing.T) {
+	root := t.TempDir()
+	verify := VerifyConfig{
+		TestCmd:  "npm test",
+		BuildCmd: "npm run build",
+		LintCmd:  "npm run lint",
+	}
+	seeded, err := SeedAgentsMD(root, verify)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !seeded {
+		t.Fatal("expected seeded=true")
+	}
+	data, err := os.ReadFile(filepath.Join(root, AgentsMDName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(data)
+	for _, want := range []string{"npm test", "npm run build", "npm run lint"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("seed missing %q: %s", want, text)
+		}
+	}
+}
+
+func TestSeedAgentsMD_OmitsEmptyBuildLint(t *testing.T) {
+	root := t.TempDir()
+	seeded, err := SeedAgentsMD(root, VerifyConfig{TestCmd: "make check"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !seeded {
+		t.Fatal("expected seeded=true")
+	}
+	data, err := os.ReadFile(filepath.Join(root, AgentsMDName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(data)
+	if !strings.Contains(text, "make check") {
+		t.Fatalf("seed missing test_cmd: %s", text)
+	}
+	if strings.Contains(text, "verify.build_cmd") {
+		t.Fatalf("seed must omit empty build_cmd: %s", text)
+	}
+	if strings.Contains(text, "verify.lint_cmd") {
+		t.Fatalf("seed must omit empty lint_cmd: %s", text)
 	}
 }
 
@@ -116,7 +171,7 @@ func TestSeedAgentsMD_NeverOverwrites(t *testing.T) {
 	if err := os.WriteFile(path, []byte(original), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	seeded, err := SeedAgentsMD(root)
+	seeded, err := SeedAgentsMD(root, VerifyConfig{TestCmd: "cargo test"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -129,6 +184,42 @@ func TestSeedAgentsMD_NeverOverwrites(t *testing.T) {
 	}
 	if string(data) != original {
 		t.Fatalf("AGENTS.md was modified: %q", data)
+	}
+}
+
+func TestHandleAgentDocs_WriteAgentsUsesDetectedToolchain(t *testing.T) {
+	root := t.TempDir()
+	toolbeltDir := filepath.Join(root, DefaultConfigDir)
+	if err := Init(toolbeltDir); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "package.json"), []byte(`{"scripts":{"test":"node test.js"}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg := DefaultConfig()
+	cfg.Verify.TestCmd = "npm test"
+	cfg.Verify.LintCmd = "npm run lint"
+	if err := Save(cfg, filepath.Join(toolbeltDir, DefaultConfigFile)); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := HandleAgentDocs(root, toolbeltDir, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.Seeded {
+		t.Fatal("expected seed with --write-agents")
+	}
+	data, err := os.ReadFile(filepath.Join(root, AgentsMDName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(data)
+	if !strings.Contains(text, "npm test") {
+		t.Fatalf("seed must cite config test_cmd: %s", text)
+	}
+	if !strings.Contains(text, "npm run lint") {
+		t.Fatalf("seed must cite config lint_cmd: %s", text)
 	}
 }
 
