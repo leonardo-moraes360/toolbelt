@@ -138,7 +138,7 @@ Linguagens e docs (extensível via `LanguageIndexer`, regex leve, sem cgo):
 | `graph.languages` | Extensões |
 |-------------------|-----------|
 | `go` | `.go` (AST; arestas `calls`) |
-| `javascript` | `.js`, `.mjs`, `.cjs`, `.ts` (`.tsx`/`.jsx` via `react` quando ligado; arestas `calls`) |
+| `javascript` | `.js`, `.mjs`, `.cjs`, `.ts`, `.tsx`, `.jsx` (funções/`const` arrow, JSX `<Comp />` como `calls`; resolve imports relativos ao símbolo do módulo importado) |
 | `python` | `.py` (defines/imports + arestas `calls` por módulo qualificado; `callers`/`impact` ignoram arestas com confiança &lt; 0.6) |
 | `java` | `.java` |
 | `kotlin` | `.kt`, `.kts` |
@@ -158,7 +158,7 @@ Linguagens e docs (extensível via `LanguageIndexer`, regex leve, sem cgo):
 
 | `graph.frameworks` | Extensões / convenção | O que indexa |
 |--------------------|-----------------------|--------------|
-| `react` | `.tsx`, `.jsx` | componentes, hooks `use*`, arestas `renders` |
+| `react` | `.tsx`, `.jsx` | componentes, hooks `use*`, arestas `renders` (em paralelo com `javascript` para `calls`/callers/impact) |
 | `vue` | `.vue` | SFC script/template, imports, componentes no template |
 | `svelte` | `.svelte` | script, imports, componentes no markup |
 | `astro` | `.astro` | frontmatter, imports, componentes no body |
@@ -166,8 +166,10 @@ Linguagens e docs (extensível via `LanguageIndexer`, regex leve, sem cgo):
 | `routes` | Next `app/`/`pages/`, SvelteKit `routes/`, Nuxt `pages/` | nós `route` por convenção de arquivo |
 | `mdx` | `.mdx` | doc (headings/links) + imports/componentes JSX |
 
-Frameworks têm prioridade sobre o indexador genérico de linguagem no mesmo
-arquivo (ex.: `.tsx` com `react` ligado não cai só como JS).
+Frameworks rodam junto com o indexador de linguagem no mesmo arquivo (ex.:
+`.tsx` recebe `react` + `javascript`, para componentes/`renders` e
+`calls`/callers/impact). Docs também podem indexar o mesmo path quando a
+extensão casa.
 
 ```yaml
 # .toolbelt/config.yaml (todos ligados por padrão)
@@ -225,9 +227,12 @@ Flags:
   --depth <n>         Profundidade do grafo (default: 1)
 ```
 
-Em Python, `--function` resolve por título ou sufixo do id qualificado
-(`func:pkg.mod.nome`). Arestas `calls` com confiança &lt; 0.6 (alvos ambíguos /
-sem import) ficam de fora do resultado default de `callers` e `impact`.
+Em Python/JS/TS, `--function` resolve por título ou sufixo do id qualificado
+(`func:pkg.mod.nome`; componentes/hooks React também). Arestas `calls` com
+confiança &lt; 0.6 (alvos ambíguos / sem import) ficam de fora do resultado
+default de `callers` e `impact`. Em TS/JS, imports relativos
+(`../components/Layout`) resolvem para o símbolo do módulo importado
+(`components.Layout`), inclusive uso JSX `<Layout />`.
 
 **`tb graph deps`:**
 
