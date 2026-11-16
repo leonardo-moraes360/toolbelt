@@ -697,7 +697,9 @@ Também reporta drift de escopo e commit base. Isolamento fresco é obrigatório
 
 Com `--approved-sha`, o JSON inclui `pinned_approval` (`approved_sha`, `patch_id`,
 `head_patch_id`, `match` e, se divergir, `range_diff`). Patch diferente do aprovado
-imprime um resumo de `git range-diff` e sai com código ≠ 0.
+imprime um resumo de `git range-diff` e sai com código ≠ 0. Se `--approved-sha`
+coincidir com a base (intervalo `base..approved` vazio), a CLI **não** despeja o
+usage do `git range-diff` — mostra mensagem clara sobre o intervalo inválido.
 
 O ticket/rd.md aceita frontmatter YAML ou Markdown: seção `## Scope` / `## Escopo`
 (ou `Scope:` / `Escopo:`) e `## Forbidden` / `## Proibido` (ou `Forbidden:` /
@@ -793,6 +795,8 @@ Flags:
 
 Com `--approved-sha`, o JSON de drift inclui `pinned_approval` (mesmo formato do
 `tb review`). Divergência de patch-id sai com código ≠ 0 e mostra `git range-diff`.
+`--approved-sha` igual à base segue a mesma mensagem clara do `tb review` (sem
+dump de usage).
 
 **Exemplos:**
 
@@ -910,11 +914,14 @@ ausentes = comportamento anterior (só `test_cmd` + hidden).
 Se o binário do `test_cmd` / `hidden_test_cmd` / `build_cmd` / `lint_cmd` não
 existe (exit 127), não é executável (exit 126) ou o `exec` falha com
 `ErrNotFound`, o verify **falha imediatamente** sem retries, com mensagem do tipo
-`comando não encontrado: X — ajuste verify.test_cmd`. Falhas genuínas do comando
-(exit ≠ 0/126/127) continuam no loop de `--max-iter`.
+`comando não encontrado: X — ajuste verify.test_cmd`. O processo `tb` sai com
+código **127**. Com `--json` (ou `--output`), emite o envelope `verify.Result`
+normal incluindo `error` (e `verdict: FAIL`), em vez de sair sem JSON. Falhas
+genuínas do comando (exit ≠ 0/126/127) continuam no loop de `--max-iter`.
 
 Veredictos `ESCALATE` e `FAIL` saem com **exit ≠ 0** também com `--json`
 (igual ao modo texto). Só `PASS` e `SKIPPED` (ruler visual) usam exit 0.
+Comando inexistente usa exit **127** (ver tabela de códigos).
 
 **Guard dentro do verify (anti-cheat vs mandate):**
 
@@ -1872,6 +1879,8 @@ Segredos: qualquer nome contendo `TOKEN`, `SECRET`, `KEY` ou `PASSWORD`
 - Erros esperados de domínio/runtime (`RunE`, ex.: flag de negócio obrigatória ausente, falha de git, arquivo inexistente) saem com **exit ≠ 0** e mensagem em stderr **sem** dump de `Usage` do Cobra.
 - Erros genuínos de parse de **flags** ou **args** (flag desconhecida, `ExactArgs`/`MinimumNArgs`, etc.) mantêm `Usage` no stderr para orientar a invocação.
 - Subcomando desconhecido em qualquer nível (ex.: `tb mem nao-existe`, `tb bench nope`) sai com **exit ≠ 0** e erro `unknown command "…"`, em vez de imprimir help com exit 0.
+- Falhas de git em `guard` / `review` / `drift` / `verify` (e no `stack` que os empilha) **não** mostram só `exit status 128/129`: a mensagem inclui o stderr do git, a ref ausente (`ref ausente: …`) e uma dica `git fetch origin <ref>`.
+- `--approved-sha` igual à base (intervalo `base..approved` vazio) não despeja o usage do `git range-diff`; sai com mensagem clara sobre o intervalo inválido.
 
 ## Códigos de Saída
 
@@ -1881,9 +1890,10 @@ A CLI atual não usa uma tabela estável de códigos 2–7. Na prática:
 |--------|-------------|
 | 0 | Sucesso (`PASS`/`SKIPPED` no verify; guard sem `SeverityError` ou com `--warn-only`) |
 | ≠0 (tipicamente 1) | Erro de parse/domínio, `FAIL`/`ESCALATE` no verify, `SeverityError` no guard, subcomando desconhecido |
+| 127 | `tb verify run`: `test_cmd` / `build_cmd` / `lint_cmd` / `hidden_test_cmd` não encontrado (ou não executável / `ErrNotFound`); com `--json` emite o envelope `verify.Result` com campo `error` |
 | exit do filho | `tb sandbox run` propaga o exit code do processo quando ≠ 0 e sem timeout |
 
-Quando o comando configurado no verify não existe/não é executável, o **processo filho** reporta 126/127 e o verify falha imediatamente (sem retries); o `tb` sai ≠ 0.
+Quando o comando configurado no verify não existe/não é executável, o verify falha imediatamente (sem retries) e o processo `tb` sai **127**.
 
 ---
 

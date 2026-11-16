@@ -53,6 +53,14 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
   estrito e por `--warn-only`); remove o exemplo invocável com `--strict`
 
 ### Corrigido
+- Erros de git em `tb guard` / `tb review` / `tb drift` / `tb verify` deixam de
+  aparecer só como `exit status 128/129`: incluem stderr do git, a ref ausente e
+  dica `git fetch origin <ref>` (helper central `internal/git`)
+- `--approved-sha` igual à base não despeja mais o usage do `git range-diff`;
+  mensagem clara sobre intervalo `base..approved` vazio
+- `tb verify run` com comando inexistente (`test_cmd` / `build_cmd` / `lint_cmd` /
+  `hidden_test_cmd`) sai com código **127**; com `--json` emite o envelope
+  `verify.Result` (inclui `error`) em vez de sair sem JSON
 - `tb drift` / `tb review` / `tb stack`: diff de arquivos passa a usar three-dot
   (`base...head` / merge-base), evitando falsos `out_of_scope` após merge da main
   ou squash de outro PR na base
