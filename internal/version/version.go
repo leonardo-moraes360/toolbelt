@@ -9,7 +9,7 @@ import (
 var (
 	// Version é a versão semântica do toolbelt.
 	// Será sobrescrita pelo goreleaser via ldflags.
-	Version = "0.1.0-dev"
+	Version = "dev"
 
 	// Commit é o hash do commit git.
 	// Será sobrescrito pelo goreleaser via ldflags.

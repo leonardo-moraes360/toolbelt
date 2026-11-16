@@ -7,6 +7,18 @@ import (
 	"testing"
 )
 
+func TestDefaultVersion(t *testing.T) {
+	if Version != "dev" {
+		t.Errorf("Version default = %q, want %q", Version, "dev")
+	}
+	if Commit == "" {
+		t.Error("Commit default should not be empty")
+	}
+	if BuildTime == "" {
+		t.Error("BuildTime default should not be empty")
+	}
+}
+
 func TestGet(t *testing.T) {
 	info := Get()
 

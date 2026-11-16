@@ -1,0 +1,61 @@
+# GoReleaser v2 — https://goreleaser.com
+version: 2
+
+project_name: toolbelt
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: tb
+    main: ./cmd/tb
+    binary: tb
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X github.com/leonardo-moraes360/toolbelt/internal/version.Version={{.Version}}
+      - -X github.com/leonardo-moraes360/toolbelt/internal/version.Commit={{.Commit}}
+      - -X github.com/leonardo-moraes360/toolbelt/internal/version.BuildTime={{.Date}}
+
+archives:
+  - id: default
+    formats: [tar.gz]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - README.md
+      - LICENSE
+      - CHANGELOG.md
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^ci:"
+      - "^chore:"
+      - "^Merge pull request"
+      - "^Merge branch"
+
+release:
+  github:
+    owner: leonardo-moraes360
+    name: toolbelt
+  prerelease: auto
+  draft: false
+  name_template: "v{{.Version}}"
