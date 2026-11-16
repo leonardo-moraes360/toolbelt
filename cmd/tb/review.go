@@ -61,6 +61,7 @@ func reviewConfigFromFlags(cmd *cobra.Command, args []string) (*review.Config, e
 	}
 	cfg := review.DefaultConfig(cwd)
 	cfg.BaseRef, _ = cmd.Flags().GetString("base")
+	cfg.BaseExplicit = cmd.Flags().Changed("base")
 	cfg.HeadRef, _ = cmd.Flags().GetString("head")
 	cfg.ApprovedSHA, _ = cmd.Flags().GetString("approved-sha")
 	cfg.TicketPath, _ = cmd.Flags().GetString("ticket")

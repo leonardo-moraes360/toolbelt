@@ -140,6 +140,7 @@ func (c *Checker) CheckDiff(baseRef, headRef, nameStatus string) (*CheckResult, 
 		BaseRef:      baseRef,
 		HeadRef:      headRef,
 		RulesChecked: len(c.protectedPaths),
+		Violations:   []Violation{},
 	}
 	for _, cf := range parseDiff(diff) {
 		if cf.deleted && isTestFile(cf.path) {

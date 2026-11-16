@@ -57,7 +57,7 @@ type Result struct {
 	LintRan         bool               `json:"lint_ran"`
 	LintPassed      bool               `json:"lint_passed"`
 	VisiblePassed   bool               `json:"visible_passed"`
-	HiddenPassed    bool               `json:"hidden_passed"`
+	HiddenPassed    *bool              `json:"hidden_passed"`
 	HiddenAvailable bool               `json:"hidden_available"`
 	HeadSHA         string             `json:"head_sha,omitempty"`
 	WorkDir         string             `json:"workdir,omitempty"`
@@ -243,7 +243,9 @@ func runVerifyIteration(ctx context.Context, cfg *Config, res *Result) (bool, er
 		if err != nil {
 			return false, err
 		}
-		res.HiddenPassed = hiddenOK
+		res.HiddenPassed = boolPtr(hiddenOK)
+	} else {
+		res.HiddenPassed = nil
 	}
 	if visibleOK && hiddenOK {
 		return true, nil
@@ -317,4 +319,8 @@ func (r *Result) JSON() ([]byte, error) {
 func LoadHiddenSuite(repo string) bool {
 	_, err := os.Stat(filepath.Join(repo, "tests", "hidden"))
 	return err == nil
+}
+
+func boolPtr(v bool) *bool {
+	return &v
 }

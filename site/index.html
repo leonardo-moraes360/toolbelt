@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>toolbelt (tb) — cinto de ferramentas para agentes de código</title>
+  <meta name="description" content="CLI tb em Go e servidor MCP local: verify, review, drift, guard, graph, mem, stack e bench para agentes de IA e quem revisa o trabalho deles.">
+  <meta name="theme-color" content="#29282D">
+  <link rel="canonical" href="https://leonardo-moraes360.github.io/toolbelt/">
+  <link rel="icon" href="./assets/favicon.ico" sizes="any">
+  <link rel="icon" type="image/svg+xml" href="./assets/logo.svg">
+  <link rel="apple-touch-icon" href="./assets/logo-256.png">
+  <meta property="og:type" content="website">
+  <meta property="og:locale" content="pt_BR">
+  <meta property="og:url" content="https://leonardo-moraes360.github.io/toolbelt/">
+  <meta property="og:title" content="toolbelt (tb) — cinto de ferramentas para agentes de código">
+  <meta property="og:description" content="CLI local em Go + servidor MCP: verificação adversarial, memória de invariantes, grafo sob demanda e stack de checks.">
+  <meta property="og:image" content="https://leonardo-moraes360.github.io/toolbelt/assets/logo-512.png">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="toolbelt (tb)">
+  <meta name="twitter:description" content="CLI e MCP para agentes de código com IA — verify, review, drift, guard, graph, mem, stack.">
+  <meta name="twitter:image" content="https://leonardo-moraes360.github.io/toolbelt/assets/logo-512.png">
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#conteudo" data-i18n="skip">Ir para o conteúdo</a>
+
+  <header class="site-header">
+    <div class="wrap header-inner">
+      <a class="brand" href="./" aria-label="toolbelt">
+        <img src="./assets/logo.svg" width="40" height="40" alt="" decoding="async">
+        <span class="brand-name">toolbelt</span>
+        <span class="brand-cmd" aria-hidden="true">tb</span>
+      </a>
+      <nav class="nav" aria-label="Principal">
+        <a href="#problema" data-i18n="nav.problem">Problema</a>
+        <a href="#comandos" data-i18n="nav.commands">Comandos</a>
+        <a href="#mcp" data-i18n="nav.mcp">MCP</a>
+        <a href="#instalar" data-i18n="nav.install">Instalar</a>
+        <a href="#docs" data-i18n="nav.docs">Docs</a>
+      </nav>
+      <div class="header-actions">
+        <div class="lang-toggle" role="group" aria-label="Idioma">
+          <button type="button" class="lang-btn is-active" data-lang="pt" aria-pressed="true">PT</button>
+          <button type="button" class="lang-btn" data-lang="en" aria-pressed="false">EN</button>
+        </div>
+        <a class="btn btn-ghost" href="https://github.com/leonardo-moraes360/toolbelt" rel="noopener noreferrer">GitHub</a>
+      </div>
+      <button type="button" class="menu-btn" aria-expanded="false" aria-controls="mobile-nav" data-i18n-aria="menu">
+        <span class="sr-only" data-i18n="menu">Menu</span>
+        <span aria-hidden="true"></span>
+      </button>
+    </div>
+    <nav id="mobile-nav" class="mobile-nav" hidden>
+      <div class="lang-toggle mobile-lang" role="group" aria-label="Idioma">
+        <button type="button" class="lang-btn is-active" data-lang="pt" aria-pressed="true">PT</button>
+        <button type="button" class="lang-btn" data-lang="en" aria-pressed="false">EN</button>
+      </div>
+      <a href="#problema" data-i18n="nav.problem">Problema</a>
+      <a href="#comandos" data-i18n="nav.commands">Comandos</a>
+      <a href="#mcp" data-i18n="nav.mcp">MCP</a>
+      <a href="#instalar" data-i18n="nav.install">Instalar</a>
+      <a href="#docs" data-i18n="nav.docs">Docs</a>
+      <a href="https://github.com/leonardo-moraes360/toolbelt" rel="noopener noreferrer">GitHub</a>
+    </nav>
+  </header>
+
+  <main id="conteudo">
+    <section class="hero" aria-labelledby="hero-title">
+      <div class="hero-glow" aria-hidden="true"></div>
+      <div class="wrap hero-grid">
+        <div class="hero-copy">
+          <p class="eyebrow" data-i18n="hero.eyebrow">CLI · Go · MCP local</p>
+          <h1 id="hero-title">
+            <span class="brand-hero">toolbelt</span>
+            <span class="hero-tag" data-i18n="hero.tag">Cinto de ferramentas para agentes de código com IA</span>
+          </h1>
+          <p class="lede" data-i18n="hero.lede">Um único binário tb que une verificação adversarial, revisão fresh-context, detecção de drift, anti-trapaça, memória de invariantes, grafo sob demanda e servidor MCP — rodando localmente, sob o mesmo comando e protocolo.</p>
+          <div class="cta-row">
+            <a class="btn btn-primary" href="#instalar" data-i18n="hero.ctaInstall">Instalar</a>
+            <a class="btn btn-secondary" href="https://github.com/leonardo-moraes360/toolbelt" rel="noopener noreferrer" data-i18n="hero.ctaGithub">Ver no GitHub</a>
+          </div>
+          <p class="hero-meta">
+            <span data-i18n="hero.meta">Apache-2.0 · Go 1.22+ · Linux / macOS / Windows · Fase 2</span>
+          </p>
+        </div>
+        <div class="hero-visual" aria-hidden="false">
+          <div class="terminal" role="img" aria-label="Exemplo de sessão no terminal com tb">
+            <div class="terminal-bar">
+              <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+              <span class="terminal-title">tb — local</span>
+            </div>
+            <pre class="terminal-body"><code><span class="prompt">$</span> <span class="cmd">tb version</span>
+<span class="out">toolbelt v0.0.2</span>
+<span class="out muted">  commit: 2758fc4</span>
+<span class="out muted">  os:     linux/amd64</span>
+
+<span class="prompt">$</span> <span class="cmd">tb guard check HEAD~1..HEAD</span>
+<span class="ok">guard: ok (3 regras, 0 violações)</span>
+
+<span class="prompt">$</span> <span class="cmd">tb stack guard --base HEAD~1 --head HEAD</span>
+<span class="json">{</span>
+<span class="json">  "ok": true,</span>
+<span class="json">  "steps": [{ "op": "guard", "ok": true }],</span>
+<span class="json">  "total_duration_ms": 0</span>
+<span class="json">}</span><span class="caret" aria-hidden="true"></span></code></pre>
+            <p class="example-note" data-i18n="hero.exampleNote">Exemplo ilustrativo baseado na CLI real.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="problema" class="section">
+      <div class="wrap narrow">
+        <h2 data-i18n="problem.title">O problema que resolve</h2>
+        <p data-i18n="problem.body">Agentes de código gastam tokens em grep cego, misturam implementação e avaliação no mesmo contexto e às vezes “passam” em testes sem cumprir o escopo. O tb concentra no mesmo cinto as peças que o README e a arquitetura descrevem: economizar tokens (grafo queryável, memória compacta), melhorar acurácia (sandbox, guard, separação autor/revisor) e acelerar o loop (execução local, stack compartilhado, harness de benchmark).</p>
+        <ul class="audience">
+          <li><strong data-i18n="problem.forAgentsLabel">Agentes de IA</strong> — <span data-i18n="problem.forAgents">tools MCP e CLI no repo, sem serviço remoto obrigatório.</span></li>
+          <li><strong data-i18n="problem.forHumansLabel">Quem revisa o trabalho deles</strong> — <span data-i18n="problem.forHumans">verify, review, drift e guard com saída JSON e exit codes de CI.</span></li>
+        </ul>
+      </div>
+    </section>
+
+    <section id="comandos" class="section section-alt">
+      <div class="wrap">
+        <div class="section-head">
+          <h2 data-i18n="cmds.title">Comandos e recursos</h2>
+          <p data-i18n="cmds.lede">Implementados na Fase 2. Saídas marcadas como exemplo; formato alinhado à CLI Cobra.</p>
+        </div>
+        <div class="cmd-list">
+          <article class="cmd-item">
+            <h3><code>tb verify</code></h3>
+            <p data-i18n="cmds.verify">Loop de verificação adversarial com rulers tests e visual (screenshot headless com skip gracioso).</p>
+            <div class="code-block">
+              <div class="code-toolbar">
+                <span class="code-label">shell</span>
+                <button type="button" class="copy-btn" data-copy="tb verify run --ruler tests">Copiar</button>
+              </div>
+              <pre><code>tb verify run --ruler tests</code></pre>
+            </div>
+          </article>
+          <article class="cmd-item">
+            <h3><code>tb review</code></h3>
+            <p data-i18n="cmds.review">Revisão fresh-context (Elephant-Goldfish) contra ticket/rd.md e invariantes; papéis scope/quality/acceptance.</p>
+            <div class="code-block">
+              <div class="code-toolbar">
+                <span class="code-label">shell</span>
+                <button type="button" class="copy-btn" data-copy="tb review --ticket rd.md --base HEAD~1 --head HEAD">Copiar</button>
+              </div>
+              <pre><code>tb review --ticket rd.md --base HEAD~1 --head HEAD</code></pre>
+            </div>
+          </article>
+          <article class="cmd-item">
+            <h3><code>tb drift</code> · <code>tb guard</code></h3>
+            <p data-i18n="cmds.drift">Drift de escopo / commit base / patch pinado; guard checa paths protegidos e padrões anti-trapaça no diff.</p>
+            <div class="code-block">
+              <div class="code-toolbar">
+                <span class="code-label">shell · exemplo</span>
+                <button type="button" class="copy-btn" data-copy="tb guard check HEAD~1..HEAD">Copiar</button>
+              </div>
+              <pre><code>tb guard check HEAD~1..HEAD
+<span class="tok-ok"># guard: ok (3 regras, 0 violações)</span></code></pre>
+            </div>
+          </article>
+          <article class="cmd-item">
+            <h3><code>tb graph</code> · <code>tb mem</code></h3>
+            <p data-i18n="cmds.graph">Grafo sob demanda (ative com TB_GRAPH=on ou --enable); memória de invariantes fora da compactação.</p>
+            <div class="code-block">
+              <div class="code-toolbar">
+                <span class="code-label">shell</span>
+                <button type="button" class="copy-btn" data-copy="TB_GRAPH=on tb graph --enable search HandleRequest">Copiar</button>
+              </div>
+              <pre><code>TB_GRAPH=on tb graph --enable search HandleRequest
+tb mem list
+tb mem add "nunca editar fixtures de teste"</code></pre>
+            </div>
+          </article>
+          <article class="cmd-item">
+            <h3><code>tb stack</code></h3>
+            <p data-i18n="cmds.stack">Empilha verify/review/drift/guard com diff, índice e memória compartilhados; um JSON agregado.</p>
+            <div class="code-block">
+              <div class="code-toolbar">
+                <span class="code-label">shell · exemplo</span>
+                <button type="button" class="copy-btn" data-copy="tb stack guard --base HEAD~1 --head HEAD">Copiar</button>
+              </div>
+              <pre><code>tb stack guard --base HEAD~1 --head HEAD
+<span class="tok-muted">{ "ok": true, "steps": […], "total_duration_ms": 0 }</span></code></pre>
+            </div>
+          </article>
+          <article class="cmd-item">
+            <h3><code>tb bench</code> · <code>tb init</code> · <code>tb version</code></h3>
+            <p data-i18n="cmds.bench">Harness de benchmark (run/list/report/compare, inclusive A/B); init detecta toolchain; version reporta build.</p>
+            <div class="code-block">
+              <div class="code-toolbar">
+                <span class="code-label">shell</span>
+                <button type="button" class="copy-btn" data-copy="tb init && tb bench run --fake -r 1 && tb version">Copiar</button>
+              </div>
+              <pre><code>tb init
+tb bench run --fake -r 1
+tb version</code></pre>
+            </div>
+          </article>
+        </div>
+        <p class="footnote" data-i18n="cmds.note">tb run como comando de topo ainda é planejado (Fase 3+); hoje use tb sandbox run para isolamento Landlock no Linux. Também há tb workspace (worktrees) e tb mcp.</p>
+      </div>
+    </section>
+
+    <section id="mcp" class="section">
+      <div class="wrap">
+        <div class="section-head">
+          <h2 data-i18n="mcp.title">Servidor MCP</h2>
+          <p data-i18n="mcp.lede">tb mcp sobe um servidor MCP stateless sobre stdio (JSON-RPC 2.0). Roda localmente na sua máquina — sem hospedagem remota obrigatória.</p>
+        </div>
+        <div class="mcp-grid">
+          <div>
+            <h3 data-i18n="mcp.toolsTitle">Tools (paridade CLI)</h3>
+            <ul class="tool-list">
+              <li><code>tb_version</code>, <code>tb_echo</code>, <code>tb_env</code>, <code>tb_run</code></li>
+              <li><code>tb_mem_*</code>, <code>tb_verify_run</code>, <code>tb_review</code></li>
+              <li><code>tb_drift</code>, <code>tb_guard_check</code>, <code>tb_stack</code></li>
+              <li><code>tb_graph_search</code> / <code>callers</code> / <code>deps</code> / <code>impact</code> / <code>index</code></li>
+            </ul>
+            <p class="muted" data-i18n="mcp.graphNote">Tools de grafo exigem TB_GRAPH=on no processo do servidor.</p>
+          </div>
+          <div class="code-block">
+            <div class="code-toolbar">
+              <span class="code-label">mcp.json · exemplo</span>
+              <button type="button" class="copy-btn" data-copy-target="#mcp-config">Copiar</button>
+            </div>
+            <pre id="mcp-config"><code>{
+  "mcpServers": {
+    "toolbelt": {
+      "command": "tb",
+      "args": ["mcp"],
+      "env": {
+        "TB_GRAPH": "on"
+      }
+    }
+  }
+}</code></pre>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="instalar" class="section section-alt">
+      <div class="wrap">
+        <div class="section-head">
+          <h2 data-i18n="install.title">Instalação</h2>
+          <p>
+            <span data-i18n="install.ledeBefore">Prefira os binários das</span>
+            <a href="https://github.com/leonardo-moraes360/toolbelt/releases/latest" data-i18n="install.ledeLink">Releases do GitHub</a>
+            <span data-i18n="install.ledeAfter">(linux / darwin / windows × amd64 / arm64) e confira checksums.txt.</span>
+          </p>
+        </div>
+        <div class="code-block featured">
+          <div class="code-toolbar">
+            <span class="code-label">Linux amd64 · exemplo v0.0.2</span>
+            <button type="button" class="copy-btn" data-copy-target="#install-cmd">Copiar</button>
+          </div>
+          <pre id="install-cmd"><code>curl -sL "https://github.com/leonardo-moraes360/toolbelt/releases/download/v0.0.2/toolbelt_0.0.2_linux_amd64.tar.gz" \
+  | tar -xz tb
+sudo mv tb /usr/local/bin/
+tb version</code></pre>
+        </div>
+        <div class="install-alt">
+          <div>
+            <h3 data-i18n="install.goTitle">Via Go</h3>
+            <div class="code-block">
+              <div class="code-toolbar">
+                <span class="code-label">go</span>
+                <button type="button" class="copy-btn" data-copy="go install github.com/leonardo-moraes360/toolbelt/cmd/tb@latest">Copiar</button>
+              </div>
+              <pre><code>go install github.com/leonardo-moraes360/toolbelt/cmd/tb@latest</code></pre>
+            </div>
+            <p class="muted" data-i18n="install.goNote">go install costuma embutir versão dev; use o Release para a tag.</p>
+          </div>
+          <div>
+            <h3 data-i18n="install.buildTitle">Build local</h3>
+            <div class="code-block">
+              <div class="code-toolbar">
+                <span class="code-label">make</span>
+                <button type="button" class="copy-btn" data-copy="git clone https://github.com/leonardo-moraes360/toolbelt.git && cd toolbelt && make build && ./bin/tb version">Copiar</button>
+              </div>
+              <pre><code>git clone https://github.com/leonardo-moraes360/toolbelt.git
+cd toolbelt && make build
+./bin/tb version</code></pre>
+            </div>
+          </div>
+        </div>
+        <p>
+          <a class="btn btn-secondary" href="https://github.com/leonardo-moraes360/toolbelt/releases/latest" rel="noopener noreferrer" data-i18n="install.releases">Abrir última release</a>
+        </p>
+      </div>
+    </section>
+
+    <section id="docs" class="section">
+      <div class="wrap">
+        <div class="section-head">
+          <h2 data-i18n="docs.title">Documentação</h2>
+          <p data-i18n="docs.lede">Fontes no repositório — a CLI Cobra é a verdade quando houver divergência.</p>
+        </div>
+        <ul class="doc-links">
+          <li><a href="https://github.com/leonardo-moraes360/toolbelt/blob/main/docs/cli.md">docs/cli.md</a> — <span data-i18n="docs.cli">árvore de comandos</span></li>
+          <li><a href="https://github.com/leonardo-moraes360/toolbelt/blob/main/docs/arquitetura.md">docs/arquitetura.md</a> — <span data-i18n="docs.arch">arquitetura</span></li>
+          <li><a href="https://github.com/leonardo-moraes360/toolbelt/blob/main/docs/release.md">docs/release.md</a> — <span data-i18n="docs.release">releases</span></li>
+          <li><a href="https://github.com/leonardo-moraes360/toolbelt/blob/main/docs/site.md">docs/site.md</a> — <span data-i18n="docs.site">este site / GitHub Pages</span></li>
+          <li><a href="https://github.com/leonardo-moraes360/toolbelt/blob/main/docs/identidade-visual.md">docs/identidade-visual.md</a> — <span data-i18n="docs.brand">tema Synthwave</span></li>
+          <li><a href="https://github.com/leonardo-moraes360/toolbelt/blob/main/CHANGELOG.md">CHANGELOG.md</a> — <span data-i18n="docs.changelog">histórico</span></li>
+          <li><a href="https://github.com/leonardo-moraes360/toolbelt/blob/main/README.md">README.md</a> — <span data-i18n="docs.readme">visão geral e roadmap</span></li>
+        </ul>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap footer-inner">
+      <div class="footer-brand">
+        <img src="./assets/logo-64.png" width="32" height="32" alt="" decoding="async">
+        <div>
+          <strong>toolbelt</strong>
+          <p data-i18n="footer.tag">Apache License 2.0 · Copyright 2026 Leonardo Moraes</p>
+        </div>
+      </div>
+      <div class="footer-links">
+        <a href="https://github.com/leonardo-moraes360/toolbelt" rel="noopener noreferrer">GitHub</a>
+        <a href="https://github.com/leonardo-moraes360/toolbelt/releases/latest" rel="noopener noreferrer">Releases</a>
+        <a href="https://github.com/leonardo-moraes360/toolbelt/blob/main/SECURITY.md" rel="noopener noreferrer">Security</a>
+        <a href="https://modelcontextprotocol.io/" rel="noopener noreferrer">MCP</a>
+      </div>
+    </div>
+  </footer>
+
+  <script src="./script.js" defer></script>
+</body>
+</html>
