@@ -537,6 +537,7 @@ func driftConfigFromArgs(args map[string]any) (*review.Config, error) {
 		ticketPath = filepath.Join(cwd, ticketPath)
 	}
 	base := StringArg(args, "base")
+	baseSet := base != ""
 	if base == "" {
 		base = "HEAD~1"
 	}
@@ -548,11 +549,12 @@ func driftConfigFromArgs(args map[string]any) (*review.Config, error) {
 	if err != nil && !os.IsNotExist(err) {
 		return nil, err
 	}
-	if ticket != nil && ticket.BaseCommit != "" && base == "HEAD~1" {
+	if !baseSet && ticket != nil && ticket.BaseCommit != "" {
 		base = ticket.BaseCommit
 	}
 	cfg := review.DefaultConfig(cwd)
 	cfg.BaseRef = base
+	cfg.BaseExplicit = baseSet
 	cfg.HeadRef = head
 	cfg.ApprovedSHA = StringArg(args, "approved_sha")
 	cfg.TicketPath = ticketPath
@@ -580,6 +582,7 @@ func reviewConfigFromArgs(args map[string]any) (*review.Config, error) {
 	cfg := review.DefaultConfig(cwd)
 	if v := StringArg(args, "base"); v != "" {
 		cfg.BaseRef = v
+		cfg.BaseExplicit = true
 	}
 	if v := StringArg(args, "head"); v != "" {
 		cfg.HeadRef = v

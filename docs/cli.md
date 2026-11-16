@@ -746,16 +746,27 @@ tb review --base main --approved-sha abc1234 --ticket rd.md --json
 
 ### `tb drift` — Drift de Escopo/Base (✓ Fase 2)
 
-Compara os arquivos alterados em `base..head` com o **scope** declarado no
+Compara os arquivos alterados em `base...head` com o **scope** declarado no
 ticket/`rd.md`, detecta toques em `Forbidden`/`Proibido` (`forbidden_hit`) e
-divergência do commit base (mandate). **Não** compara vault Markdown contra
-código — o relatório é só escopo/base/forbidden (+ `pinned_approval` opcional).
+base que não é ancestral do head (`base_mismatch`). **Não** compara vault
+Markdown contra código — o relatório é só escopo/base/forbidden
+(+ `pinned_approval` opcional).
 O parser de scope/forbidden é o mesmo do `tb review`
 (YAML frontmatter ou Markdown `## Scope` / `## Forbidden` / listas / globs com `**`).
 
-`--base` / `base_commit` do ticket (ex.: `HEAD^`, tags, SHA curto) são
-resolvidos com `git rev-parse` antes da comparação — evita falso
-`base_mismatch` por comparar a string da ref com o SHA declarado.
+O diff usa **three-dot** (`git diff base...head` ≡
+`git diff $(git merge-base base head) head`), o mesmo critério de PRs no GitHub:
+após merge/squash na base, só entram arquivos do branch — não o que veio da main.
+
+`--base` explícito na CLI/MCP **sempre** prevalece sobre `base_commit` do ticket.
+Sem `--base`, o default `HEAD~1` cede a `base_commit` quando o ticket declara um.
+Refs (`HEAD^`, tags, SHA curto) são resolvidas com `git rev-parse`.
+`base_mismatch` é `true` quando o `base_commit` declarado no ticket (ou a base
+efetiva, se o ticket não declara) **não** é ancestral do head
+(`git merge-base --is-ancestor`) — assim `--base main` em PR divergente não
+gera falso mismatch; um SHA de outra linha (não ancestral) sim. O JSON expõe
+`actual_base` (SHA resolvido da base usada no diff) e `merge_base` (ancestral
+comum com o head).
 
 ```bash
 tb drift [ticket] [flags]
@@ -763,7 +774,7 @@ tb drift [ticket] [flags]
 Flags:
   --base <ref>          Commit base (default: HEAD~1 ou base_commit do ticket)
   --head <ref>          Commit head (default: HEAD)
-  --approved-sha <sha>  SHA aprovado; compara `git patch-id --stable` de base..approved vs base..head
+  --approved-sha <sha>  SHA aprovado; compara `git patch-id --stable` de base...approved vs base...head
   --ticket <path>       Ticket/rd.md (default: rd.md)
   --output <path>       Saída JSON (sem shorthand `-o`)
   --json                Saída em JSON (flag global)

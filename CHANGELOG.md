@@ -38,6 +38,13 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
   estrito e por `--warn-only`); remove o exemplo invocável com `--strict`
 
 ### Corrigido
+- `tb drift` / `tb review` / `tb stack`: diff de arquivos passa a usar three-dot
+  (`base...head` / merge-base), evitando falsos `out_of_scope` após merge da main
+  ou squash de outro PR na base
+- `tb drift`: `--base` explícito na CLI/MCP não é mais sobrescrito por
+  `base_commit` do ticket; `base_mismatch` usa `git merge-base --is-ancestor`
+  no `base_commit` declarado (ou na base efetiva se ausente), em vez de
+  igualdade de string com `--base`; JSON inclui `actual_base` e `merge_base`
 - `tb verify run --base/--head`: quando o head resolve para um SHA diferente do
   `HEAD` do worktree, build/lint/test/hidden rodam num `git worktree add --detach`
   temporário (removido ao final, inclusive em erro/sinal); o JSON expõe `head_sha`
