@@ -137,9 +137,9 @@ Linguagens e docs (extensível via `LanguageIndexer`, regex leve, sem cgo):
 
 | `graph.languages` | Extensões |
 |-------------------|-----------|
-| `go` | `.go` (AST) |
-| `javascript` | `.js`, `.mjs`, `.cjs`, `.ts` (`.tsx`/`.jsx` via `react` quando ligado) |
-| `python` | `.py` |
+| `go` | `.go` (AST; arestas `calls`) |
+| `javascript` | `.js`, `.mjs`, `.cjs`, `.ts` (`.tsx`/`.jsx` via `react` quando ligado; arestas `calls`) |
+| `python` | `.py` (defines/imports + arestas `calls` resolvíveis no repositório) |
 | `java` | `.java` |
 | `kotlin` | `.kt`, `.kts` |
 | `csharp` | `.cs` |
