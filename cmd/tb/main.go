@@ -19,6 +19,8 @@ var (
 	cfgFile    string
 	jsonOutput bool
 	verbose    bool
+	envAllow   []string
+	envPass    []string
 )
 
 func main() {
@@ -40,7 +42,8 @@ grafo de dependências, roteamento multi-agente e benchmark.
 Exemplo:
   tb init                    Inicializa configuração local
   tb bench run               Executa benchmark baseline
-  tb version                 Mostra versão`,
+  tb version                 Mostra versão
+  tb --version               Mostra versão (flag global)`,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 		cmd.SilenceUsage = true
 
@@ -63,6 +66,12 @@ func init() {
 	rootCmd.PersistentFlags().StringVarP(&cfgFile, "config", "c", "", "arquivo de configuração")
 	rootCmd.PersistentFlags().BoolVar(&jsonOutput, "json", false, "saída em JSON")
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "saída verbose")
+	rootCmd.PersistentFlags().StringArrayVar(&envAllow, "env", nil, "permite variável de ambiente no filho (repetível; não contorna bloqueio de segredos)")
+	rootCmd.PersistentFlags().StringArrayVar(&envPass, "pass-env", nil, "opt-in explícito para passar segredo (*TOKEN*/SECRET/KEY/PASSWORD) ao filho")
+
+	rootCmd.Version = version.Get().String()
+	rootCmd.SetVersionTemplate("{{.Version}}\n")
+	rootCmd.InitDefaultVersionFlag()
 
 	rootCmd.AddCommand(versionCmd)
 	rootCmd.AddCommand(initCmd)
@@ -165,7 +174,12 @@ Exemplo:
 		}
 
 		var docs *config.AgentDocsResult
+		var excludePath string
 		if !global && repoRoot != "" {
+			excludePath, err = config.EnsureLocalGitExclude(repoRoot)
+			if err != nil {
+				return fmt.Errorf("atualizando .git/info/exclude: %w", err)
+			}
 			docs, err = config.HandleAgentDocs(repoRoot, dir, writeAgents)
 			if err != nil {
 				return fmt.Errorf("processando AGENTS.md/CLAUDE.md: %w", err)
@@ -185,6 +199,12 @@ Exemplo:
 		}
 		if detected.Warning != "" {
 			log.Warn(detected.Warning)
+		}
+
+		if excludePath != "" {
+			log.Info("estado local ignorado via .git/info/exclude",
+				"path", excludePath,
+				"patterns", strings.Join(config.LocalCacheExcludePatterns, ","))
 		}
 
 		if docs != nil {

@@ -41,6 +41,9 @@ type Config struct {
 
 	// Verify configura a verificação adversarial.
 	Verify VerifyConfig `yaml:"verify"`
+
+	// Env configura a allowlist de variáveis passadas a filhos (sh -c).
+	Env EnvConfig `yaml:"env"`
 }
 
 // Defaults são valores padrão para commands.
@@ -98,6 +101,12 @@ type VerifyConfig struct {
 	HiddenTestCmd string `yaml:"hidden_test_cmd"`
 	BuildCmd      string `yaml:"build_cmd,omitempty"`
 	LintCmd       string `yaml:"lint_cmd,omitempty"`
+}
+
+// EnvConfig controla quais variáveis de ambiente chegam aos filhos (sh -c).
+type EnvConfig struct {
+	Allow []string `yaml:"allow"`
+	Pass  []string `yaml:"pass"`
 }
 
 // DefaultConfig retorna a configuração padrão.

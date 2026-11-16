@@ -47,6 +47,13 @@ type CheckReport struct {
 	Missing     []string `json:"missing"`
 }
 
+type InitResult struct {
+	Path       string      `json:"path"`
+	Created    bool        `json:"created"`
+	Count      int         `json:"count"`
+	Invariants []Invariant `json:"invariants"`
+}
+
 type Store struct {
 	path string
 }
@@ -107,6 +114,14 @@ func (s *Store) Add(category, rule, ref string) (*Invariant, error) {
 	if rule == "" {
 		return nil, errors.New("regra vazia")
 	}
+	category = strings.TrimSpace(category)
+	if err := ValidateCategory(category); err != nil {
+		return nil, err
+	}
+	ref = strings.TrimSpace(ref)
+	if err := ValidateRef(ref); err != nil {
+		return nil, err
+	}
 	f, err := s.Load()
 	if err != nil {
 		return nil, err
@@ -115,7 +130,7 @@ func (s *Store) Add(category, rule, ref string) (*Invariant, error) {
 		ID:        fmt.Sprintf("inv-%d", time.Now().UnixNano()),
 		Category:  category,
 		Rule:      rule,
-		Ref:       strings.TrimSpace(ref),
+		Ref:       ref,
 		AddedAt:   time.Now().UTC(),
 		Immutable: true,
 	}
@@ -153,7 +168,11 @@ func (s *Store) Edit(id string, fields EditFields) (*Invariant, error) {
 	}
 	inv := f.Invariants[idx]
 	if fields.Category != nil {
-		inv.Category = strings.TrimSpace(*fields.Category)
+		cat := strings.TrimSpace(*fields.Category)
+		if err := ValidateCategory(cat); err != nil {
+			return nil, err
+		}
+		inv.Category = cat
 	}
 	if fields.Rule != nil {
 		rule := strings.TrimSpace(*fields.Rule)
@@ -163,7 +182,11 @@ func (s *Store) Edit(id string, fields EditFields) (*Invariant, error) {
 		inv.Rule = rule
 	}
 	if fields.Ref != nil {
-		inv.Ref = strings.TrimSpace(*fields.Ref)
+		ref := strings.TrimSpace(*fields.Ref)
+		if err := ValidateRef(ref); err != nil {
+			return nil, err
+		}
+		inv.Ref = ref
 	}
 	f.Invariants[idx] = inv
 	if err := s.Save(f); err != nil {
@@ -196,6 +219,12 @@ func (s *Store) Retire(id string) (*Invariant, error) {
 }
 
 func (s *Store) List(category string, includeRetired bool) ([]Invariant, error) {
+	category = strings.TrimSpace(category)
+	if category != "" {
+		if err := ValidateCategory(category); err != nil {
+			return nil, err
+		}
+	}
 	f, err := s.Load()
 	if err != nil {
 		return nil, err
@@ -222,7 +251,7 @@ func (s *Store) Search(query string, includeRetired bool) ([]Invariant, error) {
 	if err != nil {
 		return nil, err
 	}
-	q := strings.ToLower(query)
+	q := normalizeForSearch(query)
 	out := []Invariant{}
 	for _, inv := range f.Invariants {
 		if !includeRetired && inv.Retired {
@@ -279,49 +308,42 @@ func (s *Store) Path() string {
 	return s.path
 }
 
-type InitResult struct {
-	Path       string      `json:"path"`
-	Created    bool        `json:"created"`
-	Count      int         `json:"count"`
-	Invariants []Invariant `json:"invariants"`
-}
-
 func EnsureDefaultAntiCheat(toolbeltDir string) (*InitResult, error) {
 	s := NewStore(toolbeltDir)
 	f, err := s.Load()
 	if err != nil {
 		return nil, err
 	}
-	created := false
-	if len(f.Invariants) == 0 {
-		defaults := []struct {
-			cat  string
-			rule string
-		}{
-			{"anti_cheat", "NUNCA modifique arquivos em tests/hidden/"},
-			{"anti_cheat", "NUNCA altere thresholds em .toolbelt/thresholds.yaml"},
-			{"security", "Secrets nunca aparecem em logs ou prompts"},
-		}
-		for _, d := range defaults {
-			if _, addErr := s.Add(d.cat, d.rule, ""); addErr != nil {
-				return nil, addErr
-			}
-		}
-		created = true
-		f, err = s.Load()
+	if len(f.Invariants) > 0 {
+		invs := append([]Invariant(nil), f.Invariants...)
+		return &InitResult{
+			Path:       s.Path(),
+			Created:    false,
+			Count:      len(invs),
+			Invariants: invs,
+		}, nil
+	}
+	defaults := []struct {
+		cat  string
+		rule string
+	}{
+		{"anti_cheat", "NUNCA modifique arquivos em tests/hidden/"},
+		{"anti_cheat", "NUNCA altere thresholds em .toolbelt/thresholds.yaml"},
+		{"security", "Secrets nunca aparecem em logs ou prompts"},
+	}
+	created := make([]Invariant, 0, len(defaults))
+	for _, d := range defaults {
+		inv, err := s.Add(d.cat, d.rule, "")
 		if err != nil {
 			return nil, err
 		}
-	}
-	invs := f.Invariants
-	if invs == nil {
-		invs = []Invariant{}
+		created = append(created, *inv)
 	}
 	return &InitResult{
-		Path:       s.path,
-		Created:    created,
-		Count:      len(invs),
-		Invariants: invs,
+		Path:       s.Path(),
+		Created:    true,
+		Count:      len(created),
+		Invariants: created,
 	}, nil
 }
 
@@ -352,7 +374,7 @@ func filterInvariants(list []Invariant, includeRetired bool) []Invariant {
 func invariantMatches(inv *Invariant, q string) bool {
 	haystacks := []string{inv.ID, inv.Category, inv.Rule, inv.Ref}
 	for _, h := range haystacks {
-		if strings.Contains(strings.ToLower(h), q) {
+		if strings.Contains(normalizeForSearch(h), q) {
 			return true
 		}
 	}

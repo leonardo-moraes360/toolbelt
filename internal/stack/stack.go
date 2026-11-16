@@ -43,7 +43,7 @@ func ParseOp(name string) (Op, error) {
 
 func ParseOps(names []string) ([]Op, error) {
 	if len(names) == 0 {
-		return nil, fmt.Errorf("informe ao menos uma operação")
+		return nil, fmt.Errorf("informe ao menos uma operação (verify, review, drift, guard)")
 	}
 	ops := make([]Op, 0, len(names))
 	for _, name := range names {
@@ -73,6 +73,8 @@ type Options struct {
 	Standards     []string
 	LoadGraph     bool
 	Loaders       *Loaders
+	EnvAllow      []string
+	EnvPass       []string
 }
 
 type Loaders struct {
@@ -360,6 +362,12 @@ func runVerify(ctx context.Context, opts *Options, shared *Shared) (StepResult, 
 	}
 	if opts.Ticket != "" {
 		cfg.TicketPath = resolveTicket(shared.RepoDir, opts.Ticket)
+	}
+	cfg.EnvAllow = append(cfg.EnvAllow, opts.EnvAllow...)
+	cfg.EnvPass = append(cfg.EnvPass, opts.EnvPass...)
+	if shared.FileConfig != nil {
+		cfg.EnvAllow = append(cfg.EnvAllow, shared.FileConfig.Env.Allow...)
+		cfg.EnvPass = append(cfg.EnvPass, shared.FileConfig.Env.Pass...)
 	}
 	res, err := verify.Run(ctx, &cfg)
 	if err != nil {

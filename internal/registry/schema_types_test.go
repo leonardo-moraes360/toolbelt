@@ -46,6 +46,12 @@ func TestMCPSchemaTypesAndGraphImpact(t *testing.T) {
 		{"tb_mem_list", "all", "boolean"},
 		{"tb_mem_search", "all", "boolean"},
 		{"tb_mem_check", "all", "boolean"},
+		{"tb_run", "env", "array"},
+		{"tb_run", "pass_env", "array"},
+		{"tb_verify_run", "env", "array"},
+		{"tb_verify_run", "pass_env", "array"},
+		{"tb_stack", "env", "array"},
+		{"tb_stack", "pass_env", "array"},
 	}
 	for _, tc := range cases {
 		tool, ok := tools[tc.tool]

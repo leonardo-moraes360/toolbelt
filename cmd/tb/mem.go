@@ -216,17 +216,20 @@ var memInitCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cwd, _ := os.Getwd()
 		dir := mem.LocateRepoToolbeltDir(cwd)
-		res, err := mem.EnsureDefaultAntiCheat(dir)
+		result, err := mem.EnsureDefaultAntiCheat(dir)
 		if err != nil {
 			return err
 		}
 		if jsonOutput {
-			return json.NewEncoder(os.Stdout).Encode(res)
+			return json.NewEncoder(os.Stdout).Encode(result)
 		}
-		if res.Created {
-			fmt.Printf("invariantes padrão criadas em %s (%d)\n", res.Path, res.Count)
+		if result.Created {
+			fmt.Printf("criadas %d invariantes em %s\n", result.Count, result.Path)
 		} else {
-			fmt.Printf("invariantes já existentes em %s (%d)\n", res.Path, res.Count)
+			fmt.Printf("já existiam %d invariantes em %s\n", result.Count, result.Path)
+		}
+		for i := range result.Invariants {
+			fmt.Println(formatInvariantLine(&result.Invariants[i]))
 		}
 		return nil
 	},

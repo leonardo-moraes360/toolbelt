@@ -43,6 +43,22 @@ func TestParseOpsOrder(t *testing.T) {
 	}
 }
 
+func TestParseOpsEmptyListsValidOps(t *testing.T) {
+	_, err := ParseOps(nil)
+	if err == nil {
+		t.Fatal("esperava erro sem operações")
+	}
+	msg := err.Error()
+	for _, op := range []string{"verify", "review", "drift", "guard"} {
+		if !strings.Contains(msg, op) {
+			t.Fatalf("mensagem deveria listar %q: %v", op, err)
+		}
+	}
+	if strings.Contains(msg, "Usage") {
+		t.Fatalf("não deve citar Usage: %v", err)
+	}
+}
+
 func TestStackAggregateJSONAndOrder(t *testing.T) {
 	dir := gitRepo(t)
 	writeFile(t, filepath.Join(dir, "a.go"), "package a\n")
@@ -260,6 +276,67 @@ func TestStackPrepareErrorInsideStep(t *testing.T) {
 	first, _ := steps[0].(map[string]any)
 	if first["error"] == nil || first["error"] == "" {
 		t.Fatalf("JSON sem error no step: %s", raw)
+	}
+}
+
+func TestStackVerifyRunsOnHeadWorktree(t *testing.T) {
+	if testing.Short() {
+		t.Skip()
+	}
+	dir := gitRepo(t)
+	writeFile(t, filepath.Join(dir, "go.mod"), "module demo\ngo 1.22\n")
+	writeFile(t, filepath.Join(dir, "demo.go"), "package demo\nfunc Add(a, b int) int { return a + b }\n")
+	writeFile(t, filepath.Join(dir, "demo_test.go"), "package demo\nimport \"testing\"\nfunc TestAdd(t *testing.T) {\n\tif Add(1, 2) != 3 { t.Fatal() }\n}\n")
+	git(t, dir, "add", "-A")
+	git(t, dir, "commit", "-m", "base")
+	baseOut, err := exec.Command("git", "-C", dir, "rev-parse", "HEAD").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	base := strings.TrimSpace(string(baseOut))
+
+	writeFile(t, filepath.Join(dir, "marker_test.go"), "package demo\nimport \"testing\"\nfunc TestMarkerOnlyOnHead(t *testing.T) {\n\tt.Fatal(\"marker: only on head\")\n}\n")
+	git(t, dir, "add", "-A")
+	git(t, dir, "commit", "-m", "head-with-failing-marker")
+	headOut, err := exec.Command("git", "-C", dir, "rev-parse", "HEAD").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	head := strings.TrimSpace(string(headOut))
+	git(t, dir, "checkout", "-q", base)
+
+	res, err := Run(context.Background(), &Options{
+		RepoDir: dir,
+		Base:    base,
+		Head:    head,
+		Ops:     []Op{OpVerify},
+		TestCmd: "go test ./...",
+		MaxIter: 1,
+		Timeout: time.Minute,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.OK {
+		t.Fatal("stack verify must fail when head has a failing marker test absent from the current worktree")
+	}
+	if len(res.Steps) != 1 || res.Steps[0].Op != "verify" {
+		t.Fatalf("steps=%+v", res.Steps)
+	}
+	raw, err := json.Marshal(res.Steps[0].Result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		t.Fatal(err)
+	}
+	if payload["head_sha"] != head {
+		t.Fatalf("head_sha=%v want %s", payload["head_sha"], head)
+	}
+	workdir, _ := payload["workdir"].(string)
+	if workdir == "" || workdir == dir {
+		t.Fatalf("expected detached workdir, got %q", workdir)
 	}
 }
 
