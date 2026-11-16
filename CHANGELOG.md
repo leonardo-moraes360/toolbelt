@@ -17,6 +17,14 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 - Docs: anota a depreciação de `tb guard check --strict` (substituído pelo default
   estrito e por `--warn-only`); remove o exemplo invocável com `--strict`
 
+### Segurança
+- Processos filhos de `tb verify` / `tb stack` (verify) e MCP `tb_run` /
+  `tb_verify_run` / `tb_stack` passam a receber ambiente filtrado por allowlist
+  (PATH, HOME, LANG, TMPDIR, GOPATH/GOCACHE, NODE/npm/pnpm, etc.). Segredos
+  (`*TOKEN*`/`*SECRET*`/`*KEY*`/`*PASSWORD*`) nunca passam sem opt-in explícito
+  (`--pass-env` / `env.pass` / arg MCP `pass_env`). Extensão via `--env` /
+  `env.allow` / arg MCP `env`.
+
 ## [0.0.2] - 2026-11-16
 
 ### Adicionado

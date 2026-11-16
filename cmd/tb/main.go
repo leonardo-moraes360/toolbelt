@@ -18,6 +18,8 @@ var (
 	cfgFile    string
 	jsonOutput bool
 	verbose    bool
+	envAllow   []string
+	envPass    []string
 )
 
 func main() {
@@ -62,6 +64,8 @@ func init() {
 	rootCmd.PersistentFlags().StringVarP(&cfgFile, "config", "c", "", "arquivo de configuração")
 	rootCmd.PersistentFlags().BoolVar(&jsonOutput, "json", false, "saída em JSON")
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "saída verbose")
+	rootCmd.PersistentFlags().StringArrayVar(&envAllow, "env", nil, "permite variável de ambiente no filho (repetível; não contorna bloqueio de segredos)")
+	rootCmd.PersistentFlags().StringArrayVar(&envPass, "pass-env", nil, "opt-in explícito para passar segredo (*TOKEN*/SECRET/KEY/PASSWORD) ao filho")
 
 	rootCmd.AddCommand(versionCmd)
 	rootCmd.AddCommand(initCmd)
