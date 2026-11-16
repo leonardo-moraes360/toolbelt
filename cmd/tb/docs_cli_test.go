@@ -42,6 +42,98 @@ func TestDocsCLIExamplesMatchCobra(t *testing.T) {
 	}
 }
 
+func TestDocsDescribeRealLocalWorkflow(t *testing.T) {
+	root := findModuleRoot(t)
+	cli := mustReadFile(t, filepath.Join(root, "docs", "cli.md"))
+	readme := mustReadFile(t, filepath.Join(root, "README.md"))
+	changelog := mustReadFile(t, filepath.Join(root, "CHANGELOG.md"))
+
+	assertDocsDriftIsScopeNotVault(t, cli)
+	assertDocsLocalTicketWorkflow(t, cli+"\n"+readme)
+	assertDocsJavascriptCoversTypeScript(t, cli)
+	assertDocsGuardStrictDeprecated(t, cli, changelog)
+}
+
+func mustReadFile(t *testing.T, path string) string {
+	t.Helper()
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(raw)
+}
+
+func assertDocsDriftIsScopeNotVault(t *testing.T, cli string) {
+	t.Helper()
+	if strings.Contains(cli, "Analisando vault contra código") {
+		t.Error("docs/cli.md ainda descreve drift como 'vault vs código'")
+	}
+	if strings.Contains(cli, "DOCUMENTAÇÃO DESATUALIZADA") {
+		t.Error("docs/cli.md ainda usa o relatório fictício de documentação desatualizada no drift")
+	}
+	if !strings.Contains(cli, "Fora do scope") || !strings.Contains(cli, "Proibidos tocados") {
+		t.Error("docs/cli.md deve mostrar o relatório real de drift (fora do scope / proibidos tocados)")
+	}
+}
+
+func assertDocsLocalTicketWorkflow(t *testing.T, docs string) {
+	t.Helper()
+	localOK := strings.Contains(strings.ToLower(docs), "100% local") ||
+		strings.Contains(docs, "não fala com o GitHub") ||
+		strings.Contains(docs, "nao fala com o GitHub")
+	if !localOK {
+		t.Error("docs devem deixar claro que o tb não fala com o GitHub (100% local)")
+	}
+	fromIssue := strings.Contains(docs, "gh issue") || strings.Contains(docs, "gh pr")
+	if !strings.Contains(docs, "rd.md") || !fromIssue {
+		t.Error("docs devem explicar como obter/gerar rd.md a partir de issue ou PR")
+	}
+}
+
+func assertDocsJavascriptCoversTypeScript(t *testing.T, cli string) {
+	t.Helper()
+	covers := strings.Contains(cli, "cobre TypeScript") ||
+		strings.Contains(cli, "inclui TypeScript") ||
+		strings.Contains(cli, "também TypeScript") ||
+		strings.Contains(cli, "TypeScript (ts/tsx)")
+	if !strings.Contains(cli, "TypeScript") || !covers {
+		t.Error("docs/cli.md deve deixar explícito que a linguagem javascript cobre TypeScript (ts/tsx)")
+	}
+}
+
+func assertDocsGuardStrictDeprecated(t *testing.T, cli, changelog string) {
+	t.Helper()
+	if reGuardStrictExample.MatchString(cli) {
+		t.Error("docs/cli.md não deve ter exemplo invocável com guard ... --strict")
+	}
+	if !strings.Contains(cli, "--strict") || !strings.Contains(strings.ToLower(cli), "deprecated") {
+		t.Error("docs/cli.md deve anotar a depreciação de guard --strict")
+	}
+	naoLancado := changelogSection(changelog, "## [Não Lançado]")
+	if naoLancado == "" {
+		t.Fatal("CHANGELOG sem seção ## [Não Lançado]")
+	}
+	deprec := strings.Contains(strings.ToLower(naoLancado), "deprecat") ||
+		strings.Contains(strings.ToLower(naoLancado), "deprecia")
+	if !strings.Contains(naoLancado, "--strict") || !deprec {
+		t.Error("CHANGELOG [Não Lançado] deve anotar a depreciação de guard --strict")
+	}
+}
+
+var reGuardStrictExample = regexp.MustCompile(`(?m)^[[:space:]]*tb[[:space:]]+guard[[:space:]]+check\b[^#\n]*--strict\b`)
+
+func changelogSection(doc, heading string) string {
+	start := strings.Index(doc, heading)
+	if start < 0 {
+		return ""
+	}
+	rest := doc[start+len(heading):]
+	if next := strings.Index(rest, "\n## ["); next >= 0 {
+		rest = rest[:next]
+	}
+	return rest
+}
+
 func TestNoMemoriaPersistentTypo(t *testing.T) {
 	root := findModuleRoot(t)
 	bad := "memória" + " persistent"
