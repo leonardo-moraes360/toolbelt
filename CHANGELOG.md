@@ -50,6 +50,9 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 - Stubs para comandos futuros: `sandbox`, `verify`, `mem`, `graph`, `router`, `mcp`
 
 ### Corrigido
+- `tb drift` resolve refs git (`HEAD^`, tags, SHA curto) via `rev-parse` antes de
+  comparar com `base_commit` (evita falso `base_mismatch`)
+- `tb verify run --json` sai com exit ≠ 0 em `ESCALATE`/`FAIL` (alinhado ao modo texto)
 - `tb init`: hints de `AGENTS.md`/`CLAUDE.md` ignoram fences de código longos e
   aceitam prosa curta (“use/run/prefer …”); `verify.test_cmd` valida o binário no
   `PATH` com fallback (ex. `uv` ausente → `pytest` / `python -m pytest`)

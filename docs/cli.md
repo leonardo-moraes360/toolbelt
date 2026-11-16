@@ -615,6 +615,10 @@ Detecta mudanças fora do scope declarado no ticket/rd.md, toques em
 (mandate). O parser de scope/forbidden é o mesmo do `tb review`
 (YAML frontmatter ou Markdown `## Scope` / `## Forbidden` / listas / globs com `**`).
 
+`--base` / `base_commit` do ticket (ex.: `HEAD^`, tags, SHA curto) são
+resolvidos com `git rev-parse` antes da comparação — evita falso
+`base_mismatch` por comparar a string da ref com o SHA declarado.
+
 ```bash
 tb drift [ticket] [flags]
 
@@ -765,6 +769,9 @@ diretório, a suite oculta é ignorada (`hidden_available: false`). Campos
 opcionais `build_cmd` e `lint_cmd` rodam antes dos testes (nessa ordem) e
 fazem o verify falhar se o comando sair com erro; ausentes = comportamento
 anterior (só `test_cmd` + hidden).
+
+Veredictos `ESCALATE` e `FAIL` saem com **exit ≠ 0** também com `--json`
+(igual ao modo texto). Só `PASS` e `SKIPPED` (ruler visual) usam exit 0.
 
 **Guard dentro do verify (anti-cheat vs mandate):**
 
