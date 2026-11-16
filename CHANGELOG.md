@@ -56,6 +56,14 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
   estrito e por `--warn-only`); remove o exemplo invocável com `--strict`
 
 ### Corrigido
+- `tb review` (goldfish): detecta só `TODO`/`FIXME`/`XXX`/`HACK` como palavra
+  inteira em maiúsculas em comentários (ignora “todo” em português)
+- `tb review` acceptance: cada achado liga `criterion` + `evidence` do diff;
+  considera testes adicionados (`Test*` em Go; `test`/`it`/`describe` em JS/TS)
+- `tb review` invariants: aplica regras de mandate (ex. proibir `console.log`,
+  sem comentários) às linhas adicionadas do diff
+- `tb review`: saída texto usa `papel=<role>` (e `papéis_acordo` se >1) no lugar
+  de `acordo=N/M`; JSON inclui `role` (e `criterion`/`evidence` no aceite)
 - Funções genéricas TS (`function foo<T>(…)`) voltam a aparecer no índice
 - Imports relativos estilo NodeNext (`.js`→`.ts`/`.tsx`, sem extensão, `index`) deixam de
   ficar como `pkg:./…` e resolvem para `file:…`

@@ -459,7 +459,8 @@ func reviewOK(rep *review.Report) bool {
 	if rep.Drift != nil && (len(rep.Drift.OutOfScope) > 0 || len(rep.Drift.ForbiddenHit) > 0 || rep.Drift.BaseMismatch) {
 		return false
 	}
-	for _, f := range rep.Findings {
+	for i := range rep.Findings {
+		f := &rep.Findings[i]
 		if f.Severity == review.SeverityCritical || f.Severity == review.SeverityError {
 			return false
 		}
