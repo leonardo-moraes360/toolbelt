@@ -7,6 +7,12 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Não Lançado]
 
+### Adicionado
+- Landing page estática em `site/` (HTML/CSS/JS, tema Synthwave, PT/EN) publicada via
+  GitHub Pages (`https://leonardo-moraes360.github.io/toolbelt/`)
+- Workflow `.github/workflows/pages.yml` (configure/upload/deploy-pages; sem `enablement`)
+- Guia `docs/site.md` (preview local e como habilitar Pages em Settings)
+
 ## [0.0.2] - 2026-11-16
 
 ### Adicionado
