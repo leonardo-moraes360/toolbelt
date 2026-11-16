@@ -7,6 +7,15 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Não Lançado]
 
+### Corrigido
+- `tb drift` / `tb review` / `tb stack`: diff de arquivos passa a usar three-dot
+  (`base...head` / merge-base), evitando falsos `out_of_scope` após merge da main
+  ou squash de outro PR na base
+- `tb drift`: `--base` explícito na CLI/MCP não é mais sobrescrito por
+  `base_commit` do ticket; `base_mismatch` usa `git merge-base --is-ancestor`
+  no `base_commit` declarado (ou na base efetiva se ausente), em vez de
+  igualdade de string com `--base`; JSON inclui `actual_base` e `merge_base`
+
 ## [0.0.2] - 2026-11-16
 
 ### Adicionado

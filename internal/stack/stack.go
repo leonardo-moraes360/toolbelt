@@ -244,7 +244,7 @@ func defaultLoaders() *Loaders {
 }
 
 func gitUnifiedDiff(repo, base, head string) (string, error) {
-	cmd := exec.Command("git", "diff", base+".."+head) //nolint:gosec // refs do operador
+	cmd := exec.Command("git", "diff", base+"..."+head) //nolint:gosec // refs do operador; three-dot
 	cmd.Dir = repo
 	out, err := cmd.Output()
 	if err != nil {
@@ -254,7 +254,7 @@ func gitUnifiedDiff(repo, base, head string) (string, error) {
 }
 
 func gitNameStatus(repo, base, head string) (string, error) {
-	cmd := exec.Command("git", "diff", "--name-status", base+".."+head) //nolint:gosec // refs do operador
+	cmd := exec.Command("git", "diff", "--name-status", base+"..."+head) //nolint:gosec // refs do operador; three-dot
 	cmd.Dir = repo
 	out, err := cmd.Output()
 	if err != nil {
@@ -264,7 +264,7 @@ func gitNameStatus(repo, base, head string) (string, error) {
 }
 
 func gitChangedFiles(repo, base, head string) ([]string, error) {
-	cmd := exec.Command("git", "diff", "--name-only", base+".."+head) //nolint:gosec // refs do operador
+	cmd := exec.Command("git", "diff", "--name-only", base+"..."+head) //nolint:gosec // refs do operador; three-dot
 	cmd.Dir = repo
 	out, err := cmd.Output()
 	if err != nil {
@@ -357,6 +357,7 @@ func runVerify(ctx context.Context, opts *Options, shared *Shared) (StepResult, 
 func runReview(opts *Options, shared *Shared) (StepResult, error) {
 	cfg := review.DefaultConfig(shared.RepoDir)
 	cfg.BaseRef = shared.Base
+	cfg.BaseExplicit = true
 	cfg.HeadRef = shared.Head
 	cfg.ApprovedSHA = opts.ApprovedSHA
 	cfg.TicketPath = resolveTicket(shared.RepoDir, ticketOrDefault(opts.Ticket))
@@ -383,6 +384,7 @@ func runDrift(opts *Options, shared *Shared) (StepResult, error) {
 	ticketPath := resolveTicket(shared.RepoDir, ticketOrDefault(opts.Ticket))
 	cfg := review.DefaultConfig(shared.RepoDir)
 	cfg.BaseRef = shared.Base
+	cfg.BaseExplicit = true
 	cfg.HeadRef = shared.Head
 	cfg.ApprovedSHA = opts.ApprovedSHA
 	cfg.TicketPath = ticketPath
