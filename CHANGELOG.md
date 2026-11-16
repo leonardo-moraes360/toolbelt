@@ -7,7 +7,9 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Não Lançado]
 
-Nada ainda.
+### Adicionado
+- `tb mem show|edit|retire|search` e vínculo `--ref` com ADR/decisions.md; soft-retire omitido de list/check/search (use `--all`); subcomando desconhecido sai ≠ 0
+- MCP: `tb_mem_show`, `tb_mem_edit`, `tb_mem_retire`, `tb_mem_search` (+ `ref`/`all` em add/list/check)
 
 ## [0.0.1] - 2026-11-16
 

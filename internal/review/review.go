@@ -598,7 +598,7 @@ func pathMarkerHit(file, marker string) bool {
 
 func loadInvariants(repo string) ([]mem.Invariant, error) {
 	dir := mem.LocateRepoToolbeltDir(repo)
-	return mem.NewStore(dir).List("")
+	return mem.NewStore(dir).List("", false)
 }
 
 func listChangedFiles(repo, base, head string) ([]string, error) {

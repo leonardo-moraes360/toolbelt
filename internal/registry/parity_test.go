@@ -14,6 +14,10 @@ func TestDefaultHasCLIParityTools(t *testing.T) {
 	want := []string{
 		"tb_mem_add",
 		"tb_mem_list",
+		"tb_mem_show",
+		"tb_mem_edit",
+		"tb_mem_retire",
+		"tb_mem_search",
 		"tb_mem_check",
 		"tb_mem_init",
 		"tb_verify_run",
@@ -57,21 +61,54 @@ func TestMemListTool(t *testing.T) {
 	}
 }
 
-func TestMemAddAndCheckTool(t *testing.T) {
-	dir := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(dir, ".toolbelt"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	res, err := Default().Call(context.Background(), "tb_mem_add", map[string]any{
-		"cwd":      dir,
+func TestMemAddShowEditSearchTool(t *testing.T) {
+	dir := memToolDir(t)
+	id := memToolAdd(t, dir, map[string]any{
 		"rule":     "nunca tocar secrets/",
 		"category": "security",
+		"ref":      "docs/adr/0001.md",
 	})
+	res, err := Default().Call(context.Background(), "tb_mem_show", map[string]any{"cwd": dir, "id": id})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.IsError {
-		t.Fatalf("tb_mem_add: %s", res.Content[0].Text)
+	if res.IsError || !strings.Contains(res.Content[0].Text, "docs/adr/0001.md") {
+		t.Fatalf("tb_mem_show: %v %s", res.IsError, res.Content[0].Text)
+	}
+	res, err = Default().Call(context.Background(), "tb_mem_edit", map[string]any{
+		"cwd":  dir,
+		"id":   id,
+		"rule": "nunca tocar secrets/ nem .env",
+		"ref":  "docs/decisions/secrets.md",
+	})
+	if err != nil || res.IsError {
+		t.Fatalf("tb_mem_edit: %v %v", err, res)
+	}
+	res, err = Default().Call(context.Background(), "tb_mem_search", map[string]any{
+		"cwd":   dir,
+		"query": "decisions",
+	})
+	if err != nil || res.IsError || !strings.Contains(res.Content[0].Text, id) {
+		t.Fatalf("tb_mem_search: %v %v", err, res)
+	}
+}
+
+func TestMemRetireAndCheckTool(t *testing.T) {
+	dir := memToolDir(t)
+	id := memToolAdd(t, dir, map[string]any{
+		"rule":     "nunca tocar secrets/",
+		"category": "security",
+	})
+	res, err := Default().Call(context.Background(), "tb_mem_retire", map[string]any{"cwd": dir, "id": id})
+	if err != nil || res.IsError {
+		t.Fatalf("tb_mem_retire: %v %v", err, res)
+	}
+	res, err = Default().Call(context.Background(), "tb_mem_list", map[string]any{"cwd": dir})
+	if err != nil || res.IsError {
+		t.Fatalf("tb_mem_list: %v %v", err, res)
+	}
+	if strings.Contains(res.Content[0].Text, id) {
+		t.Fatalf("list default não deveria incluir retired: %s", res.Content[0].Text)
 	}
 	res, err = Default().Call(context.Background(), "tb_mem_check", map[string]any{"cwd": dir})
 	if err != nil {
@@ -188,6 +225,36 @@ func TestGuardCheckTool(t *testing.T) {
 		!strings.Contains(res.Content[0].Text, "base_ref") {
 		t.Fatalf("esperava check result, got: %s", res.Content[0].Text)
 	}
+}
+
+func memToolDir(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, ".toolbelt"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
+func memToolAdd(t *testing.T, dir string, args map[string]any) string {
+	t.Helper()
+	args["cwd"] = dir
+	res, err := Default().Call(context.Background(), "tb_mem_add", args)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.IsError {
+		t.Fatalf("tb_mem_add: %s", res.Content[0].Text)
+	}
+	var added map[string]any
+	if err := json.Unmarshal([]byte(res.Content[0].Text), &added); err != nil {
+		t.Fatal(err)
+	}
+	id, _ := added["id"].(string)
+	if id == "" {
+		t.Fatalf("id ausente: %s", res.Content[0].Text)
+	}
+	return id
 }
 
 func gitRepo(t *testing.T) string {
