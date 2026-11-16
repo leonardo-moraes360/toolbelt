@@ -130,6 +130,7 @@ tb bench run --fake
 tb bench run --agent "cursor-agent {prompt} --workdir {workdir}" -r 3
 
 # Sem --agent: usa bench.default_agent de .toolbelt/config.yaml
+# Sem -t/-f: usa bench.tasks_dir / fixtures_dir (flag CLI > YAML > default)
 tb bench run -r 1
 
 # Gera relatório de resultados existentes
