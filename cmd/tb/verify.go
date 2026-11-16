@@ -27,6 +27,7 @@ var verifyRunCmd = &cobra.Command{
 func init() {
 	verifyRunCmd.Flags().String("base", "", "ref base")
 	verifyRunCmd.Flags().String("head", "", "ref head")
+	verifyRunCmd.Flags().String("ticket", "", "ticket com Scope (exceção de protected_paths custom do guard.yaml)")
 	verifyRunCmd.Flags().String("test-cmd", "", "linha de testes visíveis")
 	verifyRunCmd.Flags().String("hidden-test-cmd", "", "linha de testes ocultos (roda mesmo sem tests/hidden/; se o dir existir e o cmd estiver vazio: go test ./tests/hidden/...)")
 	verifyRunCmd.Flags().Int("max-iter", 0, "máximo de iterações")
@@ -74,6 +75,9 @@ func runTestsVerify(cmd *cobra.Command) error {
 	}
 	if v, _ := cmd.Flags().GetString("head"); v != "" {
 		cfg.HeadRef = v
+	}
+	if v, _ := cmd.Flags().GetString("ticket"); v != "" {
+		cfg.TicketPath = v
 	}
 	if v, _ := cmd.Flags().GetString("test-cmd"); v != "" {
 		cfg.VisibleTest = v

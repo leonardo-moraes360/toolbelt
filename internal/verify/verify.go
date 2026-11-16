@@ -10,6 +10,7 @@ import (
 
 	"github.com/leonardo-moraes360/toolbelt/internal/guard"
 	"github.com/leonardo-moraes360/toolbelt/internal/log"
+	"github.com/leonardo-moraes360/toolbelt/internal/review"
 )
 
 type Verdict string
@@ -32,6 +33,8 @@ type Config struct {
 	LintCmd       string
 	MaxIterations int
 	Timeout       time.Duration
+	Scope         []string
+	TicketPath    string
 }
 
 type Result struct {
@@ -96,14 +99,55 @@ func applyGuard(cfg *Config, res *Result) (bool, error) {
 	if err != nil {
 		return false, err
 	}
+	scope := resolveVerifyScope(cfg)
 	res.Guard = gr
-	for _, v := range gr.Violations {
-		if v.Severity == guard.SeverityError {
-			res.Verdict = VerdictFail
-			return true, nil
+	abort := false
+	for i := range gr.Violations {
+		if !guardBlocksVerify(&gr.Violations[i], scope) {
+			continue
 		}
+		abort = true
 	}
-	return false, nil
+	if abort {
+		res.Verdict = VerdictFail
+	}
+	return abort, nil
+}
+
+func resolveVerifyScope(cfg *Config) []string {
+	if len(cfg.Scope) > 0 {
+		return cfg.Scope
+	}
+	if cfg.TicketPath == "" {
+		return nil
+	}
+	ticket, err := review.LoadTicket(cfg.TicketPath)
+	if err != nil || ticket == nil {
+		return nil
+	}
+	return ticket.Scope
+}
+
+func guardBlocksVerify(v *guard.Violation, scope []string) bool {
+	if v.Severity != guard.SeverityError {
+		return false
+	}
+	if v.Type != guard.ViolationProtectedPath {
+		return true
+	}
+	if v.Source != guard.SourceCustom {
+		return true
+	}
+	if len(scope) > 0 && !review.PathInScope(v.File, scope) {
+		return true
+	}
+	v.Severity = guard.SeverityWarning
+	if len(scope) > 0 {
+		v.Message = "path protegido (guard.yaml) no Scope do ticket — verify continua"
+	} else {
+		v.Message = "path protegido (guard.yaml) — verify reporta e continua (anti-cheat default ainda aborta)"
+	}
+	return false
 }
 
 func resolveHiddenAvailable(cfg *Config) bool {

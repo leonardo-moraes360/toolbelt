@@ -177,6 +177,11 @@ func TestLoadProtectedPathsHelpers(t *testing.T) {
 	if len(got) != len(defaultProtectedPaths) {
 		t.Fatalf("sem arquivo: got %v", got)
 	}
+	for _, e := range got {
+		if e.custom {
+			t.Fatalf("default marcado como custom: %#v", e)
+		}
+	}
 
 	_ = os.MkdirAll(filepath.Join(dir, ".toolbelt"), 0o755)
 	_ = os.WriteFile(filepath.Join(dir, ".toolbelt", "guard.yaml"), []byte("protected_paths:\n  - lib/help.js\n  - tests/hidden/*\n"), 0o644)
@@ -184,7 +189,48 @@ func TestLoadProtectedPathsHelpers(t *testing.T) {
 	if len(got) != len(defaultProtectedPaths)+1 {
 		t.Fatalf("merge dedupe: got %v", got)
 	}
-	if got[len(got)-1] != "lib/help.js" {
-		t.Fatalf("custom no fim: got %v", got)
+	last := got[len(got)-1]
+	if last.pattern != "lib/help.js" || !last.custom {
+		t.Fatalf("custom no fim: got %#v", last)
+	}
+}
+
+func TestProtectedPathSourceDefaultVsCustom(t *testing.T) {
+	dir := setupRepo(t)
+	_ = os.MkdirAll(filepath.Join(dir, "lib"), 0o755)
+	_ = os.WriteFile(filepath.Join(dir, "lib", "help.js"), []byte("1\n"), 0o644)
+	base := commitAll(t, dir, "base")
+
+	_ = os.MkdirAll(filepath.Join(dir, ".toolbelt"), 0o755)
+	_ = os.WriteFile(filepath.Join(dir, ".toolbelt", "guard.yaml"), []byte("protected_paths:\n  - lib/help.js\n"), 0o644)
+	_ = os.WriteFile(filepath.Join(dir, "lib", "help.js"), []byte("2\n"), 0o644)
+	_ = os.WriteFile(filepath.Join(dir, ".toolbelt", "thresholds.yaml"), []byte("x: 1\n"), 0o644)
+	head := commitAll(t, dir, "touch both")
+
+	chk := NewChecker(dir)
+	res, err := chk.Check(base, head)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var custom, def bool
+	for _, v := range res.Violations {
+		if v.Type != ViolationProtectedPath {
+			continue
+		}
+		switch v.File {
+		case "lib/help.js":
+			if v.Source != SourceCustom {
+				t.Fatalf("custom source=%q", v.Source)
+			}
+			custom = true
+		case ".toolbelt/thresholds.yaml":
+			if v.Source != SourceDefault {
+				t.Fatalf("default source=%q", v.Source)
+			}
+			def = true
+		}
+	}
+	if !custom || !def {
+		t.Fatalf("custom=%v default=%v violations=%#v", custom, def, res.Violations)
 	}
 }
