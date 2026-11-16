@@ -365,3 +365,5 @@ Máximo 12 PRs; o item 12 pode fatiar em `fix(verify): visual skipped` + `docs(c
 ## Próximo passo
 
 Usar esta síntese como **entrada da próxima fase de implementação**, começando pelos PRs P0 na ordem da tabela. Os relatórios brutos permanecem em `docs/campo/<slug>.md` para rastreio de evidência.
+
+**Rodada 2** (revalidação das 12 correções em campo): síntese em [`docs/campo/rodada2/SINTESE.md`](rodada2/SINTESE.md); relatórios em [`docs/campo/rodada2/<slug>.md`](rodada2/).
