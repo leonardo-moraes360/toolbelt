@@ -12,9 +12,11 @@ import (
 )
 
 const (
-	DefaultIndexFile = "graph.json"
-	EnvEnable        = "TB_GRAPH"
-	FlagEnv          = "TB_FLAG_GRAPH"
+	DefaultIndexFile     = "graph.json"
+	EnvEnable            = "TB_GRAPH"
+	FlagEnv              = "TB_FLAG_GRAPH"
+	MinCallsConfidence   = 0.6
+	SoftResolveConfidence = 0.75
 )
 
 type NodeType string
@@ -199,6 +201,9 @@ func (s *Store) Callers(function string, depth int) []Node {
 				if e.Type != EdgeCalls || e.TargetID != tid {
 					continue
 				}
+				if e.Confidence < MinCallsConfidence {
+					continue
+				}
 				if seen[e.SourceID] {
 					continue
 				}
@@ -275,6 +280,9 @@ func (s *Store) Impact(file string, depth int) []Node {
 				if e.Type != EdgeCalls || e.TargetID != tid {
 					continue
 				}
+				if e.Confidence < MinCallsConfidence {
+					continue
+				}
 				if seen[e.SourceID] {
 					continue
 				}
@@ -309,16 +317,37 @@ func (s *Store) nodeByID(id string) (Node, bool) {
 
 func (s *Store) findFunctionIDs(name string) []string {
 	name = strings.TrimSpace(name)
+	if name == "" {
+		return nil
+	}
 	var ids []string
+	seen := map[string]bool{}
 	for _, n := range s.index.Nodes {
 		if n.Type != NodeFunction {
 			continue
 		}
-		if n.Title == name || strings.HasSuffix(n.ID, "/"+name) || strings.HasSuffix(n.Title, "."+name) {
-			ids = append(ids, n.ID)
+		if !functionQueryMatches(n, name) {
+			continue
 		}
+		if seen[n.ID] {
+			continue
+		}
+		seen[n.ID] = true
+		ids = append(ids, n.ID)
 	}
 	return ids
+}
+
+func functionQueryMatches(n Node, query string) bool {
+	if n.Title == query || strings.HasSuffix(n.Title, "."+query) {
+		return true
+	}
+	id := n.ID
+	if strings.HasSuffix(id, "."+query) || strings.HasSuffix(id, "/"+query) || strings.HasSuffix(id, ":"+query) {
+		return true
+	}
+	idDot := strings.ReplaceAll(id, "/", ".")
+	return strings.HasSuffix(idDot, "."+query) || strings.HasSuffix(idDot, ":"+query)
 }
 
 func (s *Store) findPackageOrFileIDs(q string) []string {

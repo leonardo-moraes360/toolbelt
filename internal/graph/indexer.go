@@ -204,6 +204,26 @@ func walkSourceFile(
 }
 
 func resolveSoftMentions(nodes map[string]Node, edges []Edge) []Edge {
+	byTitle := indexNodesByTitle(nodes)
+	importsOf := buildFileImports(edges)
+	out := make([]Edge, 0, len(edges))
+	for _, e := range edges {
+		if !strings.HasPrefix(e.TargetID, "sym:") {
+			out = append(out, e)
+			continue
+		}
+		target, conf, ok := resolveSymTarget(nodes, byTitle, importsOf, e)
+		if !ok {
+			continue
+		}
+		e.TargetID = target
+		e.Confidence = conf
+		out = append(out, e)
+	}
+	return out
+}
+
+func indexNodesByTitle(nodes map[string]Node) map[string][]string {
 	byTitle := map[string][]string{}
 	for id, n := range nodes {
 		switch n.Type {
@@ -212,25 +232,116 @@ func resolveSoftMentions(nodes map[string]Node, edges []Edge) []Edge {
 			byTitle[key] = append(byTitle[key], id)
 		}
 	}
-	out := make([]Edge, 0, len(edges))
+	return byTitle
+}
+
+func buildFileImports(edges []Edge) map[string][]string {
+	m := map[string][]string{}
 	for _, e := range edges {
-		if !strings.HasPrefix(e.TargetID, "sym:") {
-			out = append(out, e)
+		if e.Type != EdgeImports {
 			continue
 		}
-		name := strings.TrimPrefix(e.TargetID, "sym:")
-		cands := byTitle[strings.ToLower(name)]
-		if len(cands) == 0 {
-			if _, ok := nodes["file:"+name]; ok {
-				e.TargetID = "file:" + name
-				out = append(out, e)
-			}
-			continue
-		}
-		e.TargetID = cands[0]
-		out = append(out, e)
+		pkg := strings.TrimPrefix(e.TargetID, "pkg:")
+		m[e.SourceID] = append(m[e.SourceID], pkg)
 	}
-	return out
+	return m
+}
+
+func resolveSymTarget(
+	nodes map[string]Node,
+	byTitle map[string][]string,
+	importsOf map[string][]string,
+	e Edge,
+) (string, float64, bool) {
+	name := strings.TrimPrefix(e.TargetID, "sym:")
+	cands := byTitle[strings.ToLower(name)]
+	if len(cands) == 0 {
+		if _, ok := nodes["file:"+name]; ok {
+			return "file:" + name, e.Confidence, true
+		}
+		return "", 0, false
+	}
+	if e.Type == EdgeCalls {
+		return resolveCallSym(nodes, importsOf, e.SourceID, cands, e.Confidence)
+	}
+	return cands[0], e.Confidence, true
+}
+
+func resolveCallSym(
+	nodes map[string]Node,
+	importsOf map[string][]string,
+	sourceID string,
+	cands []string,
+	conf float64,
+) (string, float64, bool) {
+	funcs := functionCandidates(nodes, cands)
+	if len(funcs) == 0 {
+		return "", 0, false
+	}
+	src, _ := nodes[sourceID]
+	fileID := sourceFileID(sourceID, src)
+	imported := importsOf[fileID]
+	matched := filterCallCandidates(nodes, funcs, src, imported)
+	if len(matched) != 1 {
+		return "", 0, false
+	}
+	if conf < SoftResolveConfidence {
+		conf = SoftResolveConfidence
+	}
+	return matched[0], conf, true
+}
+
+func functionCandidates(nodes map[string]Node, cands []string) []string {
+	var funcs []string
+	for _, id := range cands {
+		if n, ok := nodes[id]; ok && n.Type == NodeFunction {
+			funcs = append(funcs, id)
+		}
+	}
+	return funcs
+}
+
+func sourceFileID(sourceID string, src Node) string {
+	if strings.HasPrefix(sourceID, "file:") {
+		return sourceID
+	}
+	if src.Path != "" {
+		return "file:" + filepath.ToSlash(src.Path)
+	}
+	return sourceID
+}
+
+func filterCallCandidates(nodes map[string]Node, funcs []string, src Node, imported []string) []string {
+	var matched []string
+	for _, id := range funcs {
+		n := nodes[id]
+		if sameCallPackage(src, n) || importCovers(imported, n) {
+			matched = append(matched, id)
+		}
+	}
+	return matched
+}
+
+func sameCallPackage(src, tgt Node) bool {
+	return src.Package != "" && src.Package == tgt.Package
+}
+
+func importCovers(imported []string, n Node) bool {
+	pkg := n.Package
+	qual := strings.TrimPrefix(n.ID, "func:")
+	qual = strings.ReplaceAll(qual, "/", ".")
+	for _, imp := range imported {
+		if imp == "" {
+			continue
+		}
+		if imp == pkg || strings.HasPrefix(pkg, imp+".") {
+			return true
+		}
+		if strings.HasPrefix(qual, imp+".") {
+			return true
+		}
+	}
+	return false
 }
 
 func skipIndexedTestFile(path string) bool {
