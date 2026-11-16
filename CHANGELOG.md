@@ -19,6 +19,14 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 - `tb mem add|edit|list`: rejeitam `--category` inválida e `--ref` fora de
   ADR/decisions, com lista dos valores válidos no erro
 - `tb mem search`: busca case- e accent-insensitive (Unicode NFD)
+- Docs: `tb drift` deixa de ser descrito como “vault vs código”; o relatório real é
+  escopo / forbidden / commit base (+ `pinned_approval` opcional)
+- Docs: deixa explícito que o `tb` **não fala com o GitHub** (100% local) e precisa
+  de um `rd.md`/ticket no disco; exemplos de como gerar a partir de issue/PR via `gh`
+- Docs: linguagem `graph.languages: javascript` cobre TypeScript (`ts`/`tsx`); não há
+  linguagem `typescript` separada
+- Docs: anota a depreciação de `tb guard check --strict` (substituído pelo default
+  estrito e por `--warn-only`); remove o exemplo invocável com `--strict`
 
 ## [0.0.2] - 2026-11-16
 

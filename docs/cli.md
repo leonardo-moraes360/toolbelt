@@ -2,6 +2,71 @@
 
 Este documento descreve a CLI do toolbelt: comandos **implementados** (espelham `tb --help`) e seções **planejadas** (Fase 3+, marcadas explicitamente). Em caso de divergência, a CLI Cobra é a fonte da verdade.
 
+## Local-first: sem GitHub
+
+O `tb` **não fala com o GitHub** (nem com outras forges): é **100% local**. Lê o
+git do working tree, arquivos no disco e `.toolbelt/`. Não abre issues, não
+baixa PRs e não chama a API do GitHub. Por isso `tb review`, `tb drift`,
+`tb verify --ticket` e `tb stack` precisam de um **`rd.md`** (ou outro ticket
+local via `--ticket` / argumento posicional) — não de um número de issue.
+
+### Como obter ou gerar o `rd.md`
+
+Escreva o arquivo na raiz do repo (ou passe `--ticket caminho`). Formatos
+aceitos: frontmatter YAML ou Markdown com `## Scope` / `## Escopo`,
+`## Forbidden` / `## Proibido` e checkboxes de aceite (detalhes em `tb review`).
+
+A partir de uma **issue** ou **PR** (fora do `tb`, com `gh` ou o browser):
+
+```bash
+# Issue → rascunho local
+gh issue view 19 --json title,body > /tmp/issue-19.json
+# Copie title/body para rd.md e declare scope/forbidden/acceptance
+
+# PR → corpo + arquivos tocados como ponto de partida do Scope
+gh pr view 42 --json title,body,files > /tmp/pr-42.json
+gh pr diff 42 --name-only
+```
+
+Exemplo mínimo:
+
+```markdown
+---
+title: "fb3/19-docs"
+base_commit: main
+scope:
+  - docs/cli.md
+  - README.md
+  - rd.md
+forbidden:
+  - tests/hidden/**
+acceptance:
+  - docs descrevem o comportamento real
+---
+
+## Notas
+Texto livre da issue/PR (contexto para humanos/agentes).
+```
+
+Ou só Markdown:
+
+```markdown
+# fb3/19-docs
+
+## Scope
+- docs/cli.md
+- README.md
+- `rd.md`
+
+## Forbidden
+- tests/hidden/**
+
+- [ ] docs descrevem o comportamento real
+```
+
+`tb ticket` (criar tickets automaticamente) é **planejado** — até lá o arquivo
+é manual.
+
 ## Visão Geral
 
 ```
@@ -142,7 +207,7 @@ Linguagens e docs (extensível via `LanguageIndexer`, regex leve, sem cgo):
 | `graph.languages` | Extensões |
 |-------------------|-----------|
 | `go` | `.go` (AST; arestas `calls`) |
-| `javascript` | `.js`, `.mjs`, `.cjs`, `.ts`, `.tsx`, `.jsx` (funções/`const` arrow, JSX `<Comp />` como `calls`; resolve imports relativos ao símbolo do módulo importado) |
+| `javascript` | cobre TypeScript (`ts`/`tsx`): `.js`, `.mjs`, `.cjs`, `.ts`, `.tsx`, `.jsx` (funções/`const` arrow, JSX `<Comp />` como `calls`; resolve imports relativos ao símbolo do módulo importado). Não há linguagem `typescript` separada — use `javascript` |
 | `python` | `.py` (defines/imports + arestas `calls` por módulo qualificado; `callers`/`impact` ignoram arestas com confiança &lt; 0.6) |
 | `java` | `.java` |
 | `kotlin` | `.kt`, `.kts` |
@@ -564,12 +629,14 @@ Flags:
   --base <ref>   Ref base (default: HEAD~1)
   --head <ref>   Ref head (default: HEAD)
   --warn-only    Exit 0 mesmo com SeverityError (opt-out do default CI-safe)
-  --strict       Deprecated: falha em SeverityError já é o default
+  --strict       Deprecated: falha em SeverityError já é o default; use --warn-only para opt-out
   --json         Saída em JSON (flag global)
 ```
 
-Por default, exit ≠ 0 quando há `SeverityError`. No modo texto limpo imprime
-`guard: ok (N regras, 0 violações)`.
+Por default, exit ≠ 0 quando há `SeverityError` (comportamento estrito).
+`--strict` é **deprecated** (alias sem efeito: o default já falha em
+`SeverityError`); prefira omitir a flag ou usar `--warn-only` para opt-out.
+No modo texto limpo imprime `guard: ok (N regras, 0 violações)`.
 
 **Exemplos:**
 
@@ -669,9 +736,11 @@ tb review --base main --approved-sha abc1234 --ticket rd.md --json
 
 ### `tb drift` — Drift de Escopo/Base (✓ Fase 2)
 
-Detecta mudanças fora do scope declarado no ticket/rd.md, toques em
-`Forbidden`/`Proibido` (`forbidden_hit`) e divergência do commit base
-(mandate). O parser de scope/forbidden é o mesmo do `tb review`
+Compara os arquivos alterados em `base..head` com o **scope** declarado no
+ticket/`rd.md`, detecta toques em `Forbidden`/`Proibido` (`forbidden_hit`) e
+divergência do commit base (mandate). **Não** compara vault Markdown contra
+código — o relatório é só escopo/base/forbidden (+ `pinned_approval` opcional).
+O parser de scope/forbidden é o mesmo do `tb review`
 (YAML frontmatter ou Markdown `## Scope` / `## Forbidden` / listas / globs com `**`).
 
 `--base` / `base_commit` do ticket (ex.: `HEAD^`, tags, SHA curto) são
@@ -696,62 +765,32 @@ Com `--approved-sha`, o JSON de drift inclui `pinned_approval` (mesmo formato do
 **Exemplos:**
 
 ```bash
-# Verificar drift de todo o vault
+# Drift do diff HEAD~1..HEAD contra rd.md (default)
 tb drift
-# Analisando vault contra código...
-# 
-# ═══════════════════════════════════════════════════════════════
-# RELATÓRIO DE DRIFT
-# ═══════════════════════════════════════════════════════════════
-# 
-# DOCUMENTAÇÃO DESATUALIZADA (3):
-# ┌─────────────────────────────────────────────────────────────────────────────┐
-# │ vault/facts/auth-module.md                                                  │
-# │ ├── Menciona: validateToken(string) -> bool                                 │
-# │ ├── Código atual: ValidateToken(ctx, string) -> (Claims, error)             │
-# │ └── Última sync: 2026-01-10 (15 dias atrás)                                 │
-# ├─────────────────────────────────────────────────────────────────────────────┤
-# │ vault/facts/database-schema.md                                              │
-# │ ├── Menciona: tabela 'users' com 5 colunas                                  │
-# │ ├── Código atual: tabela 'users' com 8 colunas                              │
-# │ └── Colunas novas: created_at, updated_at, deleted_at                       │
-# └─────────────────────────────────────────────────────────────────────────────┘
-# 
-# CÓDIGO SEM DOCUMENTAÇÃO (5):
-# - src/api/handlers/webhook.go (handler novo)
-# - src/services/notification.go (serviço novo)
-# - src/database/migrations/003_add_audit.sql (migration nova)
-# ...
-# 
-# DOCUMENTAÇÃO ÓRFÃ (1):
-# - vault/facts/legacy-parser.md → código deletado em abc123
-# 
-# Resumo: 3 desatualizados, 5 não documentados, 1 órfão
+# ═══════════════════════════════════════════════════════════
+#  RELATÓRIO DE DRIFT
+# ═══════════════════════════════════════════════════════════
+# Base: HEAD~1 → abc1234
+# Fora do scope (1):
+#   - b.go
+# Proibidos tocados (0):
 
-# Verificar drift de arquivo específico
-tb drift docs/api-spec.md
-# Comparando docs/api-spec.md contra código...
-# 
-# Endpoints documentados: 15
-# Endpoints no código: 18
-# 
-# FALTANDO NA DOC:
-# - POST /api/v2/webhooks (src/api/routes.go:145)
-# - DELETE /api/v2/sessions/:id (src/api/routes.go:162)
-# - GET /api/v2/health/detailed (src/api/routes.go:23)
-
-# Saída JSON para relatório / CI
+# Ticket explícito + saída JSON para CI
 tb drift --ticket rd.md --json --output drift-report.json
 
 # Pin de aprovação: falha se o patch do head mudou desde o SHA aprovado
 tb drift --base main --approved-sha abc1234 --ticket rd.md
 ```
 
+JSON (`--json` / `--output`) usa `out_of_scope`, `forbidden_hit`,
+`base_mismatch`, `declared_base`, `actual_base` (e `pinned_approval` quando
+há `--approved-sha`). Exit ≠ 0 se houver drift ou patch pinado divergente.
+
 **Integração com CI**:
 
 ```bash
-# No CI, falhar se houver drift crítico
-tb drift --json | jq '.critical_count' | xargs -I {} test {} -eq 0
+# No CI, falhar se houver arquivos fora do scope
+tb drift --ticket rd.md --json | jq '.out_of_scope | length' | xargs -I {} test {} -eq 0
 ```
 
 ---
@@ -975,14 +1014,15 @@ Flags:
   --base <ref>          Commit/ref base (default: HEAD~1; ignorado se base..head for passado)
   --head <ref>          Commit/ref head (default: HEAD; ignorado se base..head for passado)
   --warn-only           Exit 0 mesmo com SeverityError (opt-out do default CI-safe)
-  --strict              Deprecated: falha em SeverityError já é o default (alias sem efeito)
+  --strict              Deprecated: falha em SeverityError já é o default (alias sem efeito; use --warn-only)
   --json                Saída em JSON
 ```
 
 Aceita o intervalo posicional `base..head` (forma clássica) ou as flags `--base`/`--head`, alinhadas a `tb review` / `tb drift` / `tb verify`.
 
-Por default, exit ≠ 0 quando há `SeverityError` (CI-safe). No modo texto sem
-violações imprime `guard: ok (N regras, 0 violações)` (`N` = paths protegidos
+Por default, exit ≠ 0 quando há `SeverityError` (CI-safe). `--strict` está
+**deprecated** (substituído pelo default estrito + `--warn-only`). No modo texto
+sem violações imprime `guard: ok (N regras, 0 violações)` (`N` = paths protegidos
 carregados: defaults + `.toolbelt/guard.yaml`).
 
 **Exemplos:**
@@ -1002,9 +1042,6 @@ tb guard check origin/main..HEAD --warn-only
 
 # JSON + exit ≠ 0 se houver SeverityError (default)
 tb guard check main..HEAD --json
-
-# Alias deprecated --strict (mesmo comportamento do default)
-tb guard check origin/main..HEAD --strict --json
 ```
 
 **Manifesto de paths protegidos (`.toolbelt/guard.yaml`):**
