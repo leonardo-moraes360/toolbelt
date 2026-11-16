@@ -46,6 +46,8 @@ linters-settings:
 
   misspell:
     locale: US
+    ignore-words:
+      - comando
 
   gocritic:
     enabled-tags:
