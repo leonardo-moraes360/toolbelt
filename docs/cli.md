@@ -178,7 +178,9 @@ graph:
   max_file_bytes: 524288   # ignora arquivos maiores
 ```
 
-Ignora `node_modules`, `vendor`, `dist`, `build`, `.git`, etc. O grafo
+Ignora subdiretórios como `node_modules`, `vendor`, `dist`, `build`,
+`target`, `.git`, etc. A raiz do walk nunca é pulada pelo nome (ex.: indexar
+`/tmp/target` funciona; um `target/` filho continua ignorado). O grafo
 continua sob demanda (ADR-011): `TB_GRAPH=on` ou `--enable`.
 
 ```bash
@@ -513,6 +515,11 @@ Flags:
 
 Também reporta drift de escopo e commit base. Isolamento fresco é obrigatório.
 
+Invariantes de path (ex.: `tests/hidden/`, `thresholds.yaml`) são casadas contra
+arquivos **alterados** por prefixo/segmento de caminho — não por substring no
+texto do diff ou do ticket. Mencionar `forbidden: tests/hidden/**` em `rd.md`
+sem tocar esse diretório não gera finding critical.
+
 **Exemplos:**
 
 ```bash
@@ -690,7 +697,7 @@ tb verify run [flags]
 
 Flags:
   --ruler <type>           Tipo de ruler: tests|visual (default: tests)
-  --test-cmd <cmd>         Testes visíveis (default: go test ./... ou verify.test_cmd)
+  --test-cmd <cmd>         Testes visíveis (default: verify.test_cmd; `tb init` detecta go/npm/pnpm/yarn/pytest/cargo/make)
   --hidden-test-cmd <cmd>  Suite oculta (default: go test ./tests/hidden/... ou verify.hidden_test_cmd)
   --max-iter <n>           Máximo de iterações
   --timeout <dur>          Timeout (default: 10m)
@@ -703,12 +710,23 @@ Flags:
   --json                   Saída em JSON (flag global)
 ```
 
+`tb init` preenche `verify.test_cmd` a partir da toolchain do repositório
+(`go.mod` → `go test ./...`, `package.json` + scripts.test → `npm`/`pnpm`/`yarn test`,
+`pyproject.toml`/`uv.lock` → `pytest`/`uv run pytest`, `Cargo.toml` → `cargo test`,
+`Makefile` com target `test`/`check` → `make test`/`make check`). Sem marcadores
+reconhecidos, permanece o default Go.
+
 A suite oculta permanece escondida do agente (paths em `tests/hidden/` protegidos
-pelo `tb guard`). Em monorepos não-Go, configure o comando oculto:
+pelo `tb guard`). Em monorepos não-Go, configure o comando oculto. Campos
+opcionais `build_cmd` e `lint_cmd` rodam antes dos testes (nessa ordem) e
+fazem o verify falhar se o comando sair com erro; ausentes = comportamento
+anterior (só `test_cmd` + hidden).
 
 ```yaml
 # .toolbelt/config.yaml
 verify:
+  build_cmd: "pnpm --filter @pkg build"
+  lint_cmd: "pnpm --filter @pkg lint"
   test_cmd: "pnpm --filter @pkg test"
   hidden_test_cmd: "pnpm --filter @pkg test:hidden"
 ```
@@ -869,10 +887,13 @@ tb guard check main..HEAD
 
 # Modo strict para CI
 tb guard check origin/main..HEAD --strict
-# Exit code 1 se houver modificação sem decisão
+# Exit code 1 se houver SeverityError
 
-# Saída JSON
+# Saída JSON (exit 0 mesmo com violações)
 tb guard check main..HEAD --json
+
+# Strict + JSON: imprime JSON válido e sai ≠ 0 se houver SeverityError
+tb guard check origin/main..HEAD --strict --json
 ```
 
 **Manifesto de paths protegidos (`.toolbelt/guard.yaml`):**
@@ -1413,13 +1434,22 @@ tb bench run [flags]
 
 Flags:
   --fake               Usa agente fake embutido no binário `tb` (portátil, qualquer repo)
-  --agent <cmd>        Comando do agente externo
+  --agent <cmd>        Comando do agente externo (fallback: bench.default_agent)
   --repetitions <n>    Número de repetições (default: 1)
   --output <path>      Arquivo de saída JSONL
   --label <name>       Rótulo da variante A/B
   --flag key=value     Feature flag (repetível)
   --ab-config <yaml>   Variante A/B a partir de YAML
   --task <id>          Filtra tarefas
+```
+
+Se `--agent` e `--fake` forem omitidos, `tb bench run` usa `bench.default_agent`
+de `.toolbelt/config.yaml` (quando definido).
+
+```yaml
+# .toolbelt/config.yaml
+bench:
+  default_agent: "cursor-agent {prompt} --workdir {workdir}"
 ```
 
 Placeholders `{prompt}`, `{workdir}` e `{timeout}` são interpolados com
@@ -1436,6 +1466,11 @@ tb bench compare --before graph-off.jsonl --after graph-on.jsonl
 # Roda duas configs no mesmo conjunto de tarefas e compara
 tb bench compare --config-a bench/ab/graph-off.yaml \
                  --config-b bench/ab/graph-on.yaml --fake
+
+# Mesmo fluxo com agente externo (--agent ou bench.default_agent)
+tb bench compare --config-a bench/ab/graph-off.yaml \
+                 --config-b bench/ab/graph-on.yaml \
+                 --agent "cursor-agent {prompt} --workdir {workdir}"
 ```
 
 O relatório Markdown e o JSONL incluem métricas de **sucesso (pass@1)**, **tempo** e **tokens**, com deltas A→B.
@@ -1445,6 +1480,7 @@ O relatório Markdown e o JSONL incluem métricas de **sucesso (pass@1)**, **tem
 ```bash
 tb bench run --fake --label graph-off --flag graph=off
 tb bench run --fake --ab-config bench/ab/graph-on.yaml
+tb bench run -r 1   # usa bench.default_agent do config
 tb bench compare --before bench/results/graph-off.jsonl \
                  --after bench/results/graph-on.jsonl
 tb bench list

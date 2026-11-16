@@ -26,6 +26,8 @@ type Config struct {
 	HeadRef       string
 	VisibleTest   string
 	HiddenTest    string
+	BuildCmd      string
+	LintCmd       string
 	MaxIterations int
 	Timeout       time.Duration
 }
@@ -34,6 +36,10 @@ type Result struct {
 	Verdict         Verdict            `json:"verdict"`
 	Iterations      int                `json:"iterations"`
 	Guard           *guard.CheckResult `json:"guard,omitempty"`
+	BuildRan        bool               `json:"build_ran"`
+	BuildPassed     bool               `json:"build_passed"`
+	LintRan         bool               `json:"lint_ran"`
+	LintPassed      bool               `json:"lint_passed"`
 	VisiblePassed   bool               `json:"visible_passed"`
 	HiddenPassed    bool               `json:"hidden_passed"`
 	HiddenAvailable bool               `json:"hidden_available"`
@@ -77,6 +83,14 @@ func Run(ctx context.Context, cfg *Config) (*Result, error) {
 
 	for i := 1; i <= cfg.MaxIterations; i++ {
 		res.Iterations = i
+		preOK, preErr := runBuildAndLint(ctx, cfg, res)
+		if preErr != nil {
+			return nil, preErr
+		}
+		if !preOK {
+			log.Info("iteração de verify falhou", "n", i, "step", "build_or_lint")
+			continue
+		}
 		visibleOK, err := runTest(ctx, cfg.RepoDir, cfg.VisibleTest, cfg.Timeout)
 		if err != nil {
 			return nil, err
@@ -98,6 +112,32 @@ func Run(ctx context.Context, cfg *Config) (*Result, error) {
 	}
 	res.Verdict = VerdictEscalate
 	return res, nil
+}
+
+func runBuildAndLint(ctx context.Context, cfg *Config, res *Result) (bool, error) {
+	if cfg.BuildCmd != "" {
+		res.BuildRan = true
+		ok, err := runTest(ctx, cfg.RepoDir, cfg.BuildCmd, cfg.Timeout)
+		if err != nil {
+			return false, err
+		}
+		res.BuildPassed = ok
+		if !ok {
+			return false, nil
+		}
+	}
+	if cfg.LintCmd != "" {
+		res.LintRan = true
+		ok, err := runTest(ctx, cfg.RepoDir, cfg.LintCmd, cfg.Timeout)
+		if err != nil {
+			return false, err
+		}
+		res.LintPassed = ok
+		if !ok {
+			return false, nil
+		}
+	}
+	return true, nil
 }
 
 func runTest(ctx context.Context, dir, command string, timeout time.Duration) (bool, error) {

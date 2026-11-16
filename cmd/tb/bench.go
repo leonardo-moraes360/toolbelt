@@ -13,6 +13,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/leonardo-moraes360/toolbelt/internal/bench"
+	"github.com/leonardo-moraes360/toolbelt/internal/config"
 	"github.com/leonardo-moraes360/toolbelt/internal/log"
 )
 
@@ -40,7 +41,7 @@ func init() {
 	benchCmd.AddCommand(benchReportCmd)
 	benchCmd.AddCommand(benchCompareCmd)
 
-	benchRunCmd.Flags().StringP("agent", "a", "", "command do agente (obrigatório ou use --fake)")
+	benchRunCmd.Flags().StringP("agent", "a", "", "command do agente (ou bench.default_agent / --fake)")
 	benchRunCmd.Flags().Bool("fake", false, "usa agente fake para testes")
 	benchRunCmd.Flags().StringP("tasks-dir", "t", "bench/tasks", "diretório das tarefas")
 	benchRunCmd.Flags().StringP("fixtures-dir", "f", "bench/fixtures", "diretório das fixtures")
@@ -61,6 +62,7 @@ func init() {
 	benchCompareCmd.Flags().String("after", "", "arquivo JSONL da variante B")
 	benchCompareCmd.Flags().String("config-a", "", "YAML da variante A (roda + compara)")
 	benchCompareCmd.Flags().String("config-b", "", "YAML da variante B (roda + compara)")
+	benchCompareCmd.Flags().StringP("agent", "a", "", "command do agente ao rodar configs A/B (ou bench.default_agent / --fake)")
 	benchCompareCmd.Flags().Bool("fake", false, "usa agente fake ao rodar configs A/B")
 	benchCompareCmd.Flags().StringP("tasks-dir", "t", "bench/tasks", "diretório das tarefas")
 	benchCompareCmd.Flags().StringP("fixtures-dir", "f", "bench/fixtures", "diretório das fixtures")
@@ -86,7 +88,8 @@ Também exporta TB_BENCH_PROMPT, TB_BENCH_WORKDIR e TB_BENCH_TIMEOUT.
 Exemplo:
   tb bench run --agent "cursor-agent {prompt} --workdir {workdir}"
   tb bench run --fake --label graph-off --flag graph=off
-  tb bench run --fake --ab-config bench/ab/graph-off.yaml`,
+  tb bench run --fake --ab-config bench/ab/graph-off.yaml
+  tb bench run -r 1   # usa bench.default_agent do config.yaml`,
 	RunE: runBenchmark,
 }
 
@@ -180,7 +183,10 @@ Modos:
        tb bench compare --before a.jsonl --after b.jsonl
   2. Configs A/B (roda as duas no mesmo conjunto de tarefas):
        tb bench compare --config-a bench/ab/graph-off.yaml \
-                        --config-b bench/ab/graph-on.yaml --fake`,
+                        --config-b bench/ab/graph-on.yaml --fake
+       tb bench compare --config-a bench/ab/graph-off.yaml \
+                        --config-b bench/ab/graph-on.yaml \
+                        --agent "cursor-agent {prompt} --workdir {workdir}"`,
 	RunE: runCompare,
 }
 
@@ -245,6 +251,11 @@ func runCompare(cmd *cobra.Command, args []string) error {
 
 func runABConfigs(cmd *cobra.Command, configA, configB string) (sideA, sideB []bench.Result, err error) {
 	useFake, _ := cmd.Flags().GetBool("fake")
+	agentCmd, _ := cmd.Flags().GetString("agent")
+	agentCmd, err = resolveAgentCommand(agentCmd, useFake)
+	if err != nil {
+		return nil, nil, err
+	}
 	tasksDir, _ := cmd.Flags().GetString("tasks-dir")
 	fixturesDir, _ := cmd.Flags().GetString("fixtures-dir")
 	repetitions, _ := cmd.Flags().GetInt("repetitions")
@@ -273,11 +284,11 @@ func runABConfigs(cmd *cobra.Command, configA, configB string) (sideA, sideB []b
 		return nil, nil, err
 	}
 
-	resultsA, err := runVariant(ctx, useFake, tasksDir, fixturesDir, outputDir, repetitions, taskIDs, variantA)
+	resultsA, err := runVariant(ctx, useFake, agentCmd, tasksDir, fixturesDir, outputDir, repetitions, taskIDs, variantA)
 	if err != nil {
 		return nil, nil, fmt.Errorf("variante A: %w", err)
 	}
-	resultsB, err := runVariant(ctx, useFake, tasksDir, fixturesDir, outputDir, repetitions, taskIDs, variantB)
+	resultsB, err := runVariant(ctx, useFake, agentCmd, tasksDir, fixturesDir, outputDir, repetitions, taskIDs, variantB)
 	if err != nil {
 		return nil, nil, fmt.Errorf("variante B: %w", err)
 	}
@@ -287,12 +298,13 @@ func runABConfigs(cmd *cobra.Command, configA, configB string) (sideA, sideB []b
 func runVariant(
 	ctx context.Context,
 	useFake bool,
+	agentCmd string,
 	tasksDir, fixturesDir, outputDir string,
 	repetitions int,
 	taskIDs []string,
 	variant *bench.ABVariant,
 ) ([]bench.Result, error) {
-	agent := defaultAgent(useFake, "")
+	agent := defaultAgent(useFake, agentCmd)
 	bench.ApplyVariant(&agent, variant)
 	outPath := filepath.Join(outputDir, sanitizeLabel(variant.Label)+".jsonl")
 	runner := bench.NewRunner(agent, tasksDir, fixturesDir, outputDir, repetitions)
@@ -420,10 +432,27 @@ func parseBenchRunFlags(cmd *cobra.Command) (*benchRunOpts, error) {
 	opts.label, _ = cmd.Flags().GetString("label")
 	opts.flags, _ = cmd.Flags().GetStringToString("flag")
 	opts.abConfig, _ = cmd.Flags().GetString("ab-config")
-	if !opts.useFake && opts.agentCmd == "" {
-		return nil, fmt.Errorf("--agent ou --fake é obrigatório")
+	var err error
+	opts.agentCmd, err = resolveAgentCommand(opts.agentCmd, opts.useFake)
+	if err != nil {
+		return nil, err
 	}
 	return opts, nil
+}
+
+func resolveAgentCommand(flagAgent string, useFake bool) (string, error) {
+	if useFake {
+		return "", nil
+	}
+	if strings.TrimSpace(flagAgent) != "" {
+		return flagAgent, nil
+	}
+	if cfg, err := config.Load(); err == nil {
+		if agent := strings.TrimSpace(cfg.Bench.DefaultAgent); agent != "" {
+			return agent, nil
+		}
+	}
+	return "", fmt.Errorf("--agent ou --fake é obrigatório (ou defina bench.default_agent no config)")
 }
 
 func resolveVariant(abConfig, label string, flags map[string]string) (*bench.ABVariant, error) {

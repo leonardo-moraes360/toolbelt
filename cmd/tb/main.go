@@ -96,6 +96,9 @@ var initCmd = &cobra.Command{
 	Short: "Inicializa configuração local do toolbelt",
 	Long: `Cria o diretório .toolbelt/ e arquivo config.yaml no diretório atual.
 
+Detecta a toolchain do repositório (go.mod, package.json, pyproject/uv,
+Cargo.toml, Makefile) e preenche verify.test_cmd quando possível.
+
 Exemplo:
   tb init              Cria configuração básica
   tb init --global     Cria configuração global em ~/.config/toolbelt`,

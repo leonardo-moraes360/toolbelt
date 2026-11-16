@@ -177,7 +177,7 @@ func walkSourceFile(
 		return err
 	}
 	if info.IsDir() {
-		if skipDirs[info.Name()] {
+		if path != root && skipDirs[info.Name()] {
 			return filepath.SkipDir
 		}
 		return nil
