@@ -104,7 +104,8 @@ Cargo.toml, Makefile) e preenche verify.test_cmd quando possível.
 Se AGENTS.md ou CLAUDE.md existirem na raiz do repositório, o init lê esses
 arquivos, registra os caminhos em .toolbelt/agent_docs.yaml e extrai dicas de
 execução (nunca sobrescreve). Use --write-agents para semear um AGENTS.md
-mínimo apontando ao tb quando o arquivo ainda não existe.
+mínimo que cita a toolchain detectada (verify.test_cmd e, se houver,
+build_cmd/lint_cmd) quando o arquivo ainda não existe.
 
 Exemplo:
   tb init                 Cria configuração básica

@@ -114,7 +114,7 @@ make build
 tb init
 
 # Se existir AGENTS.md/CLAUDE.md, o init lê e registra dicas de comandos
-# (nunca sobrescreve). Semear um AGENTS.md mínimo apontando ao tb:
+# (nunca sobrescreve). Semear AGENTS.md citando test_cmd (e build/lint se houver):
 tb init --write-agents
 
 # Mostra versão
@@ -220,7 +220,7 @@ Este projeto está na **Fase 2**: CLI funcional com verify/guard/mem/graph/revie
 | Comando | Status | Descrição |
 |---------|--------|-----------|
 | `tb version` | ✅ | Mostra versão, commit e build time |
-| `tb init` | ✅ | Inicializa configuração local; detecta toolchain (`verify.test_cmd`), lê `AGENTS.md`/`CLAUDE.md` (dicas) e opcionalmente semeia com `--write-agents` |
+| `tb init` | ✅ | Inicializa configuração local; detecta toolchain (`verify.test_cmd`), lê `AGENTS.md`/`CLAUDE.md` (dicas) e opcionalmente semeia com `--write-agents` (seed cita test/build/lint detectados) |
 | `tb bench run` | ✅ | Executa benchmark |
 | `tb bench list` | ✅ | Lista tarefas disponíveis |
 | `tb bench report` | ✅ | Gera relatório Markdown |

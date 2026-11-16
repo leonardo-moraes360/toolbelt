@@ -199,16 +199,16 @@ Subcomandos:
 Ferramentas MCP (quando `TB_GRAPH=on`): `tb_graph_search`, `tb_graph_callers`,
 `tb_graph_deps`, `tb_graph_index`.
 
+Não há `tb graph query` — use `tb graph search`.
+
 **`tb graph search`:**
 
 ```bash
-tb graph search [flags] <query>
+tb graph search <query> [flags]
 
 Flags:
-  --type <types>      Tipos de nós: file,function,class,fact,decision
-  --source <sources>  Proveniência: extracted,inferred,manual
   --limit <n>         Máximo de resultados (default: 20)
-  --json              Saída em JSON
+  --json              Saída em JSON (flag global)
 ```
 
 **`tb graph callers`:**
@@ -218,9 +218,7 @@ tb graph callers [flags]
 
 Flags:
   --function <name>   Nome da função
-  --file <path>       Arquivo da função
   --depth <n>         Profundidade do grafo (default: 1)
-  --transitive        Inclui chamadores indiretos
 ```
 
 **`tb graph deps`:**
@@ -232,7 +230,6 @@ Flags:
   --module <name>     Nome do módulo/pacote
   --file <path>       Arquivo para analisar
   --transitive        Inclui dependências transitivas
-  --direction <dir>   upstream|downstream|both
 ```
 
 **`tb graph impact`:**
@@ -242,57 +239,42 @@ tb graph impact [flags]
 
 Flags:
   --file <path>       Arquivo modificado
-  --function <name>   Função modificada
-  --depth <n>         Profundidade da análise
+  --depth <n>         Profundidade da análise (default: 2)
 ```
+
+**`tb graph index`:**
+
+```bash
+tb graph index [path] [flags]
+```
+
+O path é **posicional** (não existe `--path`).
 
 **Exemplos:**
 
 ```bash
-# Busca semântica
-tb graph search "autenticação JWT"
+# Busca
+tb graph search "ValidateToken"
 # NODE_ID      TYPE       PATH                      TITLE
 # node-123     function   src/auth/jwt.go          ValidateToken
-# node-124     fact       vault/facts/auth.md      Decisão: JWT para auth
-# node-125     class      src/auth/claims.go       Claims
 
 # Chamadores de uma função
 tb graph callers --function "ValidateToken" --depth 2
-# ValidateToken
-# ├── AuthMiddleware (src/middleware/auth.go:45)
-# │   ├── HandleRequest (src/server/handler.go:23)
-# │   └── WebSocketAuth (src/ws/auth.go:12)
-# └── RefreshHandler (src/auth/refresh.go:78)
 
 # Dependências de um módulo
 tb graph deps --module "auth" --transitive
-# auth
-# ├── crypto/jwt
-# ├── database/users
-# │   └── database/core
-# └── config
 
 # Impacto de mudança
 tb graph impact --file "src/config/parser.go"
-# Arquivos potencialmente afetados:
-# - src/server/init.go (imports config)
-# - src/auth/config.go (imports config)
-# - src/database/config.go (imports config)
-# Total: 15 funções, 8 arquivos
 
-# Re-indexar código após mudanças
-tb graph index --path "src/"
+# Re-indexar código após mudanças (path posicional)
+tb graph index src/
 
 # Reconstruir grafo completo
 tb graph rebuild
 
 # Estatísticas
 tb graph stats
-# Nós:      1,234 (845 extracted, 312 inferred, 77 manual)
-# Arestas:  5,678 (4,892 extracted, 786 inferred)
-# Arquivos: 156
-# Funções:  892
-# Classes:  123
 ```
 
 ---
@@ -354,7 +336,8 @@ tb mem check
 tb mem init
 ```
 
-> Subcomandos de vault Markdown (`search`, `show`, `edit`, `link`, `tag`, `export`, `import`, `sync`) e flags `--type`/`--title` **não existem** na CLI atual — são planejados.
+> Subcomandos de vault Markdown (`search`, `show`, `edit`, `link`, `tag`, `export`, `import`, `sync`) e flags vault `--type`/`--title` **não existem** na CLI atual — são planejados.
+> `tb mem add` aceita só a regra posicional e `--category` (`anti_cheat|mandate|security`). Exemplos no estilo `mem add --type fact …` são rejeitados (`unknown flag: --type`).
 
 ---
 
@@ -509,11 +492,12 @@ Flags:
   --ticket <path>       Ticket/rd.md (default: rd.md)
   --reviewers <n>       Número de goldfish (default: 3)
   --standards <stds>    scope,invariants,completeness
-  --output <path>       Relatório JSON
-  --json                Saída em JSON
+  --output <path>       Relatório JSON (sem shorthand `-o`; use `--output`)
+  --json                Saída em JSON (flag global)
 ```
 
 Também reporta drift de escopo e commit base. Isolamento fresco é obrigatório.
+`tb review -o …` é rejeitado (`unknown shorthand flag: 'o'`); use `--output`.
 
 O ticket/rd.md aceita frontmatter YAML ou Markdown: seção `## Scope` / `## Escopo`
 (ou `Scope:` / `Escopo:`) com listas (`-`, `*`, numeradas) e paths entre backticks.
@@ -552,34 +536,11 @@ tb review docs/design-auth.md
 # 
 # Total: 2 críticos, 5 warnings, 3 info
 
-# Revisar com roles específicos
-tb review docs/api-spec.md --roles "api-reviewer,security-reviewer,ux-reviewer"
+# Mais goldfish / padrões
+tb review --ticket rd.md --reviewers 5 --standards scope,invariants,completeness
 
-# Revisar PR
-tb review pr:42 --reviewers 5 --standards security,completeness
-# Fetching PR #42...
-# Analyzing 12 files changed, 450 additions, 120 deletions
-# Spawning 5 fresh-context reviewers...
-# ...
-
-# Revisar com resolução interativa
-tb review docs/design.md --resolve
-# ... (relatório)
-# 
-# ═══════════════════════════════════════════════════════════════
-# ETAPA DE RESOLUÇÃO
-# ═══════════════════════════════════════════════════════════════
-# 
-# [1/2] Crítico: Não especifica invalidação de tokens
-#   (a) Aceitar - adicionar seção sobre invalidação
-#   (b) Rejeitar - já coberto em outro doc
-#   (c) Adiar - precisa mais contexto
-#   Escolha [a/b/c]: a
-#   
-# Resolução salva. Execute `tb review --apply` para aplicar.
-
-# Saída JSON para integração
-tb review docs/spec.md --json --output review-results.json
+# Saída JSON para integração (só --output; sem -o)
+tb review --ticket rd.md --json --output review-results.json
 ```
 
 **Padrões de revisão disponíveis**:
@@ -610,8 +571,8 @@ Flags:
   --base <ref>     Commit base (default: HEAD~1 ou base_commit do ticket)
   --head <ref>     Commit head (default: HEAD)
   --ticket <path>  Ticket/rd.md (default: rd.md)
-  --output <path>  Saída JSON
-  --json           Saída em JSON
+  --output <path>  Saída JSON (sem shorthand `-o`)
+  --json           Saída em JSON (flag global)
 ```
 
 **Exemplos:**
@@ -661,35 +622,15 @@ tb drift docs/api-spec.md
 # - DELETE /api/v2/sessions/:id (src/api/routes.go:162)
 # - GET /api/v2/health/detailed (src/api/routes.go:23)
 
-# Verificar drift desde último release
-tb drift --since v0.5.0
-# Analisando mudanças desde v0.5.0...
-# 
-# Arquivos de código modificados: 45
-# Documentação potencialmente afetada: 12
-# Documentação atualizada: 7
-# Documentação possivelmente desatualizada: 5
-
-# Saída em markdown para relatório
-tb drift --format markdown --output drift-report.md
-
-# Ignorar certos padrões
-tb drift --ignore "vendor/**" --ignore "**/*_test.go"
+# Saída JSON para relatório / CI
+tb drift --ticket rd.md --json --output drift-report.json
 ```
-
-**Níveis de profundidade**:
-
-| Nível | O que verifica |
-|-------|---------------|
-| `shallow` | Existência de arquivos, nomes de funções/classes |
-| `medium` | Assinaturas de funções, estrutura de tipos, imports |
-| `deep` | Semântica de implementação, comportamento documentado vs real |
 
 **Integração com CI**:
 
 ```bash
 # No CI, falhar se houver drift crítico
-tb drift --format json | jq '.critical_count' | xargs -I {} test {} -eq 0
+tb drift --json | jq '.critical_count' | xargs -I {} test {} -eq 0
 ```
 
 ---

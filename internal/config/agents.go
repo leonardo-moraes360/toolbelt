@@ -22,19 +22,6 @@ var (
 
 	hintCommandRe = regexp.MustCompile("(?i)`((?:go|npm|pnpm|yarn|bun|cargo|pytest|python|make|task|ruff|golangci-lint|tox|cmake|ninja|mvn|gradle|dotnet|poetry|uv)[^`]*)`")
 	fencedCmdRe   = regexp.MustCompile("(?im)^(?: {0,3})(?:\\$ )?((?:go|npm|pnpm|yarn|bun|cargo|pytest|python|make|task|ruff|golangci-lint|tox|cmake|ninja|mvn|gradle|dotnet|poetry|uv)\\b[^\\n`]*)$")
-
-	minimalAgentsMD = `# AGENTS
-
-## Toolbelt
-
-Este repositório pode usar [toolbelt](https://github.com/leonardo-moraes360/toolbelt) (` + "`tb`" + `) como harness para agentes.
-
-- ` + "`tb verify`" + ` — roda o ` + "`verify.test_cmd`" + ` configurado em ` + "`.toolbelt/config.yaml`" + `
-- ` + "`tb guard check`" + ` — checagens anti-trapaça no diff
-- ` + "`tb mem`" + ` — invariantes fora da compactação do contexto
-
-Ajuste ` + "`verify.test_cmd`" + ` (e, se houver, lint/build) para o test/lint/build real deste projeto.
-`
 )
 
 type AgentDocsResult struct {
@@ -97,24 +84,68 @@ func ExtractCommandHints(content string) []string {
 	return hints
 }
 
-func SeedAgentsMD(repoRoot string) (bool, error) {
+func MinimalAgentsMD(verify VerifyConfig) string {
+	testCmd := strings.TrimSpace(verify.TestCmd)
+	if testCmd == "" {
+		testCmd = DefaultConfig().Verify.TestCmd
+	}
+
+	var b strings.Builder
+	b.WriteString("# AGENTS\n\n")
+	b.WriteString("## Toolbelt\n\n")
+	b.WriteString("Este repositório pode usar [toolbelt](https://github.com/leonardo-moraes360/toolbelt) (`tb`) como harness para agentes.\n\n")
+	b.WriteString("### Toolchain detectada\n\n")
+	b.WriteString("- testes (`verify.test_cmd`): `")
+	b.WriteString(testCmd)
+	b.WriteString("`\n")
+	if cmd := strings.TrimSpace(verify.BuildCmd); cmd != "" {
+		b.WriteString("- build (`verify.build_cmd`): `")
+		b.WriteString(cmd)
+		b.WriteString("`\n")
+	}
+	if cmd := strings.TrimSpace(verify.LintCmd); cmd != "" {
+		b.WriteString("- lint (`verify.lint_cmd`): `")
+		b.WriteString(cmd)
+		b.WriteString("`\n")
+	}
+	b.WriteString("\n### Uso do tb\n\n")
+	b.WriteString("- `tb verify` — roda test/build/lint configurados em `.toolbelt/config.yaml`\n")
+	b.WriteString("- `tb guard check` — checagens anti-trapaça no diff\n")
+	b.WriteString("- `tb mem` — invariantes fora da compactação do contexto\n\n")
+	b.WriteString("Ajuste `verify.test_cmd` (e, se houver, `build_cmd`/`lint_cmd`) se a detecção estiver incorreta.\n")
+	return b.String()
+}
+
+func SeedAgentsMD(repoRoot string, verify VerifyConfig) (bool, error) {
 	path := filepath.Join(repoRoot, AgentsMDName)
 	if _, err := os.Stat(path); err == nil {
 		return false, nil
 	} else if !os.IsNotExist(err) {
 		return false, fmt.Errorf("stat %s: %w", AgentsMDName, err)
 	}
-	if err := os.WriteFile(path, []byte(minimalAgentsMD), 0o600); err != nil {
+	if err := os.WriteFile(path, []byte(MinimalAgentsMD(verify)), 0o600); err != nil {
 		return false, fmt.Errorf("writing %s: %w", AgentsMDName, err)
 	}
 	return true, nil
+}
+
+func verifyForAgentsSeed(repoRoot, toolbeltDir string) VerifyConfig {
+	cfg := DefaultConfig()
+	configPath := filepath.Join(toolbeltDir, DefaultConfigFile)
+	if err := loadFromFile(configPath, cfg); err == nil {
+		return cfg.Verify
+	}
+	if cmd := DetectTestCmd(repoRoot); cmd != "" {
+		cfg.Verify.TestCmd = cmd
+	}
+	return cfg.Verify
 }
 
 func HandleAgentDocs(repoRoot, toolbeltDir string, writeAgents bool) (*AgentDocsResult, error) {
 	result := &AgentDocsResult{}
 
 	if writeAgents {
-		seeded, err := SeedAgentsMD(repoRoot)
+		seeded, err := SeedAgentsMD(repoRoot, verifyForAgentsSeed(repoRoot, toolbeltDir))
 		if err != nil {
 			return nil, err
 		}
