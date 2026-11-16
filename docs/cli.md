@@ -712,6 +712,12 @@ opcionais `build_cmd` e `lint_cmd` rodam antes dos testes (nessa ordem) e
 fazem o verify falhar se o comando sair com erro; ausentes = comportamento
 anterior (só `test_cmd` + hidden).
 
+Se o binário do `test_cmd` / `hidden_test_cmd` / `build_cmd` / `lint_cmd` não
+existe (exit 127), não é executável (exit 126) ou o `exec` falha com
+`ErrNotFound`, o verify **falha imediatamente** sem retries, com mensagem do tipo
+`comando não encontrado: X — ajuste verify.test_cmd`. Falhas genuínas do comando
+(exit ≠ 0/126/127) continuam no loop de `--max-iter`.
+
 Veredictos `ESCALATE` e `FAIL` saem com **exit ≠ 0** também com `--json`
 (igual ao modo texto). Só `PASS` e `SKIPPED` (ruler visual) usam exit 0.
 
