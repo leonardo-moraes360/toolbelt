@@ -75,6 +75,7 @@ func init() {
 	rootCmd.AddCommand(graphCmd)
 	rootCmd.AddCommand(reviewCmd)
 	rootCmd.AddCommand(driftCmd)
+	rootCmd.AddCommand(stackCmd)
 	rootCmd.AddCommand(routerCmd)
 	rootCmd.AddCommand(mcpCmd)
 }

@@ -29,17 +29,18 @@ const DefaultHiddenTestCmd = "go test ./tests/hidden/..."
 const errMissingCmdFmt = "comando não encontrado: %s — ajuste %s"
 
 type Config struct {
-	RepoDir       string
-	BaseRef       string
-	HeadRef       string
-	VisibleTest   string
-	HiddenTest    string
-	BuildCmd      string
-	LintCmd       string
-	MaxIterations int
-	Timeout       time.Duration
-	Scope         []string
-	TicketPath    string
+	RepoDir        string
+	BaseRef        string
+	HeadRef        string
+	VisibleTest    string
+	HiddenTest     string
+	BuildCmd       string
+	LintCmd        string
+	MaxIterations  int
+	Timeout        time.Duration
+	Scope          []string
+	TicketPath     string
+	NameStatusDiff string
 }
 
 type Result struct {
@@ -100,7 +101,7 @@ func Run(ctx context.Context, cfg *Config) (*Result, error) {
 
 func applyGuard(cfg *Config, res *Result) (bool, error) {
 	chk := guard.NewChecker(cfg.RepoDir)
-	gr, err := chk.Check(cfg.BaseRef, cfg.HeadRef)
+	gr, err := chk.CheckDiff(cfg.BaseRef, cfg.HeadRef, cfg.NameStatusDiff)
 	if err != nil {
 		return false, err
 	}
