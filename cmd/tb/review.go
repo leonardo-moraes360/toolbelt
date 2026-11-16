@@ -16,9 +16,12 @@ var reviewCmd = &cobra.Command{
 	Short: "Revisão fresh-context (Elephant-Goldfish)",
 	Long: `Revisa um diff contra ticket/rd.md e invariantes de tb mem.
 
-Cada goldfish recebe apenas o ticket, o diff e as invariantes
-(contexto fresco obrigatório). Também reporta drift de escopo
-e commit base.`,
+Goldfish distintos (contexto fresco cada um):
+  scope       — escopo declarado e paths forbidden (+ invariantes de tb mem)
+  quality     — TODO/FIXME adicionados, funções muito grandes, código sem testes
+  acceptance  — critérios de aceite do ticket evidenciados em testes/arquivos
+
+Também reporta drift de escopo e commit base.`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: runReview,
 }
@@ -27,8 +30,8 @@ func init() {
 	reviewCmd.Flags().String("base", "HEAD~1", "commit/ref base")
 	reviewCmd.Flags().String("head", "HEAD", "commit/ref head")
 	reviewCmd.Flags().String("ticket", "rd.md", "caminho do ticket/rd.md")
-	reviewCmd.Flags().Int("reviewers", 3, "número de goldfish")
-	reviewCmd.Flags().String("standards", "scope,invariants,completeness", "padrões de revisão")
+	reviewCmd.Flags().Int("reviewers", 3, "máximo de goldfish distintos (não clona o mesmo)")
+	reviewCmd.Flags().String("standards", "scope,quality,acceptance", "papéis: scope,quality,acceptance (aliases: invariants,completeness)")
 	reviewCmd.Flags().String("output", "", "arquivo de saída JSON")
 }
 
@@ -100,7 +103,7 @@ func reviewBlockingError(rep *review.Report) error {
 func printReviewReport(rep *review.Report) {
 	fmt.Println("═══════════════════════════════════════════════════════════")
 	fmt.Printf(" RELATÓRIO DE REVISÃO: %s\n", rep.Target)
-	fmt.Printf(" Base..Head: %s..%s | Goldfish: %d | Fresh: %v\n", rep.BaseRef, rep.HeadRef, rep.Reviewers, rep.FreshOK)
+	fmt.Printf(" Base..Head: %s..%s | Revisores: %d | Fresh: %v\n", rep.BaseRef, rep.HeadRef, rep.Reviewers, rep.FreshOK)
 	fmt.Println("═══════════════════════════════════════════════════════════")
 	printDriftSection(rep.Drift)
 	if len(rep.Findings) == 0 {
@@ -109,7 +112,7 @@ func printReviewReport(rep *review.Report) {
 	}
 	fmt.Println("FINDINGS:")
 	for _, f := range rep.Findings {
-		fmt.Printf("  [%s] (%s) %s", f.Severity, f.Category, f.Message)
+		fmt.Printf("  [%s] (%s/%s) %s", f.Severity, f.Reviewer, f.Category, f.Message)
 		if f.File != "" {
 			fmt.Printf(" [%s]", f.File)
 		}

@@ -113,8 +113,8 @@ func registerReviewTools() {
 				"ticket":    {Type: "string", Description: "Caminho do ticket/rd.md", Default: "rd.md"},
 				"base":      {Type: "string", Description: "Ref base", Default: "HEAD~1"},
 				"head":      {Type: "string", Description: "Ref head", Default: "HEAD"},
-				"reviewers": {Type: "string", Description: "Número de goldfish", Default: "3"},
-				"standards": {Type: "string", Description: "CSV de padrões", Default: "scope,invariants,completeness"},
+				"reviewers": {Type: "string", Description: "Máximo de goldfish distintos", Default: "3"},
+				"standards": {Type: "string", Description: "CSV de papéis: scope,quality,acceptance", Default: "scope,quality,acceptance"},
 			},
 		},
 		Handler: handleReview,
@@ -394,7 +394,7 @@ func reviewConfigFromArgs(args map[string]any) (*review.Config, error) {
 	}
 	stds := StringArg(args, "standards")
 	if stds == "" {
-		stds = "scope,invariants,completeness"
+		stds = "scope,quality,acceptance"
 	}
 	cfg.Standards = splitCSVArg(stds)
 	return &cfg, nil

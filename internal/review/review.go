@@ -74,8 +74,14 @@ func DefaultConfig(repo string) Config {
 		HeadRef:    "HEAD",
 		TicketPath: "rd.md",
 		Reviewers:  3,
-		Standards:  []string{"scope", "invariants", "completeness"},
+		Standards:  []string{"scope", "quality", "acceptance"},
 	}
+}
+
+type reviewerRole struct {
+	ID        string
+	Name      string
+	Standards []string
 }
 
 // Run executa revisão fresh-context (Elephant-Goldfish) sem herdar estado do elephant.
@@ -101,35 +107,87 @@ func Run(cfg *Config) (*Report, error) {
 	}
 
 	invariants, _ := loadInvariants(cfg.RepoDir)
+	roster := buildReviewerRoster(cfg.Standards, cfg.Reviewers)
 
 	report := &Report{
 		Target:    cfg.TicketPath,
 		BaseRef:   cfg.BaseRef,
 		HeadRef:   cfg.HeadRef,
 		FreshOK:   true,
-		Reviewers: cfg.Reviewers,
+		Reviewers: len(roster),
 	}
 
 	drift := DetectDrift(ticket, changed, cfg.BaseRef)
 	reconcileDriftBase(cfg.RepoDir, drift)
 	report.Drift = drift
 
-	// Cada goldfish recebe apenas ticket + diff + invariantes (contexto fresco isolado).
+	// Cada goldfish tem um papel distinto e recebe só ticket + diff + invariantes.
 	var all []Finding
-	for i := 1; i <= cfg.Reviewers; i++ {
-		name := fmt.Sprintf("goldfish-%d", i)
+	for _, role := range roster {
 		ctx := FreshContext{
-			Reviewer:   name,
+			Reviewer:   role.Name,
 			Ticket:     ticket,
 			Diff:       diff,
 			Changed:    changed,
 			Invariants: invariants,
-			Standards:  cfg.Standards,
+			Standards:  role.Standards,
 		}
 		all = append(all, Fresh(&ctx)...)
 	}
 	report.Findings = aggregateFindings(all)
 	return report, nil
+}
+
+func buildReviewerRoster(standards []string, limit int) []reviewerRole {
+	wanted := normalizeStandards(standards)
+	var roster []reviewerRole
+	if wanted["scope"] || wanted["invariants"] {
+		stds := []string{"scope"}
+		if wanted["invariants"] || wanted["scope"] {
+			stds = append(stds, "invariants")
+		}
+		roster = append(roster, reviewerRole{
+			ID: "scope", Name: "goldfish-scope", Standards: stds,
+		})
+	}
+	if wanted["quality"] {
+		roster = append(roster, reviewerRole{
+			ID: "quality", Name: "goldfish-quality", Standards: []string{"quality"},
+		})
+	}
+	if wanted["acceptance"] {
+		roster = append(roster, reviewerRole{
+			ID: "acceptance", Name: "goldfish-acceptance", Standards: []string{"acceptance"},
+		})
+	}
+	if len(roster) == 0 {
+		roster = buildReviewerRoster([]string{"scope", "quality", "acceptance"}, limit)
+		return roster
+	}
+	if limit > 0 && limit < len(roster) {
+		roster = roster[:limit]
+	}
+	return roster
+}
+
+func normalizeStandards(standards []string) map[string]bool {
+	wanted := map[string]bool{}
+	if len(standards) == 0 {
+		return map[string]bool{"scope": true, "quality": true, "acceptance": true}
+	}
+	for _, s := range standards {
+		switch strings.ToLower(strings.TrimSpace(s)) {
+		case "scope":
+			wanted["scope"] = true
+		case "invariants":
+			wanted["invariants"] = true
+		case "quality":
+			wanted["quality"] = true
+		case "acceptance", "completeness":
+			wanted["acceptance"] = true
+		}
+	}
+	return wanted
 }
 
 type FreshContext struct {
@@ -143,18 +201,18 @@ type FreshContext struct {
 
 func Fresh(ctx *FreshContext) []Finding {
 	var out []Finding
-	standards := map[string]bool{}
-	for _, s := range ctx.Standards {
-		standards[s] = true
-	}
-	if standards["scope"] || len(standards) == 0 {
+	standards := normalizeStandards(ctx.Standards)
+	if standards["scope"] {
 		out = append(out, reviewScope(ctx)...)
 	}
-	if standards["invariants"] || len(standards) == 0 {
+	if standards["invariants"] {
 		out = append(out, reviewInvariants(ctx)...)
 	}
-	if standards["completeness"] || len(standards) == 0 {
-		out = append(out, reviewCompleteness(ctx)...)
+	if standards["quality"] {
+		out = append(out, reviewQuality(ctx)...)
+	}
+	if standards["acceptance"] {
+		out = append(out, reviewAcceptance(ctx)...)
 	}
 	return out
 }
@@ -204,39 +262,230 @@ func reviewInvariants(ctx *FreshContext) []Finding {
 	return out
 }
 
-func reviewCompleteness(ctx *FreshContext) []Finding {
+func reviewAcceptance(ctx *FreshContext) []Finding {
 	if ctx.Ticket == nil || len(ctx.Ticket.Acceptance) == 0 {
 		return nil
 	}
-	lowerDiff := strings.ToLower(ctx.Diff + " " + strings.Join(ctx.Changed, " "))
+	evidence := acceptanceEvidence(ctx)
 	var out []Finding
 	for i, crit := range ctx.Ticket.Acceptance {
-		key := strings.ToLower(crit)
-		tokens := strings.Fields(key)
-		hit := 0
-		for _, tok := range tokens {
-			if len(tok) < 4 {
-				continue
-			}
-			if strings.Contains(lowerDiff, tok) {
-				hit++
-			}
+		if acceptanceCovered(crit, evidence) {
+			continue
 		}
-		meaningful := 0
-		for _, tok := range tokens {
-			if len(tok) >= 4 {
-				meaningful++
-			}
+		out = append(out, Finding{
+			ID: fmt.Sprintf("accept-%d", i), Severity: SeverityWarning, Category: "acceptance",
+			Message:  "critério de aceite sem evidência em testes/arquivos alterados: " + crit,
+			Reviewer: ctx.Reviewer, Agreement: 1,
+		})
+	}
+	return out
+}
+
+func acceptanceEvidence(ctx *FreshContext) string {
+	var paths []string
+	codeOrTest := map[string]bool{}
+	for _, f := range ctx.Changed {
+		if isSourceFile(f) || isTestFile(f) {
+			paths = append(paths, f)
+			codeOrTest[filepath.ToSlash(f)] = true
 		}
-		if meaningful > 0 && hit*2 < meaningful {
+	}
+	var b strings.Builder
+	b.WriteString(strings.ToLower(strings.Join(paths, " ")))
+	b.WriteByte(' ')
+	b.WriteString(strings.ToLower(diffForFiles(ctx.Diff, codeOrTest)))
+	return b.String()
+}
+
+func acceptanceCovered(crit, evidence string) bool {
+	tokens := strings.Fields(strings.ToLower(crit))
+	hit, meaningful := 0, 0
+	for _, tok := range tokens {
+		if len(tok) < 4 {
+			continue
+		}
+		meaningful++
+		if strings.Contains(evidence, tok) {
+			hit++
+		}
+	}
+	return meaningful == 0 || hit*2 >= meaningful
+}
+
+func diffForFiles(diff string, allow map[string]bool) string {
+	if len(allow) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	in := false
+	for _, line := range strings.Split(diff, "\n") {
+		if strings.HasPrefix(line, "diff --git ") {
+			in = allow[diffPath(line)]
+			continue
+		}
+		if in {
+			b.WriteString(line)
+			b.WriteByte('\n')
+		}
+	}
+	return b.String()
+}
+
+func diffPath(line string) string {
+	parts := strings.Fields(line)
+	if len(parts) < 4 {
+		return ""
+	}
+	path := parts[3]
+	path = strings.TrimPrefix(path, "b/")
+	return filepath.ToSlash(path)
+}
+
+const largeFuncAddedLines = 80
+
+func reviewQuality(ctx *FreshContext) []Finding {
+	var out []Finding
+	out = append(out, reviewQualityTODO(ctx)...)
+	out = append(out, reviewQualityLargeFuncs(ctx)...)
+	out = append(out, reviewQualityMissingTests(ctx)...)
+	return out
+}
+
+func reviewQualityTODO(ctx *FreshContext) []Finding {
+	re := regexp.MustCompile(`(?i)\b(TODO|FIXME)\b`)
+	var out []Finding
+	file := ""
+	seen := map[string]bool{}
+	for _, line := range strings.Split(ctx.Diff, "\n") {
+		if strings.HasPrefix(line, "diff --git ") {
+			file = diffPath(line)
+			continue
+		}
+		if !strings.HasPrefix(line, "+") || strings.HasPrefix(line, "+++") {
+			continue
+		}
+		if !re.MatchString(line) {
+			continue
+		}
+		id := "quality-todo-" + file
+		if seen[id] {
+			continue
+		}
+		seen[id] = true
+		out = append(out, Finding{
+			ID: id, Severity: SeverityWarning, Category: "quality",
+			Message:  "TODO/FIXME adicionado no diff",
+			File:     file,
+			Reviewer: ctx.Reviewer, Agreement: 1,
+		})
+	}
+	return out
+}
+
+var addedFuncRe = regexp.MustCompile(`(?i)^\+\s*(?:export\s+)?(?:async\s+)?(?:pub(?:\([^)]*\))?\s+)?(?:func|function|def|fn)\s+`)
+
+func reviewQualityLargeFuncs(ctx *FreshContext) []Finding {
+	var out []Finding
+	file := ""
+	counting := false
+	added := 0
+	emitted := map[string]bool{}
+	flush := func() {
+		if !counting || added < largeFuncAddedLines || file == "" {
+			counting = false
+			added = 0
+			return
+		}
+		id := "quality-large-func-" + file
+		if !emitted[id] {
+			emitted[id] = true
 			out = append(out, Finding{
-				ID: fmt.Sprintf("accept-%d", i), Severity: SeverityWarning, Category: "completeness",
-				Message:  "critério de aceite pouco evidenciado no diff: " + crit,
+				ID: "quality-large-func", Severity: SeverityWarning, Category: "quality",
+				Message:  fmt.Sprintf("função adicionada muito grande (%d linhas +)", added),
+				File:     file,
 				Reviewer: ctx.Reviewer, Agreement: 1,
 			})
 		}
+		counting = false
+		added = 0
 	}
+	for _, line := range strings.Split(ctx.Diff, "\n") {
+		if strings.HasPrefix(line, "diff --git ") {
+			flush()
+			file = diffPath(line)
+			continue
+		}
+		if strings.HasPrefix(line, "@@") {
+			flush()
+			continue
+		}
+		if !strings.HasPrefix(line, "+") || strings.HasPrefix(line, "+++") {
+			continue
+		}
+		if addedFuncRe.MatchString(line) {
+			flush()
+			counting = true
+			added = 0
+			continue
+		}
+		if counting {
+			added++
+		}
+	}
+	flush()
 	return out
+}
+
+func reviewQualityMissingTests(ctx *FreshContext) []Finding {
+	codeChanged, testChanged := false, false
+	for _, f := range ctx.Changed {
+		if isTestFile(f) {
+			testChanged = true
+			continue
+		}
+		if isSourceFile(f) {
+			codeChanged = true
+		}
+	}
+	if !codeChanged || testChanged {
+		return nil
+	}
+	return []Finding{{
+		ID: "quality-no-tests", Severity: SeverityWarning, Category: "quality",
+		Message:  "código fonte alterado sem mudança em testes",
+		Reviewer: ctx.Reviewer, Agreement: 1,
+	}}
+}
+
+func isTestFile(path string) bool {
+	path = filepath.ToSlash(strings.ToLower(path))
+	base := filepath.Base(path)
+	switch {
+	case strings.HasSuffix(base, "_test.go"),
+		strings.HasSuffix(base, "_test.py"),
+		strings.HasPrefix(base, "test_"),
+		strings.Contains(base, ".test."),
+		strings.Contains(base, ".spec."):
+		return true
+	}
+	for _, seg := range []string{"/tests/", "/test/", "/__tests__/"} {
+		if strings.Contains(path, seg) {
+			return true
+		}
+	}
+	return false
+}
+
+func isSourceFile(path string) bool {
+	if isTestFile(path) {
+		return false
+	}
+	switch strings.ToLower(filepath.Ext(path)) {
+	case ".go", ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".py", ".rs", ".java", ".kt", ".cs":
+		return true
+	default:
+		return false
+	}
 }
 
 func DetectDrift(ticket *TicketScope, changed []string, actualBase string) *DriftReport {

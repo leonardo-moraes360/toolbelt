@@ -17,6 +17,7 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 - `tb guard check` sai com exit ≠ 0 por default quando há `SeverityError` (CI-safe); opt-out via `--warn-only`; `--strict` permanece como alias deprecated
 - Modo texto limpo imprime `guard: ok (N regras, 0 violações)`; JSON/MCP incluem `rules_checked`
 - MCP `tb_guard_check`: `strict_fail` por default em SeverityError; `warn_only=true` para opt-out (`strict` deprecated)
+- `tb review`: goldfish distintos por papel (`scope`, `quality`, `acceptance`) em vez do mesmo checker clonado N vezes; `--reviewers` só limita papéis; qualidade cobre TODO/FIXME, funções grandes e código sem testes; aceite exige evidência em testes/arquivos de código
 
 ### Corrigido
 - `tb init` em repos Node/TS sem `go.mod` não mantém mais `verify.test_cmd: go test ./...`:
