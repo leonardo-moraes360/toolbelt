@@ -1034,6 +1034,34 @@ func writeTicket(t *testing.T, repo, scopeFile string) string {
 	return path
 }
 
+func TestCheckPinnedApprovalEmptyRangeClearError(t *testing.T) {
+	repo := t.TempDir()
+	run := initGitRepo(t, repo)
+	if err := os.WriteFile(filepath.Join(repo, "a.go"), []byte("package a\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	run("add", ".")
+	run("commit", "-m", "base")
+	base := gitRevParse(t, repo, "HEAD")
+	if err := os.WriteFile(filepath.Join(repo, "a.go"), []byte("package a\nfunc X() {}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	run("add", ".")
+	run("commit", "-m", "head")
+
+	_, err := CheckPinnedApproval(repo, base, base, "HEAD")
+	if err == nil {
+		t.Fatal("approved-sha=base deve falhar com mensagem clara")
+	}
+	msg := err.Error()
+	if strings.Contains(strings.ToLower(msg), "usage: git range-diff") {
+		t.Fatalf("não deve despejar usage do range-diff:\n%s", msg)
+	}
+	if !strings.Contains(msg, "coincide com a base") && !strings.Contains(msg, "vazio") {
+		t.Fatalf("mensagem deve explicar intervalo vazio:\n%s", msg)
+	}
+}
+
 func TestCheckPinnedApprovalMatch(t *testing.T) {
 	repo, base, approved, run := pinnedFixture(t, "package a\n\nfunc OK() {}\n")
 	_ = run

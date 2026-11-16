@@ -10,15 +10,15 @@ import (
 
 func TestCheckResultEmptyViolationsAreArray(t *testing.T) {
 	dir := t.TempDir()
-	git(t, dir, "init")
-	git(t, dir, "config", "user.email", "t@t")
-	git(t, dir, "config", "user.name", "t")
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "t@t")
+	runGit(t, dir, "config", "user.name", "t")
 	write(t, filepath.Join(dir, "a.txt"), "a\n")
-	git(t, dir, "add", "-A")
-	git(t, dir, "commit", "-m", "base")
+	runGit(t, dir, "add", "-A")
+	runGit(t, dir, "commit", "-m", "base")
 	write(t, filepath.Join(dir, "a.txt"), "b\n")
-	git(t, dir, "add", "-A")
-	git(t, dir, "commit", "-m", "head")
+	runGit(t, dir, "add", "-A")
+	runGit(t, dir, "commit", "-m", "head")
 
 	res, err := NewChecker(dir).CheckDiff("HEAD~1", "HEAD", "")
 	if err != nil {
@@ -45,7 +45,7 @@ func TestCheckResultEmptyViolationsAreArray(t *testing.T) {
 	}
 }
 
-func git(t *testing.T, dir string, args ...string) {
+func runGit(t *testing.T, dir string, args ...string) {
 	t.Helper()
 	cmd := exec.Command("git", args...)
 	cmd.Dir = dir
