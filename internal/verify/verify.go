@@ -140,17 +140,24 @@ func Run(ctx context.Context, cfg *Config) (*Result, error) {
 	res.HiddenAvailable = resolveHiddenAvailable(&execCfg)
 
 	if cfg.DryRun {
-		res.DryRun = true
-		res.Plan = BuildPlan(&execCfg)
-		res.Verdict = VerdictSkipped
-		res.Reason = "dry-run: plano gerado sem executar"
-		return res, nil
+		return dryRunResult(res, &execCfg), nil
 	}
+	return runVerifyLoops(ctx, &execCfg, res)
+}
 
+func dryRunResult(res *Result, execCfg *Config) *Result {
+	res.DryRun = true
+	res.Plan = BuildPlan(execCfg)
+	res.Verdict = VerdictSkipped
+	res.Reason = "dry-run: plano gerado sem executar"
+	return res
+}
+
+func runVerifyLoops(ctx context.Context, cfg *Config, res *Result) (*Result, error) {
 	cache := &cmdCache{}
-	for i := 1; i <= execCfg.MaxIterations; i++ {
+	for i := 1; i <= cfg.MaxIterations; i++ {
 		res.Iterations = i
-		passed, stopIter, iterErr := runVerifyIteration(ctx, &execCfg, res, cache)
+		passed, stopIter, iterErr := runVerifyIteration(ctx, cfg, res, cache)
 		if iterErr != nil {
 			if res.Reason == "" {
 				res.Reason = iterErr.Error()

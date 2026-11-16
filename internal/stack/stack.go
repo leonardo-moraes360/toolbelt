@@ -340,6 +340,15 @@ func runOp(ctx context.Context, op Op, opts *Options, shared *Shared) (StepResul
 }
 
 func runVerify(ctx context.Context, opts *Options, shared *Shared) (StepResult, error) {
+	cfg := buildVerifyConfig(opts, shared)
+	res, err := verify.Run(ctx, &cfg)
+	if err != nil {
+		return StepResult{}, err
+	}
+	return verifyStepResult(res), nil
+}
+
+func buildVerifyConfig(opts *Options, shared *Shared) verify.Config {
 	cfg := verify.DefaultConfig(shared.RepoDir)
 	cfg.BaseRef = shared.Base
 	cfg.HeadRef = shared.Head
@@ -381,10 +390,10 @@ func runVerify(ctx context.Context, opts *Options, shared *Shared) (StepResult, 
 		cfg.EnvAllow = append(cfg.EnvAllow, shared.FileConfig.Env.Allow...)
 		cfg.EnvPass = append(cfg.EnvPass, shared.FileConfig.Env.Pass...)
 	}
-	res, err := verify.Run(ctx, &cfg)
-	if err != nil {
-		return StepResult{}, err
-	}
+	return cfg
+}
+
+func verifyStepResult(res *verify.Result) StepResult {
 	ok := res.Verdict == verify.VerdictPass || res.Verdict == verify.VerdictSkipped
 	exit := 0
 	if !ok {
@@ -395,7 +404,7 @@ func runVerify(ctx context.Context, opts *Options, shared *Shared) (StepResult, 
 		step.Reason = res.Reason
 		step.Error = res.Error
 	}
-	return step, nil
+	return step
 }
 
 func annotateStepReason(step *StepResult) {
