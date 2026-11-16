@@ -6,6 +6,7 @@ O workflow [`.github/workflows/release.yml`](../.github/workflows/release.yml) p
 
 - `main` estável (CI verde)
 - Entrada correspondente no [`CHANGELOG.md`](../CHANGELOG.md)
+- Antes de criar a tag, mova a seção "Não Lançado" do [`CHANGELOG.md`](../CHANGELOG.md) para a versão que está sendo publicada
 - Sem tag local/remota conflitante
 
 ## Cortar o release

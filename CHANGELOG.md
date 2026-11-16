@@ -7,6 +7,8 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Não Lançado]
 
+## [0.0.2] - 2026-11-16
+
 ### Adicionado
 - `tb stack <op> [<op>…]` empilha `verify`/`review`/`drift`/`guard` numa execução com
   contexto compartilhado (diff, índice de arquivos, memória e config); JSON agregado
