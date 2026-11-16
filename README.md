@@ -88,17 +88,31 @@ Veja a documentação completa em [docs/arquitetura.md](docs/arquitetura.md).
 
 ### Binários (GitHub Releases)
 
-Baixe o arquivo da [página de Releases](https://github.com/leonardo-moraes360/toolbelt/releases) para o seu SO/arch (`linux`, `darwin` ou `windows` × `amd64`/`arm64`), extraia e coloque `tb` no `PATH`:
+Baixe o arquivo da [página de Releases](https://github.com/leonardo-moraes360/toolbelt/releases) para o seu SO/arch (`linux`, `darwin` ou `windows` × `amd64`/`arm64`), verifique checksum e assinatura, extraia e coloque `tb` no `PATH`. Requer [`cosign`](https://docs.sigstore.dev/cosign/system_config/installation/).
 
 ```bash
-# Exemplo (Linux amd64, ajuste a tag/arquivo)
-curl -sL "https://github.com/leonardo-moraes360/toolbelt/releases/download/v0.0.1/toolbelt_0.0.1_linux_amd64.tar.gz" \
-  | tar -xz tb
+# Exemplo (Linux amd64) — ajuste VERSION/ASSET ao release desejado
+VERSION=v0.0.2
+ASSET=toolbelt_0.0.2_linux_amd64.tar.gz
+BASE="https://github.com/leonardo-moraes360/toolbelt/releases/download/${VERSION}"
+
+curl -sLO "${BASE}/${ASSET}"
+curl -sLO "${BASE}/checksums.txt"
+curl -sLO "${BASE}/checksums.txt.sigstore.json"
+
+cosign verify-blob \
+  --certificate-identity "https://github.com/leonardo-moraes360/toolbelt/.github/workflows/release.yml@refs/tags/${VERSION}" \
+  --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+  --bundle checksums.txt.sigstore.json \
+  checksums.txt
+
+sha256sum -c --ignore-missing checksums.txt
+tar -xzf "${ASSET}" tb
 sudo mv tb /usr/local/bin/
 tb version
 ```
 
-Confira a integridade com `checksums.txt` no mesmo release.
+Cada archive também publica um SBOM (`.sbom.json`) e o workflow anexa atestação de proveniência SLSA (verifique com `gh attestation verify`).
 
 ### Via Go
 
@@ -107,12 +121,6 @@ go install github.com/leonardo-moraes360/toolbelt/cmd/tb@latest
 ```
 
 > `go install` usa a versão embutida padrão (`dev`) a menos que a tag/módulo injete ldflags. Prefira o binário do Release se precisar da versão da tag.
-
-### Via Homebrew (em breve)
-
-```bash
-brew install leonardo-moraes360/tap/toolbelt
-```
 
 ### Build local
 

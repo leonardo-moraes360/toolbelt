@@ -7,6 +7,15 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Não Lançado]
 
+### Adicionado
+- Release: SBOM (syft via `sboms:` no GoReleaser), assinatura keyless cosign do `checksums.txt` (OIDC GitHub) e atestação de proveniência SLSA (`actions/attest-build-provenance`)
+- CI: job `govulncheck` em todo push/PR
+
+### Mudanças
+- Instalação por binário no README exige `cosign verify-blob` + `sha256sum -c` (remove `curl | tar` e a menção ao Homebrew sem tap)
+- Go atualizado para `1.27.4` (`go.mod`, workflows CI/Release); golangci-lint no CI passa a v2.15.0 (compatível com Go 1.27)
+- `docs/release.md` documenta SBOM, assinatura, atestação e validação local com `--skip=sign`
+
 ## [0.0.2] - 2026-11-16
 
 ### Adicionado
