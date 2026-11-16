@@ -17,19 +17,19 @@ var guardCmd = &cobra.Command{
 }
 
 var guardCheckCmd = &cobra.Command{
-	Use:   "check <base>..<head>",
+	Use:   "check [base..head]",
 	Short: "Analisa diff entre commits",
-	Args:  cobra.ExactArgs(1),
+	Args:  cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		parts := strings.SplitN(args[0], "..", 2)
-		if len(parts) != 2 {
-			return fmt.Errorf("use base..head")
+		base, head, err := resolveGuardRange(cmd, args)
+		if err != nil {
+			return err
 		}
 		cwd, err := os.Getwd()
 		if err != nil {
 			return err
 		}
-		res, err := guard.NewChecker(cwd).Check(parts[0], parts[1])
+		res, err := guard.NewChecker(cwd).Check(base, head)
 		if err != nil {
 			return err
 		}
@@ -50,6 +50,22 @@ var guardCheckCmd = &cobra.Command{
 	},
 }
 
+func resolveGuardRange(cmd *cobra.Command, args []string) (base, head string, err error) {
+	base, _ = cmd.Flags().GetString("base")
+	head, _ = cmd.Flags().GetString("head")
+	if len(args) == 1 {
+		parts := strings.SplitN(args[0], "..", 2)
+		if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+			return "", "", fmt.Errorf("use base..head ou --base/--head")
+		}
+		return parts[0], parts[1], nil
+	}
+	if base == "" || head == "" {
+		return "", "", fmt.Errorf("use base..head ou --base/--head")
+	}
+	return base, head, nil
+}
+
 func hasStrictError(violations []guard.Violation) bool {
 	for _, v := range violations {
 		if v.Severity == guard.SeverityError {
@@ -61,5 +77,7 @@ func hasStrictError(violations []guard.Violation) bool {
 
 func init() {
 	guardCheckCmd.Flags().Bool("strict", false, "falha em erros")
+	guardCheckCmd.Flags().String("base", "HEAD~1", "ref base")
+	guardCheckCmd.Flags().String("head", "HEAD", "ref head")
 	guardCmd.AddCommand(guardCheckCmd)
 }

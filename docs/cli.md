@@ -517,6 +517,7 @@ Também reporta drift de escopo e commit base. Isolamento fresco é obrigatório
 
 O ticket/rd.md aceita frontmatter YAML ou Markdown: seção `## Scope` / `## Escopo`
 (ou `Scope:` / `Escopo:`) com listas (`-`, `*`, numeradas) e paths entre backticks.
+Se o frontmatter YAML não declara `scope:`, o body Markdown ainda é lido para preencher o escopo.
 Globs no scope incluem `src/*.go`, `src/**` e padrões com `**` no meio (ex.: `src/**/foo.go`).
 
 Invariantes de path (ex.: `tests/hidden/`, `thresholds.yaml`) são casadas contra
@@ -708,7 +709,7 @@ Flags:
   --timeout <dur>          Timeout (default: 10m)
   --threshold <float>      Threshold de similaridade visual (default: 0.95)
   --manifest <path>        Manifesto de telas (default: .toolbelt/screens.yaml)
-  --skip-unavailable       Skip gracioso sem browser/refs (default: true)
+  --skip-unavailable       Skip gracioso sem browser/refs/telas (default: true; veredicto SKIPPED)
   --base <ref>             Ref base
   --head <ref>             Ref head
   --output <path> / -o     Arquivo de saída JSON
@@ -759,8 +760,8 @@ tb verify run --test-cmd "go test ./..." --hidden-test-cmd "go test ./tests/hidd
 tb verify run --ruler visual --threshold 0.95
 tb verify run --ruler visual --manifest .toolbelt/screens.yaml --json -o verify-result.json
 
-# Skip gracioso (default): browser/refs ausentes ou todas as telas skipped
-# → relatório top-level skipped=true
+# Skip gracioso (default): browser/refs ausentes, screens: [] ou todas as telas skipped
+# → relatório top-level skipped=true e veredicto SKIPPED (não PASS)
 tb verify run --ruler visual --skip-unavailable
 ```
 
@@ -857,43 +858,28 @@ metrics:
 Verifica mudanças em paths protegidos entre dois commits.
 
 ```bash
-tb guard check <base>..<head> [flags]
+tb guard check [base..head] [flags]
 
 Flags:
-  --manifest <path>     Manifesto de paths protegidos (default: .toolbelt/guard.yaml)
+  --base <ref>          Commit/ref base (default: HEAD~1; ignorado se base..head for passado)
+  --head <ref>          Commit/ref head (default: HEAD; ignorado se base..head for passado)
   --strict              Falha se qualquer path protegido foi modificado sem decisão
   --json                Saída em JSON
-  --output <path>       Arquivo de saída
 ```
+
+Aceita o intervalo posicional `base..head` (forma clássica) ou as flags `--base`/`--head`, alinhadas a `tb review` / `tb drift` / `tb verify`.
 
 **Exemplos:**
 
 ```bash
 # Verificar mudanças entre main e branch atual
 tb guard check main..HEAD
-# ═══════════════════════════════════════════════════════════════
-# GUARD CHECK: main..HEAD
-# ═══════════════════════════════════════════════════════════════
-# 
-# Paths protegidos modificados: 2
-# 
-# ┌───────────────────────────────────────────────────────────────┐
-# │ references/login-light.png                                    │
-# │ ├── Regra: "Referências visuais requerem decisão"             │
-# │ ├── Modificação: DELETED                                      │
-# │ └── Decisão: ⚠ NÃO ENCONTRADA                                 │
-# ├───────────────────────────────────────────────────────────────┤
-# │ .toolbelt/thresholds.yaml                                     │
-# │ ├── Regra: "Thresholds não podem ser relaxados"               │
-# │ ├── Modificação: min_similarity 95 → 90                       │
-# │ └── Decisão: ⚠ NÃO ENCONTRADA                                 │
-# └───────────────────────────────────────────────────────────────┘
-# 
-# ⚠ 2 modificações requerem justificativa
-# 
-# Para aprovar, crie decisões em:
-#   tb mem add --category mandate "Remoção de login-light.png aprovada"
-#   tb mem add --category mandate "Relaxamento de threshold aprovado"
+
+# Mesmo intervalo via flags (como review/drift)
+tb guard check --base main --head HEAD
+
+# Defaults HEAD~1..HEAD quando nenhum intervalo é passado
+tb guard check --json
 
 # Modo strict para CI
 tb guard check origin/main..HEAD --strict
@@ -908,13 +894,21 @@ tb guard check origin/main..HEAD --strict --json
 
 **Manifesto de paths protegidos (`.toolbelt/guard.yaml`):**
 
-O guard carrega `protected_paths` de `.toolbelt/guard.yaml` (quando presente) e **une** aos defaults embutidos (`tests/hidden/*`, `benchmarks/*`, `.toolbelt/thresholds.yaml`). Cada entrada pode ser uma string (`lib/help.js`) ou um objeto com `pattern`. Sem o arquivo, só os defaults valem.
+O guard carrega `protected_paths` de `.toolbelt/guard.yaml` (quando presente) e **une** aos defaults embutidos (`tests/hidden/*`, `benchmarks/*`, `.toolbelt/thresholds.yaml`). Cada entrada pode ser uma string (`lib/help.js`) ou um objeto com `pattern`. Entrada com barra final (`secrets/`) protege o diretório e todos os filhos (prefixo). `secrets/*` continua válido para um nível via glob. Sem o arquivo, só os defaults valem.
 
 ```yaml
 # .toolbelt/guard.yaml
 version: 1
 
 protected_paths:
+  # Diretório inteiro (barra final = prefixo; protege filhos)
+  - secrets/
+  # Glob de um nível
+  - pattern: "secrets/*"
+    reason: "Segredos não podem ser editados"
+  # Path literal
+  - lib/help.js
+
   # Referências visuais
   - pattern: "references/**"
     reason: "Referências visuais não podem ser editadas sem decisão registrada"
@@ -1477,6 +1471,11 @@ Placeholders `{prompt}`, `{workdir}` e `{timeout}` são interpolados com
 quoting POSIX (aspas simples), evitando injeção via aspas, `$()` ou `;`.
 O harness também exporta `TB_BENCH_PROMPT`, `TB_BENCH_WORKDIR` e
 `TB_BENCH_TIMEOUT` para agentes que preferem ler env em vez do argv.
+
+Uma tarefa só marca `passed: true` quando o **agente** sai com exit 0 **e** a
+verificação atinge `expected_exit_code`. Exit do agente ≠ 0 (ex.: `false`)
+força `passed: false` mesmo se a fixture passar. Se o comando do agente não
+existir (exit 127), `tb bench run` grava o JSONL e sai com código ≠ 0.
 
 **`tb bench compare` (A/B):**
 

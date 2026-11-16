@@ -161,7 +161,10 @@ func (r *Runner) runTask(ctx context.Context, task *Task, rep int) (*Result, err
 		result.Error = fmt.Sprintf("verification error: %v", verifyErr)
 	}
 
-	result.Passed = verifyExit == task.Verification.ExpectedExitCode
+	result.Passed = exitCode == 0 && verifyExit == task.Verification.ExpectedExitCode
+	if exitCode != 0 && result.Error == "" {
+		result.Error = fmt.Sprintf("agent exited with code %d", exitCode)
+	}
 	result.EndTime = time.Now()
 	result.Duration = result.EndTime.Sub(result.StartTime).Seconds()
 

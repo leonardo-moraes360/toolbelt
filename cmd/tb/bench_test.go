@@ -8,6 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/leonardo-moraes360/toolbelt/internal/bench"
 	"github.com/leonardo-moraes360/toolbelt/internal/config"
 )
 
@@ -269,6 +270,23 @@ func TestDefaultOutputPathUsesOutputDir(t *testing.T) {
 	}
 	if filepath.Ext(path) != ".jsonl" {
 		t.Fatalf("ext = %q, want .jsonl", filepath.Ext(path))
+	}
+}
+
+func TestAgentCommandNotFoundErr(t *testing.T) {
+	err := agentCommandNotFoundErr([]bench.Result{{ExitCode: 1}}, "false")
+	if err != nil {
+		t.Fatalf("exit 1 should not fail CLI: %v", err)
+	}
+	err = agentCommandNotFoundErr([]bench.Result{{ExitCode: 127}}, "missing-bin {prompt}")
+	if err == nil {
+		t.Fatal("expected error when agent exit_code is 127")
+	}
+	if !strings.Contains(err.Error(), "exit 127") {
+		t.Fatalf("error should mention exit 127, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "missing-bin") {
+		t.Fatalf("error should mention agent command, got %v", err)
 	}
 }
 
