@@ -7,7 +7,12 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Não Lançado]
 
-Nada ainda.
+### Mudanças
+- **Breaking:** saídas JSON da CLI (`--json`) e dos payloads de domínio no MCP usam
+  exclusivamente chaves `snake_case`. Structs sem tag (`sandbox.Result`,
+  `mem.Invariant`, `workspace.Workspace`/`Scope`) deixam de emitir PascalCase
+  (`ExitCode` → `exit_code`, `TimedOut` → `timed_out`, `duration_ns`, etc.).
+  Envelopes do protocolo MCP (`isError`, `inputSchema`, …) permanecem camelCase.
 
 ## [0.0.1] - 2026-11-16
 

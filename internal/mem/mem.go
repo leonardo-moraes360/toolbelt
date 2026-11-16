@@ -17,16 +17,16 @@ import (
 const DefaultInvariantsFile = "invariants.yaml"
 
 type File struct {
-	Version    int         `yaml:"version"`
-	Invariants []Invariant `yaml:"invariants"`
+	Version    int         `yaml:"version" json:"version"`
+	Invariants []Invariant `yaml:"invariants" json:"invariants"`
 }
 
 type Invariant struct {
-	ID        string    `yaml:"id"`
-	Category  string    `yaml:"category"`
-	Rule      string    `yaml:"rule"`
-	AddedAt   time.Time `yaml:"added_at"`
-	Immutable bool      `yaml:"immutable"`
+	ID        string    `yaml:"id" json:"id"`
+	Category  string    `yaml:"category" json:"category"`
+	Rule      string    `yaml:"rule" json:"rule"`
+	AddedAt   time.Time `yaml:"added_at" json:"added_at"`
+	Immutable bool      `yaml:"immutable" json:"immutable"`
 }
 
 type CheckReport struct {

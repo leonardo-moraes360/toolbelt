@@ -10,18 +10,18 @@ import (
 )
 
 type Scope struct {
-	BaseCommit     string
-	AllowedPaths   []string
-	ForbiddenPaths []string
+	BaseCommit     string   `json:"base_commit"`
+	AllowedPaths   []string `json:"allowed_paths"`
+	ForbiddenPaths []string `json:"forbidden_paths"`
 }
 
 type Workspace struct {
-	ID        string
-	Path      string
-	BaseRef   string
-	Branch    string
-	CreatedAt time.Time
-	Scope     Scope
+	ID        string    `json:"id"`
+	Path      string    `json:"path"`
+	BaseRef   string    `json:"base_ref"`
+	Branch    string    `json:"branch"`
+	CreatedAt time.Time `json:"created_at"`
+	Scope     Scope     `json:"scope"`
 }
 
 type Manager struct {
