@@ -78,7 +78,7 @@ func DetectBuildCmd(root string) string {
 	}
 
 	if fileExists(filepath.Join(root, "package.json")) {
-		return detectNodeScriptCmd(root, "build")
+		return detectNodeBuildCmd(root)
 	}
 
 	if fileExists(filepath.Join(root, "Cargo.toml")) {
@@ -126,6 +126,15 @@ func detectGoLintCmd(root string) string {
 		}
 	}
 	return detectMakeTargetCmd(root, "lint")
+}
+
+func detectNodeBuildCmd(root string) string {
+	for _, script := range []string{"build", "typecheck", "type-check"} {
+		if cmd := detectNodeScriptCmd(root, script); cmd != "" {
+			return cmd
+		}
+	}
+	return ""
 }
 
 func detectNodeScriptCmd(root, script string) string {
@@ -194,6 +203,8 @@ func nodePackageManager(root, packageManagerField string) string {
 		return "yarn"
 	case fileExists(filepath.Join(root, "bun.lockb")), fileExists(filepath.Join(root, "bun.lock")):
 		return "bun"
+	case fileExists(filepath.Join(root, "package-lock.json")):
+		return "npm"
 	default:
 		return "npm"
 	}

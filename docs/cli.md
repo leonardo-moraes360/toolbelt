@@ -130,7 +130,8 @@ tb proc stop --all
 ### `tb graph` — Grafo Sob Demanda (✓ Fase 2, ADR-011)
 
 Consulta e indexa o grafo de código **sob demanda**. Desabilitado por padrão;
-ative com `TB_GRAPH=on` ou `--enable`. Medir ROI via
+ative com `TB_GRAPH=on` ou `--enable` (sem isso, CLI e MCP respondem
+`grafo desabilitado (ative com --enable ou TB_GRAPH=on; ADR-011)`). Medir ROI via
 `tb bench compare --config-a bench/ab/graph-off.yaml --config-b bench/ab/graph-on.yaml`.
 
 Linguagens e docs (extensível via `LanguageIndexer`, regex leve, sem cgo):
@@ -138,7 +139,7 @@ Linguagens e docs (extensível via `LanguageIndexer`, regex leve, sem cgo):
 | `graph.languages` | Extensões |
 |-------------------|-----------|
 | `go` | `.go` (AST; arestas `calls`) |
-| `javascript` | `.js`, `.mjs`, `.cjs`, `.ts` (`.tsx`/`.jsx` via `react` quando ligado; arestas `calls`) |
+| `javascript` | `.js`, `.mjs`, `.cjs`, `.ts`, `.tsx`, `.jsx` (funções/`const` arrow, JSX `<Comp />` como `calls`; resolve imports relativos ao símbolo do módulo importado) |
 | `python` | `.py` (defines/imports + arestas `calls` por módulo qualificado; `callers`/`impact` ignoram arestas com confiança &lt; 0.6) |
 | `java` | `.java` |
 | `kotlin` | `.kt`, `.kts` |
@@ -158,7 +159,7 @@ Linguagens e docs (extensível via `LanguageIndexer`, regex leve, sem cgo):
 
 | `graph.frameworks` | Extensões / convenção | O que indexa |
 |--------------------|-----------------------|--------------|
-| `react` | `.tsx`, `.jsx` | componentes, hooks `use*`, arestas `renders` |
+| `react` | `.tsx`, `.jsx` | componentes, hooks `use*`, arestas `renders` (em paralelo com `javascript` para `calls`/callers/impact) |
 | `vue` | `.vue` | SFC script/template, imports, componentes no template |
 | `svelte` | `.svelte` | script, imports, componentes no markup |
 | `astro` | `.astro` | frontmatter, imports, componentes no body |
@@ -166,8 +167,10 @@ Linguagens e docs (extensível via `LanguageIndexer`, regex leve, sem cgo):
 | `routes` | Next `app/`/`pages/`, SvelteKit `routes/`, Nuxt `pages/` | nós `route` por convenção de arquivo |
 | `mdx` | `.mdx` | doc (headings/links) + imports/componentes JSX |
 
-Frameworks têm prioridade sobre o indexador genérico de linguagem no mesmo
-arquivo (ex.: `.tsx` com `react` ligado não cai só como JS).
+Frameworks rodam junto com o indexador de linguagem no mesmo arquivo (ex.:
+`.tsx` recebe `react` + `javascript`, para componentes/`renders` e
+`calls`/callers/impact). Docs também podem indexar o mesmo path quando a
+extensão casa.
 
 ```yaml
 # .toolbelt/config.yaml (todos ligados por padrão)
@@ -225,9 +228,12 @@ Flags:
   --depth <n>         Profundidade do grafo (default: 1)
 ```
 
-Em Python, `--function` resolve por título ou sufixo do id qualificado
-(`func:pkg.mod.nome`). Arestas `calls` com confiança &lt; 0.6 (alvos ambíguos /
-sem import) ficam de fora do resultado default de `callers` e `impact`.
+Em Python/JS/TS, `--function` resolve por título ou sufixo do id qualificado
+(`func:pkg.mod.nome`; componentes/hooks React também). Arestas `calls` com
+confiança &lt; 0.6 (alvos ambíguos / sem import) ficam de fora do resultado
+default de `callers` e `impact`. Em TS/JS, imports relativos
+(`../components/Layout`) resolvem para o símbolo do módulo importado
+(`components.Layout`), inclusive uso JSX `<Layout />`.
 
 **`tb graph deps`:**
 
@@ -296,15 +302,15 @@ tb mem <subcommand>
 
 Subcomandos:
   add       Adiciona regra invariante
-  list      Lista invariantes
+  list      Lista invariantes (omite retired; --all inclui)
+  show      Exibe invariante por id
+  edit      Edita category/rule/ref
+  retire    Soft-retire (omitida de list/check/search por padrão)
+  search    Busca em id/categoria/regra/ref
   check     Verifica integridade (hash e retenção)
   init      Cria conjunto padrão anti-trapaça
 
 Subcomandos (planejados — vault Markdown):
-  search    Busca na memória
-  show      Exibe entrada
-  show      Exibe entrada específica
-  edit      Edita entrada
   link      Cria link entre entradas
   tag       Gerencia tags
   export    Exporta memória
@@ -312,22 +318,32 @@ Subcomandos (planejados — vault Markdown):
   sync      Sincroniza vault → SQLite
 ```
 
-**`tb mem add` (implementado):**
+Subcomando desconhecido (`tb mem foo`) sai com código ≠ 0 e mensagem `unknown command`.
+
+**`tb mem add`:**
 
 ```bash
 tb mem add <regra> [flags]
 
 Flags:
   --category <cat>    Categoria: anti_cheat|mandate|security (default: anti_cheat)
+  --ref <path>        Vínculo com ADR/decisions.md (ex: docs/adr/0001.md)
 ```
 
-**`tb mem list` (implementado):**
+**`tb mem list` / `search` / `check`:**
 
 ```bash
-tb mem list [flags]
+tb mem list [--category <cat>] [--all]
+tb mem search <query> [--all]
+tb mem check [--expect-sha <sha>] [--all]
+```
 
-Flags:
-  --category <cat>    Filtrar por categoria
+**`tb mem show` / `edit` / `retire`:**
+
+```bash
+tb mem show <id>
+tb mem edit <id> [--category <cat>] [--rule <texto>] [--ref <path>]
+tb mem retire <id>
 ```
 
 **Exemplos:**
@@ -335,17 +351,22 @@ Flags:
 ```bash
 # Adicionar invariante (argumento posicional obrigatório)
 tb mem add "Não modificar tests/hidden/**"
-tb mem add --category security "Não relaxar thresholds sem revisão"
+tb mem add --category security --ref docs/adr/0005.md "Não relaxar thresholds sem revisão"
 
-# Listar / checar / seed anti-trapaça
+# Listar / buscar / exibir / editar / aposentar
 tb mem list
 tb mem list --category anti_cheat
+tb mem list --all
+tb mem search thresholds
+tb mem show inv-123
+tb mem edit inv-123 --ref docs/decisions/auth.md --rule "Escopo via ticket"
+tb mem retire inv-123
 tb mem check
 tb mem init
 ```
 
-> Subcomandos de vault Markdown (`search`, `show`, `edit`, `link`, `tag`, `export`, `import`, `sync`) e flags vault `--type`/`--title` **não existem** na CLI atual — são planejados.
-> `tb mem add` aceita só a regra posicional e `--category` (`anti_cheat|mandate|security`). Exemplos no estilo `mem add --type fact …` são rejeitados (`unknown flag: --type`).
+> Soft-retire mantém a entrada no YAML; `list`/`search`/`check` omitem retired a menos que `--all`.
+> Flags vault `--type`/`--title` **não existem** — `tb mem add` aceita regra posicional, `--category` e `--ref`.
 
 ---
 
@@ -470,15 +491,19 @@ Analisa o diff entre commits em busca de paths protegidos e padrões anti-trapa�
 tb guard check <base>..<head> [flags]
 
 Flags:
-  --strict    Exit ≠ 0 quando há violações de severidade erro
-  --json      Saída em JSON (flag global)
+  --warn-only   Exit 0 mesmo com SeverityError (opt-out do default CI-safe)
+  --strict      Deprecated: falha em SeverityError já é o default
+  --json        Saída em JSON (flag global)
 ```
+
+Por default, exit ≠ 0 quando há `SeverityError`. No modo texto limpo imprime
+`guard: ok (N regras, 0 violações)`.
 
 **Exemplos:**
 
 ```bash
 tb guard check HEAD~1..HEAD
-tb guard check --strict HEAD~1..HEAD
+tb guard check --warn-only HEAD~1..HEAD
 tb guard check --json HEAD~1..HEAD
 ```
 
@@ -488,8 +513,9 @@ tb guard check --json HEAD~1..HEAD
 
 ### `tb review` — Revisão Fresh-Context (✓ Fase 2)
 
-Implementa o padrão Elephant-Goldfish: N goldfish revisam o diff contra
-`ticket/rd.md` e invariantes de `tb mem`, sem herdar contexto do autor.
+Implementa o padrão Elephant-Goldfish: goldfish **distintos** revisam o diff
+contra `ticket/rd.md` e invariantes de `tb mem`, sem herdar contexto do autor.
+Não há clones do mesmo checker — `--reviewers` só limita quantos papéis rodam.
 
 ```bash
 tb review [ticket] [flags]
@@ -497,9 +523,10 @@ tb review [ticket] [flags]
 Flags:
   --base <ref>          Commit base (default: HEAD~1 ou base_commit do ticket)
   --head <ref>          Commit head (default: HEAD)
+  --approved-sha <sha>  SHA aprovado; compara `git patch-id --stable` de base..approved vs base..head
   --ticket <path>       Ticket/rd.md (default: rd.md)
-  --reviewers <n>       Número de goldfish (default: 3)
-  --standards <stds>    scope,invariants,completeness
+  --reviewers <n>       Máximo de goldfish distintos (default: 3; não clona)
+  --standards <stds>    Papéis: scope,quality,acceptance (default)
   --output <path>       Relatório JSON (sem shorthand `-o`; use `--output`)
   --json                Saída em JSON (flag global)
 ```
@@ -507,10 +534,16 @@ Flags:
 Também reporta drift de escopo e commit base. Isolamento fresco é obrigatório.
 `tb review -o …` é rejeitado (`unknown shorthand flag: 'o'`); use `--output`.
 
+Com `--approved-sha`, o JSON inclui `pinned_approval` (`approved_sha`, `patch_id`,
+`head_patch_id`, `match` e, se divergir, `range_diff`). Patch diferente do aprovado
+imprime um resumo de `git range-diff` e sai com código ≠ 0.
+
 O ticket/rd.md aceita frontmatter YAML ou Markdown: seção `## Scope` / `## Escopo`
 (ou `Scope:` / `Escopo:`) e `## Forbidden` / `## Proibido` (ou `Forbidden:` /
 `Proibido:`) com listas (`-`, `*`, numeradas) e paths entre backticks.
-Se o frontmatter YAML não declara `scope:`, o body Markdown ainda é lido para preencher o escopo.
+Critérios de aceite vêm de `acceptance:` no YAML ou checkboxes `- [ ]` / `- [x]`
+no Markdown. Se o frontmatter YAML não declara `scope:`, o body Markdown ainda
+é lido para preencher o escopo.
 Globs no scope/forbidden incluem `src/*.go`, `src/**`, `tests/hidden/**` e
 padrões com `**` no meio (ex.: `src/**/foo.go`). Toques em paths do Forbidden
 preenchem `forbidden_hit` no drift e geram finding critical no review.
@@ -521,50 +554,41 @@ arquivos **alterados** pelo mesmo matcher de path/glob (`tests/hidden/**`,
 `forbidden: tests/hidden/**` em `rd.md` sem tocar esse diretório não gera
 finding critical.
 
+**Revisores (goldfish) distintos**:
+
+| Revisor | `--standards` | O que verifica |
+|---------|---------------|----------------|
+| `goldfish-scope` | `scope` (+ `invariants`) | Arquivos fora do scope, toques em forbidden; invariantes de `tb mem` |
+| `goldfish-quality` | `quality` | TODO/FIXME adicionados; funções muito grandes no diff (≥80 linhas +); código fonte alterado sem testes |
+| `goldfish-acceptance` | `acceptance` (alias: `completeness`) | Cada critério de aceite do ticket tem evidência em testes/arquivos de código alterados (não conta o próprio ticket) |
+
+Heurísticas são determinísticas e offline (sem LLM).
+
 **Exemplos:**
 
 ```bash
-# Revisar documento de design
-tb review docs/design-auth.md
-# Spawning 3 fresh-context reviewers...
-# 
-# ═══════════════════════════════════════════════════════════════
-# RELATÓRIO DE REVISÃO: docs/design-auth.md
-# ═══════════════════════════════════════════════════════════════
-# 
-# CRÍTICOS (2):
-# ┌────┬──────────────────────────────────────────────────────────┐
-# │ #1 │ [security] Não especifica como tokens são invalidados   │
-# │    │ Linha 45: "JWT tokens são emitidos..."                  │
-# │    │ Revisores: 2/3 concordam                                │
-# ├────┼──────────────────────────────────────────────────────────┤
-# │ #2 │ [completeness] Falta tratamento de rate limiting        │
-# │    │ Seção 3.2 menciona mas não detalha implementação        │
-# │    │ Revisores: 3/3 concordam                                │
-# └────┴──────────────────────────────────────────────────────────┘
-# 
-# WARNINGS (5): ...
-# INFO (3): ...
-# 
-# Total: 2 críticos, 5 warnings, 3 info
+# Revisão padrão: 3 papéis distintos
+tb review --ticket rd.md
+# ═══════════════════════════════════════════════════════════
+#  RELATÓRIO DE REVISÃO: rd.md
+#  Base..Head: HEAD~1..HEAD | Revisores: 3 | Fresh: true
+# ═══════════════════════════════════════════════════════════
+# FINDINGS:
+#   [warning] (goldfish-quality/quality) TODO/FIXME adicionado no diff [src/a.go]
+#   [warning] (goldfish-acceptance/acceptance) critério de aceite sem evidência...
 
-# Mais goldfish / padrões
-tb review --ticket rd.md --reviewers 5 --standards scope,invariants,completeness
+# Só escopo + qualidade (sem aceite)
+tb review --ticket rd.md --standards scope,quality --reviewers 2
+
+# Pedir 5 revisores ainda roda no máximo os papéis distintos (sem clones)
+tb review --ticket rd.md --reviewers 5 --standards scope,quality,acceptance
 
 # Saída JSON para integração (só --output; sem -o)
 tb review --ticket rd.md --json --output review-results.json
+
+# Verificar que o head ainda é o mesmo patch do SHA aprovado
+tb review --base main --approved-sha abc1234 --ticket rd.md --json
 ```
-
-**Padrões de revisão disponíveis**:
-
-| Padrão | O que verifica |
-|--------|---------------|
-| `security` | Vulnerabilidades, vazamento de dados, autenticação |
-| `clarity` | Ambiguidades, termos indefinidos, contradições |
-| `completeness` | Requisitos faltantes, edge cases, fluxos incompletos |
-| `consistency` | Alinhamento com código existente, convenções, outros docs |
-| `testability` | Se os requisitos são testáveis |
-| `feasibility` | Riscos de implementação, dependências |
 
 **Isolamento obrigatório**: Se o sistema não conseguir criar contextos frescos para os revisores, o comando falha com erro ao invés de prosseguir com contexto contaminado.
 
@@ -585,12 +609,16 @@ resolvidos com `git rev-parse` antes da comparação — evita falso
 tb drift [ticket] [flags]
 
 Flags:
-  --base <ref>     Commit base (default: HEAD~1 ou base_commit do ticket)
-  --head <ref>     Commit head (default: HEAD)
-  --ticket <path>  Ticket/rd.md (default: rd.md)
-  --output <path>  Saída JSON (sem shorthand `-o`)
-  --json           Saída em JSON (flag global)
+  --base <ref>          Commit base (default: HEAD~1 ou base_commit do ticket)
+  --head <ref>          Commit head (default: HEAD)
+  --approved-sha <sha>  SHA aprovado; compara `git patch-id --stable` de base..approved vs base..head
+  --ticket <path>       Ticket/rd.md (default: rd.md)
+  --output <path>       Saída JSON (sem shorthand `-o`)
+  --json                Saída em JSON (flag global)
 ```
+
+Com `--approved-sha`, o JSON de drift inclui `pinned_approval` (mesmo formato do
+`tb review`). Divergência de patch-id sai com código ≠ 0 e mostra `git range-diff`.
 
 **Exemplos:**
 
@@ -641,6 +669,9 @@ tb drift docs/api-spec.md
 
 # Saída JSON para relatório / CI
 tb drift --ticket rd.md --json --output drift-report.json
+
+# Pin de aprovação: falha se o patch do head mudou desde o SHA aprovado
+tb drift --base main --approved-sha abc1234 --ticket rd.md
 ```
 
 **Integração com CI**:
@@ -676,10 +707,12 @@ Flags:
 ```
 
 `tb init` preenche `verify.test_cmd` a partir da toolchain do repositório
-(`go.mod` → `go test ./...`, `package.json` + scripts.test → `npm`/`pnpm`/`yarn test`,
+(`go.mod` → `go test ./...`, `package.json` + scripts.test → `npm`/`pnpm`/`yarn`/`bun test`
+via lockfile `pnpm-lock.yaml`/`yarn.lock`/`package-lock.json`/`bun.lockb`,
 `pyproject.toml`/`uv.lock` → `pytest`/`uv run pytest`, `Cargo.toml` → `cargo test`,
 `Makefile` com target `test`/`check` → `make test`/`make check`). Sem marcadores
-reconhecidos, permanece o default Go. O binário do comando escolhido é validado no
+reconhecidos, `verify.test_cmd` fica **vazio** e o init emite um aviso — nunca
+mantém `go test ./...` sem `go.mod`. O binário do comando escolhido é validado no
 `PATH`: se `uv` estiver ausente com `uv.lock`, faz fallback para `pytest` ou
 `python -m pytest` / `python3 -m pytest` (e avisa); managers Node ausentes
 caem para `npm test` quando possível.
@@ -695,12 +728,13 @@ Quando há marcadores claros, o init também preenche `verify.build_cmd` e
 | Toolchain | `build_cmd` | `lint_cmd` |
 |-----------|-------------|------------|
 | `go.mod` | `go build ./...` | `.golangci.y*ml`/`.toml` → `golangci-lint run`; senão target `make lint` |
-| `package.json` | script `build` → `npm run build` / `pnpm run build` / `yarn build` | script `lint` → análogo |
+| `package.json` | script `build`, senão `typecheck`/`type-check` → `npm run …` / `pnpm run …` / `yarn …` | script `lint` → análogo |
 | `Cargo.toml` | `cargo build` | `cargo clippy` |
 | Python (`pyproject`/`uv.lock`/…) | (vazio) | `[tool.ruff]`/`ruff.toml` → `ruff check .` (ou `uv run …`); senão mypy |
 | só `Makefile` | target `build` → `make build` | target `lint` → `make lint` |
 
-Ausência de script/config → campo omitido (verify continua só com `test_cmd`).
+Ausência de script/config → campo omitido. Sem `test_cmd` detectado, o verify
+não inventa `go test` (configure à mão ou adicione script/marcador).
 
 A suite oculta permanece escondida do agente (paths em `tests/hidden/` protegidos
 pelo `tb guard`). O comando configurado em `verify.hidden_test_cmd` ou
@@ -711,6 +745,12 @@ diretório, a suite oculta é ignorada (`hidden_available: false`). Campos
 opcionais `build_cmd` e `lint_cmd` rodam antes dos testes (nessa ordem) e
 fazem o verify falhar se o comando sair com erro; ausentes = comportamento
 anterior (só `test_cmd` + hidden).
+
+Se o binário do `test_cmd` / `hidden_test_cmd` / `build_cmd` / `lint_cmd` não
+existe (exit 127), não é executável (exit 126) ou o `exec` falha com
+`ErrNotFound`, o verify **falha imediatamente** sem retries, com mensagem do tipo
+`comando não encontrado: X — ajuste verify.test_cmd`. Falhas genuínas do comando
+(exit ≠ 0/126/127) continuam no loop de `--max-iter`.
 
 Veredictos `ESCALATE` e `FAIL` saem com **exit ≠ 0** também com `--json`
 (igual ao modo texto). Só `PASS` e `SKIPPED` (ruler visual) usam exit 0.
@@ -725,9 +765,10 @@ de **abortar antes de build/test** depende da origem do `protected_path`:
 | Defaults embutidos (`tests/hidden/*`, `benchmarks/*`, `.toolbelt/thresholds.yaml`) | **aborta** (FAIL, 0 iterações) | **aborta** | **aborta** |
 | `protected_paths` de `.toolbelt/guard.yaml` (custom) | reporta como **warning** e **continua** build/test | reporta warning (exceção de Scope) e **continua** | **aborta** |
 
-`tb guard check --strict` continua tratando violações custom como `SeverityError`
-(CI não muda). Só o loop de `tb verify run` aplica a exceção acima para não
-matar o mandate quando o manifesto lista o próprio arquivo da tarefa.
+`tb guard check` (e o alias deprecated `--strict`) trata violações custom como
+`SeverityError` e falha o exit code por default; use `--warn-only` para opt-out.
+Só o loop de `tb verify run` aplica a exceção acima para não matar o mandate
+quando o manifesto lista o próprio arquivo da tarefa.
 
 ```yaml
 # .toolbelt/config.yaml
@@ -860,16 +901,21 @@ tb guard check [base..head] [flags]
 Flags:
   --base <ref>          Commit/ref base (default: HEAD~1; ignorado se base..head for passado)
   --head <ref>          Commit/ref head (default: HEAD; ignorado se base..head for passado)
-  --strict              Falha se qualquer path protegido foi modificado sem decisão
+  --warn-only           Exit 0 mesmo com SeverityError (opt-out do default CI-safe)
+  --strict              Deprecated: falha em SeverityError já é o default (alias sem efeito)
   --json                Saída em JSON
 ```
 
 Aceita o intervalo posicional `base..head` (forma clássica) ou as flags `--base`/`--head`, alinhadas a `tb review` / `tb drift` / `tb verify`.
 
+Por default, exit ≠ 0 quando há `SeverityError` (CI-safe). No modo texto sem
+violações imprime `guard: ok (N regras, 0 violações)` (`N` = paths protegidos
+carregados: defaults + `.toolbelt/guard.yaml`).
+
 **Exemplos:**
 
 ```bash
-# Verificar mudanças entre main e branch atual
+# Verificar mudanças entre main e branch atual (exit ≠ 0 se SeverityError)
 tb guard check main..HEAD
 
 # Mesmo intervalo via flags (como review/drift)
@@ -878,14 +924,13 @@ tb guard check --base main --head HEAD
 # Defaults HEAD~1..HEAD quando nenhum intervalo é passado
 tb guard check --json
 
-# Modo strict para CI
-tb guard check origin/main..HEAD --strict
-# Exit code 1 se houver SeverityError
+# Opt-out: lista violações mas exit 0
+tb guard check origin/main..HEAD --warn-only
 
-# Saída JSON (exit 0 mesmo com violações)
+# JSON + exit ≠ 0 se houver SeverityError (default)
 tb guard check main..HEAD --json
 
-# Strict + JSON: imprime JSON válido e sai ≠ 0 se houver SeverityError
+# Alias deprecated --strict (mesmo comportamento do default)
 tb guard check origin/main..HEAD --strict --json
 ```
 
@@ -1525,11 +1570,11 @@ Transporte unix/tcp e flags `--socket`/`--port`/`--tls-*` são planejados; hoje 
 | `tb_echo` | — | smoke |
 | `tb_env` | — | cwd/os/arch |
 | `tb_run` | — | `sh -c` com timeout |
-| `tb_mem_add` / `tb_mem_list` / `tb_mem_check` / `tb_mem_init` | `tb mem …` | arg opcional `cwd` |
+| `tb_mem_add` / `tb_mem_list` / `tb_mem_show` / `tb_mem_edit` / `tb_mem_retire` / `tb_mem_search` / `tb_mem_check` / `tb_mem_init` | `tb mem …` | arg opcional `cwd`; `ref`/`all` onde aplicável |
 | `tb_verify_run` | `tb verify run` | `ruler=tests\|visual`; args espelham flags |
-| `tb_review` | `tb review` | ticket/base/head/reviewers/standards |
-| `tb_drift` | `tb drift` | retorna `{drift, has_drift}` |
-| `tb_guard_check` | `tb guard check` | `base`/`head` ou `range=A..B`; `strict` (boolean) → `strict_fail` |
+| `tb_review` | `tb review` | ticket/base/head/approved_sha/reviewers/standards |
+| `tb_drift` | `tb drift` | retorna `{drift, has_drift, pinned_approval}` |
+| `tb_guard_check` | `tb guard check` | `base`/`head` ou `range=A..B`; `strict_fail` por default em SeverityError; `warn_only=true` opt-out; `strict` deprecated (boolean) |
 | `tb_graph_search` / `tb_graph_callers` / `tb_graph_deps` / `tb_graph_impact` / `tb_graph_index` | `tb graph …` | chamada requer `TB_GRAPH=on`; `depth`/`limit` integer; `transitive` boolean |
 
 Schemas tipam `depth`/`limit`/`reviewers`/`max_iter` como integer, `strict`/`transitive`/`skip_unavailable` como boolean, `threshold` como number e `standards` como array de strings; valores string legados ainda são aceitos. Relatórios de verify/review/drift/guard voltam como JSON no `content` (sem código de saída de processo).
@@ -1557,6 +1602,11 @@ tb version
 tb version --json
 # {"version":"0.1.0","go":"1.22.0","commit":"abc123","build_time":"2026-01-15T10:00:00Z"}
 ```
+
+Todas as saídas `--json` da CLI (e os payloads de domínio embutidos nas tools MCP)
+usam chaves **`snake_case`** de forma consistente (`exit_code`, `base_ref`,
+`timed_out`, …). Envelopes do protocolo MCP (`isError`, `inputSchema`, …)
+permanecem no camelCase exigido pela spec.
 
 ---
 
@@ -1599,6 +1649,12 @@ Consulte `assets/theme/tokens.json` para a tabela completa de mapeamento ANSI/25
 | `TB_COLOR_MODE` | Modo de cor: ansi, 256, truecolor | `auto` |
 
 ---
+
+## Erros e Usage
+
+- Erros esperados de domínio/runtime (`RunE`, ex.: flag de negócio obrigatória ausente, falha de git, arquivo inexistente) saem com **exit ≠ 0** e mensagem em stderr **sem** dump de `Usage` do Cobra.
+- Erros genuínos de parse de **flags** ou **args** (flag desconhecida, `ExactArgs`/`MinimumNArgs`, etc.) mantêm `Usage` no stderr para orientar a invocação.
+- Subcomando desconhecido em qualquer nível (ex.: `tb mem nao-existe`, `tb bench nope`) sai com **exit ≠ 0** e erro `unknown command "…"`, em vez de imprimir help com exit 0.
 
 ## Códigos de Saída
 

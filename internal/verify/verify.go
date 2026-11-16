@@ -3,6 +3,8 @@ package verify
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -23,6 +25,8 @@ const (
 )
 
 const DefaultHiddenTestCmd = "go test ./tests/hidden/..."
+
+const errMissingCmdFmt = "comando não encontrado: %s — ajuste %s"
 
 type Config struct {
 	RepoDir       string
@@ -170,14 +174,14 @@ func runVerifyIteration(ctx context.Context, cfg *Config, res *Result) (bool, er
 		log.Info("iteração de verify falhou", "n", res.Iterations, "step", "build_or_lint")
 		return false, nil
 	}
-	visibleOK, err := runTest(ctx, cfg.RepoDir, cfg.VisibleTest, cfg.Timeout)
+	visibleOK, err := runConfiguredCmd(ctx, cfg.RepoDir, cfg.VisibleTest, cfg.Timeout, "verify.test_cmd")
 	if err != nil {
 		return false, err
 	}
 	res.VisiblePassed = visibleOK
 	hiddenOK := true
 	if res.HiddenAvailable {
-		hiddenOK, err = runTest(ctx, cfg.RepoDir, cfg.HiddenTest, cfg.Timeout)
+		hiddenOK, err = runConfiguredCmd(ctx, cfg.RepoDir, cfg.HiddenTest, cfg.Timeout, "verify.hidden_test_cmd")
 		if err != nil {
 			return false, err
 		}
@@ -193,7 +197,7 @@ func runVerifyIteration(ctx context.Context, cfg *Config, res *Result) (bool, er
 func runBuildAndLint(ctx context.Context, cfg *Config, res *Result) (bool, error) {
 	if cfg.BuildCmd != "" {
 		res.BuildRan = true
-		ok, err := runTest(ctx, cfg.RepoDir, cfg.BuildCmd, cfg.Timeout)
+		ok, err := runConfiguredCmd(ctx, cfg.RepoDir, cfg.BuildCmd, cfg.Timeout, "verify.build_cmd")
 		if err != nil {
 			return false, err
 		}
@@ -204,7 +208,7 @@ func runBuildAndLint(ctx context.Context, cfg *Config, res *Result) (bool, error
 	}
 	if cfg.LintCmd != "" {
 		res.LintRan = true
-		ok, err := runTest(ctx, cfg.RepoDir, cfg.LintCmd, cfg.Timeout)
+		ok, err := runConfiguredCmd(ctx, cfg.RepoDir, cfg.LintCmd, cfg.Timeout, "verify.lint_cmd")
 		if err != nil {
 			return false, err
 		}
@@ -216,16 +220,35 @@ func runBuildAndLint(ctx context.Context, cfg *Config, res *Result) (bool, error
 	return true, nil
 }
 
-func runTest(ctx context.Context, dir, command string, timeout time.Duration) (bool, error) {
+func runConfiguredCmd(ctx context.Context, dir, command string, timeout time.Duration, configKey string) (bool, error) {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "sh", "-c", command) //nolint:gosec // ruler configurado pelo operador
 	cmd.Dir = dir
-	if out, err := cmd.CombinedOutput(); err != nil {
-		log.Debug("teste falhou", "output", string(out), "error", err)
-		return false, nil
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		return true, nil
 	}
-	return true, nil
+	if isCommandMissing(err) {
+		return false, fmt.Errorf(errMissingCmdFmt, command, configKey)
+	}
+	log.Debug("teste falhou", "output", string(out), "error", err)
+	return false, nil
+}
+
+func isCommandMissing(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, exec.ErrNotFound) {
+		return true
+	}
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) {
+		code := exitErr.ExitCode()
+		return code == 126 || code == 127
+	}
+	return false
 }
 
 func (r *Result) JSON() ([]byte, error) {

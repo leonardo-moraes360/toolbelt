@@ -279,8 +279,16 @@ func TestRequireEnabled(t *testing.T) {
 	t.Setenv(EnvEnable, "off")
 	t.Setenv(FlagEnv, "")
 	s := NewStore(filepath.Join(t.TempDir(), "g.json"))
-	if err := s.RequireEnabled(); err == nil {
+	err := s.RequireEnabled()
+	if err == nil {
 		t.Fatal("expected error when disabled")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "--enable") {
+		t.Fatalf("disabled error should mention --enable: %q", msg)
+	}
+	if !strings.Contains(msg, EnvEnable+"=on") {
+		t.Fatalf("disabled error should mention %s=on: %q", EnvEnable, msg)
 	}
 }
 

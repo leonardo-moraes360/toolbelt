@@ -17,16 +17,25 @@ import (
 const DefaultInvariantsFile = "invariants.yaml"
 
 type File struct {
-	Version    int         `yaml:"version"`
-	Invariants []Invariant `yaml:"invariants"`
+	Version    int         `yaml:"version" json:"version"`
+	Invariants []Invariant `yaml:"invariants" json:"invariants"`
 }
 
 type Invariant struct {
-	ID        string    `yaml:"id"`
-	Category  string    `yaml:"category"`
-	Rule      string    `yaml:"rule"`
-	AddedAt   time.Time `yaml:"added_at"`
-	Immutable bool      `yaml:"immutable"`
+	ID        string     `yaml:"id" json:"id"`
+	Category  string     `yaml:"category" json:"category"`
+	Rule      string     `yaml:"rule" json:"rule"`
+	Ref       string     `yaml:"ref,omitempty" json:"ref,omitempty"`
+	AddedAt   time.Time  `yaml:"added_at" json:"added_at"`
+	Immutable bool       `yaml:"immutable" json:"immutable"`
+	Retired   bool       `yaml:"retired,omitempty" json:"retired,omitempty"`
+	RetiredAt *time.Time `yaml:"retired_at,omitempty" json:"retired_at,omitempty"`
+}
+
+type EditFields struct {
+	Category *string
+	Rule     *string
+	Ref      *string
 }
 
 type CheckReport struct {
@@ -93,7 +102,7 @@ func (s *Store) Save(f *File) error {
 	return os.WriteFile(s.path, data, 0o600)
 }
 
-func (s *Store) Add(category, rule string) (*Invariant, error) {
+func (s *Store) Add(category, rule, ref string) (*Invariant, error) {
 	rule = strings.TrimSpace(rule)
 	if rule == "" {
 		return nil, errors.New("regra vazia")
@@ -106,6 +115,7 @@ func (s *Store) Add(category, rule string) (*Invariant, error) {
 		ID:        fmt.Sprintf("inv-%d", time.Now().UnixNano()),
 		Category:  category,
 		Rule:      rule,
+		Ref:       strings.TrimSpace(ref),
 		AddedAt:   time.Now().UTC(),
 		Immutable: true,
 	}
@@ -116,24 +126,116 @@ func (s *Store) Add(category, rule string) (*Invariant, error) {
 	return &inv, nil
 }
 
-func (s *Store) List(category string) ([]Invariant, error) {
+func (s *Store) Get(id string) (*Invariant, error) {
 	f, err := s.Load()
 	if err != nil {
 		return nil, err
 	}
-	if category == "" {
-		return f.Invariants, nil
+	idx := findInvariant(f.Invariants, id)
+	if idx < 0 {
+		return nil, fmt.Errorf("invariante %q não encontrada", id)
+	}
+	inv := f.Invariants[idx]
+	return &inv, nil
+}
+
+func (s *Store) Edit(id string, fields EditFields) (*Invariant, error) {
+	if fields.Category == nil && fields.Rule == nil && fields.Ref == nil {
+		return nil, errors.New("nenhum campo para editar (--category/--rule/--ref)")
+	}
+	f, err := s.Load()
+	if err != nil {
+		return nil, err
+	}
+	idx := findInvariant(f.Invariants, id)
+	if idx < 0 {
+		return nil, fmt.Errorf("invariante %q não encontrada", id)
+	}
+	inv := f.Invariants[idx]
+	if fields.Category != nil {
+		inv.Category = strings.TrimSpace(*fields.Category)
+	}
+	if fields.Rule != nil {
+		rule := strings.TrimSpace(*fields.Rule)
+		if rule == "" {
+			return nil, errors.New("regra vazia")
+		}
+		inv.Rule = rule
+	}
+	if fields.Ref != nil {
+		inv.Ref = strings.TrimSpace(*fields.Ref)
+	}
+	f.Invariants[idx] = inv
+	if err := s.Save(f); err != nil {
+		return nil, err
+	}
+	return &inv, nil
+}
+
+func (s *Store) Retire(id string) (*Invariant, error) {
+	f, err := s.Load()
+	if err != nil {
+		return nil, err
+	}
+	idx := findInvariant(f.Invariants, id)
+	if idx < 0 {
+		return nil, fmt.Errorf("invariante %q não encontrada", id)
+	}
+	inv := f.Invariants[idx]
+	if inv.Retired {
+		return &inv, nil
+	}
+	now := time.Now().UTC()
+	inv.Retired = true
+	inv.RetiredAt = &now
+	f.Invariants[idx] = inv
+	if err := s.Save(f); err != nil {
+		return nil, err
+	}
+	return &inv, nil
+}
+
+func (s *Store) List(category string, includeRetired bool) ([]Invariant, error) {
+	f, err := s.Load()
+	if err != nil {
+		return nil, err
 	}
 	var out []Invariant
 	for _, inv := range f.Invariants {
-		if inv.Category == category {
+		if !includeRetired && inv.Retired {
+			continue
+		}
+		if category != "" && inv.Category != category {
+			continue
+		}
+		out = append(out, inv)
+	}
+	return out, nil
+}
+
+func (s *Store) Search(query string, includeRetired bool) ([]Invariant, error) {
+	query = strings.TrimSpace(query)
+	if query == "" {
+		return nil, errors.New("query vazia")
+	}
+	f, err := s.Load()
+	if err != nil {
+		return nil, err
+	}
+	q := strings.ToLower(query)
+	var out []Invariant
+	for _, inv := range f.Invariants {
+		if !includeRetired && inv.Retired {
+			continue
+		}
+		if invariantMatches(&inv, q) {
 			out = append(out, inv)
 		}
 	}
 	return out, nil
 }
 
-func (s *Store) Check(expectedSHA string, requiredIDs []string) (*CheckReport, error) {
+func (s *Store) Check(expectedSHA string, requiredIDs []string, includeRetired bool) (*CheckReport, error) {
 	data, err := os.ReadFile(s.path)
 	if err != nil {
 		return nil, err
@@ -144,10 +246,11 @@ func (s *Store) Check(expectedSHA string, requiredIDs []string) (*CheckReport, e
 	if err != nil {
 		return nil, err
 	}
+	visible := filterInvariants(f.Invariants, includeRetired)
 	report := &CheckReport{
 		Path:        s.path,
 		SHA256:      sha,
-		Count:       len(f.Invariants),
+		Count:       len(visible),
 		CompactSafe: true,
 		Retention:   1.0,
 	}
@@ -156,7 +259,7 @@ func (s *Store) Check(expectedSHA string, requiredIDs []string) (*CheckReport, e
 		report.CompactSafe = false
 	}
 	ids := map[string]bool{}
-	for _, inv := range f.Invariants {
+	for _, inv := range visible {
 		ids[inv.ID] = true
 	}
 	for _, id := range requiredIDs {
@@ -193,10 +296,44 @@ func EnsureDefaultAntiCheat(toolbeltDir string) error {
 		{"security", "Secrets nunca aparecem em logs ou prompts"},
 	}
 	for _, d := range defaults {
-		_, err := s.Add(d.cat, d.rule)
+		_, err := s.Add(d.cat, d.rule, "")
 		if err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func findInvariant(list []Invariant, id string) int {
+	for i, inv := range list {
+		if inv.ID == id {
+			return i
+		}
+	}
+	return -1
+}
+
+func filterInvariants(list []Invariant, includeRetired bool) []Invariant {
+	if includeRetired {
+		out := make([]Invariant, len(list))
+		copy(out, list)
+		return out
+	}
+	var out []Invariant
+	for _, inv := range list {
+		if !inv.Retired {
+			out = append(out, inv)
+		}
+	}
+	return out
+}
+
+func invariantMatches(inv *Invariant, q string) bool {
+	haystacks := []string{inv.ID, inv.Category, inv.Rule, inv.Ref}
+	for _, h := range haystacks {
+		if strings.Contains(strings.ToLower(h), q) {
+			return true
+		}
+	}
+	return false
 }

@@ -31,11 +31,11 @@ type Sandbox struct {
 }
 
 type Result struct {
-	Output    string
-	ExitCode  int
-	Duration  time.Duration
-	TimedOut  bool
-	Sandboxed bool
+	Output    string        `json:"output"`
+	ExitCode  int           `json:"exit_code"`
+	Duration  time.Duration `json:"duration_ns"`
+	TimedOut  bool          `json:"timed_out"`
+	Sandboxed bool          `json:"sandboxed"`
 }
 
 func New(config Config) (*Sandbox, error) {
