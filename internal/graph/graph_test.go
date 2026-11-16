@@ -1,6 +1,7 @@
 package graph
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -240,6 +241,40 @@ func TestRequireEnabled(t *testing.T) {
 	s := NewStore(filepath.Join(t.TempDir(), "g.json"))
 	if err := s.RequireEnabled(); err == nil {
 		t.Fatal("expected error when disabled")
+	}
+}
+
+func TestEmptyCallersImpactUnsupportedForC(t *testing.T) {
+	root := t.TempDir()
+	mustWrite(t, filepath.Join(root, "src", "jv.c"), `
+int helper(int x) { return x + 1; }
+int run(int x) { return helper(x); }
+`)
+	opts := DefaultBuildOptions()
+	opts.Languages = []string{"cpp"}
+	opts.Docs = []string{}
+	opts.Frameworks = []string{}
+	idx, err := BuildFromRootOpts(root, &opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := NewStore(filepath.Join(t.TempDir(), "graph.json"))
+	s.index = idx
+	if len(s.Callers("helper", 1)) != 0 {
+		t.Fatal("C should not emit call edges yet")
+	}
+	if err := s.EmptyCallersReason("helper"); err == nil {
+		t.Fatal("expected unsupported error for C callers")
+	} else if !errors.Is(err, ErrCallsUnsupported) {
+		t.Fatalf("want ErrCallsUnsupported, got %v", err)
+	}
+	if err := s.EmptyImpactReason("src/jv.c"); err == nil {
+		t.Fatal("expected unsupported error for C impact")
+	} else if !errors.Is(err, ErrCallsUnsupported) {
+		t.Fatalf("want ErrCallsUnsupported, got %v", err)
+	}
+	if err := s.EmptyCallersReason("missing_fn"); err != nil {
+		t.Fatalf("missing symbol should stay empty, not unsupported: %v", err)
 	}
 }
 

@@ -143,8 +143,8 @@ Linguagens e docs (extensível via `LanguageIndexer`, regex leve, sem cgo):
 | `java` | `.java` |
 | `kotlin` | `.kt`, `.kts` |
 | `csharp` | `.cs` |
-| `cpp` | `.c`, `.h`, `.cc`, `.cpp`, `.cxx`, `.hpp`, `.hh`, `.hxx` |
-| `rust` | `.rs` |
+| `cpp` | `.c`, `.h`, `.cc`, `.cpp`, `.cxx`, `.hpp`, `.hh`, `.hxx` (defines/imports; sem arestas `calls` — `callers`/`impact` retornam erro explícito) |
+| `rust` | `.rs` (defines/imports + arestas `calls` mínimas resolvíveis no repositório) |
 | `php` | `.php` |
 | `ruby` | `.rb` |
 | `swift` | `.swift` |
