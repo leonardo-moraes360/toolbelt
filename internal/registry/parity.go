@@ -109,12 +109,13 @@ func registerReviewTools() {
 		InputSchema: &InputSchema{
 			Type: "object",
 			Properties: map[string]Property{
-				"cwd":       {Type: "string", Description: "Diretório do repositório"},
-				"ticket":    {Type: "string", Description: "Caminho do ticket/rd.md", Default: "rd.md"},
-				"base":      {Type: "string", Description: "Ref base", Default: "HEAD~1"},
-				"head":      {Type: "string", Description: "Ref head", Default: "HEAD"},
-				"reviewers": {Type: "string", Description: "Número de goldfish", Default: "3"},
-				"standards": {Type: "string", Description: "CSV de padrões", Default: "scope,invariants,completeness"},
+				"cwd":          {Type: "string", Description: "Diretório do repositório"},
+				"ticket":       {Type: "string", Description: "Caminho do ticket/rd.md", Default: "rd.md"},
+				"base":         {Type: "string", Description: "Ref base", Default: "HEAD~1"},
+				"head":         {Type: "string", Description: "Ref head", Default: "HEAD"},
+				"approved_sha": {Type: "string", Description: "SHA aprovado para comparar patch-id estável com o head"},
+				"reviewers":    {Type: "string", Description: "Número de goldfish", Default: "3"},
+				"standards":    {Type: "string", Description: "CSV de padrões", Default: "scope,invariants,completeness"},
 			},
 		},
 		Handler: handleReview,
@@ -125,10 +126,11 @@ func registerReviewTools() {
 		InputSchema: &InputSchema{
 			Type: "object",
 			Properties: map[string]Property{
-				"cwd":    {Type: "string", Description: "Diretório do repositório"},
-				"ticket": {Type: "string", Description: "Caminho do ticket/rd.md", Default: "rd.md"},
-				"base":   {Type: "string", Description: "Ref base", Default: "HEAD~1"},
-				"head":   {Type: "string", Description: "Ref head", Default: "HEAD"},
+				"cwd":          {Type: "string", Description: "Diretório do repositório"},
+				"ticket":       {Type: "string", Description: "Caminho do ticket/rd.md", Default: "rd.md"},
+				"base":         {Type: "string", Description: "Ref base", Default: "HEAD~1"},
+				"head":         {Type: "string", Description: "Ref head", Default: "HEAD"},
+				"approved_sha": {Type: "string", Description: "SHA aprovado para comparar patch-id estável com o head"},
 			},
 		},
 		Handler: handleDrift,
@@ -320,6 +322,22 @@ func handleReview(_ context.Context, args map[string]any) (any, error) {
 }
 
 func handleDrift(_ context.Context, args map[string]any) (any, error) {
+	cfg, err := driftConfigFromArgs(args)
+	if err != nil {
+		return nil, err
+	}
+	rep, err := review.Run(cfg)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{
+		"drift":           rep.Drift,
+		"has_drift":       driftHasProblems(rep),
+		"pinned_approval": rep.PinnedApproval,
+	}, nil
+}
+
+func driftConfigFromArgs(args map[string]any) (*review.Config, error) {
 	cwd, err := resolveToolCWD(args)
 	if err != nil {
 		return nil, err
@@ -349,19 +367,22 @@ func handleDrift(_ context.Context, args map[string]any) (any, error) {
 	cfg := review.DefaultConfig(cwd)
 	cfg.BaseRef = base
 	cfg.HeadRef = head
+	cfg.ApprovedSHA = StringArg(args, "approved_sha")
 	cfg.TicketPath = ticketPath
 	cfg.Reviewers = 1
 	cfg.Standards = []string{"scope"}
-	rep, err := review.Run(&cfg)
-	if err != nil {
-		return nil, err
+	return &cfg, nil
+}
+
+func driftHasProblems(rep *review.Report) bool {
+	if rep == nil {
+		return false
 	}
-	drift := rep.Drift
-	hasDrift := drift != nil && (len(drift.OutOfScope) > 0 || len(drift.ForbiddenHit) > 0 || drift.BaseMismatch)
-	return map[string]any{
-		"drift":     drift,
-		"has_drift": hasDrift,
-	}, nil
+	if rep.PinnedApproval != nil && !rep.PinnedApproval.Match {
+		return true
+	}
+	d := rep.Drift
+	return d != nil && (len(d.OutOfScope) > 0 || len(d.ForbiddenHit) > 0 || d.BaseMismatch)
 }
 
 func reviewConfigFromArgs(args map[string]any) (*review.Config, error) {
@@ -376,6 +397,7 @@ func reviewConfigFromArgs(args map[string]any) (*review.Config, error) {
 	if v := StringArg(args, "head"); v != "" {
 		cfg.HeadRef = v
 	}
+	cfg.ApprovedSHA = StringArg(args, "approved_sha")
 	ticket := StringArg(args, "ticket")
 	if ticket == "" {
 		ticket = "rd.md"

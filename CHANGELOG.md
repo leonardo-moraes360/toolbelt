@@ -7,7 +7,11 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Não Lançado]
 
-Nada ainda.
+### Adicionado
+- `tb review` / `tb drift`: flag `--approved-sha` compara `git patch-id --stable`
+  de `base..approved` vs `base..head`; em divergência mostra `git range-diff` e
+  sai ≠ 0; JSON registra `pinned_approval` (`approved_sha`, `patch_id`,
+  `head_patch_id`, `match`, `range_diff`)
 
 ## [0.0.1] - 2026-11-16
 

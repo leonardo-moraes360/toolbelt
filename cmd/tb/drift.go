@@ -22,6 +22,7 @@ no ticket/rd.md e verifica divergência do commit base.`,
 func init() {
 	driftCmd.Flags().String("base", "HEAD~1", "commit/ref base")
 	driftCmd.Flags().String("head", "HEAD", "commit/ref head")
+	driftCmd.Flags().String("approved-sha", "", "SHA aprovado; compara patch-id estável com o head")
 	driftCmd.Flags().String("ticket", "rd.md", "caminho do ticket/rd.md")
 	driftCmd.Flags().String("output", "", "arquivo de saída JSON")
 }
@@ -52,6 +53,7 @@ func driftConfigFromFlags(cmd *cobra.Command, args []string) (*review.Config, er
 	}
 	base, _ := cmd.Flags().GetString("base")
 	head, _ := cmd.Flags().GetString("head")
+	approved, _ := cmd.Flags().GetString("approved-sha")
 
 	ticket, err := review.LoadTicket(ticketPath)
 	if err != nil && !os.IsNotExist(err) {
@@ -64,6 +66,7 @@ func driftConfigFromFlags(cmd *cobra.Command, args []string) (*review.Config, er
 	cfg := review.DefaultConfig(cwd)
 	cfg.BaseRef = base
 	cfg.HeadRef = head
+	cfg.ApprovedSHA = approved
 	cfg.TicketPath = ticketPath
 	cfg.Reviewers = 1
 	cfg.Standards = []string{"scope"}
@@ -95,6 +98,7 @@ func printDriftReport(drift *review.DriftReport) {
 		fmt.Println("Sem dados de drift.")
 		return
 	}
+	printPinnedApproval(drift.PinnedApproval)
 	fmt.Printf("Base: %s → %s\n", drift.DeclaredBase, drift.ActualBase)
 	if drift.BaseMismatch {
 		fmt.Println("⚠ commit base diverge do declarado no ticket")
@@ -107,7 +111,8 @@ func printDriftReport(drift *review.DriftReport) {
 	for _, f := range drift.ForbiddenHit {
 		fmt.Printf("  - %s\n", f)
 	}
-	if len(drift.OutOfScope) == 0 && len(drift.ForbiddenHit) == 0 && !drift.BaseMismatch {
+	if len(drift.OutOfScope) == 0 && len(drift.ForbiddenHit) == 0 && !drift.BaseMismatch &&
+		(drift.PinnedApproval == nil || drift.PinnedApproval.Match) {
 		fmt.Println("OK: sem drift de escopo/base")
 	}
 }
@@ -115,6 +120,9 @@ func printDriftReport(drift *review.DriftReport) {
 func driftBlockingError(drift *review.DriftReport) error {
 	if drift == nil {
 		return nil
+	}
+	if pinnedApprovalMismatch(drift.PinnedApproval) {
+		return fmt.Errorf("patch do head diverge do SHA aprovado")
 	}
 	if len(drift.OutOfScope) > 0 || len(drift.ForbiddenHit) > 0 || drift.BaseMismatch {
 		return fmt.Errorf("drift detectado")
