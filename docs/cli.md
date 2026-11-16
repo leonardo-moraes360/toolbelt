@@ -488,8 +488,9 @@ tb guard check --json HEAD~1..HEAD
 
 ### `tb review` — Revisão Fresh-Context (✓ Fase 2)
 
-Implementa o padrão Elephant-Goldfish: N goldfish revisam o diff contra
-`ticket/rd.md` e invariantes de `tb mem`, sem herdar contexto do autor.
+Implementa o padrão Elephant-Goldfish: goldfish **distintos** revisam o diff
+contra `ticket/rd.md` e invariantes de `tb mem`, sem herdar contexto do autor.
+Não há clones do mesmo checker — `--reviewers` só limita quantos papéis rodam.
 
 ```bash
 tb review [ticket] [flags]
@@ -498,8 +499,8 @@ Flags:
   --base <ref>          Commit base (default: HEAD~1 ou base_commit do ticket)
   --head <ref>          Commit head (default: HEAD)
   --ticket <path>       Ticket/rd.md (default: rd.md)
-  --reviewers <n>       Número de goldfish (default: 3)
-  --standards <stds>    scope,invariants,completeness
+  --reviewers <n>       Máximo de goldfish distintos (default: 3; não clona)
+  --standards <stds>    Papéis: scope,quality,acceptance (default)
   --output <path>       Relatório JSON (sem shorthand `-o`; use `--output`)
   --json                Saída em JSON (flag global)
 ```
@@ -510,7 +511,9 @@ Também reporta drift de escopo e commit base. Isolamento fresco é obrigatório
 O ticket/rd.md aceita frontmatter YAML ou Markdown: seção `## Scope` / `## Escopo`
 (ou `Scope:` / `Escopo:`) e `## Forbidden` / `## Proibido` (ou `Forbidden:` /
 `Proibido:`) com listas (`-`, `*`, numeradas) e paths entre backticks.
-Se o frontmatter YAML não declara `scope:`, o body Markdown ainda é lido para preencher o escopo.
+Critérios de aceite vêm de `acceptance:` no YAML ou checkboxes `- [ ]` / `- [x]`
+no Markdown. Se o frontmatter YAML não declara `scope:`, o body Markdown ainda
+é lido para preencher o escopo.
 Globs no scope/forbidden incluem `src/*.go`, `src/**`, `tests/hidden/**` e
 padrões com `**` no meio (ex.: `src/**/foo.go`). Toques em paths do Forbidden
 preenchem `forbidden_hit` no drift e geram finding critical no review.
@@ -521,50 +524,38 @@ arquivos **alterados** pelo mesmo matcher de path/glob (`tests/hidden/**`,
 `forbidden: tests/hidden/**` em `rd.md` sem tocar esse diretório não gera
 finding critical.
 
+**Revisores (goldfish) distintos**:
+
+| Revisor | `--standards` | O que verifica |
+|---------|---------------|----------------|
+| `goldfish-scope` | `scope` (+ `invariants`) | Arquivos fora do scope, toques em forbidden; invariantes de `tb mem` |
+| `goldfish-quality` | `quality` | TODO/FIXME adicionados; funções muito grandes no diff (≥80 linhas +); código fonte alterado sem testes |
+| `goldfish-acceptance` | `acceptance` (alias: `completeness`) | Cada critério de aceite do ticket tem evidência em testes/arquivos de código alterados (não conta o próprio ticket) |
+
+Heurísticas são determinísticas e offline (sem LLM).
+
 **Exemplos:**
 
 ```bash
-# Revisar documento de design
-tb review docs/design-auth.md
-# Spawning 3 fresh-context reviewers...
-# 
-# ═══════════════════════════════════════════════════════════════
-# RELATÓRIO DE REVISÃO: docs/design-auth.md
-# ═══════════════════════════════════════════════════════════════
-# 
-# CRÍTICOS (2):
-# ┌────┬──────────────────────────────────────────────────────────┐
-# │ #1 │ [security] Não especifica como tokens são invalidados   │
-# │    │ Linha 45: "JWT tokens são emitidos..."                  │
-# │    │ Revisores: 2/3 concordam                                │
-# ├────┼──────────────────────────────────────────────────────────┤
-# │ #2 │ [completeness] Falta tratamento de rate limiting        │
-# │    │ Seção 3.2 menciona mas não detalha implementação        │
-# │    │ Revisores: 3/3 concordam                                │
-# └────┴──────────────────────────────────────────────────────────┘
-# 
-# WARNINGS (5): ...
-# INFO (3): ...
-# 
-# Total: 2 críticos, 5 warnings, 3 info
+# Revisão padrão: 3 papéis distintos
+tb review --ticket rd.md
+# ═══════════════════════════════════════════════════════════
+#  RELATÓRIO DE REVISÃO: rd.md
+#  Base..Head: HEAD~1..HEAD | Revisores: 3 | Fresh: true
+# ═══════════════════════════════════════════════════════════
+# FINDINGS:
+#   [warning] (goldfish-quality/quality) TODO/FIXME adicionado no diff [src/a.go]
+#   [warning] (goldfish-acceptance/acceptance) critério de aceite sem evidência...
 
-# Mais goldfish / padrões
-tb review --ticket rd.md --reviewers 5 --standards scope,invariants,completeness
+# Só escopo + qualidade (sem aceite)
+tb review --ticket rd.md --standards scope,quality --reviewers 2
+
+# Pedir 5 revisores ainda roda no máximo os papéis distintos (sem clones)
+tb review --ticket rd.md --reviewers 5 --standards scope,quality,acceptance
 
 # Saída JSON para integração (só --output; sem -o)
 tb review --ticket rd.md --json --output review-results.json
 ```
-
-**Padrões de revisão disponíveis**:
-
-| Padrão | O que verifica |
-|--------|---------------|
-| `security` | Vulnerabilidades, vazamento de dados, autenticação |
-| `clarity` | Ambiguidades, termos indefinidos, contradições |
-| `completeness` | Requisitos faltantes, edge cases, fluxos incompletos |
-| `consistency` | Alinhamento com código existente, convenções, outros docs |
-| `testability` | Se os requisitos são testáveis |
-| `feasibility` | Riscos de implementação, dependências |
 
 **Isolamento obrigatório**: Se o sistema não conseguir criar contextos frescos para os revisores, o comando falha com erro ao invés de prosseguir com contexto contaminado.
 
