@@ -8,6 +8,10 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 ## [Não Lançado]
 
 ### Adicionado
+- Landing page estática em `site/` (HTML/CSS/JS, tema Synthwave, PT/EN) publicada via
+  GitHub Pages (`https://leonardo-moraes360.github.io/toolbelt/`)
+- Workflow `.github/workflows/pages.yml` (configure/upload/deploy-pages; sem `enablement`)
+- Guia `docs/site.md` (preview local e como habilitar Pages em Settings)
 - Flag global `tb --version` (mesma saída textual de `tb version`)
 - `tb init` grava padrões de cache/derivados em `.git/info/exclude` (grafo, logs,
   vault, workspaces, captures, bench) sem tocar no `.gitignore` do projeto;
