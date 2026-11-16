@@ -17,6 +17,11 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 - MCP: `tb_mem_show`, `tb_mem_edit`, `tb_mem_retire`, `tb_mem_search` (+ `ref`/`all` em add/list/check)
 
 ### Mudanças
+- **Breaking:** saídas JSON da CLI (`--json`) e dos payloads de domínio no MCP usam
+  exclusivamente chaves `snake_case`. Structs sem tag (`sandbox.Result`,
+  `mem.Invariant`, `workspace.Workspace`/`Scope`) deixam de emitir PascalCase
+  (`ExitCode` → `exit_code`, `TimedOut` → `timed_out`, `duration_ns`, etc.).
+  Envelopes do protocolo MCP (`isError`, `inputSchema`, …) permanecem camelCase.
 - Frameworks (ex. `react` em `.tsx`) rodam em paralelo com o indexador de linguagem, não no lugar dele
 - `verify.build_cmd` em Node também aceita scripts `typecheck` / `type-check` quando
   `build` está ausente

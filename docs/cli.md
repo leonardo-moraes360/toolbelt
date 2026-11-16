@@ -1603,6 +1603,11 @@ tb version --json
 # {"version":"0.1.0","go":"1.22.0","commit":"abc123","build_time":"2026-01-15T10:00:00Z"}
 ```
 
+Todas as saídas `--json` da CLI (e os payloads de domínio embutidos nas tools MCP)
+usam chaves **`snake_case`** de forma consistente (`exit_code`, `base_ref`,
+`timed_out`, …). Envelopes do protocolo MCP (`isError`, `inputSchema`, …)
+permanecem no camelCase exigido pela spec.
+
 ---
 
 ## Cores e Tema Visual

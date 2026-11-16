@@ -17,8 +17,8 @@ import (
 const DefaultInvariantsFile = "invariants.yaml"
 
 type File struct {
-	Version    int         `yaml:"version"`
-	Invariants []Invariant `yaml:"invariants"`
+	Version    int         `yaml:"version" json:"version"`
+	Invariants []Invariant `yaml:"invariants" json:"invariants"`
 }
 
 type Invariant struct {
