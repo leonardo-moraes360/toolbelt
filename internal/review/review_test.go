@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/leonardo-moraes360/toolbelt/internal/mem"
@@ -75,6 +76,48 @@ func TestReviewFreshInvariants(t *testing.T) {
 	findings := Fresh(&ctx)
 	if len(findings) == 0 {
 		t.Fatal("expected findings")
+	}
+}
+
+func TestSuggestsViolationPathNotSubstring(t *testing.T) {
+	rule := "nunca modifique arquivos em tests/hidden/"
+	diffMentions := "diff --git a/rd.md\n+forbidden:\n+  - tests/hidden/**\n"
+
+	if suggestsViolation(rule, strings.ToLower(diffMentions), []string{"rd.md", "src/main.go"}) {
+		t.Fatal("mention of tests/hidden in ticket diff must not flag invariant")
+	}
+	if !suggestsViolation(rule, "diff --git a/tests/hidden/t.go", []string{"tests/hidden/t.go"}) {
+		t.Fatal("real change under tests/hidden/ must flag invariant")
+	}
+	if suggestsViolation(rule, "", []string{"mytests/hidden/x.go"}) {
+		t.Fatal("path that only contains substring tests/hidden must not flag")
+	}
+	if suggestsViolation(rule, "", []string{"docs/about-tests/hidden-guide.md"}) {
+		t.Fatal("path with substring across segments must not flag")
+	}
+	if !suggestsViolation(rule, "", []string{"pkg/tests/hidden/extra.go"}) {
+		t.Fatal("tests/hidden as path segments must flag")
+	}
+}
+
+func TestPathMarkerHit(t *testing.T) {
+	cases := []struct {
+		file   string
+		marker string
+		want   bool
+	}{
+		{"tests/hidden/t.go", "tests/hidden", true},
+		{"tests/hidden", "tests/hidden", true},
+		{"mytests/hidden/x.go", "tests/hidden", false},
+		{"docs/about-tests/hidden-guide.md", "tests/hidden", false},
+		{"pkg/tests/hidden/extra.go", "tests/hidden", true},
+		{".toolbelt/thresholds.yaml", "thresholds.yaml", true},
+		{"docs/thresholds.yaml.bak", "thresholds.yaml", false},
+	}
+	for _, tc := range cases {
+		if got := pathMarkerHit(tc.file, tc.marker); got != tc.want {
+			t.Fatalf("pathMarkerHit(%q, %q)=%v want %v", tc.file, tc.marker, got, tc.want)
+		}
 	}
 }
 

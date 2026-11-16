@@ -37,6 +37,11 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 - ADR-012: Framework CLI - Cobra
 - Stubs para comandos futuros: `sandbox`, `verify`, `mem`, `graph`, `router`, `mcp`
 
+### Corrigido
+- `tb review`: invariante `tests/hidden` (e `thresholds.yaml`) casa por prefixo/segmento
+  de path nos arquivos alterados, não por substring no diff (evita FP quando o ticket
+  só menciona a regra)
+
 ### Mudanças
 - README atualizado com instalação, uso rápido e comandos implementados
 - docs/cli.md marcando comandos implementados
