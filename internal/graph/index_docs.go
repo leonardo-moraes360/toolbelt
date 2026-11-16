@@ -29,8 +29,8 @@ type MarkdownIndexer struct{}
 
 func (MarkdownIndexer) Name() string     { return "markdown" }
 func (MarkdownIndexer) Category() string { return CategoryDoc }
-func (MarkdownIndexer) Match(file string) bool {
-	return strings.ToLower(filepath.Ext(file)) == ".md"
+func (MarkdownIndexer) Match(filePath string) bool {
+	return strings.ToLower(filepath.Ext(filePath)) == ".md"
 }
 
 func (MarkdownIndexer) IndexFile(root, rel string) ([]Node, []Edge, error) {
@@ -45,8 +45,8 @@ type HTMLIndexer struct{}
 
 func (HTMLIndexer) Name() string     { return "html" }
 func (HTMLIndexer) Category() string { return CategoryDoc }
-func (HTMLIndexer) Match(file string) bool {
-	ext := strings.ToLower(filepath.Ext(file))
+func (HTMLIndexer) Match(filePath string) bool {
+	ext := strings.ToLower(filepath.Ext(filePath))
 	return ext == ".html" || ext == ".htm"
 }
 
@@ -62,8 +62,8 @@ type TXTIndexer struct{}
 
 func (TXTIndexer) Name() string     { return "txt" }
 func (TXTIndexer) Category() string { return CategoryDoc }
-func (TXTIndexer) Match(file string) bool {
-	return strings.ToLower(filepath.Ext(file)) == ".txt"
+func (TXTIndexer) Match(filePath string) bool {
+	return strings.ToLower(filepath.Ext(filePath)) == ".txt"
 }
 
 func (TXTIndexer) IndexFile(root, rel string) ([]Node, []Edge, error) {

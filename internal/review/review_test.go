@@ -611,6 +611,187 @@ func TestDetectDriftResolvedStillMismatch(t *testing.T) {
 	}
 }
 
+func TestBuildReviewerRosterDistinct(t *testing.T) {
+	roster := buildReviewerRoster([]string{"scope", "quality", "acceptance"}, 5)
+	if len(roster) != 3 {
+		t.Fatalf("expected 3 roles, got %d", len(roster))
+	}
+	want := []string{"goldfish-scope", "goldfish-quality", "goldfish-acceptance"}
+	for i, name := range want {
+		if roster[i].Name != name {
+			t.Fatalf("roster[%d]=%q want %q", i, roster[i].Name, name)
+		}
+	}
+	if n := len(buildReviewerRoster([]string{"scope", "quality", "acceptance"}, 2)); n != 2 {
+		t.Fatalf("limit 2 → got %d", n)
+	}
+	alias := buildReviewerRoster([]string{"completeness"}, 3)
+	if len(alias) != 1 || alias[0].ID != "acceptance" {
+		t.Fatalf("completeness alias → %#v", alias)
+	}
+}
+
+func TestRunDistinctReviewersNoClones(t *testing.T) {
+	repo := setupDistinctReviewRepo(t)
+	cfg := DefaultConfig(repo)
+	cfg.TicketPath = filepath.Join(repo, "rd.md")
+	cfg.BaseRef = "HEAD~1"
+	cfg.HeadRef = "HEAD"
+	cfg.Reviewers = 5
+	cfg.Standards = []string{"scope", "quality", "acceptance"}
+	rep, err := Run(&cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.Reviewers != 3 {
+		t.Fatalf("expected 3 distinct reviewers (not clones), got %d", rep.Reviewers)
+	}
+	assertDistinctRoleFindings(t, rep.Findings)
+}
+
+func setupDistinctReviewRepo(t *testing.T) string {
+	t.Helper()
+	repo := t.TempDir()
+	run := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = repo
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v (%s)", args, err, out)
+		}
+	}
+	run("init")
+	run("config", "user.email", "t@example.com")
+	run("config", "user.name", "t")
+	if err := os.MkdirAll(filepath.Join(repo, "src"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, "src", "a.go"), []byte("package src\n\nfunc OK() {}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	run("add", ".")
+	run("commit", "-m", "init")
+
+	var big strings.Builder
+	big.WriteString("package src\n\nfunc Huge() {\n")
+	for i := 0; i < 90; i++ {
+		big.WriteString("\t_ = 1\n")
+	}
+	big.WriteString("}\n\nfunc Other() {\n\t// TODO: finish later\n}\n")
+	if err := os.WriteFile(filepath.Join(repo, "src", "a.go"), []byte(big.String()), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	rd := `---
+title: quality and acceptance
+base_commit: HEAD~1
+scope:
+  - src/
+acceptance:
+  - login returns 200 on success
+  - session cookie is http-only
+---
+`
+	if err := os.WriteFile(filepath.Join(repo, "rd.md"), []byte(rd), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	run("add", ".")
+	run("commit", "-m", "change")
+	return repo
+}
+
+func assertDistinctRoleFindings(t *testing.T, findings []Finding) {
+	t.Helper()
+	names := map[string]bool{}
+	hasQuality, hasAcceptance := false, false
+	for _, f := range findings {
+		names[f.Reviewer] = true
+		if f.Reviewer == "goldfish-quality" && f.Category == "quality" {
+			hasQuality = true
+		}
+		if f.Reviewer == "goldfish-acceptance" && f.Category == "acceptance" {
+			hasAcceptance = true
+		}
+	}
+	if names["goldfish-1"] || names["goldfish-2"] || names["goldfish-3"] {
+		t.Fatalf("identical numbered goldfish still present: %#v", names)
+	}
+	if !hasQuality || !hasAcceptance {
+		t.Fatalf("expected quality+acceptance role findings, got %#v", findings)
+	}
+}
+
+func TestReviewQualityHeuristics(t *testing.T) {
+	ctx := FreshContext{
+		Reviewer: "goldfish-quality",
+		Ticket:   &TicketScope{Scope: []string{"src/"}},
+		Changed:  []string{"src/a.go"},
+		Diff: `diff --git a/src/a.go b/src/a.go
+--- a/src/a.go
++++ b/src/a.go
+@@ -1,3 +1,95 @@
+ package src
++
++func Huge() {
+` + strings.Repeat("+	x := 1\n", 85) + `+}
++
++func Other() {
++	// TODO: wire this up
++}
+`,
+		Standards: []string{"quality"},
+	}
+	findings := Fresh(&ctx)
+	var todo, large, noTest bool
+	for _, f := range findings {
+		switch {
+		case strings.Contains(f.Message, "TODO") || strings.Contains(f.Message, "FIXME"):
+			todo = true
+		case strings.Contains(strings.ToLower(f.Message), "grande") || strings.Contains(strings.ToLower(f.Message), "large") || f.ID == "quality-large-func":
+			large = true
+		case strings.Contains(strings.ToLower(f.Message), "teste") || f.ID == "quality-no-tests":
+			noTest = true
+		}
+		if f.Reviewer != "goldfish-quality" {
+			t.Fatalf("quality findings must come from goldfish-quality, got %q", f.Reviewer)
+		}
+		if f.Category != "quality" {
+			t.Fatalf("category=%q want quality", f.Category)
+		}
+	}
+	if !todo || !large || !noTest {
+		t.Fatalf("expected TODO, large-func and no-tests findings, got %#v (todo=%v large=%v noTest=%v)", findings, todo, large, noTest)
+	}
+}
+
+func TestReviewAcceptanceUsesChangedTestsOrFiles(t *testing.T) {
+	ctx := FreshContext{
+		Reviewer: "goldfish-acceptance",
+		Ticket: &TicketScope{
+			Scope:      []string{"src/"},
+			Acceptance: []string{"login returns 200 on success"},
+		},
+		Changed:   []string{"src/auth.go"},
+		Diff:      "diff --git a/src/auth.go\n+func Auth() {}\n",
+		Standards: []string{"acceptance"},
+	}
+	findings := Fresh(&ctx)
+	if len(findings) == 0 {
+		t.Fatal("expected uncovered acceptance criterion finding")
+	}
+	if findings[0].Reviewer != "goldfish-acceptance" || findings[0].Category != "acceptance" {
+		t.Fatalf("got %#v", findings[0])
+	}
+
+	ctx.Changed = []string{"src/auth.go", "src/auth_test.go"}
+	ctx.Diff = "diff --git a/src/auth_test.go b/src/auth_test.go\n--- a/src/auth_test.go\n+++ b/src/auth_test.go\n@@ -0,0 +1,1 @@\n+func TestLoginReturns200OnSuccess(t *testing.T) {}\n"
+	findings = Fresh(&ctx)
+	for _, f := range findings {
+		if f.ID == "accept-0" {
+			t.Fatalf("criterion evidenced in changed test should pass, got %#v", findings)
+		}
+	}
+}
+
 func gitRevParse(t *testing.T, repo, ref string) string {
 	t.Helper()
 	out, err := exec.Command("git", "-C", repo, "rev-parse", ref).Output()

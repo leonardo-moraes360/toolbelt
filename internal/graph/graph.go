@@ -342,7 +342,7 @@ func (s *Store) Impact(file string, depth int) []Node {
 
 func (s *Store) RequireEnabled() error {
 	if !Enabled() {
-		return fmt.Errorf("grafo desabilitado (defina %s=on para usar sob demanda, ADR-011)", EnvEnable)
+		return fmt.Errorf("grafo desabilitado (ative com --enable ou %s=on; ADR-011)", EnvEnable)
 	}
 	return nil
 }
@@ -364,7 +364,9 @@ func (s *Store) findFunctionIDs(name string) []string {
 	var ids []string
 	seen := map[string]bool{}
 	for _, n := range s.index.Nodes {
-		if n.Type != NodeFunction {
+		switch n.Type {
+		case NodeFunction, NodeComponent, NodeHook:
+		default:
 			continue
 		}
 		if !functionQueryMatches(&n, name) {
