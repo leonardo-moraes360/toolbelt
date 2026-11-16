@@ -7,7 +7,11 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Não Lançado]
 
-Nada ainda.
+### Adicionado
+- MCP `tb_graph_impact` (paridade com `tb graph impact`)
+
+### Mudanças
+- Schemas MCP tipam `depth`/`limit`/`reviewers`/`max_iter` como integer, `strict`/`transitive`/`skip_unavailable` como boolean, `threshold` como number e `standards` como array; handlers ainda aceitam strings legadas
 
 ## [0.0.1] - 2026-11-16
 

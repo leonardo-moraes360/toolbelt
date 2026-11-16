@@ -30,6 +30,7 @@ tools:
     description: "Encontra chamadores de uma função"
     optional: true
     
+  - name: tb_graph_impact
   - name: tb_graph_deps
     description: "Lista dependências de um módulo"
     optional: true

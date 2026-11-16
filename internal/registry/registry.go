@@ -20,9 +20,10 @@ type InputSchema struct {
 }
 
 type Property struct {
-	Type        string `json:"type"`
-	Description string `json:"description,omitempty"`
-	Default     any    `json:"default,omitempty"`
+	Type        string    `json:"type"`
+	Description string    `json:"description,omitempty"`
+	Default     any       `json:"default,omitempty"`
+	Items       *Property `json:"items,omitempty"`
 }
 
 type ToolHandler func(ctx context.Context, args map[string]any) (any, error)

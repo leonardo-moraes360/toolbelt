@@ -90,12 +90,12 @@ func registerVerifyTools() {
 				"head":             {Type: "string", Description: "Ref head"},
 				"test_cmd":         {Type: "string", Description: "Linha de testes visíveis"},
 				"hidden_test_cmd":  {Type: "string", Description: "Linha de testes ocultos"},
-				"max_iter":         {Type: "string", Description: "Máximo de iterações", Default: "0"},
+				"max_iter":         {Type: "integer", Description: "Máximo de iterações", Default: 0},
 				"timeout":          {Type: "string", Description: "Timeout", Default: "10m"},
 				"ruler":            {Type: "string", Description: "tests|visual", Default: "tests"},
 				"manifest":         {Type: "string", Description: "Manifesto visual"},
-				"threshold":        {Type: "string", Description: "Threshold visual", Default: "0.95"},
-				"skip_unavailable": {Type: "string", Description: "true/false", Default: "true"},
+				"threshold":        {Type: "number", Description: "Threshold visual", Default: 0.95},
+				"skip_unavailable": {Type: "boolean", Description: "Skip gracioso se ruler indisponível", Default: true},
 			},
 		},
 		Handler: handleVerifyRun,
@@ -113,8 +113,13 @@ func registerReviewTools() {
 				"ticket":    {Type: "string", Description: "Caminho do ticket/rd.md", Default: "rd.md"},
 				"base":      {Type: "string", Description: "Ref base", Default: "HEAD~1"},
 				"head":      {Type: "string", Description: "Ref head", Default: "HEAD"},
-				"reviewers": {Type: "string", Description: "Número de goldfish", Default: "3"},
-				"standards": {Type: "string", Description: "CSV de padrões", Default: "scope,invariants,completeness"},
+				"reviewers": {Type: "integer", Description: "Número de goldfish", Default: 3},
+				"standards": {
+					Type:        "array",
+					Description: "Padrões de revisão (aceita CSV legado)",
+					Default:     []string{"scope", "invariants", "completeness"},
+					Items:       &Property{Type: "string"},
+				},
 			},
 		},
 		Handler: handleReview,
@@ -146,7 +151,7 @@ func registerGuardTools() {
 				"base":   {Type: "string", Description: "Ref base", Default: "HEAD~1"},
 				"head":   {Type: "string", Description: "Ref head", Default: "HEAD"},
 				"range":  {Type: "string", Description: "Intervalo base..head (alternativa a base/head)"},
-				"strict": {Type: "string", Description: "true para marcar strict_fail em erros", Default: "false"},
+				"strict": {Type: "boolean", Description: "Marca strict_fail em erros", Default: false},
 			},
 		},
 		Handler: handleGuardCheck,
@@ -259,12 +264,8 @@ func runVerifyTests(ctx context.Context, cwd string, args map[string]any) (any, 
 	if v := StringArg(args, "hidden_test_cmd"); v != "" {
 		cfg.HiddenTest = v
 	}
-	if v := StringArg(args, "max_iter"); v != "" {
-		var n int
-		_, _ = fmt.Sscanf(v, "%d", &n)
-		if n > 0 {
-			cfg.MaxIterations = n
-		}
+	if n := IntArg(args, "max_iter", 0); n > 0 {
+		cfg.MaxIterations = n
 	}
 	timeoutStr := StringArg(args, "timeout")
 	if timeoutStr == "" {
@@ -298,15 +299,10 @@ func applyVerifyFileConfig(cfg *verify.Config) {
 }
 
 func runVerifyVisual(ctx context.Context, cwd string, args map[string]any) (any, error) {
-	threshold := 0.95
-	if v := StringArg(args, "threshold"); v != "" {
-		_, _ = fmt.Sscanf(v, "%f", &threshold)
-	}
-	skipOK := StringArg(args, "skip_unavailable") != "false"
 	cfg := verify.VisualConfig{
 		Manifest:  StringArg(args, "manifest"),
-		Threshold: threshold,
-		SkipOK:    skipOK,
+		Threshold: FloatArg(args, "threshold", 0.95),
+		SkipOK:    BoolArg(args, "skip_unavailable", true),
 	}
 	return verify.RunVisual(ctx, cwd, cfg)
 }
@@ -384,18 +380,10 @@ func reviewConfigFromArgs(args map[string]any) (*review.Config, error) {
 		ticket = filepath.Join(cwd, ticket)
 	}
 	cfg.TicketPath = ticket
-	if v := StringArg(args, "reviewers"); v != "" {
-		var n int
-		_, _ = fmt.Sscanf(v, "%d", &n)
-		if n > 0 {
-			cfg.Reviewers = n
-		}
+	if n := IntArg(args, "reviewers", 0); n > 0 {
+		cfg.Reviewers = n
 	}
-	stds := StringArg(args, "standards")
-	if stds == "" {
-		stds = "scope,invariants,completeness"
-	}
-	cfg.Standards = splitCSVArg(stds)
+	cfg.Standards = StringSliceArg(args, "standards", []string{"scope", "invariants", "completeness"})
 	return &cfg, nil
 }
 
@@ -424,7 +412,7 @@ func handleGuardCheck(_ context.Context, args map[string]any) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	strictFail := StringArg(args, "strict") == "true" && hasGuardStrictError(res.Violations)
+	strictFail := BoolArg(args, "strict", false) && hasGuardStrictError(res.Violations)
 	return map[string]any{
 		"base_ref":    res.BaseRef,
 		"head_ref":    res.HeadRef,

@@ -202,7 +202,7 @@ Cada linguagem precisa de:
         ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │                       MCP Server                                │
-│  tb_graph_search | tb_graph_callers | tb_graph_deps            │
+│  tb_graph_search | tb_graph_callers | tb_graph_deps | impact   │
 └─────────────────────────────────────────────────────────────────┘
         │
         ▼

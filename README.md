@@ -254,4 +254,4 @@ Este projeto está na **Fase 2**: CLI funcional com verify/guard/mem/graph/revie
 | `tb drift` | ✅ | Drift de escopo / commit base |
 | `tb workspace` | ✅ | Workspaces isolados via git worktree |
 | `tb router` | 🚧 | Stub (não implementado) |
-| `tb mcp` | ✅ | Servidor MCP stateless (stdio); tools de mem/verify/review/drift/guard + graph |
+| `tb mcp` | ✅ | Servidor MCP stateless (stdio); tools de mem/verify/review/drift/guard + graph (incl. `tb_graph_impact`; schemas tipados) |
