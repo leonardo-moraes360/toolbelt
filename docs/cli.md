@@ -980,6 +980,8 @@ tb guard check origin/main..HEAD --strict --json
 
 **Manifesto de paths protegidos (`.toolbelt/guard.yaml`):**
 
+O guard carrega `protected_paths` de `.toolbelt/guard.yaml` (quando presente) e **une** aos defaults embutidos (`tests/hidden/*`, `benchmarks/*`, `.toolbelt/thresholds.yaml`). Cada entrada pode ser uma string (`lib/help.js`) ou um objeto com `pattern`. Sem o arquivo, só os defaults valem.
+
 ```yaml
 # .toolbelt/guard.yaml
 version: 1
