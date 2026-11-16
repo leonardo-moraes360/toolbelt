@@ -110,7 +110,7 @@ make build
 ## 📖 Uso Rápido
 
 ```bash
-# Inicializa configuração local
+# Inicializa configuração local (detecta toolchain → verify.test_cmd)
 tb init
 
 # Mostra versão
@@ -211,7 +211,7 @@ Este projeto está na **Fase 0**: fundação implementada com CLI funcional, con
 | Comando | Status | Descrição |
 |---------|--------|-----------|
 | `tb version` | ✅ | Mostra versão, commit e build time |
-| `tb init` | ✅ | Inicializa configuração local |
+| `tb init` | ✅ | Inicializa configuração local (detecta toolchain e preenche `verify.test_cmd`) |
 | `tb bench run` | ✅ | Executa benchmark |
 | `tb bench list` | ✅ | Lista tarefas disponíveis |
 | `tb bench report` | ✅ | Gera relatório Markdown |

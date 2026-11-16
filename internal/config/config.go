@@ -226,6 +226,11 @@ func Init(dir string) error {
 	configPath := filepath.Join(dir, DefaultConfigFile)
 	if _, err := os.Stat(configPath); errors.Is(err, os.ErrNotExist) {
 		cfg := DefaultConfig()
+		if root, ok := projectRootForInit(dir); ok {
+			if cmd := DetectTestCmd(root); cmd != "" {
+				cfg.Verify.TestCmd = cmd
+			}
+		}
 		if err := Save(cfg, configPath); err != nil {
 			return fmt.Errorf("saving default config: %w", err)
 		}
