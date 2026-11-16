@@ -33,6 +33,13 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 - Docs: anota a depreciação de `tb guard check --strict` (substituído pelo default
   estrito e por `--warn-only`); remove o exemplo invocável com `--strict`
 
+### Corrigido
+- `tb verify run --base/--head`: quando o head resolve para um SHA diferente do
+  `HEAD` do worktree, build/lint/test/hidden rodam num `git worktree add --detach`
+  temporário (removido ao final, inclusive em erro/sinal); o JSON expõe `head_sha`
+  e `workdir`. Se `head == HEAD` com worktree sujo, emite aviso. O mesmo vale para
+  `tb stack verify` via contexto compartilhado.
+
 ### Segurança
 - Processos filhos de `tb verify` / `tb stack` (verify) e MCP `tb_run` /
   `tb_verify_run` / `tb_stack` passam a receber ambiente filtrado por allowlist

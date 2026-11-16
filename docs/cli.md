@@ -621,7 +621,10 @@ tb stack verify --test-cmd "true" --env APP_ENV --pass-env GITHUB_TOKEN
 ```
 
 Cada item de `steps` traz `op`, `ok`, `exit_code`, `duration_ms` e `result` (o JSON
-que o comando avulso produziria).
+que o comando avulso produziria). O `verify` empilhado usa o mesmo `--base`/`--head`
+do contexto compartilhado: se o head divergir do `HEAD` do worktree, build/lint/test
+rodam num worktree detach temporário (ver `tb verify`); o `result` do passo inclui
+`head_sha` e `workdir`.
 
 ---
 
@@ -819,13 +822,21 @@ Flags:
   --manifest <path>        Manifesto de telas (default: .toolbelt/screens.yaml)
   --skip-unavailable       Skip gracioso sem browser/refs/telas (default: true; veredicto SKIPPED)
   --base <ref>             Ref base
-  --head <ref>             Ref head
+  --head <ref>             Ref head (build/lint/test rodam neste commit)
   --ticket <path>          Ticket com Scope (exceção de `protected_paths` custom)
   --output <path> / -o     Arquivo de saída JSON
   --json                   Saída em JSON (flag global)
   --env <KEY>              (global, repetível) inclui KEY na allowlist do filho
   --pass-env <KEY>         (global, repetível) opt-in explícito para segredo no filho
 ```
+
+Quando `--head` (ou o par `--base`/`--head`) resolve para um SHA **diferente** do
+`HEAD` do worktree atual, o verify cria um `git worktree add --detach` temporário
+nesse SHA, roda `build_cmd` / `lint_cmd` / `test_cmd` / `hidden_test_cmd` nele e
+remove o worktree ao terminar (também em erro ou sinal). O JSON inclui
+`head_sha` e `workdir` (o diretório em que os comandos rodaram). Se
+`head == HEAD` e o worktree estiver sujo, emite aviso — os comandos rodam no
+worktree atual e podem ver mudanças não commitadas.
 
 Processos filhos do verify (`sh -c` de `test_cmd`/`build_cmd`/`lint_cmd`/`hidden_test_cmd`)
 recebem só uma **allowlist** de ambiente (PATH, HOME, LANG, TMPDIR, GOPATH/GOCACHE,
