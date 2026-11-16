@@ -98,7 +98,8 @@ func TestStackAggregateJSONAndOrder(t *testing.T) {
 	}
 }
 
-func TestStackFailFast(t *testing.T) {
+func failFastFixture(t *testing.T) string {
+	t.Helper()
 	dir := gitRepo(t)
 	hidden := filepath.Join(dir, "tests", "hidden")
 	if err := os.MkdirAll(hidden, 0o755); err != nil {
@@ -111,44 +112,66 @@ func TestStackFailFast(t *testing.T) {
 	writeFile(t, filepath.Join(dir, "rd.md"), "---\ntitle: t\nscope:\n  - tests/\n---\n")
 	git(t, dir, "add", "-A")
 	git(t, dir, "commit", "-m", "touch protected")
+	return dir
+}
 
+func TestStackFailFastSerial(t *testing.T) {
+	dir := failFastFixture(t)
 	res, err := Run(context.Background(), &Options{
-		RepoDir:  dir,
-		Base:     "HEAD~1",
-		Head:     "HEAD",
-		Ops:      []Op{OpGuard, OpDrift, OpReview},
-		FailFast: true,
-		Ticket:   filepath.Join(dir, "rd.md"),
+		RepoDir: dir, Base: "HEAD~1", Head: "HEAD",
+		Ops: []Op{OpGuard, OpDrift, OpReview}, FailFast: true, Jobs: 1,
+		Ticket: filepath.Join(dir, "rd.md"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.OK || len(res.Steps) != 1 || res.Steps[0].Op != "guard" || res.Steps[0].OK {
+		t.Fatalf("fail-fast serial: %+v", res)
+	}
+	if ExitCode(res) == 0 {
+		t.Fatal("exit code agregado deveria ser ≠ 0")
+	}
+}
+
+func TestStackFailFastParallel(t *testing.T) {
+	dir := failFastFixture(t)
+	res, err := Run(context.Background(), &Options{
+		RepoDir: dir, Base: "HEAD~1", Head: "HEAD",
+		Ops: []Op{OpGuard, OpDrift, OpReview}, FailFast: true, Jobs: 4,
+		Ticket: filepath.Join(dir, "rd.md"),
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if res.OK {
-		t.Fatal("esperava falha")
+		t.Fatal("esperava falha no paralelo")
 	}
-	if len(res.Steps) != 1 {
-		t.Fatalf("fail-fast deveria parar após 1 step, got %d", len(res.Steps))
+	foundGuard := false
+	for _, step := range res.Steps {
+		if step.Op == "guard" {
+			foundGuard = true
+			if step.OK {
+				t.Fatal("guard deveria falhar")
+			}
+		}
 	}
-	if res.Steps[0].Op != "guard" || res.Steps[0].OK {
-		t.Fatalf("primeiro step: %+v", res.Steps[0])
+	if !foundGuard || ExitCode(res) == 0 {
+		t.Fatalf("fail-fast paralelo: %+v", res)
 	}
-	if ExitCode(res) == 0 {
-		t.Fatal("exit code agregado deveria ser ≠ 0")
-	}
+}
 
-	resAll, err := Run(context.Background(), &Options{
-		RepoDir:  dir,
-		Base:     "HEAD~1",
-		Head:     "HEAD",
-		Ops:      []Op{OpGuard, OpDrift},
-		FailFast: false,
-		Ticket:   filepath.Join(dir, "rd.md"),
+func TestStackWithoutFailFastRunsAll(t *testing.T) {
+	dir := failFastFixture(t)
+	res, err := Run(context.Background(), &Options{
+		RepoDir: dir, Base: "HEAD~1", Head: "HEAD",
+		Ops: []Op{OpGuard, OpDrift}, FailFast: false,
+		Ticket: filepath.Join(dir, "rd.md"),
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(resAll.Steps) != 2 {
-		t.Fatalf("sem fail-fast deveria rodar todas, got %d", len(resAll.Steps))
+	if len(res.Steps) != 2 {
+		t.Fatalf("sem fail-fast deveria rodar todas, got %d", len(res.Steps))
 	}
 }
 
@@ -225,6 +248,62 @@ func TestRunUnknownOp(t *testing.T) {
 	}
 }
 
+func TestStackParallelOrderAndJobs1(t *testing.T) {
+	dir := gitRepo(t)
+	writeFile(t, filepath.Join(dir, "a.go"), "package a\n")
+	git(t, dir, "add", "-A")
+	git(t, dir, "commit", "-m", "base")
+	writeFile(t, filepath.Join(dir, "a.go"), "package a\nfunc X() {}\n")
+	writeFile(t, filepath.Join(dir, "rd.md"), "---\ntitle: t\nscope:\n  - a.go\n  - rd.md\n---\n")
+	git(t, dir, "add", "-A")
+	git(t, dir, "commit", "-m", "head")
+
+	res, err := Run(context.Background(), &Options{
+		RepoDir: dir,
+		Base:    "HEAD~1",
+		Head:    "HEAD",
+		Ops:     []Op{OpGuard, OpDrift, OpReview},
+		Jobs:    4,
+		Ticket:  filepath.Join(dir, "rd.md"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Steps) != 3 {
+		t.Fatalf("steps=%d", len(res.Steps))
+	}
+	if res.Steps[0].Op != "guard" || res.Steps[1].Op != "drift" || res.Steps[2].Op != "review" {
+		t.Fatalf("ordem JSON: %+v", res.Steps)
+	}
+
+	serial, err := Run(context.Background(), &Options{
+		RepoDir: dir,
+		Base:    "HEAD~1",
+		Head:    "HEAD",
+		Ops:     []Op{OpGuard, OpDrift, OpReview},
+		Jobs:    1,
+		Ticket:  filepath.Join(dir, "rd.md"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(serial.Steps) != 3 {
+		t.Fatalf("jobs=1 steps=%d", len(serial.Steps))
+	}
+}
+
+func TestResolveJobs(t *testing.T) {
+	if got := ResolveJobs(1); got != 1 {
+		t.Fatalf("jobs=1 -> %d", got)
+	}
+	if got := ResolveJobs(0); got < 1 {
+		t.Fatalf("jobs=0 -> %d", got)
+	}
+	if got := ResolveJobs(999); got != maxJobs {
+		t.Fatalf("jobs=999 -> %d want %d", got, maxJobs)
+	}
+}
+
 func BenchmarkStackVsSequential(b *testing.B) {
 	dir := gitRepoB(b)
 	writeFileB(b, filepath.Join(dir, "a.go"), "package a\n")
@@ -243,9 +322,21 @@ func BenchmarkStackVsSequential(b *testing.B) {
 		Ticket:  filepath.Join(dir, "rd.md"),
 	}
 
-	b.Run("stack", func(b *testing.B) {
+	b.Run("stack_parallel", func(b *testing.B) {
+		o := *opts
+		o.Jobs = 4
 		for i := 0; i < b.N; i++ {
-			if _, err := Run(context.Background(), opts); err != nil {
+			if _, err := Run(context.Background(), &o); err != nil {
+				b.Fatal(err)
+			}
+		}
+	})
+
+	b.Run("stack_jobs1", func(b *testing.B) {
+		o := *opts
+		o.Jobs = 1
+		for i := 0; i < b.N; i++ {
+			if _, err := Run(context.Background(), &o); err != nil {
 				b.Fatal(err)
 			}
 		}
@@ -259,6 +350,7 @@ func BenchmarkStackVsSequential(b *testing.B) {
 					Base:    opts.Base,
 					Head:    opts.Head,
 					Ops:     []Op{op},
+					Jobs:    1,
 					Ticket:  opts.Ticket,
 				}); err != nil {
 					b.Fatal(err)

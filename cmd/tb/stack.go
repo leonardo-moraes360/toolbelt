@@ -15,12 +15,14 @@ import (
 var stackCmd = &cobra.Command{
 	Use:   "stack <op> [<op>...]",
 	Short: "Empilha verify/review/drift/guard numa execução com contexto compartilhado",
-	Long: `Executa uma ou mais operações em sequência compartilhando o trabalho caro
+	Long: `Executa uma ou mais operações compartilhando o trabalho caro
 (diff, índice de arquivos alterados, memória e config).
 
 Operações: verify, review, drift, guard.
-A ordem dada é respeitada. Por padrão roda todas; --fail-fast para na primeira falha.
-A saída é sempre um único JSON agregado.`,
+Etapas somente leitura (guard, drift, review) rodam em paralelo; verify fica isolado
+(build/test). A saída JSON preserva a ordem pedida. --jobs N limita a concorrência
+(default = nº de CPUs, máx. 32; --jobs 1 = serial). --fail-fast cancela as demais
+via context. A saída é sempre um único JSON agregado.`,
 	Args: cobra.MinimumNArgs(1),
 	RunE: runStack,
 }
@@ -28,7 +30,8 @@ A saída é sempre um único JSON agregado.`,
 func init() {
 	stackCmd.Flags().String("base", "HEAD~1", "ref base compartilhada")
 	stackCmd.Flags().String("head", "HEAD", "ref head compartilhada")
-	stackCmd.Flags().Bool("fail-fast", false, "para na primeira etapa que falhar")
+	stackCmd.Flags().Bool("fail-fast", false, "cancela as demais etapas na primeira falha")
+	stackCmd.Flags().Int("jobs", 0, "limite de concorrência (0=nº de CPUs, máx. 32; 1=serial)")
 	stackCmd.Flags().String("ticket", "rd.md", "caminho do ticket/rd.md (review/drift/verify)")
 	stackCmd.Flags().String("approved-sha", "", "SHA aprovado (review/drift)")
 	stackCmd.Flags().Bool("warn-only", false, "guard: não falha exit em SeverityError")
@@ -57,6 +60,7 @@ func runStack(cmd *cobra.Command, args []string) error {
 	base, _ := cmd.Flags().GetString("base")
 	head, _ := cmd.Flags().GetString("head")
 	failFast, _ := cmd.Flags().GetBool("fail-fast")
+	jobs, _ := cmd.Flags().GetInt("jobs")
 	ticket, _ := cmd.Flags().GetString("ticket")
 	approved, _ := cmd.Flags().GetString("approved-sha")
 	warnOnly, _ := cmd.Flags().GetBool("warn-only")
@@ -72,6 +76,7 @@ func runStack(cmd *cobra.Command, args []string) error {
 		Head:          head,
 		Ops:           ops,
 		FailFast:      failFast,
+		Jobs:          jobs,
 		Ticket:        ticket,
 		ApprovedSHA:   approved,
 		WarnOnly:      warnOnly,

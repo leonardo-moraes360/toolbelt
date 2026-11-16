@@ -7,6 +7,15 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Não Lançado]
 
+### Adicionado
+- `tb stack --jobs N`: concorrência para etapas somente leitura (`guard`/`drift`/`review`);
+  default = nº de CPUs (máx. 32); `--jobs 1` força serial; MCP `tb_stack` aceita `jobs`
+
+### Mudanças
+- `tb stack`: etapas `guard`/`drift`/`review` rodam em paralelo (errgroup); `verify` permanece
+  isolado; JSON preserva a ordem pedida; `--fail-fast` cancela as demais via context;
+  `Prepare` paraleliza git/IO independentes
+
 ## [0.0.2] - 2026-11-16
 
 ### Adicionado

@@ -6,8 +6,12 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
+	"sync"
 	"time"
+
+	"golang.org/x/sync/errgroup"
 
 	"github.com/leonardo-moraes360/toolbelt/internal/config"
 	"github.com/leonardo-moraes360/toolbelt/internal/graph"
@@ -24,6 +28,8 @@ const (
 	OpReview Op = "review"
 	OpDrift  Op = "drift"
 	OpGuard  Op = "guard"
+
+	maxJobs = 32
 )
 
 var knownOps = map[string]Op{
@@ -62,6 +68,7 @@ type Options struct {
 	Head          string
 	Ops           []Op
 	FailFast      bool
+	Jobs          int
 	Ticket        string
 	ApprovedSHA   string
 	WarnOnly      bool
@@ -116,120 +123,290 @@ type Result struct {
 	TotalDurationMs int64        `json:"total_duration_ms"`
 }
 
-func Run(ctx context.Context, opts *Options) (*Result, error) {
+func ResolveJobs(n int) int {
+	if n == 0 {
+		n = runtime.NumCPU()
+	}
+	if n < 1 {
+		n = 1
+	}
+	if n > maxJobs {
+		n = maxJobs
+	}
+	return n
+}
+
+func isParallelOp(op Op) bool {
+	return op == OpGuard || op == OpDrift || op == OpReview
+}
+
+func validateOptions(opts *Options) error {
 	if opts == nil {
-		return nil, fmt.Errorf("options ausentes")
+		return fmt.Errorf("options ausentes")
 	}
 	if len(opts.Ops) == 0 {
-		return nil, fmt.Errorf("informe ao menos uma operação")
+		return fmt.Errorf("informe ao menos uma operação")
 	}
 	for _, op := range opts.Ops {
 		if _, err := ParseOp(string(op)); err != nil {
-			return nil, err
+			return err
 		}
 	}
+	return nil
+}
 
-	shared, err := Prepare(opts)
+func Run(ctx context.Context, opts *Options) (*Result, error) {
+	if err := validateOptions(opts); err != nil {
+		return nil, err
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	jobs := ResolveJobs(opts.Jobs)
+	shared, err := Prepare(ctx, opts)
 	if err != nil {
 		return nil, err
 	}
 
-	out := &Result{OK: true, Steps: make([]StepResult, 0, len(opts.Ops))}
 	start := time.Now()
-	for _, op := range opts.Ops {
-		stepStart := time.Now()
-		step, runErr := runOp(ctx, op, opts, shared)
-		if runErr != nil {
-			step = StepResult{
-				Op:       string(op),
-				OK:       false,
-				ExitCode: 1,
-				Result:   map[string]any{"error": runErr.Error()},
-			}
-		}
-		step.DurationMs = time.Since(stepStart).Milliseconds()
-		out.Steps = append(out.Steps, step)
-		if !step.OK {
-			out.OK = false
-			if opts.FailFast {
-				break
-			}
-		}
-	}
+	out := runWaves(ctx, opts, shared, jobs)
 	out.TotalDurationMs = time.Since(start).Milliseconds()
 	return out, nil
 }
 
-func Prepare(opts *Options) (*Shared, error) {
-	repo := opts.RepoDir
-	if repo == "" {
-		cwd, err := os.Getwd()
-		if err != nil {
-			return nil, err
+func runWaves(ctx context.Context, opts *Options, shared *Shared, jobs int) *Result {
+	out := &Result{OK: true, Steps: make([]StepResult, 0, len(opts.Ops))}
+	for i := 0; i < len(opts.Ops); {
+		if ctx.Err() != nil {
+			out.OK = false
+			return out
 		}
-		repo = cwd
+		next, stop := advanceWave(ctx, opts, shared, jobs, i, out)
+		if stop {
+			return out
+		}
+		i = next
 	}
-	base := opts.Base
+	return out
+}
+
+func advanceWave(ctx context.Context, opts *Options, shared *Shared, jobs, i int, out *Result) (int, bool) {
+	if !isParallelOp(opts.Ops[i]) {
+		step := timedOp(ctx, opts.Ops[i], opts, shared)
+		out.Steps = append(out.Steps, step)
+		if step.OK {
+			return i + 1, false
+		}
+		out.OK = false
+		return i + 1, opts.FailFast
+	}
+
+	waveEnd := i + 1
+	for waveEnd < len(opts.Ops) && isParallelOp(opts.Ops[waveEnd]) {
+		waveEnd++
+	}
+	steps, waveOK := runParallelWave(ctx, opts.Ops[i:waveEnd], opts, shared, jobs)
+	out.Steps = append(out.Steps, steps...)
+	if waveOK {
+		return waveEnd, false
+	}
+	out.OK = false
+	return waveEnd, opts.FailFast
+}
+
+func timedOp(ctx context.Context, op Op, opts *Options, shared *Shared) StepResult {
+	stepStart := time.Now()
+	step, runErr := runOp(ctx, op, opts, shared)
+	if runErr != nil {
+		step = StepResult{
+			Op:       string(op),
+			OK:       false,
+			ExitCode: 1,
+			Result:   map[string]any{"error": runErr.Error()},
+		}
+	}
+	step.DurationMs = time.Since(stepStart).Milliseconds()
+	return step
+}
+
+func runParallelWave(ctx context.Context, wave []Op, opts *Options, shared *Shared, jobs int) ([]StepResult, bool) {
+	if len(wave) == 0 {
+		return nil, true
+	}
+	if jobs <= 1 || len(wave) == 1 {
+		steps := make([]StepResult, 0, len(wave))
+		ok := true
+		for _, op := range wave {
+			step := timedOp(ctx, op, opts, shared)
+			steps = append(steps, step)
+			if !step.OK {
+				ok = false
+				if opts.FailFast {
+					break
+				}
+			}
+		}
+		return steps, ok
+	}
+
+	g, gctx := errgroup.WithContext(ctx)
+	g.SetLimit(jobs)
+
+	var mu sync.Mutex
+	slots := make([]StepResult, len(wave))
+	done := make([]bool, len(wave))
+
+	for idx, op := range wave {
+		idx, op := idx, op
+		g.Go(func() error {
+			step := timedOp(gctx, op, opts, shared)
+			mu.Lock()
+			slots[idx] = step
+			done[idx] = true
+			mu.Unlock()
+			if !step.OK && opts.FailFast {
+				return fmt.Errorf("fail-fast: %s", op)
+			}
+			return nil
+		})
+	}
+	_ = g.Wait()
+
+	steps := make([]StepResult, 0, len(wave))
+	ok := true
+	for i := range wave {
+		if !done[i] {
+			steps = append(steps, StepResult{
+				Op:       string(wave[i]),
+				OK:       false,
+				ExitCode: 1,
+				Result:   map[string]any{"error": context.Canceled.Error()},
+			})
+			ok = false
+			continue
+		}
+		steps = append(steps, slots[i])
+		if !slots[i].OK {
+			ok = false
+		}
+	}
+	return steps, ok
+}
+
+func prepareRepoRefs(opts *Options) (repo, base, head string, err error) {
+	repo = opts.RepoDir
+	if repo == "" {
+		repo, err = os.Getwd()
+		if err != nil {
+			return "", "", "", err
+		}
+	}
+	base = opts.Base
 	if base == "" {
 		base = "HEAD~1"
 	}
-	head := opts.Head
+	head = opts.Head
 	if head == "" {
 		head = "HEAD"
 	}
 	base = resolveEffectiveBase(repo, base, opts.Ticket)
+	return repo, base, head, nil
+}
 
+type prepareLoads struct {
+	diff       string
+	nameStatus string
+	changed    []string
+	invariants []mem.Invariant
+	graphIdx   *graph.Index
+}
+
+func loadSharedInputs(ctx context.Context, opts *Options, loaders *Loaders, repo, base, head string) (*prepareLoads, error) {
+	g, gctx := errgroup.WithContext(ctx)
+	g.SetLimit(ResolveJobs(opts.Jobs))
+
+	var diff, nameStatus string
+	var changed []string
+	var invariants []mem.Invariant
+	var graphIdx *graph.Index
+
+	g.Go(func() error {
+		var err error
+		diff, err = loaders.UnifiedDiff(repo, base, head)
+		return err
+	})
+	g.Go(func() error {
+		var err error
+		nameStatus, err = loaders.NameStatus(repo, base, head)
+		return err
+	})
+	g.Go(func() error {
+		var err error
+		changed, err = loaders.ChangedFiles(repo, base, head)
+		return err
+	})
+	g.Go(func() error {
+		var err error
+		invariants, err = loaders.Invariants(repo)
+		return err
+	})
+	if opts.LoadGraph || graph.Enabled() {
+		g.Go(func() error {
+			if err := gctx.Err(); err != nil {
+				return err
+			}
+			var err error
+			graphIdx, err = loaders.GraphIndex(repo)
+			return err
+		})
+	}
+	if err := g.Wait(); err != nil {
+		return nil, err
+	}
+	return &prepareLoads{
+		diff:       diff,
+		nameStatus: nameStatus,
+		changed:    changed,
+		invariants: invariants,
+		graphIdx:   graphIdx,
+	}, nil
+}
+
+func Prepare(ctx context.Context, opts *Options) (*Shared, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	repo, base, head, err := prepareRepoRefs(opts)
+	if err != nil {
+		return nil, err
+	}
 	loaders := opts.Loaders
 	if loaders == nil {
 		loaders = defaultLoaders()
 	}
 
-	shared := &Shared{
-		RepoDir: repo,
-		Base:    base,
-		Head:    head,
-	}
+	shared := &Shared{RepoDir: repo, Base: base, Head: head}
 	if fileCfg, err := config.Load(); err == nil {
 		shared.FileConfig = fileCfg
 	}
 
-	diff, err := loaders.UnifiedDiff(repo, base, head)
+	loads, err := loadSharedInputs(ctx, opts, loaders, repo, base, head)
 	if err != nil {
 		return nil, err
 	}
-	shared.Diff = diff
+	shared.Diff = loads.diff
 	shared.DiffLoads++
-
-	nameStatus, err := loaders.NameStatus(repo, base, head)
-	if err != nil {
-		return nil, err
-	}
-	shared.NameStatus = nameStatus
+	shared.NameStatus = loads.nameStatus
 	shared.NameStatusLoads++
-
-	changed, err := loaders.ChangedFiles(repo, base, head)
-	if err != nil {
-		return nil, err
-	}
-	shared.Changed = changed
+	shared.Changed = loads.changed
 	shared.IndexLoads++
-
-	invariants, err := loaders.Invariants(repo)
-	if err != nil {
-		return nil, err
-	}
-	shared.Invariants = invariants
+	shared.Invariants = loads.invariants
 	shared.MemLoads++
-
-	if opts.LoadGraph || graph.Enabled() {
-		idx, gErr := loaders.GraphIndex(repo)
-		if gErr != nil {
-			return nil, gErr
-		}
-		shared.GraphIndex = idx
+	if loads.graphIdx != nil {
+		shared.GraphIndex = loads.graphIdx
 		shared.GraphLoads++
 	}
-
 	return shared, nil
 }
 
@@ -294,15 +471,18 @@ func loadGraphIndex(repo string) (*graph.Index, error) {
 }
 
 func runOp(ctx context.Context, op Op, opts *Options, shared *Shared) (StepResult, error) {
+	if err := ctx.Err(); err != nil {
+		return StepResult{}, err
+	}
 	switch op {
 	case OpVerify:
 		return runVerify(ctx, opts, shared)
 	case OpReview:
-		return runReview(opts, shared)
+		return runReview(ctx, opts, shared)
 	case OpDrift:
-		return runDrift(opts, shared)
+		return runDrift(ctx, opts, shared)
 	case OpGuard:
-		return runGuard(opts, shared)
+		return runGuard(ctx, opts, shared)
 	default:
 		return StepResult{}, fmt.Errorf("operação desconhecida: %q", op)
 	}
@@ -354,7 +534,10 @@ func runVerify(ctx context.Context, opts *Options, shared *Shared) (StepResult, 
 	return StepResult{Op: string(OpVerify), OK: ok, ExitCode: exit, Result: res}, nil
 }
 
-func runReview(opts *Options, shared *Shared) (StepResult, error) {
+func runReview(ctx context.Context, opts *Options, shared *Shared) (StepResult, error) {
+	if err := ctx.Err(); err != nil {
+		return StepResult{}, err
+	}
 	cfg := review.DefaultConfig(shared.RepoDir)
 	cfg.BaseRef = shared.Base
 	cfg.HeadRef = shared.Head
@@ -371,6 +554,9 @@ func runReview(opts *Options, shared *Shared) (StepResult, error) {
 	if err != nil {
 		return StepResult{}, err
 	}
+	if err := ctx.Err(); err != nil {
+		return StepResult{}, err
+	}
 	ok := reviewOK(rep)
 	exit := 0
 	if !ok {
@@ -379,7 +565,10 @@ func runReview(opts *Options, shared *Shared) (StepResult, error) {
 	return StepResult{Op: string(OpReview), OK: ok, ExitCode: exit, Result: rep}, nil
 }
 
-func runDrift(opts *Options, shared *Shared) (StepResult, error) {
+func runDrift(ctx context.Context, opts *Options, shared *Shared) (StepResult, error) {
+	if err := ctx.Err(); err != nil {
+		return StepResult{}, err
+	}
 	ticketPath := resolveTicket(shared.RepoDir, ticketOrDefault(opts.Ticket))
 	cfg := review.DefaultConfig(shared.RepoDir)
 	cfg.BaseRef = shared.Base
@@ -393,6 +582,9 @@ func runDrift(opts *Options, shared *Shared) (StepResult, error) {
 	if err != nil {
 		return StepResult{}, err
 	}
+	if err := ctx.Err(); err != nil {
+		return StepResult{}, err
+	}
 	ok := driftOK(rep.Drift)
 	exit := 0
 	if !ok {
@@ -401,9 +593,15 @@ func runDrift(opts *Options, shared *Shared) (StepResult, error) {
 	return StepResult{Op: string(OpDrift), OK: ok, ExitCode: exit, Result: rep.Drift}, nil
 }
 
-func runGuard(opts *Options, shared *Shared) (StepResult, error) {
+func runGuard(ctx context.Context, opts *Options, shared *Shared) (StepResult, error) {
+	if err := ctx.Err(); err != nil {
+		return StepResult{}, err
+	}
 	res, err := guard.NewChecker(shared.RepoDir).CheckDiff(shared.Base, shared.Head, shared.NameStatus)
 	if err != nil {
+		return StepResult{}, err
+	}
+	if err := ctx.Err(); err != nil {
 		return StepResult{}, err
 	}
 	ok := true

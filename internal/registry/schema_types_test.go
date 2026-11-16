@@ -41,6 +41,7 @@ func TestMCPSchemaTypesAndGraphImpact(t *testing.T) {
 		{"tb_verify_run", "threshold", "number"},
 		{"tb_verify_run", "skip_unavailable", "boolean"},
 		{"tb_stack", "fail_fast", "boolean"},
+		{"tb_stack", "jobs", "integer"},
 		{"tb_stack", "max_iter", "integer"},
 		{"tb_stack", "ops", "array"},
 	}
