@@ -99,7 +99,7 @@ func registerMemQueryTools() {
 			Type: "object",
 			Properties: map[string]Property{
 				"category": {Type: "string", Description: "Filtrar categoria"},
-				"all":      {Type: "string", Description: "true para incluir aposentadas", Default: "false"},
+				"all":      {Type: "boolean", Description: "true para incluir aposentadas", Default: false},
 				"cwd":      {Type: "string", Description: "Diretório do repositório"},
 			},
 		},
@@ -125,7 +125,7 @@ func registerMemQueryTools() {
 			Type: "object",
 			Properties: map[string]Property{
 				"query": {Type: "string", Description: "Texto a buscar em id/categoria/regra/ref"},
-				"all":   {Type: "string", Description: "true para incluir aposentadas", Default: "false"},
+				"all":   {Type: "boolean", Description: "true para incluir aposentadas", Default: false},
 				"cwd":   {Type: "string", Description: "Diretório do repositório"},
 			},
 			Required: []string{"query"},
@@ -139,7 +139,7 @@ func registerMemQueryTools() {
 			Type: "object",
 			Properties: map[string]Property{
 				"expect_sha": {Type: "string", Description: "SHA256 esperado"},
-				"all":        {Type: "string", Description: "true para incluir aposentadas", Default: "false"},
+				"all":        {Type: "boolean", Description: "true para incluir aposentadas", Default: false},
 				"cwd":        {Type: "string", Description: "Diretório do repositório"},
 			},
 		},
@@ -304,7 +304,7 @@ func handleMemList(_ context.Context, args map[string]any) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	return s.List(StringArg(args, "category"), boolArgTrue(args, "all"))
+	return s.List(StringArg(args, "category"), BoolArg(args, "all", false))
 }
 
 func handleMemShow(_ context.Context, args map[string]any) (any, error) {
@@ -346,7 +346,7 @@ func handleMemSearch(_ context.Context, args map[string]any) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	return s.Search(StringArg(args, "query"), boolArgTrue(args, "all"))
+	return s.Search(StringArg(args, "query"), BoolArg(args, "all", false))
 }
 
 func handleMemCheck(_ context.Context, args map[string]any) (any, error) {
@@ -355,10 +355,10 @@ func handleMemCheck(_ context.Context, args map[string]any) (any, error) {
 		return nil, err
 	}
 	sha := StringArg(args, "expect_sha")
-	all := boolArgTrue(args, "all")
+	all := BoolArg(args, "all", false)
 	rep, err := memCheckReport(s, sha, all)
 	if err != nil {
-		if initErr := mem.EnsureDefaultAntiCheat(dir); initErr == nil && sha == "" {
+		if _, initErr := mem.EnsureDefaultAntiCheat(dir); initErr == nil && sha == "" {
 			return memCheckReport(s, "", all)
 		}
 		return nil, err
@@ -378,11 +378,6 @@ func memCheckReport(s *mem.Store, sha string, includeRetired bool) (*mem.CheckRe
 	return s.Check(sha, ids, includeRetired)
 }
 
-func boolArgTrue(args map[string]any, key string) bool {
-	v := strings.ToLower(strings.TrimSpace(StringArg(args, key)))
-	return v == "true" || v == "1" || v == "yes"
-}
-
 func stringArgPresent(args map[string]any, key string) (string, bool) {
 	raw, ok := args[key]
 	if !ok || raw == nil {
@@ -400,10 +395,11 @@ func handleMemInit(_ context.Context, args map[string]any) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := mem.EnsureDefaultAntiCheat(dir); err != nil {
+	res, err := mem.EnsureDefaultAntiCheat(dir)
+	if err != nil {
 		return nil, err
 	}
-	return map[string]any{"ok": true, "path": filepath.Join(dir, mem.DefaultInvariantsFile)}, nil
+	return res, nil
 }
 
 func handleVerifyRun(ctx context.Context, args map[string]any) (any, error) {

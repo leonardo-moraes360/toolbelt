@@ -44,7 +44,7 @@ type CheckReport struct {
 	Count       int      `json:"count"`
 	Retention   float64  `json:"retention"`
 	CompactSafe bool     `json:"compact_safe"`
-	Missing     []string `json:"missing,omitempty"`
+	Missing     []string `json:"missing"`
 }
 
 type Store struct {
@@ -200,7 +200,7 @@ func (s *Store) List(category string, includeRetired bool) ([]Invariant, error) 
 	if err != nil {
 		return nil, err
 	}
-	var out []Invariant
+	out := []Invariant{}
 	for _, inv := range f.Invariants {
 		if !includeRetired && inv.Retired {
 			continue
@@ -223,7 +223,7 @@ func (s *Store) Search(query string, includeRetired bool) ([]Invariant, error) {
 		return nil, err
 	}
 	q := strings.ToLower(query)
-	var out []Invariant
+	out := []Invariant{}
 	for _, inv := range f.Invariants {
 		if !includeRetired && inv.Retired {
 			continue
@@ -253,6 +253,7 @@ func (s *Store) Check(expectedSHA string, requiredIDs []string, includeRetired b
 		Count:       len(visible),
 		CompactSafe: true,
 		Retention:   1.0,
+		Missing:     []string{},
 	}
 	if expectedSHA != "" && !strings.EqualFold(expectedSHA, sha) {
 		report.Retention = 0
@@ -278,30 +279,50 @@ func (s *Store) Path() string {
 	return s.path
 }
 
-func EnsureDefaultAntiCheat(toolbeltDir string) error {
+type InitResult struct {
+	Path       string      `json:"path"`
+	Created    bool        `json:"created"`
+	Count      int         `json:"count"`
+	Invariants []Invariant `json:"invariants"`
+}
+
+func EnsureDefaultAntiCheat(toolbeltDir string) (*InitResult, error) {
 	s := NewStore(toolbeltDir)
 	f, err := s.Load()
 	if err != nil {
-		return err
+		return nil, err
 	}
-	if len(f.Invariants) > 0 {
-		return nil
-	}
-	defaults := []struct {
-		cat  string
-		rule string
-	}{
-		{"anti_cheat", "NUNCA modifique arquivos em tests/hidden/"},
-		{"anti_cheat", "NUNCA altere thresholds em .toolbelt/thresholds.yaml"},
-		{"security", "Secrets nunca aparecem em logs ou prompts"},
-	}
-	for _, d := range defaults {
-		_, err := s.Add(d.cat, d.rule, "")
+	created := false
+	if len(f.Invariants) == 0 {
+		defaults := []struct {
+			cat  string
+			rule string
+		}{
+			{"anti_cheat", "NUNCA modifique arquivos em tests/hidden/"},
+			{"anti_cheat", "NUNCA altere thresholds em .toolbelt/thresholds.yaml"},
+			{"security", "Secrets nunca aparecem em logs ou prompts"},
+		}
+		for _, d := range defaults {
+			if _, addErr := s.Add(d.cat, d.rule, ""); addErr != nil {
+				return nil, addErr
+			}
+		}
+		created = true
+		f, err = s.Load()
 		if err != nil {
-			return err
+			return nil, err
 		}
 	}
-	return nil
+	invs := f.Invariants
+	if invs == nil {
+		invs = []Invariant{}
+	}
+	return &InitResult{
+		Path:       s.path,
+		Created:    created,
+		Count:      len(invs),
+		Invariants: invs,
+	}, nil
 }
 
 func findInvariant(list []Invariant, id string) int {

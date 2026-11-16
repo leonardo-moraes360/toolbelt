@@ -216,6 +216,15 @@ func loadFromFile(path string, cfg *Config) error {
 	return yaml.Unmarshal(data, cfg)
 }
 
+// LoadFile carrega um arquivo de configuração YAML específico.
+func LoadFile(path string) (*Config, error) {
+	cfg := DefaultConfig()
+	if err := loadFromFile(path, cfg); err != nil {
+		return nil, err
+	}
+	return cfg, nil
+}
+
 // Save salva a configuração em um arquivo.
 func Save(cfg *Config, path string) error {
 	dir := filepath.Dir(path)

@@ -511,7 +511,11 @@ func isSourceFile(path string) bool {
 }
 
 func DetectDrift(ticket *TicketScope, changed []string, actualBase string) *DriftReport {
-	rep := &DriftReport{ActualBase: actualBase}
+	rep := &DriftReport{
+		ActualBase:   actualBase,
+		OutOfScope:   []string{},
+		ForbiddenHit: []string{},
+	}
 	if ticket == nil {
 		return rep
 	}

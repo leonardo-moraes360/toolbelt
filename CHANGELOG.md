@@ -7,6 +7,18 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Não Lançado]
 
+### Mudanças
+- Saídas JSON usam listas vazias `[]` (nunca `null`) para `violations`, `out_of_scope`,
+  `forbidden_hit`, `missing` e resultados vazios de `tb mem list|search`
+- `tb init --json` e `tb mem init --json` emitem payload do que foi criado/detectado
+  (path, cmds detectados / invariantes)
+- `hidden_passed` é `null` quando não há suíte oculta (`hidden_available: false`)
+- `duration_ms` / `total_duration_ms` no `tb stack` passam a float com fração sub-ms
+- Erros de preparação/operação do `tb stack` ficam em `steps[].error` dentro do JSON
+  (incluindo op desconhecida); não só no stderr
+- MCP: `all` em `tb_mem_list` / `tb_mem_search` / `tb_mem_check` tipado como boolean
+  (default `false`); handlers ainda aceitam strings legadas `"true"`/`"false"`
+
 ## [0.0.2] - 2026-11-16
 
 ### Adicionado

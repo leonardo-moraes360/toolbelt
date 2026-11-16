@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -163,6 +164,21 @@ Exemplo:
 			return fmt.Errorf("initializing config: %w", err)
 		}
 
+		var docs *config.AgentDocsResult
+		if !global && repoRoot != "" {
+			docs, err = config.HandleAgentDocs(repoRoot, dir, writeAgents)
+			if err != nil {
+				return fmt.Errorf("processando AGENTS.md/CLAUDE.md: %w", err)
+			}
+		}
+
+		if jsonOutput {
+			payload := buildInitJSON(dir, detected, docs)
+			enc := json.NewEncoder(os.Stdout)
+			enc.SetIndent("", "  ")
+			return enc.Encode(payload)
+		}
+
 		log.Info("configuração inicializada", "path", dir)
 		if detected.Cmd != "" {
 			log.Info("toolchain detectada", "test_cmd", detected.Cmd)
@@ -171,11 +187,7 @@ Exemplo:
 			log.Warn(detected.Warning)
 		}
 
-		if !global && repoRoot != "" {
-			docs, err := config.HandleAgentDocs(repoRoot, dir, writeAgents)
-			if err != nil {
-				return fmt.Errorf("processando AGENTS.md/CLAUDE.md: %w", err)
-			}
+		if docs != nil {
 			if docs.Seeded {
 				log.Info("AGENTS.md semeado", "path", filepath.Join(repoRoot, config.AgentsMDName))
 			}
@@ -196,6 +208,47 @@ Exemplo:
 
 		return nil
 	},
+}
+
+func buildInitJSON(dir string, detected config.DetectedCmd, docs *config.AgentDocsResult) map[string]any {
+	payload := map[string]any{
+		"path": dir,
+	}
+	if fileCfg, err := config.LoadFile(filepath.Join(dir, config.DefaultConfigFile)); err == nil {
+		payload["test_cmd"] = fileCfg.Verify.TestCmd
+		if fileCfg.Verify.BuildCmd != "" {
+			payload["build_cmd"] = fileCfg.Verify.BuildCmd
+		}
+		if fileCfg.Verify.LintCmd != "" {
+			payload["lint_cmd"] = fileCfg.Verify.LintCmd
+		}
+		if fileCfg.Verify.HiddenTestCmd != "" {
+			payload["hidden_test_cmd"] = fileCfg.Verify.HiddenTestCmd
+		}
+	} else if detected.Cmd != "" {
+		payload["test_cmd"] = detected.Cmd
+	}
+	if detected.Warning != "" {
+		payload["warning"] = detected.Warning
+	}
+	if docs != nil {
+		sources := docs.Sources
+		if sources == nil {
+			sources = []string{}
+		}
+		agents := map[string]any{
+			"seeded":  docs.Seeded,
+			"sources": sources,
+		}
+		if len(docs.Hints) > 0 {
+			agents["hints"] = docs.Hints
+		}
+		if docs.Record != "" {
+			agents["record"] = docs.Record
+		}
+		payload["agents"] = agents
+	}
+	return payload
 }
 
 func init() {

@@ -166,7 +166,11 @@ func printTestsSummary(payload any) {
 	if res.LintRan {
 		fmt.Printf("Lint: %v\n", res.LintPassed)
 	}
-	fmt.Printf("Visível: %v  Oculto: %v (disponível: %v)\n", res.VisiblePassed, res.HiddenPassed, res.HiddenAvailable)
+	hidden := "n/a"
+	if res.HiddenPassed != nil {
+		hidden = fmt.Sprintf("%v", *res.HiddenPassed)
+	}
+	fmt.Printf("Visível: %v  Oculto: %s (disponível: %v)\n", res.VisiblePassed, hidden, res.HiddenAvailable)
 }
 
 func printVisualReport(rep *verify.VisualReport) {
