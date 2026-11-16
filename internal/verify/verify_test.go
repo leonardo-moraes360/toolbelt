@@ -82,6 +82,153 @@ func TestHiddenTestCmdConfigurableNonGo(t *testing.T) {
 	}
 }
 
+func TestAbsentBuildLintCmdKeepsCurrentBehavior(t *testing.T) {
+	dir := t.TempDir()
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "a@b.c")
+	runGit(t, dir, "config", "user.name", "t")
+	runGit(t, dir, "commit", "--allow-empty", "-m", "c")
+
+	cfg := DefaultConfig(dir)
+	cfg.BaseRef = "HEAD"
+	cfg.HeadRef = "HEAD"
+	cfg.Timeout = 30 * time.Second
+	cfg.MaxIterations = 1
+	cfg.VisibleTest = "true"
+
+	res, err := Run(context.Background(), &cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.BuildRan || res.LintRan {
+		t.Fatalf("expected no build/lint without cmds, got build_ran=%v lint_ran=%v", res.BuildRan, res.LintRan)
+	}
+	if res.Verdict != VerdictPass {
+		t.Fatalf("veredicto %s", res.Verdict)
+	}
+}
+
+func TestBuildCmdFailureFailsVerify(t *testing.T) {
+	dir := t.TempDir()
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "a@b.c")
+	runGit(t, dir, "config", "user.name", "t")
+	runGit(t, dir, "commit", "--allow-empty", "-m", "c")
+
+	cfg := DefaultConfig(dir)
+	cfg.BaseRef = "HEAD"
+	cfg.HeadRef = "HEAD"
+	cfg.Timeout = 30 * time.Second
+	cfg.MaxIterations = 1
+	cfg.VisibleTest = "true"
+	cfg.BuildCmd = "false"
+
+	res, err := Run(context.Background(), &cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.BuildRan {
+		t.Fatal("expected build_cmd to run")
+	}
+	if res.BuildPassed {
+		t.Fatal("expected build_cmd failure")
+	}
+	if res.VisiblePassed {
+		t.Fatal("tests should not run after build failure")
+	}
+	if res.Verdict == VerdictPass {
+		t.Fatal("verify must not PASS when build_cmd fails")
+	}
+}
+
+func TestLintCmdFailureFailsVerify(t *testing.T) {
+	dir := t.TempDir()
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "a@b.c")
+	runGit(t, dir, "config", "user.name", "t")
+	runGit(t, dir, "commit", "--allow-empty", "-m", "c")
+
+	cfg := DefaultConfig(dir)
+	cfg.BaseRef = "HEAD"
+	cfg.HeadRef = "HEAD"
+	cfg.Timeout = 30 * time.Second
+	cfg.MaxIterations = 1
+	cfg.VisibleTest = "true"
+	cfg.LintCmd = "false"
+
+	res, err := Run(context.Background(), &cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.LintRan {
+		t.Fatal("expected lint_cmd to run")
+	}
+	if res.LintPassed {
+		t.Fatal("expected lint_cmd failure")
+	}
+	if res.VisiblePassed {
+		t.Fatal("tests should not run after lint failure")
+	}
+	if res.Verdict == VerdictPass {
+		t.Fatal("verify must not PASS when lint_cmd fails")
+	}
+}
+
+func TestBuildCmdRunsBeforeTests(t *testing.T) {
+	dir := t.TempDir()
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "a@b.c")
+	runGit(t, dir, "config", "user.name", "t")
+	runGit(t, dir, "commit", "--allow-empty", "-m", "c")
+
+	cfg := DefaultConfig(dir)
+	cfg.BaseRef = "HEAD"
+	cfg.HeadRef = "HEAD"
+	cfg.Timeout = 30 * time.Second
+	cfg.MaxIterations = 1
+	cfg.BuildCmd = "touch built.flag"
+	cfg.VisibleTest = "test -f built.flag"
+
+	res, err := Run(context.Background(), &cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.BuildRan || !res.BuildPassed {
+		t.Fatalf("build_ran=%v build_passed=%v", res.BuildRan, res.BuildPassed)
+	}
+	if res.Verdict != VerdictPass {
+		t.Fatalf("veredicto %s (build must run before tests)", res.Verdict)
+	}
+}
+
+func TestBuildAndLintPassWithTests(t *testing.T) {
+	dir := t.TempDir()
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "a@b.c")
+	runGit(t, dir, "config", "user.name", "t")
+	runGit(t, dir, "commit", "--allow-empty", "-m", "c")
+
+	cfg := DefaultConfig(dir)
+	cfg.BaseRef = "HEAD"
+	cfg.HeadRef = "HEAD"
+	cfg.Timeout = 30 * time.Second
+	cfg.MaxIterations = 1
+	cfg.BuildCmd = "true"
+	cfg.LintCmd = "true"
+	cfg.VisibleTest = "true"
+
+	res, err := Run(context.Background(), &cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.BuildRan || !res.BuildPassed || !res.LintRan || !res.LintPassed {
+		t.Fatalf("build/lint flags: ran=%v/%v passed=%v/%v", res.BuildRan, res.LintRan, res.BuildPassed, res.LintPassed)
+	}
+	if res.Verdict != VerdictPass {
+		t.Fatalf("veredicto %s", res.Verdict)
+	}
+}
+
 func TestHiddenTestCmdDefaultFailsNonGoSuite(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(dir, "tests", "hidden"), 0o755); err != nil {

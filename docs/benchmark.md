@@ -374,6 +374,9 @@ tb bench run --fake -r 3
 # Executar com agente externo
 tb bench run --agent "cursor-agent {prompt} --workdir {workdir}"
 
+# Sem --agent/--fake: usa bench.default_agent de .toolbelt/config.yaml
+tb bench run -r 1
+
 # Variante A/B com label e flags (gravados no JSONL)
 tb bench run --fake --label graph-off --flag graph=off
 
@@ -389,6 +392,11 @@ tb bench compare --before v1.jsonl --after v2.jsonl
 # Rodar A/B a partir de configs YAML
 tb bench compare --config-a bench/ab/graph-off.yaml \
                  --config-b bench/ab/graph-on.yaml --fake
+
+# A/B com agente externo (--agent ou bench.default_agent)
+tb bench compare --config-a bench/ab/graph-off.yaml \
+                 --config-b bench/ab/graph-on.yaml \
+                 --agent "cursor-agent {prompt} --workdir {workdir}"
 ```
 
 ### Tarefas Fixture

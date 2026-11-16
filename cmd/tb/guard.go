@@ -34,21 +34,29 @@ var guardCheckCmd = &cobra.Command{
 			return err
 		}
 		if jsonOutput {
-			return json.NewEncoder(os.Stdout).Encode(res)
-		}
-		for _, v := range res.Violations {
-			fmt.Printf("%s %s %s\n", v.Severity, v.Type, v.File)
+			if err := json.NewEncoder(os.Stdout).Encode(res); err != nil {
+				return err
+			}
+		} else {
+			for _, v := range res.Violations {
+				fmt.Printf("%s %s %s\n", v.Severity, v.Type, v.File)
+			}
 		}
 		strict, _ := cmd.Flags().GetBool("strict")
-		if strict {
-			for _, v := range res.Violations {
-				if v.Severity == guard.SeverityError {
-					os.Exit(1)
-				}
-			}
+		if strict && hasStrictError(res.Violations) {
+			os.Exit(1)
 		}
 		return nil
 	},
+}
+
+func hasStrictError(violations []guard.Violation) bool {
+	for _, v := range violations {
+		if v.Severity == guard.SeverityError {
+			return true
+		}
+	}
+	return false
 }
 
 func init() {

@@ -98,6 +98,9 @@ var initCmd = &cobra.Command{
 	Short: "Inicializa configuração local do toolbelt",
 	Long: `Cria o diretório .toolbelt/ e arquivo config.yaml no diretório atual.
 
+Detecta a toolchain do repositório (go.mod, package.json, pyproject/uv,
+Cargo.toml, Makefile) e preenche verify.test_cmd quando possível.
+
 Se AGENTS.md ou CLAUDE.md existirem na raiz do repositório, o init lê esses
 arquivos, registra os caminhos em .toolbelt/agent_docs.yaml e extrai dicas de
 execução (nunca sobrescreve). Use --write-agents para semear um AGENTS.md
