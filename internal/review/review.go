@@ -299,13 +299,10 @@ func parseTicketFrontmatter(text string) (*TicketScope, bool, error) {
 func parseTicketMarkdown(text string) *TicketScope {
 	t := &TicketScope{Description: text}
 	reBase := regexp.MustCompile(`(?mi)^(?:base_commit|base)\s*:\s*(\S+)`)
-	reForbid := regexp.MustCompile(`(?mi)^(?:forbidden|proibido)\s*:\s*(.+)$`)
 	t.Scope = parseMarkdownScope(text)
+	t.Forbidden = parseMarkdownForbidden(text)
 	if m := reBase.FindStringSubmatch(text); len(m) > 1 {
 		t.BaseCommit = strings.TrimSpace(m[1])
-	}
-	if m := reForbid.FindStringSubmatch(text); len(m) > 1 {
-		t.Forbidden = splitList(m[1])
 	}
 	for _, line := range strings.Split(text, "\n") {
 		line = strings.TrimSpace(line)
@@ -321,6 +318,13 @@ func parseMarkdownScope(text string) []string {
 		return items
 	}
 	return collectLabelList(text, "scope", "escopo")
+}
+
+func parseMarkdownForbidden(text string) []string {
+	if items := collectHeadingList(text, "forbidden", "proibido"); len(items) > 0 {
+		return items
+	}
+	return collectLabelList(text, "forbidden", "proibido")
 }
 
 func collectHeadingList(text string, names ...string) []string {
@@ -524,9 +528,16 @@ func suggestsViolation(rule, lowerDiff string, changed []string) bool {
 		if !strings.Contains(rule, marker) {
 			continue
 		}
+		patterns := []string{marker, marker + "/**", marker + "/*"}
 		for _, f := range changed {
 			if pathMarkerHit(f, marker) {
 				return true
+			}
+			file := filepath.ToSlash(f)
+			for _, p := range patterns {
+				if matchPathGlob(file, p) {
+					return true
+				}
 			}
 		}
 	}
