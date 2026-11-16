@@ -8,6 +8,10 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 ## [Não Lançado]
 
 ### Adicionado
+- Grafo TS/JS: fingerprint no `graph.json` e detecção de índice desatualizado;
+  com `graph.index_on_change: true` (default) `search`/`callers`/`deps`/`impact`/`stats`
+  reindexam automaticamente; com `false`, avisam na saída e expõem `stale: true` no JSON
+- Resolução de `tsconfig.json`/`jsconfig.json` (`extends`, `baseUrl`, `paths`) no indexador JS/TS
 - Landing page estática em `site/` (HTML/CSS/JS, tema Synthwave, PT/EN) publicada via
   GitHub Pages (`https://leonardo-moraes360.github.io/toolbelt/`)
 - Workflow `.github/workflows/pages.yml` (configure/upload/deploy-pages; sem `enablement`)
@@ -21,6 +25,10 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
   `created`/`count`/`invariants`
 
 ### Mudanças
+- **Breaking (JSON grafo):** consultas MCP/CLI (`search`/`callers`/`deps`/`impact`) passam a
+  emitir `{"stale": bool, "nodes": [...]}` em vez de um array nu; `stats`/`index` incluem `stale`
+- Indexador JS/TS indexa `*.test.*`, `*.spec.*`, `__tests__` e `e2e` (antes eram omitidos);
+  `impact`/`callers` passam a listar testes que importam o símbolo
 - Saídas JSON usam listas vazias `[]` (nunca `null`) para `violations`, `out_of_scope`,
   `forbidden_hit`, `missing` e resultados vazios de `tb mem list|search`
 - `tb init --json` e `tb mem init --json` emitem payload do que foi criado/detectado
@@ -48,6 +56,11 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
   estrito e por `--warn-only`); remove o exemplo invocável com `--strict`
 
 ### Corrigido
+- Funções genéricas TS (`function foo<T>(…)`) voltam a aparecer no índice
+- Imports relativos estilo NodeNext (`.js`→`.ts`/`.tsx`, sem extensão, `index`) deixam de
+  ficar como `pkg:./…` e resolvem para `file:…`
+- Aliases de import (`import { a as b }`) e namespaces (`import * as ns`, `ns.fn()`) alimentam
+  arestas `calls` resolvíveis
 - Erros de git em `tb guard` / `tb review` / `tb drift` / `tb verify` deixam de
   aparecer só como `exit status 128/129`: incluem stderr do git, a ref ausente e
   dica `git fetch origin <ref>` (helper central `internal/git`)
