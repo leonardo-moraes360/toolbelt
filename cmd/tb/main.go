@@ -21,6 +21,7 @@ var (
 )
 
 func main() {
+	rejectUnknownSubcommands(rootCmd)
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
 	}
@@ -39,12 +40,12 @@ Exemplo:
   tb bench run               Executa benchmark baseline
   tb version                 Mostra versão`,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-		// Inicializa logging
+		cmd.SilenceUsage = true
+
 		log.Init(jsonOutput)
 
 		config.SetFile(cfgFile)
 
-		// Carrega configuração se não for command init/version/help
 		if cmd.Name() != "init" && cmd.Name() != "version" && cmd.Name() != "help" {
 			_, err := config.Load()
 			if err != nil {
@@ -61,12 +62,10 @@ func init() {
 	rootCmd.PersistentFlags().BoolVar(&jsonOutput, "json", false, "saída em JSON")
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "saída verbose")
 
-	// Adiciona subcommands
 	rootCmd.AddCommand(versionCmd)
 	rootCmd.AddCommand(initCmd)
 	rootCmd.AddCommand(benchCmd)
 
-	// Stubs para commands futuros
 	rootCmd.AddCommand(sandboxCmd)
 	rootCmd.AddCommand(workspaceCmd)
 	rootCmd.AddCommand(guardCmd)
@@ -77,6 +76,23 @@ func init() {
 	rootCmd.AddCommand(driftCmd)
 	rootCmd.AddCommand(routerCmd)
 	rootCmd.AddCommand(mcpCmd)
+}
+
+func rejectUnknownSubcommands(cmd *cobra.Command) {
+	for _, c := range cmd.Commands() {
+		if c.HasSubCommands() {
+			c.SilenceUsage = true
+			if !c.Runnable() && c.Args == nil {
+				c.Args = cobra.NoArgs
+				c.RunE = parentHelpRunE
+			}
+		}
+		rejectUnknownSubcommands(c)
+	}
+}
+
+func parentHelpRunE(cmd *cobra.Command, args []string) error {
+	return cmd.Help()
 }
 
 // versionCmd mostra informações de versão
