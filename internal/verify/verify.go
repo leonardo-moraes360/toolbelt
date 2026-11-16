@@ -65,26 +65,23 @@ func Run(ctx context.Context, cfg *Config) (*Result, error) {
 		cfg.MaxIterations = 3
 	}
 	res := &Result{Verdict: VerdictFail}
-	chk := guard.NewChecker(cfg.RepoDir)
-	gr, err := chk.Check(cfg.BaseRef, cfg.HeadRef)
+	abort, err := applyGuard(cfg, res)
 	if err != nil {
 		return nil, err
 	}
-	res.Guard = gr
-	if hasGuardError(gr) {
-		res.Verdict = VerdictFail
+	if abort {
 		return res, nil
 	}
 
-	prepareHidden(cfg, res)
+	res.HiddenAvailable = resolveHiddenAvailable(cfg)
 
 	for i := 1; i <= cfg.MaxIterations; i++ {
 		res.Iterations = i
-		ok, err := runIteration(ctx, cfg, res)
-		if err != nil {
-			return nil, err
+		passed, iterErr := runVerifyIteration(ctx, cfg, res)
+		if iterErr != nil {
+			return nil, iterErr
 		}
-		if ok {
+		if passed {
 			res.Verdict = VerdictPass
 			return res, nil
 		}
@@ -93,26 +90,33 @@ func Run(ctx context.Context, cfg *Config) (*Result, error) {
 	return res, nil
 }
 
-func hasGuardError(gr *guard.CheckResult) bool {
+func applyGuard(cfg *Config, res *Result) (bool, error) {
+	chk := guard.NewChecker(cfg.RepoDir)
+	gr, err := chk.Check(cfg.BaseRef, cfg.HeadRef)
+	if err != nil {
+		return false, err
+	}
+	res.Guard = gr
 	for _, v := range gr.Violations {
 		if v.Severity == guard.SeverityError {
-			return true
+			res.Verdict = VerdictFail
+			return true, nil
 		}
 	}
-	return false
+	return false, nil
 }
 
-func prepareHidden(cfg *Config, res *Result) {
+func resolveHiddenAvailable(cfg *Config) bool {
 	hiddenDir := filepath.Join(cfg.RepoDir, "tests", "hidden")
 	_, dirErr := os.Stat(hiddenDir)
 	dirExists := dirErr == nil
 	if cfg.HiddenTest == "" && dirExists {
 		cfg.HiddenTest = DefaultHiddenTestCmd
 	}
-	res.HiddenAvailable = cfg.HiddenTest != "" || dirExists
+	return cfg.HiddenTest != "" || dirExists
 }
 
-func runIteration(ctx context.Context, cfg *Config, res *Result) (bool, error) {
+func runVerifyIteration(ctx context.Context, cfg *Config, res *Result) (bool, error) {
 	preOK, preErr := runBuildAndLint(ctx, cfg, res)
 	if preErr != nil {
 		return false, preErr
