@@ -8,6 +8,10 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 ## [Não Lançado]
 
 ### Adicionado
+- `tb review` / `tb drift`: flag `--approved-sha` compara `git patch-id --stable`
+  de `base..approved` vs `base..head`; em divergência mostra `git range-diff` e
+  sai ≠ 0; JSON registra `pinned_approval` (`approved_sha`, `patch_id`,
+  `head_patch_id`, `match`, `range_diff`)
 - Indexador JS/TS emite arestas `calls` resolvíveis (chamadas + JSX `<Comp />`) via imports relativos; `tb graph callers`/`impact` funcionam em fixtures Next/React (`pages/` → `components/`/`lib/`)
 - `tb mem show|edit|retire|search` e vínculo `--ref` com ADR/decisions.md; soft-retire omitido de list/check/search (use `--all`); subcomando desconhecido sai ≠ 0
 - MCP: `tb_mem_show`, `tb_mem_edit`, `tb_mem_retire`, `tb_mem_search` (+ `ref`/`all` em add/list/check)

@@ -41,30 +41,33 @@ type TicketScope struct {
 }
 
 type Config struct {
-	RepoDir    string
-	BaseRef    string
-	HeadRef    string
-	TicketPath string
-	Reviewers  int
-	Standards  []string
+	RepoDir     string
+	BaseRef     string
+	HeadRef     string
+	ApprovedSHA string
+	TicketPath  string
+	Reviewers   int
+	Standards   []string
 }
 
 type Report struct {
-	Target    string       `json:"target"`
-	BaseRef   string       `json:"base_ref"`
-	HeadRef   string       `json:"head_ref"`
-	Findings  []Finding    `json:"findings"`
-	Drift     *DriftReport `json:"drift,omitempty"`
-	FreshOK   bool         `json:"fresh_context"`
-	Reviewers int          `json:"reviewers"`
+	Target         string          `json:"target"`
+	BaseRef        string          `json:"base_ref"`
+	HeadRef        string          `json:"head_ref"`
+	Findings       []Finding       `json:"findings"`
+	Drift          *DriftReport    `json:"drift,omitempty"`
+	PinnedApproval *PinnedApproval `json:"pinned_approval,omitempty"`
+	FreshOK        bool            `json:"fresh_context"`
+	Reviewers      int             `json:"reviewers"`
 }
 
 type DriftReport struct {
-	OutOfScope   []string `json:"out_of_scope"`
-	ForbiddenHit []string `json:"forbidden_hit"`
-	BaseMismatch bool     `json:"base_mismatch"`
-	DeclaredBase string   `json:"declared_base,omitempty"`
-	ActualBase   string   `json:"actual_base,omitempty"`
+	OutOfScope     []string        `json:"out_of_scope"`
+	ForbiddenHit   []string        `json:"forbidden_hit"`
+	BaseMismatch   bool            `json:"base_mismatch"`
+	DeclaredBase   string          `json:"declared_base,omitempty"`
+	ActualBase     string          `json:"actual_base,omitempty"`
+	PinnedApproval *PinnedApproval `json:"pinned_approval,omitempty"`
 }
 
 func DefaultConfig(repo string) Config {
@@ -120,6 +123,15 @@ func Run(cfg *Config) (*Report, error) {
 	drift := DetectDrift(ticket, changed, cfg.BaseRef)
 	reconcileDriftBase(cfg.RepoDir, drift)
 	report.Drift = drift
+
+	pinned, err := CheckPinnedApproval(cfg.RepoDir, cfg.BaseRef, cfg.ApprovedSHA, cfg.HeadRef)
+	if err != nil {
+		return nil, err
+	}
+	report.PinnedApproval = pinned
+	if drift != nil {
+		drift.PinnedApproval = pinned
+	}
 
 	// Cada goldfish tem um papel distinto e recebe só ticket + diff + invariantes.
 	var all []Finding

@@ -523,6 +523,7 @@ tb review [ticket] [flags]
 Flags:
   --base <ref>          Commit base (default: HEAD~1 ou base_commit do ticket)
   --head <ref>          Commit head (default: HEAD)
+  --approved-sha <sha>  SHA aprovado; compara `git patch-id --stable` de base..approved vs base..head
   --ticket <path>       Ticket/rd.md (default: rd.md)
   --reviewers <n>       Máximo de goldfish distintos (default: 3; não clona)
   --standards <stds>    Papéis: scope,quality,acceptance (default)
@@ -532,6 +533,10 @@ Flags:
 
 Também reporta drift de escopo e commit base. Isolamento fresco é obrigatório.
 `tb review -o …` é rejeitado (`unknown shorthand flag: 'o'`); use `--output`.
+
+Com `--approved-sha`, o JSON inclui `pinned_approval` (`approved_sha`, `patch_id`,
+`head_patch_id`, `match` e, se divergir, `range_diff`). Patch diferente do aprovado
+imprime um resumo de `git range-diff` e sai com código ≠ 0.
 
 O ticket/rd.md aceita frontmatter YAML ou Markdown: seção `## Scope` / `## Escopo`
 (ou `Scope:` / `Escopo:`) e `## Forbidden` / `## Proibido` (ou `Forbidden:` /
@@ -580,6 +585,9 @@ tb review --ticket rd.md --reviewers 5 --standards scope,quality,acceptance
 
 # Saída JSON para integração (só --output; sem -o)
 tb review --ticket rd.md --json --output review-results.json
+
+# Verificar que o head ainda é o mesmo patch do SHA aprovado
+tb review --base main --approved-sha abc1234 --ticket rd.md --json
 ```
 
 **Isolamento obrigatório**: Se o sistema não conseguir criar contextos frescos para os revisores, o comando falha com erro ao invés de prosseguir com contexto contaminado.
@@ -601,12 +609,16 @@ resolvidos com `git rev-parse` antes da comparação — evita falso
 tb drift [ticket] [flags]
 
 Flags:
-  --base <ref>     Commit base (default: HEAD~1 ou base_commit do ticket)
-  --head <ref>     Commit head (default: HEAD)
-  --ticket <path>  Ticket/rd.md (default: rd.md)
-  --output <path>  Saída JSON (sem shorthand `-o`)
-  --json           Saída em JSON (flag global)
+  --base <ref>          Commit base (default: HEAD~1 ou base_commit do ticket)
+  --head <ref>          Commit head (default: HEAD)
+  --approved-sha <sha>  SHA aprovado; compara `git patch-id --stable` de base..approved vs base..head
+  --ticket <path>       Ticket/rd.md (default: rd.md)
+  --output <path>       Saída JSON (sem shorthand `-o`)
+  --json                Saída em JSON (flag global)
 ```
+
+Com `--approved-sha`, o JSON de drift inclui `pinned_approval` (mesmo formato do
+`tb review`). Divergência de patch-id sai com código ≠ 0 e mostra `git range-diff`.
 
 **Exemplos:**
 
@@ -657,6 +669,9 @@ tb drift docs/api-spec.md
 
 # Saída JSON para relatório / CI
 tb drift --ticket rd.md --json --output drift-report.json
+
+# Pin de aprovação: falha se o patch do head mudou desde o SHA aprovado
+tb drift --base main --approved-sha abc1234 --ticket rd.md
 ```
 
 **Integração com CI**:
@@ -1551,8 +1566,8 @@ Transporte unix/tcp e flags `--socket`/`--port`/`--tls-*` são planejados; hoje 
 | `tb_run` | — | `sh -c` com timeout |
 | `tb_mem_add` / `tb_mem_list` / `tb_mem_show` / `tb_mem_edit` / `tb_mem_retire` / `tb_mem_search` / `tb_mem_check` / `tb_mem_init` | `tb mem …` | arg opcional `cwd`; `ref`/`all` onde aplicável |
 | `tb_verify_run` | `tb verify run` | `ruler=tests\|visual`; args espelham flags |
-| `tb_review` | `tb review` | ticket/base/head/reviewers/standards |
-| `tb_drift` | `tb drift` | retorna `{drift, has_drift}` |
+| `tb_review` | `tb review` | ticket/base/head/approved_sha/reviewers/standards |
+| `tb_drift` | `tb drift` | retorna `{drift, has_drift, pinned_approval}` |
 | `tb_guard_check` | `tb guard check` | `base`/`head` ou `range=A..B`; `strict_fail` por default em SeverityError; `warn_only=true` opt-out; `strict` deprecated |
 | `tb_graph_search` / `tb_graph_callers` / `tb_graph_deps` / `tb_graph_index` | `tb graph …` | chamada requer `TB_GRAPH=on` |
 

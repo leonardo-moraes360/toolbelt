@@ -800,3 +800,172 @@ func gitRevParse(t *testing.T, repo, ref string) string {
 	}
 	return strings.TrimSpace(string(out))
 }
+
+func initGitRepo(t *testing.T, repo string) func(args ...string) {
+	t.Helper()
+	run := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = repo
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v (%s)", args, err, out)
+		}
+	}
+	run("init")
+	run("config", "user.email", "t@example.com")
+	run("config", "user.name", "t")
+	return run
+}
+
+func writeTicket(t *testing.T, repo, scopeFile string) string {
+	t.Helper()
+	path := filepath.Join(repo, "rd.md")
+	rd := "---\ntitle: t\nscope:\n  - " + scopeFile + "\n---\n"
+	if err := os.WriteFile(path, []byte(rd), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func TestCheckPinnedApprovalMatch(t *testing.T) {
+	repo, base, approved, run := pinnedFixture(t, "package a\n\nfunc OK() {}\n")
+	_ = run
+	pinned, err := CheckPinnedApproval(repo, base, approved, "HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pinned == nil || !pinned.Match {
+		t.Fatalf("head igual ao approved deveria match; got %#v", pinned)
+	}
+	if pinned.ApprovedSHA != approved || pinned.PatchID == "" || pinned.PatchID != pinned.HeadPatchID {
+		t.Fatalf("pinned=%#v", pinned)
+	}
+	if pinned.RangeDiffSummary != "" {
+		t.Fatalf("match não deve ter range-diff: %q", pinned.RangeDiffSummary)
+	}
+}
+
+func TestCheckPinnedApprovalMismatch(t *testing.T) {
+	repo, base, approved, run := pinnedFixture(t, "package a\n\nfunc OK() {}\n")
+	if err := os.WriteFile(filepath.Join(repo, "a.go"), []byte("package a\n\nfunc Changed() {}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	run("add", ".")
+	run("commit", "-m", "diverged")
+
+	pinned, err := CheckPinnedApproval(repo, base, approved, "HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pinned == nil || pinned.Match {
+		t.Fatalf("head divergente deveria mismatch; got %#v", pinned)
+	}
+	if pinned.PatchID == pinned.HeadPatchID {
+		t.Fatal("patch-ids deveriam diferir")
+	}
+	if pinned.RangeDiffSummary == "" {
+		t.Fatal("mismatch deve incluir range-diff")
+	}
+}
+
+func pinnedFixture(t *testing.T, approvedContent string) (repo, base, approved string, run func(...string)) {
+	t.Helper()
+	repo = t.TempDir()
+	run = initGitRepo(t, repo)
+	if err := os.WriteFile(filepath.Join(repo, "a.go"), []byte("package a\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	run("add", ".")
+	run("commit", "-m", "base")
+	base = gitRevParse(t, repo, "HEAD")
+	if err := os.WriteFile(filepath.Join(repo, "a.go"), []byte(approvedContent), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	run("add", ".")
+	run("commit", "-m", "approved")
+	approved = gitRevParse(t, repo, "HEAD")
+	return repo, base, approved, run
+}
+
+func TestRunPinnedApprovalInReportJSON(t *testing.T) {
+	repo := t.TempDir()
+	run := initGitRepo(t, repo)
+	if err := os.WriteFile(filepath.Join(repo, "a.go"), []byte("package a\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	run("add", ".")
+	run("commit", "-m", "base")
+	base := gitRevParse(t, repo, "HEAD")
+	if err := os.WriteFile(filepath.Join(repo, "a.go"), []byte("package a\nx\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	run("add", ".")
+	run("commit", "-m", "approved")
+	approved := gitRevParse(t, repo, "HEAD")
+	if err := os.WriteFile(filepath.Join(repo, "a.go"), []byte("package a\ny\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	run("add", ".")
+	run("commit", "-m", "head")
+
+	ticket := writeTicket(t, repo, "a.go")
+	cfg := DefaultConfig(repo)
+	cfg.TicketPath = ticket
+	cfg.BaseRef = base
+	cfg.HeadRef = "HEAD"
+	cfg.ApprovedSHA = approved
+	cfg.Reviewers = 1
+	cfg.Standards = []string{"scope"}
+	rep, err := Run(&cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.PinnedApproval == nil {
+		t.Fatal("expected pinned_approval no report")
+	}
+	if rep.PinnedApproval.Match {
+		t.Fatal("expected mismatch")
+	}
+	if rep.Drift == nil || rep.Drift.PinnedApproval == nil || rep.Drift.PinnedApproval.Match {
+		t.Fatalf("drift deve espelhar pinned_approval; drift=%#v", rep.Drift)
+	}
+	if rep.PinnedApproval.ApprovedSHA != approved {
+		t.Fatalf("approved_sha=%q want %q", rep.PinnedApproval.ApprovedSHA, approved)
+	}
+	if rep.PinnedApproval.RangeDiffSummary == "" {
+		t.Fatal("expected range-diff summary")
+	}
+}
+
+func TestCheckPinnedApprovalIdenticalContentDifferentCommit(t *testing.T) {
+	repo := t.TempDir()
+	run := initGitRepo(t, repo)
+	if err := os.WriteFile(filepath.Join(repo, "a.go"), []byte("package a\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	run("add", ".")
+	run("commit", "-m", "base")
+	base := gitRevParse(t, repo, "HEAD")
+	if err := os.WriteFile(filepath.Join(repo, "a.go"), []byte("package a\nfunc X() {}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	run("add", ".")
+	run("commit", "-m", "approved")
+	approved := gitRevParse(t, repo, "HEAD")
+
+	run("checkout", "-b", "copy", base)
+	if err := os.WriteFile(filepath.Join(repo, "a.go"), []byte("package a\nfunc X() {}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	run("add", ".")
+	run("commit", "-m", "copy-same-patch")
+	copySHA := gitRevParse(t, repo, "HEAD")
+
+	pinned, err := CheckPinnedApproval(repo, base, approved, copySHA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pinned == nil || !pinned.Match {
+		t.Fatalf("mesmo patch em commits distintos deve match; got %#v", pinned)
+	}
+}

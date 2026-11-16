@@ -183,8 +183,8 @@ tb bench compare --config-a bench/ab/graph-off.yaml \
 ### Fase 2 (em andamento)
 - [x] `tb bench compare` A/B (configs/feature flags, métricas token/tempo/sucesso)
 - [x] `tb graph` sob demanda (CLI + MCP) com A/B graph-on vs graph-off
-- [x] `tb review` — revisão fresh-context contra ticket/rd.md + invariantes
-- [x] `tb drift` — detecção de drift (escopo / commit base)
+- [x] `tb review` — revisão fresh-context contra ticket/rd.md + invariantes (+ `--approved-sha` / patch-id)
+- [x] `tb drift` — detecção de drift (escopo / commit base / patch pinado)
 - [x] Parser Markdown de Scope (`## Scope` / listas) e globs com `**` no meio
 - [x] Ruler visual: screenshot + browser headless (skip gracioso; `skipped` agregado no relatório)
 - [x] Docs CLI alinhados aos comandos/flags reais (`docs/cli.md` / README)
@@ -250,8 +250,8 @@ Este projeto está na **Fase 2**: CLI funcional com verify/guard/mem/graph/revie
 | `tb verify` | ✅ | Rulers `tests` + `visual` (`tb verify run`; suíte oculta via `--hidden-test-cmd` / `verify.hidden_test_cmd` sem exigir `tests/hidden/`; manifesto; `verify.build_cmd` / `verify.lint_cmd` opcionais; `protected_paths` custom do `guard.yaml` não abortam o loop — exceção de Scope via `--ticket`) |
 | `tb mem` | ✅ | Invariantes (`add`/`list`/`show`/`edit`/`retire`/`search`/`check`/`init`; `--ref` ADR; soft-retire + `--all`) |
 | `tb graph` | ✅ | Grafo sob demanda multi-linguagem + frameworks + docs (ADR-011) |
-| `tb review` | ✅ | Revisão fresh-context contra ticket/rd.md |
-| `tb drift` | ✅ | Drift de escopo / commit base |
+| `tb review` | ✅ | Revisão fresh-context contra ticket/rd.md; `--approved-sha` |
+| `tb drift` | ✅ | Drift de escopo / commit base / patch pinado |
 | `tb workspace` | ✅ | Workspaces isolados via git worktree |
 | `tb router` | 🚧 | Stub (não implementado) |
 | `tb mcp` | ✅ | Servidor MCP stateless (stdio); tools de mem/verify/review/drift/guard + graph |
