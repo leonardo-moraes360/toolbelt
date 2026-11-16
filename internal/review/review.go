@@ -54,14 +54,15 @@ type Shared struct {
 }
 
 type Config struct {
-	RepoDir     string
-	BaseRef     string
-	HeadRef     string
-	ApprovedSHA string
-	TicketPath  string
-	Reviewers   int
-	Standards   []string
-	Shared      *Shared
+	RepoDir      string
+	BaseRef      string
+	HeadRef      string
+	ApprovedSHA  string
+	TicketPath   string
+	Reviewers    int
+	Standards    []string
+	Shared       *Shared
+	BaseExplicit bool
 }
 
 type Report struct {
@@ -81,6 +82,7 @@ type DriftReport struct {
 	BaseMismatch   bool            `json:"base_mismatch"`
 	DeclaredBase   string          `json:"declared_base,omitempty"`
 	ActualBase     string          `json:"actual_base,omitempty"`
+	MergeBase      string          `json:"merge_base,omitempty"`
 	PinnedApproval *PinnedApproval `json:"pinned_approval,omitempty"`
 }
 
@@ -110,7 +112,7 @@ func Run(cfg *Config) (*Report, error) {
 	if err != nil && !os.IsNotExist(err) {
 		return nil, err
 	}
-	if ticket != nil && ticket.BaseCommit != "" && cfg.BaseRef == "HEAD~1" {
+	if !cfg.BaseExplicit && ticket != nil && ticket.BaseCommit != "" && cfg.BaseRef == "HEAD~1" {
 		cfg.BaseRef = ticket.BaseCommit
 	}
 
@@ -135,7 +137,7 @@ func Run(cfg *Config) (*Report, error) {
 	}
 
 	drift := DetectDrift(ticket, changed, cfg.BaseRef)
-	reconcileDriftBase(cfg.RepoDir, drift)
+	enrichDriftBase(cfg.RepoDir, drift, cfg.HeadRef)
 	report.Drift = drift
 
 	pinned, err := CheckPinnedApproval(cfg.RepoDir, cfg.BaseRef, cfg.ApprovedSHA, cfg.HeadRef)
@@ -841,14 +843,15 @@ func isSourceFile(path string) bool {
 }
 
 func DetectDrift(ticket *TicketScope, changed []string, actualBase string) *DriftReport {
-	rep := &DriftReport{ActualBase: actualBase}
+	rep := &DriftReport{
+		ActualBase:   actualBase,
+		OutOfScope:   []string{},
+		ForbiddenHit: []string{},
+	}
 	if ticket == nil {
 		return rep
 	}
 	rep.DeclaredBase = ticket.BaseCommit
-	if ticket.BaseCommit != "" && actualBase != "" && ticket.BaseCommit != actualBase {
-		rep.BaseMismatch = true
-	}
 	for _, f := range changed {
 		if len(ticket.Scope) > 0 && !inScope(f, ticket.Scope) {
 			rep.OutOfScope = append(rep.OutOfScope, f)
@@ -860,17 +863,33 @@ func DetectDrift(ticket *TicketScope, changed []string, actualBase string) *Drif
 	return rep
 }
 
-func reconcileDriftBase(repo string, drift *DriftReport) {
-	if drift == nil || repo == "" || drift.DeclaredBase == "" || drift.ActualBase == "" {
+func enrichDriftBase(repo string, drift *DriftReport, head string) {
+	if drift == nil || repo == "" {
 		return
 	}
-	declared, errD := resolveGitRef(repo, drift.DeclaredBase)
-	actual, errA := resolveGitRef(repo, drift.ActualBase)
-	if errD != nil || errA != nil {
+	if drift.ActualBase != "" {
+		if actual, err := resolveGitRef(repo, drift.ActualBase); err == nil {
+			drift.ActualBase = actual
+		}
+	}
+	if drift.DeclaredBase != "" {
+		if declared, err := resolveGitRef(repo, drift.DeclaredBase); err == nil {
+			drift.DeclaredBase = declared
+		}
+	}
+	if drift.ActualBase != "" && head != "" {
+		if mb, err := gitMergeBase(repo, drift.ActualBase, head); err == nil {
+			drift.MergeBase = mb
+		}
+	}
+	check := drift.DeclaredBase
+	if check == "" {
+		check = drift.ActualBase
+	}
+	if check == "" || head == "" {
 		return
 	}
-	drift.ActualBase = actual
-	drift.BaseMismatch = declared != actual
+	drift.BaseMismatch = !gitIsAncestor(repo, check, head)
 }
 
 func resolveGitRef(repo, ref string) (string, error) {
@@ -881,6 +900,22 @@ func resolveGitRef(repo, ref string) (string, error) {
 		return "", err
 	}
 	return strings.TrimSpace(string(out)), nil
+}
+
+func gitMergeBase(repo, a, b string) (string, error) {
+	cmd := exec.Command("git", "merge-base", a, b) //nolint:gosec // refs do operador/ticket
+	cmd.Dir = repo
+	out, err := cmd.Output()
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
+func gitIsAncestor(repo, ancestor, head string) bool {
+	cmd := exec.Command("git", "merge-base", "--is-ancestor", ancestor, head) //nolint:gosec // refs do operador/ticket
+	cmd.Dir = repo
+	return cmd.Run() == nil
 }
 
 func LoadTicket(path string) (*TicketScope, error) {
@@ -1225,7 +1260,7 @@ func resolveInvariants(cfg *Config) []mem.Invariant {
 }
 
 func listChangedFiles(repo, base, head string) ([]string, error) {
-	cmd := exec.Command("git", "diff", "--name-only", base+".."+head) //nolint:gosec // refs do operador
+	cmd := exec.Command("git", "diff", "--name-only", base+"..."+head) //nolint:gosec // refs do operador; three-dot = merge-base..head
 	cmd.Dir = repo
 	out, err := cmd.Output()
 	if err != nil {
@@ -1242,7 +1277,7 @@ func listChangedFiles(repo, base, head string) ([]string, error) {
 }
 
 func gitDiff(repo, base, head string) (string, error) {
-	cmd := exec.Command("git", "diff", base+".."+head) //nolint:gosec // refs do operador
+	cmd := exec.Command("git", "diff", base+"..."+head) //nolint:gosec // refs do operador; three-dot = merge-base..head
 	cmd.Dir = repo
 	out, err := cmd.Output()
 	if err != nil {

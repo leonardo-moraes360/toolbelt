@@ -46,7 +46,19 @@ func init() {
 func runStack(cmd *cobra.Command, args []string) error {
 	ops, err := stack.ParseOps(args)
 	if err != nil {
-		return err
+		op := ""
+		if len(args) > 0 {
+			op = args[0]
+		}
+		return emitStackResult(&stack.Result{
+			OK: false,
+			Steps: []stack.StepResult{{
+				Op:       op,
+				OK:       false,
+				ExitCode: 1,
+				Error:    err.Error(),
+			}},
+		})
 	}
 	cwd, err := os.Getwd()
 	if err != nil {
@@ -91,6 +103,10 @@ func runStack(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
+	return emitStackResult(res)
+}
+
+func emitStackResult(res *stack.Result) error {
 	data, err := json.MarshalIndent(res, "", "  ")
 	if err != nil {
 		return err

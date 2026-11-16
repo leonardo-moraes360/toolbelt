@@ -49,8 +49,8 @@ func TestDetectDriftOutOfScope(t *testing.T) {
 		Forbidden:  []string{"tests/hidden/**"},
 	}
 	rep := DetectDrift(ticket, []string{"src/auth.go", "README.md", "tests/hidden/x_test.go"}, "other")
-	if !rep.BaseMismatch {
-		t.Fatal("expected base mismatch")
+	if rep.ActualBase != "other" || rep.DeclaredBase != "base" {
+		t.Fatalf("bases actual=%q declared=%q", rep.ActualBase, rep.DeclaredBase)
 	}
 	if len(rep.OutOfScope) != 2 {
 		t.Fatalf("out of scope=%v", rep.OutOfScope)
@@ -542,8 +542,8 @@ func TestDetectDriftHeadCaretResolvesToSHA(t *testing.T) {
 	}
 
 	raw := DetectDrift(ticket, []string{"a.go"}, "HEAD^")
-	if !raw.BaseMismatch {
-		t.Fatal("sem resolve, HEAD^ vs SHA deveria mismatch por string")
+	if raw.ActualBase != "HEAD^" || raw.DeclaredBase != baseSHA {
+		t.Fatalf("DetectDrift sem enrich: actual=%q declared=%q", raw.ActualBase, raw.DeclaredBase)
 	}
 
 	rep, err := Run(&cfg)
@@ -554,15 +554,18 @@ func TestDetectDriftHeadCaretResolvesToSHA(t *testing.T) {
 		t.Fatal("expected drift")
 	}
 	if rep.Drift.BaseMismatch {
-		t.Fatalf("HEAD^ deveria resolver para o mesmo SHA do ticket; actual=%q declared=%q",
+		t.Fatalf("HEAD^ ancestral não deve mismatch; actual=%q declared=%q",
 			rep.Drift.ActualBase, rep.Drift.DeclaredBase)
 	}
 	if rep.Drift.ActualBase != baseSHA {
 		t.Fatalf("actual_base=%q want resolved SHA %q", rep.Drift.ActualBase, baseSHA)
 	}
+	if rep.Drift.MergeBase == "" {
+		t.Fatal("merge_base deve ser preenchido")
+	}
 }
 
-func TestDetectDriftResolvedStillMismatch(t *testing.T) {
+func TestDetectDriftAncestorBaseNoMismatch(t *testing.T) {
 	repo := t.TempDir()
 	run := func(args ...string) {
 		t.Helper()
@@ -607,8 +610,14 @@ func TestDetectDriftResolvedStillMismatch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rep.Drift == nil || !rep.Drift.BaseMismatch {
-		t.Fatal("bases diferentes após resolve ainda devem mismatch")
+	if rep.Drift == nil {
+		t.Fatal("expected drift")
+	}
+	if rep.Drift.BaseMismatch {
+		t.Fatal("HEAD^ é ancestral do head; base_mismatch deve ser false mesmo diferindo do ticket")
+	}
+	if rep.Drift.MergeBase == "" {
+		t.Fatal("merge_base vazio")
 	}
 }
 
@@ -1165,5 +1174,216 @@ func TestCheckPinnedApprovalIdenticalContentDifferentCommit(t *testing.T) {
 	}
 	if pinned == nil || !pinned.Match {
 		t.Fatalf("mesmo patch em commits distintos deve match; got %#v", pinned)
+	}
+}
+
+func TestDriftThreeDotIgnoresSquashOnBase(t *testing.T) {
+	repo := t.TempDir()
+	run := initGitRepo(t, repo)
+	run("checkout", "-b", "main")
+	mustWrite(t, filepath.Join(repo, "root.txt"), "root\n")
+	run("add", ".")
+	run("commit", "-m", "root")
+	mustWrite(t, filepath.Join(repo, "base.txt"), "base\n")
+	run("add", ".")
+	run("commit", "-m", "base")
+	fork := gitRevParse(t, repo, "HEAD")
+
+	run("checkout", "-b", "feature")
+	mustWrite(t, filepath.Join(repo, "pr.txt"), "pr\n")
+	run("add", ".")
+	run("commit", "-m", "pr change")
+
+	run("checkout", "main")
+	for _, n := range []string{"squash1.txt", "squash2.txt", "squash3.txt", "squash4.txt", "squash5.txt", "squash6.txt"} {
+		mustWrite(t, filepath.Join(repo, n), "sq\n")
+	}
+	run("add", ".")
+	run("commit", "-m", "squash other PR")
+	mainTip := gitRevParse(t, repo, "HEAD")
+
+	run("checkout", "feature")
+	rd := "---\ntitle: pr\nbase_commit: " + fork + "\nscope:\n  - pr.txt\n  - rd.md\n---\n"
+	mustWrite(t, filepath.Join(repo, "rd.md"), rd)
+	run("add", ".")
+	run("commit", "-m", "ticket")
+
+	cfg := DefaultConfig(repo)
+	cfg.TicketPath = filepath.Join(repo, "rd.md")
+	cfg.BaseRef = "main"
+	cfg.HeadRef = "HEAD"
+	cfg.Reviewers = 1
+	cfg.Standards = []string{"scope"}
+	rep, err := Run(&cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.Drift == nil {
+		t.Fatal("expected drift")
+	}
+	for _, f := range rep.Drift.OutOfScope {
+		if strings.HasPrefix(f, "squash") {
+			t.Fatalf("three-dot com --base main não deve incluir arquivos do squash: %v", rep.Drift.OutOfScope)
+		}
+	}
+	if rep.Drift.ActualBase != mainTip {
+		t.Fatalf("actual_base=%q want main tip %q", rep.Drift.ActualBase, mainTip)
+	}
+	if rep.Drift.MergeBase == "" {
+		t.Fatal("merge_base deve ser preenchido")
+	}
+}
+
+func TestDriftThreeDotAfterMergeMain(t *testing.T) {
+	repo := t.TempDir()
+	run := initGitRepo(t, repo)
+	run("checkout", "-b", "main")
+	mustWrite(t, filepath.Join(repo, "root.txt"), "root\n")
+	run("add", ".")
+	run("commit", "-m", "root")
+	mustWrite(t, filepath.Join(repo, "base.txt"), "base\n")
+	run("add", ".")
+	run("commit", "-m", "base")
+	fork := gitRevParse(t, repo, "HEAD")
+
+	run("checkout", "-b", "feature")
+	mustWrite(t, filepath.Join(repo, "pr.txt"), "pr\n")
+	run("add", ".")
+	run("commit", "-m", "pr")
+
+	run("checkout", "main")
+	mustWrite(t, filepath.Join(repo, "from_main.txt"), "m\n")
+	run("add", ".")
+	run("commit", "-m", "main advance")
+
+	run("checkout", "feature")
+	run("merge", "main", "-m", "merge main")
+	rd := "---\ntitle: pr\nbase_commit: " + fork + "\nscope:\n  - pr.txt\n  - rd.md\n---\n"
+	mustWrite(t, filepath.Join(repo, "rd.md"), rd)
+	run("add", ".")
+	run("commit", "-m", "ticket")
+
+	cfg := DefaultConfig(repo)
+	cfg.TicketPath = filepath.Join(repo, "rd.md")
+	cfg.BaseRef = "main"
+	cfg.HeadRef = "HEAD"
+	cfg.Reviewers = 1
+	cfg.Standards = []string{"scope"}
+	rep, err := Run(&cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.Drift == nil {
+		t.Fatal("expected drift")
+	}
+	for _, f := range rep.Drift.OutOfScope {
+		if f == "from_main.txt" {
+			t.Fatalf("após merge da main, --base main three-dot não deve marcar from_main.txt: %v", rep.Drift.OutOfScope)
+		}
+	}
+	if rep.Drift.MergeBase == "" {
+		t.Fatal("merge_base vazio")
+	}
+}
+
+func TestDriftBaseMismatchNonAncestor(t *testing.T) {
+	repo := t.TempDir()
+	run := initGitRepo(t, repo)
+	run("checkout", "-b", "main")
+	mustWrite(t, filepath.Join(repo, "a.txt"), "a\n")
+	run("add", ".")
+	run("commit", "-m", "a")
+	mustWrite(t, filepath.Join(repo, "b.txt"), "b\n")
+	run("add", ".")
+	run("commit", "-m", "b")
+
+	run("checkout", "-b", "feature")
+	mustWrite(t, filepath.Join(repo, "pr.txt"), "pr\n")
+	run("add", ".")
+	run("commit", "-m", "pr")
+
+	run("checkout", "main")
+	run("checkout", "-b", "side")
+	mustWrite(t, filepath.Join(repo, "side.txt"), "s\n")
+	run("add", ".")
+	run("commit", "-m", "side")
+	side := gitRevParse(t, repo, "HEAD")
+
+	run("checkout", "feature")
+	rd := "---\ntitle: t\nbase_commit: " + side + "\nscope:\n  - pr.txt\n---\n"
+	mustWrite(t, filepath.Join(repo, "rd.md"), rd)
+
+	cfg := DefaultConfig(repo)
+	cfg.TicketPath = filepath.Join(repo, "rd.md")
+	cfg.BaseRef = side
+	cfg.HeadRef = "HEAD"
+	cfg.Reviewers = 1
+	cfg.Standards = []string{"scope"}
+	rep, err := Run(&cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.Drift == nil || !rep.Drift.BaseMismatch {
+		t.Fatalf("base não ancestral deve setar base_mismatch; drift=%#v", rep.Drift)
+	}
+	if rep.Drift.ActualBase != side {
+		t.Fatalf("actual_base=%q want %q", rep.Drift.ActualBase, side)
+	}
+	if rep.Drift.MergeBase == "" {
+		t.Fatal("merge_base deve existir mesmo sem ancestralidade direta")
+	}
+}
+
+func TestDriftExplicitBaseUsedForDiff(t *testing.T) {
+	repo := t.TempDir()
+	run := initGitRepo(t, repo)
+	mustWrite(t, filepath.Join(repo, "a.txt"), "a\n")
+	run("add", ".")
+	run("commit", "-m", "a")
+	c1 := gitRevParse(t, repo, "HEAD")
+	mustWrite(t, filepath.Join(repo, "b.txt"), "b\n")
+	run("add", ".")
+	run("commit", "-m", "b")
+	c2 := gitRevParse(t, repo, "HEAD")
+	mustWrite(t, filepath.Join(repo, "c.txt"), "c\n")
+	run("add", ".")
+	run("commit", "-m", "c")
+
+	rd := "---\ntitle: t\nbase_commit: " + c1 + "\nscope:\n  - c.txt\n  - rd.md\n---\n"
+	mustWrite(t, filepath.Join(repo, "rd.md"), rd)
+
+	cfg := DefaultConfig(repo)
+	cfg.TicketPath = filepath.Join(repo, "rd.md")
+	cfg.BaseRef = c2
+	cfg.HeadRef = "HEAD"
+	cfg.Reviewers = 1
+	cfg.Standards = []string{"scope"}
+	rep, err := Run(&cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.Drift == nil {
+		t.Fatal("expected drift")
+	}
+	if rep.Drift.ActualBase != c2 {
+		t.Fatalf("actual_base=%q want explicit base %q", rep.Drift.ActualBase, c2)
+	}
+	for _, f := range rep.Drift.OutOfScope {
+		if f == "b.txt" {
+			t.Fatalf("--base explícito (c2) não deve incluir b.txt no diff: oos=%v", rep.Drift.OutOfScope)
+		}
+	}
+	if rep.Drift.BaseMismatch {
+		t.Fatal("base explícita ancestral não deve marcar base_mismatch só porque difere do ticket")
+	}
+	if rep.Drift.MergeBase == "" {
+		t.Fatal("merge_base vazio")
+	}
+}
+
+func mustWrite(t *testing.T, path, content string) {
+	t.Helper()
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
 	}
 }
