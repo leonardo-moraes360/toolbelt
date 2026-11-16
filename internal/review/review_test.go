@@ -82,6 +82,74 @@ func TestLoadTicketMarkdownHeadingScope(t *testing.T) {
 	}
 }
 
+func TestLoadTicketFrontmatterEmptyScopeUsesBody(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "rd.md")
+	content := `---
+title: ValidateStruct
+base_commit: abc123
+forbidden:
+  - tests/hidden/**
+---
+
+## Escopo
+
+- binding/**/*.go
+- binding/
+- rd.md
+`
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ticket, err := LoadTicket(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ticket.Title != "ValidateStruct" {
+		t.Fatalf("title=%q", ticket.Title)
+	}
+	if ticket.BaseCommit != "abc123" {
+		t.Fatalf("base=%q", ticket.BaseCommit)
+	}
+	if len(ticket.Forbidden) != 1 || ticket.Forbidden[0] != "tests/hidden/**" {
+		t.Fatalf("forbidden=%v", ticket.Forbidden)
+	}
+	want := []string{"binding/**/*.go", "binding/", "rd.md"}
+	if len(ticket.Scope) != len(want) {
+		t.Fatalf("scope=%v want %v", ticket.Scope, want)
+	}
+	for i, s := range want {
+		if ticket.Scope[i] != s {
+			t.Fatalf("scope[%d]=%q want %q", i, ticket.Scope[i], s)
+		}
+	}
+}
+
+func TestLoadTicketFrontmatterScopeWinsOverBody(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "rd.md")
+	content := `---
+title: Keep YAML scope
+scope:
+  - src/auth.go
+---
+
+## Scope
+
+- other/path.go
+`
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ticket, err := LoadTicket(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ticket.Scope) != 1 || ticket.Scope[0] != "src/auth.go" {
+		t.Fatalf("scope=%v want [src/auth.go]", ticket.Scope)
+	}
+}
+
 func TestLoadTicketMarkdownEscopoLists(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "rd.md")
