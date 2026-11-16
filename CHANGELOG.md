@@ -43,6 +43,9 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 - Stubs para comandos futuros: `sandbox`, `verify`, `mem`, `graph`, `router`, `mcp`
 
 ### Corrigido
+- `tb drift` resolve refs git (`HEAD^`, tags, SHA curto) via `rev-parse` antes de
+  comparar com `base_commit` (evita falso `base_mismatch`)
+- `tb verify run --json` sai com exit ≠ 0 em `ESCALATE`/`FAIL` (alinhado ao modo texto)
 - `protected_paths` com barra final (`secrets/`) passa a proteger filhos do diretório
 - `tb review`: invariante `tests/hidden` (e `thresholds.yaml`) casa por prefixo/segmento
   de path nos arquivos alterados, não por substring no diff (evita FP quando o ticket

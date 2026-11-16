@@ -122,10 +122,14 @@ func emitVerifyResult(cmd *cobra.Command, verdict verify.Verdict, payload any) e
 		return err
 	}
 	printTestsSummary(payload)
-	if verdict != verify.VerdictPass && verdict != verify.VerdictSkipped {
+	if verifyShouldFail(verdict) {
 		os.Exit(1)
 	}
 	return nil
+}
+
+func verifyShouldFail(verdict verify.Verdict) bool {
+	return verdict != verify.VerdictPass && verdict != verify.VerdictSkipped
 }
 
 func writeVerifyPayload(outPath string, payload any) error {
