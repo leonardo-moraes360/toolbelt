@@ -220,6 +220,47 @@ func (s *Store) Callers(function string, depth int) []Node {
 	return out
 }
 
+var ErrCallsUnsupported = errors.New("unsupported for this language: graph has no call edges")
+
+func isCallUnsupportedExt(ext string) bool {
+	switch strings.ToLower(ext) {
+	case ".c", ".h", ".cc", ".cpp", ".cxx", ".hpp", ".hh", ".hxx":
+		return true
+	default:
+		return false
+	}
+}
+
+func (s *Store) EmptyCallersReason(function string) error {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, id := range s.findFunctionIDs(function) {
+		n, ok := s.nodeByID(id)
+		if !ok || n.Path == "" {
+			continue
+		}
+		if isCallUnsupportedExt(filepath.Ext(n.Path)) {
+			return fmt.Errorf("%w: %s", ErrCallsUnsupported, n.Path)
+		}
+	}
+	return nil
+}
+
+func (s *Store) EmptyImpactReason(file string) error {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, id := range s.findPackageOrFileIDs(file) {
+		n, ok := s.nodeByID(id)
+		if !ok || n.Path == "" {
+			continue
+		}
+		if isCallUnsupportedExt(filepath.Ext(n.Path)) {
+			return fmt.Errorf("%w: %s", ErrCallsUnsupported, n.Path)
+		}
+	}
+	return nil
+}
+
 func (s *Store) Deps(moduleOrFile string, transitive bool) []Node {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

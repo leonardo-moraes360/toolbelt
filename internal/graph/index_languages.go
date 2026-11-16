@@ -76,21 +76,6 @@ var regexLanguageSpecs = []regexLang{
 		skipTests: true,
 	},
 	{
-		name: "rust",
-		exts: extSet(".rs"),
-		funcRes: []*regexp.Regexp{
-			mustRE(`(?m)^\s*(?:pub(?:\([^)]*\))?\s+)?(?:async\s+)?(?:unsafe\s+)?(?:const\s+)?fn\s+([A-Za-z_]\w*)\s*[<(]`),
-		},
-		classRes: []*regexp.Regexp{
-			mustRE(`(?m)^\s*(?:pub(?:\([^)]*\))?\s+)?(?:struct|enum|trait|type)\s+([A-Za-z_]\w*)`),
-			mustRE(`(?m)^\s*(?:pub(?:\([^)]*\))?\s+)?mod\s+([A-Za-z_]\w*)`),
-		},
-		importRes: []*regexp.Regexp{
-			mustRE(`(?m)^\s*use\s+([A-Za-z_][\w:]*(?:::\*)?)`),
-		},
-		skipTests: true,
-	},
-	{
 		name: "php",
 		exts: extSet(".php"),
 		funcRes: []*regexp.Regexp{

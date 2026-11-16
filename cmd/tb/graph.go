@@ -102,7 +102,13 @@ var graphCallersCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		return printNodes(s.Callers(fn, depth))
+		nodes := s.Callers(fn, depth)
+		if len(nodes) == 0 {
+			if reason := s.EmptyCallersReason(fn); reason != nil {
+				return reason
+			}
+		}
+		return printNodes(nodes)
 	},
 }
 
@@ -141,7 +147,13 @@ var graphImpactCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		return printNodes(s.Impact(file, depth))
+		nodes := s.Impact(file, depth)
+		if len(nodes) == 0 {
+			if reason := s.EmptyImpactReason(file); reason != nil {
+				return reason
+			}
+		}
+		return printNodes(nodes)
 	},
 }
 
