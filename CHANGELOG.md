@@ -8,6 +8,7 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 ## [Não Lançado]
 
 ### Adicionado
+- `tb guard check` aceita `--base`/`--head` (como review/drift/verify) além do intervalo posicional `base..head`
 - Indexador Python emite arestas `calls` resolvíveis no repositório (`tb graph callers` / `impact`)
 - `tb init` lê `AGENTS.md`/`CLAUDE.md` na raiz (registra em `.toolbelt/agent_docs.yaml` e extrai dicas de comandos; nunca sobrescreve) e aceita `--write-agents` para semear um `AGENTS.md` mínimo apontando ao tb
 - `tb guard` carrega `protected_paths` de `.toolbelt/guard.yaml` (unidos aos defaults; arquivo ausente mantém só os defaults)
@@ -45,6 +46,7 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 - `tb init`: hints de `AGENTS.md`/`CLAUDE.md` ignoram fences de código longos e
   aceitam prosa curta (“use/run/prefer …”); `verify.test_cmd` valida o binário no
   `PATH` com fallback (ex. `uv` ausente → `pytest` / `python -m pytest`)
+- `protected_paths` com barra final (`secrets/`) passa a proteger filhos do diretório
 - `tb review`: invariante `tests/hidden` (e `thresholds.yaml`) casa por prefixo/segmento
   de path nos arquivos alterados, não por substring no diff (evita FP quando o ticket
   só menciona a regra)

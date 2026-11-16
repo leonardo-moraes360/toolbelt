@@ -106,7 +106,11 @@ func FindHeadlessBrowser() (string, error) {
 
 func RunVisual(ctx context.Context, repo string, cfg VisualConfig) (*VisualReport, error) {
 	cfg = normalizeVisualConfig(repo, cfg)
-	report := &VisualReport{Threshold: cfg.Threshold, Verdict: VerdictFail}
+	report := &VisualReport{
+		Threshold: cfg.Threshold,
+		Verdict:   VerdictFail,
+		Screens:   []ScreenResult{},
+	}
 
 	browser, err := FindHeadlessBrowser()
 	if err != nil {
@@ -133,16 +137,16 @@ func RunVisual(ctx context.Context, repo string, cfg VisualConfig) (*VisualRepor
 		return nil, err
 	}
 	aggregateVisualSkipped(report)
-	if allPass {
-		report.Verdict = VerdictPass
-	} else {
-		report.Verdict = VerdictFail
-	}
+	report.Verdict = visualVerdict(report.Skipped, allPass, cfg.SkipOK)
 	return report, nil
 }
 
 func aggregateVisualSkipped(report *VisualReport) {
 	if len(report.Screens) == 0 {
+		report.Skipped = true
+		if report.SkipReason == "" {
+			report.SkipReason = "nenhuma tela no manifesto"
+		}
 		return
 	}
 	for _, s := range report.Screens {
@@ -154,6 +158,19 @@ func aggregateVisualSkipped(report *VisualReport) {
 	if report.SkipReason == "" {
 		report.SkipReason = "todas as telas foram skipped"
 	}
+}
+
+func visualVerdict(skipped, allPass, skipOK bool) Verdict {
+	if skipped {
+		if skipOK {
+			return VerdictSkipped
+		}
+		return VerdictFail
+	}
+	if allPass {
+		return VerdictPass
+	}
+	return VerdictFail
 }
 
 func normalizeVisualConfig(repo string, cfg VisualConfig) VisualConfig {
@@ -172,8 +189,12 @@ func normalizeVisualConfig(repo string, cfg VisualConfig) VisualConfig {
 func skipVisual(report *VisualReport, reason string, skipOK bool) *VisualReport {
 	report.Skipped = true
 	report.SkipReason = reason
-	report.Verdict = VerdictPass
-	if !skipOK {
+	if report.Screens == nil {
+		report.Screens = []ScreenResult{}
+	}
+	if skipOK {
+		report.Verdict = VerdictSkipped
+	} else {
 		report.Verdict = VerdictFail
 	}
 	return report
