@@ -89,7 +89,8 @@ Exemplo:
   tb bench run --agent "cursor-agent {prompt} --workdir {workdir}"
   tb bench run --fake --label graph-off --flag graph=off
   tb bench run --fake --ab-config bench/ab/graph-off.yaml
-  tb bench run -r 1   # usa bench.default_agent do config.yaml`,
+  tb bench run -r 1   # usa bench.default_agent / tasks_dir do config.yaml
+  tb -c alt.yaml bench run -r 1   # -c alimenta config.Load()`,
 	RunE: runBenchmark,
 }
 
@@ -97,10 +98,8 @@ var benchListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "Lista tarefas disponíveis",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		tasksDir, _ := cmd.Flags().GetString("tasks-dir")
-		if tasksDir == "" {
-			tasksDir = "bench/tasks"
-		}
+		cfg, _ := config.Load()
+		tasksDir := resolveBenchPath(cmd, "tasks-dir", benchTasksDir(cfg), "bench/tasks")
 
 		tasks, err := bench.LoadTasksFromDir(tasksDir)
 		if err != nil {
@@ -256,11 +255,12 @@ func runABConfigs(cmd *cobra.Command, configA, configB string) (sideA, sideB []b
 	if err != nil {
 		return nil, nil, err
 	}
-	tasksDir, _ := cmd.Flags().GetString("tasks-dir")
-	fixturesDir, _ := cmd.Flags().GetString("fixtures-dir")
+	cfg, _ := config.Load()
+	tasksDir := resolveBenchPath(cmd, "tasks-dir", benchTasksDir(cfg), "bench/tasks")
+	fixturesDir := resolveBenchPath(cmd, "fixtures-dir", benchFixturesDir(cfg), "bench/fixtures")
 	repetitions, _ := cmd.Flags().GetInt("repetitions")
 	taskIDs, _ := cmd.Flags().GetStringSlice("task")
-	outputDir, _ := cmd.Flags().GetString("output-dir")
+	outputDir := resolveBenchPath(cmd, "output-dir", benchOutputDir(cfg), "bench/results")
 
 	variantA, err := bench.LoadABVariant(configA)
 	if err != nil {
@@ -368,7 +368,7 @@ func runBenchmark(cmd *cobra.Command, args []string) error {
 	bench.ApplyVariant(&agent, variant)
 	outputPath := opts.outputPath
 	if outputPath == "" {
-		outputPath = defaultOutputPath(variant)
+		outputPath = defaultOutputPath(variant, opts.outputDir)
 	}
 	if err := os.MkdirAll(filepath.Dir(outputPath), 0o755); err != nil {
 		return fmt.Errorf("creating output directory: %w", err)
@@ -423,6 +423,7 @@ type benchRunOpts struct {
 	useFake     bool
 	tasksDir    string
 	fixturesDir string
+	outputDir   string
 	outputPath  string
 	repetitions int
 	taskIDs     []string
@@ -436,21 +437,68 @@ func parseBenchRunFlags(cmd *cobra.Command) (*benchRunOpts, error) {
 	opts := &benchRunOpts{}
 	opts.agentCmd, _ = cmd.Flags().GetString("agent")
 	opts.useFake, _ = cmd.Flags().GetBool("fake")
-	opts.tasksDir, _ = cmd.Flags().GetString("tasks-dir")
-	opts.fixturesDir, _ = cmd.Flags().GetString("fixtures-dir")
-	opts.outputPath, _ = cmd.Flags().GetString("output")
 	opts.repetitions, _ = cmd.Flags().GetInt("repetitions")
 	opts.taskIDs, _ = cmd.Flags().GetStringSlice("task")
 	opts.fakeConfig, _ = cmd.Flags().GetString("fake-config")
 	opts.label, _ = cmd.Flags().GetString("label")
 	opts.flags, _ = cmd.Flags().GetStringToString("flag")
 	opts.abConfig, _ = cmd.Flags().GetString("ab-config")
+
+	cfg, _ := config.Load()
+	opts.tasksDir = resolveBenchPath(cmd, "tasks-dir", benchTasksDir(cfg), "bench/tasks")
+	opts.fixturesDir = resolveBenchPath(cmd, "fixtures-dir", benchFixturesDir(cfg), "bench/fixtures")
+	opts.outputDir = benchOutputDir(cfg)
+	if opts.outputDir == "" {
+		opts.outputDir = "bench/results"
+	}
+	if cmd.Flags().Changed("output") {
+		opts.outputPath, _ = cmd.Flags().GetString("output")
+	}
+
 	var err error
 	opts.agentCmd, err = resolveAgentCommand(opts.agentCmd, opts.useFake)
 	if err != nil {
 		return nil, err
 	}
 	return opts, nil
+}
+
+func benchTasksDir(cfg *config.Config) string {
+	if cfg == nil {
+		return ""
+	}
+	return strings.TrimSpace(cfg.Bench.TasksDir)
+}
+
+func benchFixturesDir(cfg *config.Config) string {
+	if cfg == nil {
+		return ""
+	}
+	return strings.TrimSpace(cfg.Bench.FixturesDir)
+}
+
+func benchOutputDir(cfg *config.Config) string {
+	if cfg == nil {
+		return ""
+	}
+	return strings.TrimSpace(cfg.Bench.OutputDir)
+}
+
+func resolveBenchPath(cmd *cobra.Command, flagName, configVal, fallback string) string {
+	if cmd.Flags().Changed(flagName) {
+		v, _ := cmd.Flags().GetString(flagName)
+		if strings.TrimSpace(v) != "" {
+			return v
+		}
+		return fallback
+	}
+	if configVal != "" {
+		return configVal
+	}
+	if v, _ := cmd.Flags().GetString(flagName); strings.TrimSpace(v) != "" {
+		return v
+	}
+	return fallback
 }
 
 func resolveAgentCommand(flagAgent string, useFake bool) (string, error) {
@@ -478,12 +526,15 @@ func resolveVariant(abConfig, label string, flags map[string]string) (*bench.ABV
 	return nil, nil
 }
 
-func defaultOutputPath(variant *bench.ABVariant) string {
+func defaultOutputPath(variant *bench.ABVariant, outputDir string) string {
+	if strings.TrimSpace(outputDir) == "" {
+		outputDir = "bench/results"
+	}
 	suffix := time.Now().Format("2006-01-02-150405")
 	if variant != nil && variant.Label != "" {
 		suffix = sanitizeLabel(variant.Label) + "-" + suffix
 	}
-	return fmt.Sprintf("bench/results/%s.jsonl", suffix)
+	return filepath.Join(outputDir, suffix+".jsonl")
 }
 
 func withSignalCancel() (context.Context, context.CancelFunc) {

@@ -204,6 +204,46 @@ func SkipMe() {}
 	}
 }
 
+func TestBuildFromRootResolvesSymlinkRoot(t *testing.T) {
+	realRoot := t.TempDir()
+	mustWrite(t, filepath.Join(realRoot, "pkg", "hello.go"), `package pkg
+func Hello() string { return "hi" }
+`)
+
+	linkParent := t.TempDir()
+	linkRoot := filepath.Join(linkParent, "target")
+	if err := os.Symlink(realRoot, linkRoot); err != nil {
+		t.Fatal(err)
+	}
+
+	idx, err := BuildFromRoot(linkRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(idx.Nodes) == 0 {
+		t.Fatal("expected nodes when index root is a symlink to a real directory")
+	}
+
+	foundHello := false
+	for _, n := range idx.Nodes {
+		if n.Type == NodeFunction && n.Title == "Hello" {
+			foundHello = true
+			break
+		}
+	}
+	if !foundHello {
+		t.Fatal("expected Hello from symlink root")
+	}
+
+	resolved, err := filepath.EvalSymlinks(linkRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if idx.Root != resolved {
+		t.Fatalf("Index.Root = %q, want resolved %q", idx.Root, resolved)
+	}
+}
+
 func TestIndexerRegistryExtensible(t *testing.T) {
 	names := map[string]bool{}
 	for _, idx := range Indexers() {

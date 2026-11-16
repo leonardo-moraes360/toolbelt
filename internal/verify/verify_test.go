@@ -388,6 +388,175 @@ func TestHiddenTestCmdDefaultFailsNonGoSuite(t *testing.T) {
 	}
 }
 
+func TestCustomProtectedPathDoesNotAbortVerify(t *testing.T) {
+	dir := t.TempDir()
+	_ = os.MkdirAll(filepath.Join(dir, "format"), 0o755)
+	_ = os.WriteFile(filepath.Join(dir, "format", "format.go"), []byte("package format\n"), 0o644)
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "a@b.c")
+	runGit(t, dir, "config", "user.name", "t")
+	runGit(t, dir, "add", "-A")
+	runGit(t, dir, "commit", "-m", "base")
+	base := gitRev(t, dir)
+
+	_ = os.MkdirAll(filepath.Join(dir, ".toolbelt"), 0o755)
+	_ = os.WriteFile(filepath.Join(dir, ".toolbelt", "guard.yaml"), []byte("protected_paths:\n  - format/format.go\n"), 0o644)
+	_ = os.WriteFile(filepath.Join(dir, "format", "format.go"), []byte("package format\nfunc X(){}\n"), 0o644)
+	runGit(t, dir, "add", "-A")
+	runGit(t, dir, "commit", "-m", "edit mandate path")
+	head := gitRev(t, dir)
+
+	cfg := DefaultConfig(dir)
+	cfg.BaseRef = base
+	cfg.HeadRef = head
+	cfg.Timeout = 30 * time.Second
+	cfg.MaxIterations = 1
+	cfg.VisibleTest = "true"
+	cfg.BuildCmd = "true"
+
+	res, err := Run(context.Background(), &cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Iterations == 0 {
+		t.Fatal("verify must not abort with 0 iterations on custom protected_paths")
+	}
+	if !res.BuildRan || !res.VisiblePassed {
+		t.Fatalf("build/test must run: build_ran=%v visible=%v", res.BuildRan, res.VisiblePassed)
+	}
+	if res.Verdict != VerdictPass {
+		t.Fatalf("veredicto %s want PASS", res.Verdict)
+	}
+	if res.Guard == nil || len(res.Guard.Violations) == 0 {
+		t.Fatal("guard finding must still be reported")
+	}
+	found := false
+	for _, v := range res.Guard.Violations {
+		if v.Type == "protected_path" && v.File == "format/format.go" {
+			found = true
+			if v.Severity != "warning" {
+				t.Fatalf("custom mandate path should be warning in verify, got %s", v.Severity)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("expected protected_path finding: %#v", res.Guard.Violations)
+	}
+}
+
+func TestDefaultProtectedPathStillAbortsVerify(t *testing.T) {
+	dir := t.TempDir()
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "a@b.c")
+	runGit(t, dir, "config", "user.name", "t")
+	runGit(t, dir, "commit", "--allow-empty", "-m", "base")
+	base := gitRev(t, dir)
+
+	_ = os.MkdirAll(filepath.Join(dir, ".toolbelt"), 0o755)
+	_ = os.WriteFile(filepath.Join(dir, ".toolbelt", "thresholds.yaml"), []byte("min: 1\n"), 0o644)
+	runGit(t, dir, "add", "-A")
+	runGit(t, dir, "commit", "-m", "touch thresholds")
+	head := gitRev(t, dir)
+
+	cfg := DefaultConfig(dir)
+	cfg.BaseRef = base
+	cfg.HeadRef = head
+	cfg.Timeout = 30 * time.Second
+	cfg.MaxIterations = 1
+	cfg.VisibleTest = "true"
+	cfg.BuildCmd = "true"
+
+	res, err := Run(context.Background(), &cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Iterations != 0 {
+		t.Fatalf("anti-cheat default must abort before iterations, got %d", res.Iterations)
+	}
+	if res.BuildRan {
+		t.Fatal("build must not run when default protected_path aborts")
+	}
+	if res.Verdict != VerdictFail {
+		t.Fatalf("veredicto %s", res.Verdict)
+	}
+}
+
+func TestScopedCustomProtectedPathContinuesVerify(t *testing.T) {
+	dir := t.TempDir()
+	_ = os.MkdirAll(filepath.Join(dir, "src"), 0o755)
+	_ = os.WriteFile(filepath.Join(dir, "src", "main.go"), []byte("package main\n"), 0o644)
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "a@b.c")
+	runGit(t, dir, "config", "user.name", "t")
+	runGit(t, dir, "add", "-A")
+	runGit(t, dir, "commit", "-m", "base")
+	base := gitRev(t, dir)
+
+	_ = os.MkdirAll(filepath.Join(dir, ".toolbelt"), 0o755)
+	_ = os.WriteFile(filepath.Join(dir, ".toolbelt", "guard.yaml"), []byte("protected_paths:\n  - src/main.go\n"), 0o644)
+	_ = os.WriteFile(filepath.Join(dir, "rd.md"), []byte("## Scope\n\n- src/main.go\n"), 0o644)
+	_ = os.WriteFile(filepath.Join(dir, "src", "main.go"), []byte("package main\nfunc main(){}\n"), 0o644)
+	runGit(t, dir, "add", "-A")
+	runGit(t, dir, "commit", "-m", "edit in scope")
+	head := gitRev(t, dir)
+
+	cfg := DefaultConfig(dir)
+	cfg.BaseRef = base
+	cfg.HeadRef = head
+	cfg.Timeout = 30 * time.Second
+	cfg.MaxIterations = 1
+	cfg.VisibleTest = "true"
+	cfg.TicketPath = filepath.Join(dir, "rd.md")
+
+	res, err := Run(context.Background(), &cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Iterations == 0 || res.Verdict != VerdictPass {
+		t.Fatalf("in-scope custom must continue: iter=%d verdict=%s", res.Iterations, res.Verdict)
+	}
+}
+
+func TestOutOfScopeCustomProtectedPathAbortsVerify(t *testing.T) {
+	dir := t.TempDir()
+	_ = os.MkdirAll(filepath.Join(dir, "src"), 0o755)
+	_ = os.WriteFile(filepath.Join(dir, "src", "main.go"), []byte("package main\n"), 0o644)
+	_ = os.WriteFile(filepath.Join(dir, "secrets.txt"), []byte("a\n"), 0o644)
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "a@b.c")
+	runGit(t, dir, "config", "user.name", "t")
+	runGit(t, dir, "add", "-A")
+	runGit(t, dir, "commit", "-m", "base")
+	base := gitRev(t, dir)
+
+	_ = os.MkdirAll(filepath.Join(dir, ".toolbelt"), 0o755)
+	_ = os.WriteFile(filepath.Join(dir, ".toolbelt", "guard.yaml"), []byte("protected_paths:\n  - secrets.txt\n"), 0o644)
+	_ = os.WriteFile(filepath.Join(dir, "rd.md"), []byte("## Scope\n\n- src/main.go\n"), 0o644)
+	_ = os.WriteFile(filepath.Join(dir, "secrets.txt"), []byte("b\n"), 0o644)
+	runGit(t, dir, "add", "-A")
+	runGit(t, dir, "commit", "-m", "touch secret")
+	head := gitRev(t, dir)
+
+	cfg := DefaultConfig(dir)
+	cfg.BaseRef = base
+	cfg.HeadRef = head
+	cfg.Timeout = 30 * time.Second
+	cfg.MaxIterations = 1
+	cfg.VisibleTest = "true"
+	cfg.TicketPath = filepath.Join(dir, "rd.md")
+
+	res, err := Run(context.Background(), &cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Iterations != 0 || res.Verdict != VerdictFail {
+		t.Fatalf("out-of-scope custom must abort: iter=%d verdict=%s", res.Iterations, res.Verdict)
+	}
+	if res.BuildRan {
+		t.Fatal("build must not run on out-of-scope custom abort")
+	}
+}
+
 func runGit(t *testing.T, dir string, args ...string) {
 	t.Helper()
 	cmd := exec.Command("git", args...)
@@ -395,4 +564,13 @@ func runGit(t *testing.T, dir string, args ...string) {
 	if err := cmd.Run(); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func gitRev(t *testing.T, dir string) string {
+	t.Helper()
+	out, err := exec.Command("git", "-C", dir, "rev-parse", "HEAD").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(out[:len(out)-1])
 }
