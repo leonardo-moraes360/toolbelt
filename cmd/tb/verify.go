@@ -167,10 +167,14 @@ func printVisualReport(rep *verify.VisualReport) {
 	fmt.Println("═══════════════════════════════════════════════════════════")
 	if rep.Skipped {
 		fmt.Printf("Skip gracioso: %s\n", rep.SkipReason)
-		fmt.Printf("Veredicto: %s\n", rep.Verdict)
-		return
+		if len(rep.Screens) == 0 {
+			fmt.Printf("Veredicto: %s\n", rep.Verdict)
+			return
+		}
 	}
-	fmt.Printf("Browser: %s\n", rep.Browser)
+	if rep.Browser != "" {
+		fmt.Printf("Browser: %s\n", rep.Browser)
+	}
 	fmt.Printf("Threshold: %.0f%%\n", rep.Threshold*100)
 	for _, s := range rep.Screens {
 		status := "FAIL"

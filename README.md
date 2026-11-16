@@ -77,7 +77,7 @@ Veja a documentação completa em [docs/arquitetura.md](docs/arquitetura.md).
 | Documento | Descrição |
 |-----------|-----------|
 | [docs/arquitetura.md](docs/arquitetura.md) | Arquitetura detalhada com diagramas Mermaid |
-| [docs/cli.md](docs/cli.md) | Árvore de comandos planejada para `tb` |
+| [docs/cli.md](docs/cli.md) | Árvore de comandos do `tb` (implementado + planejado) |
 | [docs/benchmark.md](docs/benchmark.md) | KPIs e metodologia de avaliação |
 | [docs/adr/](docs/adr/) | Registros de Decisão Arquitetural (ADRs) |
 | [docs/pesquisa/](docs/pesquisa/) | Fontes primárias, top 10 e achados da pesquisa (2026-11) |
@@ -112,6 +112,10 @@ make build
 ```bash
 # Inicializa configuração local (detecta toolchain → verify.test_cmd)
 tb init
+
+# Se existir AGENTS.md/CLAUDE.md, o init lê e registra dicas de comandos
+# (nunca sobrescreve). Semear um AGENTS.md mínimo apontando ao tb:
+tb init --write-agents
 
 # Mostra versão
 tb version
@@ -163,11 +167,12 @@ tb bench compare --config-a bench/ab/graph-off.yaml \
 - [x] `tb review` — revisão fresh-context contra ticket/rd.md + invariantes
 - [x] `tb drift` — detecção de drift (escopo / commit base)
 - [x] Parser Markdown de Scope (`## Scope` / listas) e globs com `**` no meio
-- [x] Ruler visual: screenshot + browser headless (skip gracioso)
+- [x] Ruler visual: screenshot + browser headless (skip gracioso; `skipped` agregado no relatório)
+- [x] Docs CLI alinhados aos comandos/flags reais (`docs/cli.md` / README)
 - [ ] Hierarquia de agentes / A2A / `tb md` (posterior)
 
 ### Entrada para a próxima fase (estudo de campo)
-- Estudo de campo do `tb` em 20 repositórios públicos (relatórios em [`docs/campo/`](docs/campo/) + síntese de melhorias em [`docs/campo/SINTESE.md`](docs/campo/SINTESE.md)), como input priorizado para os próximos PRs de produto — sem marcar itens acima como concluídos.
+- Estudo de campo do `tb` em 20 repositórios públicos (relatórios em [`docs/campo/`](docs/campo/) + síntese de melhorias em [`docs/campo/SINTESE.md`](docs/campo/SINTESE.md)), como input priorizado para os próximos PRs de produto.
 
 ### Fase 3
 - [ ] Router/Workers para delegação escalável de tarefas
@@ -208,22 +213,25 @@ Veja os ADRs para detalhes:
 
 ## 📊 Status do Projeto
 
-Este projeto está na **Fase 0**: fundação implementada com CLI funcional, configuração, logging e harness de benchmark. A arquitetura completa está documentada em [docs/arquitetura.md](docs/arquitetura.md).
+Este projeto está na **Fase 2**: CLI funcional com verify/guard/mem/graph/review/drift/MCP e harness de benchmark. A arquitetura completa está documentada em [docs/arquitetura.md](docs/arquitetura.md).
 
 ### Comandos Implementados
 
 | Comando | Status | Descrição |
 |---------|--------|-----------|
 | `tb version` | ✅ | Mostra versão, commit e build time |
-| `tb init` | ✅ | Inicializa configuração local (detecta toolchain e preenche `verify.test_cmd`) |
+| `tb init` | ✅ | Inicializa configuração local; detecta toolchain (`verify.test_cmd`), lê `AGENTS.md`/`CLAUDE.md` (dicas) e opcionalmente semeia com `--write-agents` |
 | `tb bench run` | ✅ | Executa benchmark |
 | `tb bench list` | ✅ | Lista tarefas disponíveis |
 | `tb bench report` | ✅ | Gera relatório Markdown |
 | `tb bench compare` | ✅ | Compara dois benchmarks |
 | `tb sandbox` | ✅ | Worktrees + Landlock (Linux) |
 | `tb guard` | ✅ | Check anti-trapaça em diff |
-| `tb verify` | ✅ | Ruler de testes + suíte oculta (`--hidden-test-cmd` / `verify.hidden_test_cmd` rodam sem exigir `tests/hidden/`) + `verify.build_cmd` / `verify.lint_cmd` opcionais |
-| `tb mem` | ✅ | Invariantes fora da compactação |
+| `tb verify` | ✅ | Rulers `tests` + `visual` (`tb verify run`; suíte oculta via `--hidden-test-cmd` / `verify.hidden_test_cmd` sem exigir `tests/hidden/`; manifesto; `verify.build_cmd` / `verify.lint_cmd` opcionais) |
+| `tb mem` | ✅ | Invariantes (`tb mem add <regra> [--category]`) |
 | `tb graph` | ✅ | Grafo sob demanda multi-linguagem + frameworks + docs (ADR-011) |
-| `tb router` | 🚧 | Stub (Fase 5) |
+| `tb review` | ✅ | Revisão fresh-context contra ticket/rd.md |
+| `tb drift` | ✅ | Drift de escopo / commit base |
+| `tb workspace` | ✅ | Workspaces isolados via git worktree |
+| `tb router` | 🚧 | Stub (não implementado) |
 | `tb mcp` | ✅ | Servidor MCP stateless (stdio) |

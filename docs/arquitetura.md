@@ -1279,7 +1279,7 @@ Veja a documentação completa em [docs/pesquisa/](pesquisa/):
 | Módulo | Proposta | ADR/Status |
 |--------|----------|------------|
 | **mem/ctx** | Arquivo de invariantes fixado fora da compactação; compactação híbrida (extração mecânica + resumo LLM) | [ADR-010](adr/010-invariantes-fora-compactacao.md) (proposed) |
-| **mem/ctx** | AGENTS.md como contexto local padrão; memória bitemporal com invalidação de fatos | pendente |
+| **mem/ctx** | AGENTS.md como contexto local padrão; memória bitemporal com invalidação de fatos | parcial: `tb init` lê/`--write-agents` semeia `AGENTS.md`/`CLAUDE.md` (nunca sobrescreve); `tb ctx` ainda pendente |
 | **grafo** | `tb graph` sob demanda com A/B por tipo de tarefa; priorizar skills humanas | [ADR-011](adr/011-grafo-sob-demanda.md) (proposed) |
 | **verify** | Suíte held-out composta que o gerador nunca vê; gap visível/oculto como KPI | pendente |
 | **guard** | Monitor de trajetória (nota de suspeita); padrões de trapaça além de apagar testes | pendente |
