@@ -189,6 +189,7 @@ tb bench compare --config-a bench/ab/graph-off.yaml \
 - [x] Ruler visual: screenshot + browser headless (skip gracioso; `skipped` agregado no relatório)
 - [x] Docs CLI alinhados aos comandos/flags reais (`docs/cli.md` / README)
 - [x] MCP com paridade do loop de campo (`mem` / `verify` / `review` / `drift` / `guard`)
+- [x] `tb stack` — empilha verify/review/drift/guard com diff/índice/memória compartilhados (+ MCP `tb_stack`)
 - [ ] Hierarquia de agentes / A2A / `tb md` (posterior)
 
 ### Entrada para a próxima fase (estudo de campo)
@@ -252,6 +253,7 @@ Este projeto está na **Fase 2**: CLI funcional com verify/guard/mem/graph/revie
 | `tb graph` | ✅ | Grafo sob demanda multi-linguagem + frameworks + docs (ADR-011) |
 | `tb review` | ✅ | Revisão fresh-context contra ticket/rd.md; `--approved-sha` |
 | `tb drift` | ✅ | Drift de escopo / commit base / patch pinado |
+| `tb stack` | ✅ | Empilha verify/review/drift/guard com contexto compartilhado (JSON agregado; MCP `tb_stack`) |
 | `tb workspace` | ✅ | Workspaces isolados via git worktree |
 | `tb router` | 🚧 | Stub (não implementado) |
-| `tb mcp` | ✅ | Servidor MCP stateless (stdio); tools de mem/verify/review/drift/guard + graph (incl. `tb_graph_impact`; schemas tipados) |
+| `tb mcp` | ✅ | Servidor MCP stateless (stdio); tools de mem/verify/review/drift/guard/stack + graph (incl. `tb_graph_impact`; schemas tipados) |

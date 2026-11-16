@@ -12,6 +12,7 @@ import (
 	"github.com/leonardo-moraes360/toolbelt/internal/guard"
 	"github.com/leonardo-moraes360/toolbelt/internal/mem"
 	"github.com/leonardo-moraes360/toolbelt/internal/review"
+	"github.com/leonardo-moraes360/toolbelt/internal/stack"
 	"github.com/leonardo-moraes360/toolbelt/internal/verify"
 )
 
@@ -24,6 +25,7 @@ func RegisterParityTools() {
 	registerVerifyTools()
 	registerReviewTools()
 	registerGuardTools()
+	registerStackTools()
 }
 
 func registerMemTools() {
@@ -225,6 +227,42 @@ func registerGuardTools() {
 			},
 		},
 		Handler: handleGuardCheck,
+	})
+}
+
+func registerStackTools() {
+	Register(&Tool{
+		Name:        "tb_stack",
+		Description: "Empilha verify/review/drift/guard com contexto compartilhado (paridade com tb stack)",
+		InputSchema: &InputSchema{
+			Type: "object",
+			Properties: map[string]Property{
+				"ops": {
+					Type:        "array",
+					Description: "Operações na ordem: verify, review, drift, guard",
+					Items:       &Property{Type: "string"},
+				},
+				"cwd":             {Type: "string", Description: "Diretório do repositório"},
+				"base":            {Type: "string", Description: "Ref base", Default: "HEAD~1"},
+				"head":            {Type: "string", Description: "Ref head", Default: "HEAD"},
+				"fail_fast":       {Type: "boolean", Description: "Para na primeira etapa que falhar", Default: false},
+				"ticket":          {Type: "string", Description: "Caminho do ticket/rd.md", Default: "rd.md"},
+				"approved_sha":    {Type: "string", Description: "SHA aprovado (review/drift)"},
+				"warn_only":       {Type: "boolean", Description: "guard: não marca falha em SeverityError", Default: false},
+				"test_cmd":        {Type: "string", Description: "verify: testes visíveis"},
+				"hidden_test_cmd": {Type: "string", Description: "verify: testes ocultos"},
+				"max_iter":        {Type: "integer", Description: "verify: máximo de iterações", Default: 0},
+				"timeout":         {Type: "string", Description: "verify: timeout", Default: "10m"},
+				"reviewers":       {Type: "integer", Description: "review: máximo de goldfish", Default: 0},
+				"standards": {
+					Type:        "array",
+					Description: "review: papéis scope/quality/acceptance",
+					Items:       &Property{Type: "string"},
+				},
+			},
+			Required: []string{"ops"},
+		},
+		Handler: handleStack,
 	})
 }
 
@@ -599,4 +637,56 @@ func hasGuardStrictError(violations []guard.Violation) bool {
 		}
 	}
 	return false
+}
+
+func handleStack(ctx context.Context, args map[string]any) (any, error) {
+	cwd, err := resolveToolCWD(args)
+	if err != nil {
+		return nil, err
+	}
+	opNames := StringSliceArg(args, "ops", nil)
+	ops, err := stack.ParseOps(opNames)
+	if err != nil {
+		return nil, err
+	}
+	base := StringArg(args, "base")
+	if base == "" {
+		base = "HEAD~1"
+	}
+	head := StringArg(args, "head")
+	if head == "" {
+		head = "HEAD"
+	}
+	timeoutStr := StringArg(args, "timeout")
+	if timeoutStr == "" {
+		timeoutStr = "10m"
+	}
+	timeout, err := time.ParseDuration(timeoutStr)
+	if err != nil {
+		return nil, fmt.Errorf("timeout inválido: %w", err)
+	}
+	ticket := StringArg(args, "ticket")
+	if ticket == "" {
+		ticket = "rd.md"
+	}
+	if !filepath.IsAbs(ticket) {
+		ticket = filepath.Join(cwd, ticket)
+	}
+	opts := &stack.Options{
+		RepoDir:       cwd,
+		Base:          base,
+		Head:          head,
+		Ops:           ops,
+		FailFast:      BoolArg(args, "fail_fast", false),
+		Ticket:        ticket,
+		ApprovedSHA:   StringArg(args, "approved_sha"),
+		WarnOnly:      BoolArg(args, "warn_only", false),
+		TestCmd:       StringArg(args, "test_cmd"),
+		HiddenTestCmd: StringArg(args, "hidden_test_cmd"),
+		MaxIter:       IntArg(args, "max_iter", 0),
+		Timeout:       timeout,
+		Reviewers:     IntArg(args, "reviewers", 0),
+		Standards:     StringSliceArg(args, "standards", nil),
+	}
+	return stack.Run(ctx, opts)
 }

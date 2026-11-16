@@ -88,7 +88,7 @@ func TestDefaultToolsListHasParity(t *testing.T) {
 	raw := out.String()
 	for _, name := range []string{
 		"tb_mem_list", "tb_mem_show", "tb_mem_edit", "tb_mem_retire", "tb_mem_search",
-		"tb_verify_run", "tb_review", "tb_drift", "tb_guard_check",
+		"tb_verify_run", "tb_review", "tb_drift", "tb_guard_check", "tb_stack",
 		"tb_graph_impact",
 	} {
 		if !strings.Contains(raw, name) {

@@ -8,6 +8,9 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 ## [Não Lançado]
 
 ### Adicionado
+- `tb stack <op> [<op>…]` empilha `verify`/`review`/`drift`/`guard` numa execução com
+  contexto compartilhado (diff, índice de arquivos, memória e config); JSON agregado
+  (`ok`/`steps`/`total_duration_ms`); `--fail-fast`; MCP `tb_stack` com schema tipado
 - MCP `tb_graph_impact` (paridade com `tb graph impact`)
 - `tb review` / `tb drift`: flag `--approved-sha` compara `git patch-id --stable`
   de `base..approved` vs `base..head`; em divergência mostra `git range-diff` e

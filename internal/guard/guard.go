@@ -123,9 +123,17 @@ func protectedPattern(item any) string {
 }
 
 func (c *Checker) Check(baseRef, headRef string) (*CheckResult, error) {
-	diff, err := c.gitDiff(baseRef, headRef)
-	if err != nil {
-		return nil, err
+	return c.CheckDiff(baseRef, headRef, "")
+}
+
+func (c *Checker) CheckDiff(baseRef, headRef, nameStatus string) (*CheckResult, error) {
+	diff := nameStatus
+	if diff == "" {
+		var err error
+		diff, err = c.gitDiff(baseRef, headRef)
+		if err != nil {
+			return nil, err
+		}
 	}
 	res := &CheckResult{
 		BaseRef:      baseRef,

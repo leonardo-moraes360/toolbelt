@@ -15,6 +15,7 @@ tb  (implementado hoje)
 ├── mem          Invariantes (add|list|show|edit|retire|search|check|init)
 ├── review       Revisão fresh-context
 ├── sandbox      Isolamento Landlock (check|run)
+├── stack        Empilha verify/review/drift/guard com contexto compartilhado
 ├── verify       Verificação adversarial (run; rulers tests|visual)
 ├── workspace    Workspaces via git worktree (create|list|remove; alias: ws)
 ├── version      Mostra versão
@@ -496,6 +497,48 @@ tb agent approve action-123 --reason "Arquivo obsoleto"
 # Rejeitar ação
 tb agent reject action-124 --reason "Não autorizado para rede externa"
 ```
+
+---
+
+### `tb stack` — Empilhamento de Operações (✓ Fase 2)
+
+Executa `verify`, `review`, `drift` e/ou `guard` numa única invocação, compartilhando
+o trabalho caro (diff unificado, índice de arquivos alterados, memória/invariantes e
+config). A ordem dos argumentos é a ordem de execução. A saída é sempre um JSON
+agregado (`ok`, `steps`, `total_duration_ms`); o exit code do processo é ≠ 0 se
+qualquer etapa falhar (mesma semântica de cada comando avulso).
+
+```bash
+tb stack <op> [<op>...] [flags]
+
+Flags:
+  --base <ref>           Ref base compartilhada (default: HEAD~1)
+  --head <ref>           Ref head compartilhada (default: HEAD)
+  --fail-fast            Para na primeira etapa que falhar
+  --ticket <path>        Ticket/rd.md (review/drift/verify; default: rd.md)
+  --approved-sha <sha>   SHA aprovado (review/drift)
+  --warn-only            guard: exit 0 mesmo com SeverityError
+  --test-cmd <cmd>       verify: testes visíveis
+  --hidden-test-cmd <cmd> verify: testes ocultos
+  --max-iter <n>         verify: máximo de iterações
+  --timeout <duration>   verify: timeout (default: 10m)
+  --reviewers <n>        review: máximo de goldfish
+  --standards <csv>      review: papéis (scope,quality,acceptance)
+```
+
+Operação desconhecida sai com erro claro (sem dump de `Usage`).
+
+**Exemplos:**
+
+```bash
+tb stack verify review drift guard
+tb stack guard drift --fail-fast
+tb stack review drift --base HEAD~1 --head HEAD --ticket rd.md
+tb stack verify guard --test-cmd "true" --max-iter 1
+```
+
+Cada item de `steps` traz `op`, `ok`, `exit_code`, `duration_ms` e `result` (o JSON
+que o comando avulso produziria).
 
 ---
 
@@ -1563,6 +1606,7 @@ Transporte unix/tcp e flags `--socket`/`--port`/`--tls-*` são planejados; hoje 
 | `tb_review` | `tb review` | ticket/base/head/approved_sha/reviewers/standards |
 | `tb_drift` | `tb drift` | retorna `{drift, has_drift, pinned_approval}` |
 | `tb_guard_check` | `tb guard check` | `base`/`head` ou `range=A..B`; `strict_fail` por default em SeverityError; `warn_only=true` opt-out; `strict` deprecated (boolean) |
+| `tb_stack` | `tb stack` | `ops` (array), `base`/`head`, `fail_fast` (boolean); retorna JSON agregado |
 | `tb_graph_search` / `tb_graph_callers` / `tb_graph_deps` / `tb_graph_impact` / `tb_graph_index` | `tb graph …` | chamada requer `TB_GRAPH=on`; `depth`/`limit` integer; `transitive` boolean |
 
 Schemas tipam `depth`/`limit`/`reviewers`/`max_iter` como integer, `strict`/`warn_only`/`transitive`/`skip_unavailable` como boolean, `threshold` como number e `standards` como array de strings; valores string legados ainda são aceitos. Relatórios de verify/review/drift/guard voltam como JSON no `content` (sem código de saída de processo).

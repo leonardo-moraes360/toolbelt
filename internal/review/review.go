@@ -40,6 +40,15 @@ type TicketScope struct {
 	Description string   `yaml:"description" json:"description"`
 }
 
+type Shared struct {
+	Diff          string
+	Changed       []string
+	Invariants    []mem.Invariant
+	HasDiff       bool
+	HasChanged    bool
+	HasInvariants bool
+}
+
 type Config struct {
 	RepoDir     string
 	BaseRef     string
@@ -48,6 +57,7 @@ type Config struct {
 	TicketPath  string
 	Reviewers   int
 	Standards   []string
+	Shared      *Shared
 }
 
 type Report struct {
@@ -100,16 +110,16 @@ func Run(cfg *Config) (*Report, error) {
 		cfg.BaseRef = ticket.BaseCommit
 	}
 
-	changed, err := listChangedFiles(cfg.RepoDir, cfg.BaseRef, cfg.HeadRef)
+	changed, err := resolveChanged(cfg)
 	if err != nil {
 		return nil, err
 	}
-	diff, err := gitDiff(cfg.RepoDir, cfg.BaseRef, cfg.HeadRef)
+	diff, err := resolveDiff(cfg)
 	if err != nil {
 		return nil, err
 	}
 
-	invariants, _ := loadInvariants(cfg.RepoDir)
+	invariants := resolveInvariants(cfg)
 	roster := buildReviewerRoster(cfg.Standards, cfg.Reviewers)
 
 	report := &Report{
@@ -860,6 +870,28 @@ func pathMarkerHit(file, marker string) bool {
 func loadInvariants(repo string) ([]mem.Invariant, error) {
 	dir := mem.LocateRepoToolbeltDir(repo)
 	return mem.NewStore(dir).List("", false)
+}
+
+func resolveChanged(cfg *Config) ([]string, error) {
+	if cfg.Shared != nil && cfg.Shared.HasChanged {
+		return cfg.Shared.Changed, nil
+	}
+	return listChangedFiles(cfg.RepoDir, cfg.BaseRef, cfg.HeadRef)
+}
+
+func resolveDiff(cfg *Config) (string, error) {
+	if cfg.Shared != nil && cfg.Shared.HasDiff {
+		return cfg.Shared.Diff, nil
+	}
+	return gitDiff(cfg.RepoDir, cfg.BaseRef, cfg.HeadRef)
+}
+
+func resolveInvariants(cfg *Config) []mem.Invariant {
+	if cfg.Shared != nil && cfg.Shared.HasInvariants {
+		return cfg.Shared.Invariants
+	}
+	invariants, _ := loadInvariants(cfg.RepoDir)
+	return invariants
 }
 
 func listChangedFiles(repo, base, head string) ([]string, error) {
