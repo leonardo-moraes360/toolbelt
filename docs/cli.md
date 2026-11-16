@@ -680,10 +680,12 @@ Flags:
 ```
 
 `tb init` preenche `verify.test_cmd` a partir da toolchain do repositório
-(`go.mod` → `go test ./...`, `package.json` + scripts.test → `npm`/`pnpm`/`yarn test`,
+(`go.mod` → `go test ./...`, `package.json` + scripts.test → `npm`/`pnpm`/`yarn`/`bun test`
+via lockfile `pnpm-lock.yaml`/`yarn.lock`/`package-lock.json`/`bun.lockb`,
 `pyproject.toml`/`uv.lock` → `pytest`/`uv run pytest`, `Cargo.toml` → `cargo test`,
 `Makefile` com target `test`/`check` → `make test`/`make check`). Sem marcadores
-reconhecidos, permanece o default Go. O binário do comando escolhido é validado no
+reconhecidos, `verify.test_cmd` fica **vazio** e o init emite um aviso — nunca
+mantém `go test ./...` sem `go.mod`. O binário do comando escolhido é validado no
 `PATH`: se `uv` estiver ausente com `uv.lock`, faz fallback para `pytest` ou
 `python -m pytest` / `python3 -m pytest` (e avisa); managers Node ausentes
 caem para `npm test` quando possível.
@@ -699,12 +701,13 @@ Quando há marcadores claros, o init também preenche `verify.build_cmd` e
 | Toolchain | `build_cmd` | `lint_cmd` |
 |-----------|-------------|------------|
 | `go.mod` | `go build ./...` | `.golangci.y*ml`/`.toml` → `golangci-lint run`; senão target `make lint` |
-| `package.json` | script `build` → `npm run build` / `pnpm run build` / `yarn build` | script `lint` → análogo |
+| `package.json` | script `build`, senão `typecheck`/`type-check` → `npm run …` / `pnpm run …` / `yarn …` | script `lint` → análogo |
 | `Cargo.toml` | `cargo build` | `cargo clippy` |
 | Python (`pyproject`/`uv.lock`/…) | (vazio) | `[tool.ruff]`/`ruff.toml` → `ruff check .` (ou `uv run …`); senão mypy |
 | só `Makefile` | target `build` → `make build` | target `lint` → `make lint` |
 
-Ausência de script/config → campo omitido (verify continua só com `test_cmd`).
+Ausência de script/config → campo omitido. Sem `test_cmd` detectado, o verify
+não inventa `go test` (configure à mão ou adicione script/marcador).
 
 A suite oculta permanece escondida do agente (paths em `tests/hidden/` protegidos
 pelo `tb guard`). O comando configurado em `verify.hidden_test_cmd` ou
