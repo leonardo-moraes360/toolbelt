@@ -442,6 +442,10 @@ func splitList(s string) []string {
 	return out
 }
 
+func PathInScope(file string, scope []string) bool {
+	return inScope(file, scope)
+}
+
 func inScope(file string, scope []string) bool {
 	file = filepath.ToSlash(file)
 	for _, s := range scope {

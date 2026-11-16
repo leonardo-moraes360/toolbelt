@@ -720,6 +720,7 @@ Flags:
   --skip-unavailable       Skip gracioso sem browser/refs/telas (default: true; veredicto SKIPPED)
   --base <ref>             Ref base
   --head <ref>             Ref head
+  --ticket <path>          Ticket com Scope (exceção de `protected_paths` custom)
   --output <path> / -o     Arquivo de saída JSON
   --json                   Saída em JSON (flag global)
 ```
@@ -752,6 +753,20 @@ diretório, a suite oculta é ignorada (`hidden_available: false`). Campos
 opcionais `build_cmd` e `lint_cmd` rodam antes dos testes (nessa ordem) e
 fazem o verify falhar se o comando sair com erro; ausentes = comportamento
 anterior (só `test_cmd` + hidden).
+
+**Guard dentro do verify (anti-cheat vs mandate):**
+
+O verify sempre roda `tb guard` no diff e inclui o resultado em `guard`. A decisão
+de **abortar antes de build/test** depende da origem do `protected_path`:
+
+| Origem | Sem `--ticket` | Com `--ticket` e path no Scope | Com `--ticket` e path fora do Scope |
+|--------|----------------|--------------------------------|-------------------------------------|
+| Defaults embutidos (`tests/hidden/*`, `benchmarks/*`, `.toolbelt/thresholds.yaml`) | **aborta** (FAIL, 0 iterações) | **aborta** | **aborta** |
+| `protected_paths` de `.toolbelt/guard.yaml` (custom) | reporta como **warning** e **continua** build/test | reporta warning (exceção de Scope) e **continua** | **aborta** |
+
+`tb guard check --strict` continua tratando violações custom como `SeverityError`
+(CI não muda). Só o loop de `tb verify run` aplica a exceção acima para não
+matar o mandate quando o manifesto lista o próprio arquivo da tarefa.
 
 ```yaml
 # .toolbelt/config.yaml
@@ -915,7 +930,7 @@ tb guard check origin/main..HEAD --strict --json
 
 **Manifesto de paths protegidos (`.toolbelt/guard.yaml`):**
 
-O guard carrega `protected_paths` de `.toolbelt/guard.yaml` (quando presente) e **une** aos defaults embutidos (`tests/hidden/*`, `benchmarks/*`, `.toolbelt/thresholds.yaml`). Cada entrada pode ser uma string (`lib/help.js`) ou um objeto com `pattern`. Entrada com barra final (`secrets/`) protege o diretório e todos os filhos (prefixo). `secrets/*` continua válido para um nível via glob. Sem o arquivo, só os defaults valem.
+O guard carrega `protected_paths` de `.toolbelt/guard.yaml` (quando presente) e **une** aos defaults embutidos (`tests/hidden/*`, `benchmarks/*`, `.toolbelt/thresholds.yaml`). Cada entrada pode ser uma string (`lib/help.js`) ou um objeto com `pattern`. Entrada com barra final (`secrets/`) protege o diretório e todos os filhos (prefixo). `secrets/*` continua válido para um nível via glob. Sem o arquivo, só os defaults valem. Violações ganham `source: default` (anti-cheat embutido) ou `source: custom` (YAML). Em `tb verify run`, só `default` (e custom fora do Scope do `--ticket`) abortam o loop; custom no mandate é reportado e o verify segue — ver seção verify acima.
 
 ```yaml
 # .toolbelt/guard.yaml
