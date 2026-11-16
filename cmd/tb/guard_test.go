@@ -47,6 +47,48 @@ func TestGuardStrictJSONExitCode(t *testing.T) {
 	}
 }
 
+func TestGuardCheckBaseHeadFlags(t *testing.T) {
+	if testing.Short() {
+		t.Skip()
+	}
+	tbBin := buildTB(t)
+	dir, base, head := setupProtectedDiff(t)
+
+	out, err := runGuardFlags(tbBin, dir, "--base", base, "--head", head, "--json")
+	if err != nil {
+		t.Fatalf("--base/--head deveria funcionar: %v\n%s", err, out)
+	}
+	assertGuardJSON(t, out, true)
+
+	out, err = runGuardFlags(tbBin, dir, "--base", base, "--head", head, "--strict", "--json")
+	if err == nil {
+		t.Fatalf("--base/--head --strict --json deveria sair ≠ 0\n%s", out)
+	}
+	assertGuardJSON(t, out, true)
+}
+
+func TestResolveGuardRange(t *testing.T) {
+	cmd := guardCheckCmd
+	_ = cmd.Flags().Set("base", "HEAD~1")
+	_ = cmd.Flags().Set("head", "HEAD")
+
+	base, head, err := resolveGuardRange(cmd, []string{"abc..def"})
+	if err != nil || base != "abc" || head != "def" {
+		t.Fatalf("range A..B: got %q %q err=%v", base, head, err)
+	}
+
+	_ = cmd.Flags().Set("base", "b1")
+	_ = cmd.Flags().Set("head", "h1")
+	base, head, err = resolveGuardRange(cmd, nil)
+	if err != nil || base != "b1" || head != "h1" {
+		t.Fatalf("flags: got %q %q err=%v", base, head, err)
+	}
+
+	if _, _, err := resolveGuardRange(cmd, []string{"sem-range"}); err == nil {
+		t.Fatal("range inválido deveria falhar")
+	}
+}
+
 func buildTB(t *testing.T) string {
 	t.Helper()
 	root := findModuleRoot(t)
@@ -114,6 +156,13 @@ func runGuard(t *testing.T, tbBin, dir, rangeArg string, flags ...string) []byte
 
 func runGuardErr(tbBin, dir, rangeArg string, flags ...string) ([]byte, error) {
 	args := append([]string{"guard", "check", rangeArg}, flags...)
+	cmd := exec.Command(tbBin, args...)
+	cmd.Dir = dir
+	return cmd.CombinedOutput()
+}
+
+func runGuardFlags(tbBin, dir string, flags ...string) ([]byte, error) {
+	args := append([]string{"guard", "check"}, flags...)
 	cmd := exec.Command(tbBin, args...)
 	cmd.Dir = dir
 	return cmd.CombinedOutput()
