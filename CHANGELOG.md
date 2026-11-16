@@ -9,6 +9,7 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ### Adicionado
 - `tb init --write-agents` semeia `AGENTS.md` citando a toolchain detectada (`verify.test_cmd` e, se presentes, `build_cmd`/`lint_cmd`)
+- `tb init` preenche `verify.build_cmd` e `verify.lint_cmd` a partir da toolchain (scripts `build`/`lint`, golangci, ruff/mypy, `cargo build`/`clippy`, targets make)
 - `tb guard check` aceita `--base`/`--head` (como review/drift/verify) além do intervalo posicional `base..head`
 - Indexador Python emite arestas `calls` resolvíveis no repositório (`tb graph callers` / `impact`)
 - `tb init` lê `AGENTS.md`/`CLAUDE.md` na raiz (registra em `.toolbelt/agent_docs.yaml` e extrai dicas de comandos; nunca sobrescreve) e aceita `--write-agents` para semear um `AGENTS.md` mínimo apontando ao tb
@@ -45,6 +46,8 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ### Corrigido
 - docs/cli.md alinhado à CLI real: `graph index [path]` (sem `--path`), sem `graph query`, `review`/`drift` só `--output` (sem `-o`), flags de graph/mem verificadas contra `--help`
+- `tb bench`: honra `bench.tasks_dir` / `fixtures_dir` / `output_dir` do config.yaml
+  (precedência: flag CLI > YAML > default); a flag global `-c/--config` alimenta `config.Load()`
 - `protected_paths` com barra final (`secrets/`) passa a proteger filhos do diretório
 - `tb review`: invariante `tests/hidden` (e `thresholds.yaml`) casa por prefixo/segmento
   de path nos arquivos alterados, não por substring no diff (evita FP quando o ticket

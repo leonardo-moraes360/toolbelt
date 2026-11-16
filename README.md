@@ -110,7 +110,7 @@ make build
 ## 📖 Uso Rápido
 
 ```bash
-# Inicializa configuração local (detecta toolchain → verify.test_cmd)
+# Inicializa configuração local (detecta toolchain → test/build/lint_cmd)
 tb init
 
 # Se existir AGENTS.md/CLAUDE.md, o init lê e registra dicas de comandos
@@ -130,6 +130,7 @@ tb bench run --fake
 tb bench run --agent "cursor-agent {prompt} --workdir {workdir}" -r 3
 
 # Sem --agent: usa bench.default_agent de .toolbelt/config.yaml
+# Sem -t/-f: usa bench.tasks_dir / fixtures_dir (flag CLI > YAML > default)
 tb bench run -r 1
 
 # Gera relatório de resultados existentes
@@ -220,14 +221,14 @@ Este projeto está na **Fase 2**: CLI funcional com verify/guard/mem/graph/revie
 | Comando | Status | Descrição |
 |---------|--------|-----------|
 | `tb version` | ✅ | Mostra versão, commit e build time |
-| `tb init` | ✅ | Inicializa configuração local; detecta toolchain (`verify.test_cmd`), lê `AGENTS.md`/`CLAUDE.md` (dicas) e opcionalmente semeia com `--write-agents` (seed cita test/build/lint detectados) |
+| `tb init` | ✅ | Inicializa configuração local; detecta toolchain (`verify.test_cmd` / `build_cmd` / `lint_cmd`), lê `AGENTS.md`/`CLAUDE.md` (dicas) e opcionalmente semeia com `--write-agents` (seed cita test/build/lint detectados) |
 | `tb bench run` | ✅ | Executa benchmark |
 | `tb bench list` | ✅ | Lista tarefas disponíveis |
 | `tb bench report` | ✅ | Gera relatório Markdown |
 | `tb bench compare` | ✅ | Compara dois benchmarks |
 | `tb sandbox` | ✅ | Worktrees + Landlock (Linux) |
 | `tb guard` | ✅ | Check anti-trapaça em diff |
-| `tb verify` | ✅ | Rulers `tests` + `visual` (`tb verify run`; suíte oculta via `--hidden-test-cmd` / `verify.hidden_test_cmd` sem exigir `tests/hidden/`; manifesto; `verify.build_cmd` / `verify.lint_cmd` opcionais) |
+| `tb verify` | ✅ | Rulers `tests` + `visual` (`tb verify run`; suíte oculta via `--hidden-test-cmd` / `verify.hidden_test_cmd` sem exigir `tests/hidden/`; manifesto; `verify.build_cmd` / `verify.lint_cmd` opcionais; `protected_paths` custom do `guard.yaml` não abortam o loop — exceção de Scope via `--ticket`) |
 | `tb mem` | ✅ | Invariantes (`tb mem add <regra> [--category]`) |
 | `tb graph` | ✅ | Grafo sob demanda multi-linguagem + frameworks + docs (ADR-011) |
 | `tb review` | ✅ | Revisão fresh-context contra ticket/rd.md |
