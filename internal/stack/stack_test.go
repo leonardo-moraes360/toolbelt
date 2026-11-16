@@ -343,11 +343,11 @@ func TestStackVerifyRunsOnHeadWorktree(t *testing.T) {
 func TestStackDurationMsIsFractionalFloat(t *testing.T) {
 	dir := gitRepo(t)
 	writeFile(t, filepath.Join(dir, "a.go"), "package a\n")
-	git(t, dir, "add", "-A")
-	git(t, dir, "commit", "-m", "base")
+	runGit(t, dir, "add", "-A")
+	runGit(t, dir, "commit", "-m", "base")
 	writeFile(t, filepath.Join(dir, "a.go"), "package a\nfunc X() {}\n")
-	git(t, dir, "add", "-A")
-	git(t, dir, "commit", "-m", "head")
+	runGit(t, dir, "add", "-A")
+	runGit(t, dir, "commit", "-m", "head")
 
 	res, err := Run(context.Background(), &Options{
 		RepoDir: dir,
