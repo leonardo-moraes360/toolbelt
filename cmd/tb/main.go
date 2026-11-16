@@ -30,9 +30,10 @@ func main() {
 var rootCmd = &cobra.Command{
 	Use:   "tb",
 	Short: "Toolbelt - Kit de ferramentas para agentes de código IA",
+	//nolint:misspell // pt-BR: persistente
 	Long: `Toolbelt (tb) é um kit de ferramentas para melhorar agentes de código IA.
 
-Inclui sandbox seguro, verificação adversarial, memória persistent,
+Inclui sandbox seguro, verificação adversarial, memória persistente,
 grafo de dependências, roteamento multi-agente e benchmark.
 
 Exemplo:

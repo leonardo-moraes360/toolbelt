@@ -33,6 +33,9 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 - `tb review`: goldfish distintos por papel (`scope`, `quality`, `acceptance`) em vez do mesmo checker clonado N vezes; `--reviewers` só limita papéis; qualidade cobre TODO/FIXME, funções grandes e código sem testes; aceite exige evidência em testes/arquivos de código
 
 ### Corrigido
+- Descrição longa do CLI: completa o adjetivo em pt-BR (`persistent` → `persistente`)
+- `docs/cli.md` alinhado à CLI real: remove `graph callers --file`; `router` documentado como stub; seções planejadas (`proc`/`agent`/`watchdog`/`merge`) marcadas; `init`/`sandbox`/`workspace`, mem show/edit/retire/search, guard `--warn-only`, review standards e códigos de saída conferidos contra `--help`/MCP
+- Teste `TestDocsCLIExamplesMatchCobra` extrai `tb …` de `docs/cli.md` e valida subcomandos/flags na árvore Cobra
 - `tb verify run` falha imediatamente (sem retries) quando o comando configurado não existe (exit 127), não é executável (exit 126) ou `exec` retorna `ErrNotFound`, com mensagem `comando não encontrado: … — ajuste verify.test_cmd` (e equivalentes para build/lint/hidden)
 - `tb init` em repos Node/TS sem `go.mod` não mantém mais `verify.test_cmd: go test ./...`:
   detecta o package manager (`pnpm-lock.yaml`/`yarn.lock`/`package-lock.json`/`bun.lockb`),

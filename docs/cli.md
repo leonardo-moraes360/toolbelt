@@ -12,11 +12,11 @@ tb  (implementado hoje)
 ├── graph        Grafo sob demanda (TB_GRAPH=on ou --enable)
 ├── guard        Proteções anti-trapaça (check)
 ├── mcp          Servidor MCP sobre stdio
-├── mem          Invariantes fora da compactação (add|list|check|init)
+├── mem          Invariantes (add|list|show|edit|retire|search|check|init)
 ├── review       Revisão fresh-context
-├── sandbox      Worktrees + Landlock (check|run)
+├── sandbox      Isolamento Landlock (check|run)
 ├── verify       Verificação adversarial (run; rulers tests|visual)
-├── workspace    Workspaces via git worktree
+├── workspace    Workspaces via git worktree (create|list|remove; alias: ws)
 ├── version      Mostra versão
 └── router       Stub (não implementado)
 
@@ -71,7 +71,9 @@ tb run --cgroup-cpu 50 --cgroup-mem 512M "heavy-process"
 
 ---
 
-### `tb proc` — Gerenciamento de Processos
+### `tb proc` — Gerenciamento de Processos (planejado — Fase 3+)
+
+> **Não implementado.** A CLI atual não expõe `tb proc`.
 
 Gerencia processos de longa duração (servidores, watchers).
 
@@ -224,9 +226,10 @@ tb graph callers [flags]
 
 Flags:
   --function <name>   Nome da função (aceita sufixo qualificado, ex. scrubber.redact_secrets)
-  --file <path>       Arquivo da função
   --depth <n>         Profundidade do grafo (default: 1)
 ```
+
+Não há `--file` em `callers` (use `--function`). Para impacto por arquivo, use `tb graph impact --file`.
 
 Em Python/JS/TS, `--function` resolve por título ou sufixo do id qualificado
 (`func:pkg.mod.nome`; componentes/hooks React também). Arestas `calls` com
@@ -284,8 +287,9 @@ tb graph impact --file "src/config/parser.go"
 # Re-indexar código após mudanças (path posicional)
 tb graph index src/
 
-# Reconstruir grafo completo
+# Reconstruir grafo completo (path posicional opcional, como index)
 tb graph rebuild
+tb graph rebuild src/
 
 # Estatísticas
 tb graph stats
@@ -344,6 +348,16 @@ tb mem check [--expect-sha <sha>] [--all]
 tb mem show <id>
 tb mem edit <id> [--category <cat>] [--rule <texto>] [--ref <path>]
 tb mem retire <id>
+```
+
+**`tb mem check` (implementado):**
+
+```bash
+tb mem check [flags]
+
+Flags:
+  --expect-sha <sha>  Hash esperado pós-compactação
+  --all               Inclui invariantes aposentadas
 ```
 
 **Exemplos:**
@@ -418,7 +432,9 @@ tb md --read-only
 
 ---
 
-### `tb agent` — Gerenciamento de Agentes
+### `tb agent` — Gerenciamento de Agentes (planejado — Fase 3+)
+
+> **Não implementado.** A CLI atual não expõe `tb agent`.
 
 Gerencia agentes na hierarquia.
 
@@ -488,12 +504,14 @@ tb agent reject action-124 --reason "Não autorizado para rede externa"
 Analisa o diff entre commits em busca de paths protegidos e padrões anti-trapaça.
 
 ```bash
-tb guard check <base>..<head> [flags]
+tb guard check [base..head] [flags]
 
 Flags:
-  --warn-only   Exit 0 mesmo com SeverityError (opt-out do default CI-safe)
-  --strict      Deprecated: falha em SeverityError já é o default
-  --json        Saída em JSON (flag global)
+  --base <ref>   Ref base (default: HEAD~1)
+  --head <ref>   Ref head (default: HEAD)
+  --warn-only    Exit 0 mesmo com SeverityError (opt-out do default CI-safe)
+  --strict       Deprecated: falha em SeverityError já é o default
+  --json         Saída em JSON (flag global)
 ```
 
 Por default, exit ≠ 0 quando há `SeverityError`. No modo texto limpo imprime
@@ -503,6 +521,7 @@ Por default, exit ≠ 0 quando há `SeverityError`. No modo texto limpo imprime
 
 ```bash
 tb guard check HEAD~1..HEAD
+tb guard check --base HEAD~1 --head HEAD
 tb guard check --warn-only HEAD~1..HEAD
 tb guard check --json HEAD~1..HEAD
 ```
@@ -1229,66 +1248,30 @@ tb board resume
 
 ---
 
-### `tb router` — Controle do Router
+### `tb router` — Controle do Router (stub — não implementado)
 
-Controla o router de delegação de tarefas.
-
-```bash
-tb router <subcommand>
-
-Subcomandos:
-  start     Inicia router para processar tarefas
-  stop      Para router graciosamente
-  status    Exibe status do router
-  config    Mostra/edita configuração
-```
-
-**`tb router start`:**
+Hoje `tb router` é apenas um stub na árvore Cobra (sem subcomandos nem flags
+locais). Imprime aviso de “ainda não implementado” e sai 0. O desenho abaixo
+é **planejado** (Fase 5) e ainda não existe na CLI.
 
 ```bash
-tb router start [flags]
-
-Flags:
-  --workers <n>         Número máximo de workers (default: 3)
-  --strategy <type>     Estratégia: fifo|priority|dependency (default: dependency)
-  --timeout <dur>       Timeout global por ticket (default: 10m)
-  --config <path>       Arquivo de configuração
-  --direct-delivery     Habilita entrega direta a workers subscritos (default: true)
+tb router
 ```
 
-**Exemplos:**
+**Planejado (não disponível):**
 
 ```bash
-# Iniciar router com configuração padrão
-tb router start
-# ═══════════════════════════════════════════════════════════════
-# ROUTER: iniciado
-# ═══════════════════════════════════════════════════════════════
-# Workers máx: 3
-# Estratégia: dependency
-# Timeout: 10m
-# Entrega direta: habilitada
-# 
-# Aguardando tickets em .toolbelt/board/
-
-# Iniciar com mais workers
-tb router start --workers 5 --strategy priority
-
-# Ver status
-tb router status
-# Router: running
-# Workers: 3/5 ativos
-# Tickets processados: 12
-# Tickets pendentes: 4
-# Entregas diretas: 8 (67%)
-# Tempo médio por ticket: 3m 45s
-# Falhas: 1 (TKT-008, timeout)
+# subcomandos futuros — NÃO implementados
+# tb router start [--workers N] [--strategy fifo|priority|dependency]
+# tb router stop
+# tb router status
+# tb router config
 ```
 
-**Configuração do Router:**
+**Configuração planejada do Router:**
 
 ```yaml
-# .toolbelt/router.yaml
+# .toolbelt/router.yaml (planejado)
 router:
   max_workers: 3
   strategy: dependency  # fifo | priority | dependency
@@ -1322,7 +1305,9 @@ router:
 
 ---
 
-### `tb watchdog` — Monitoramento de Workers
+### `tb watchdog` — Monitoramento de Workers (planejado — Fase 3+)
+
+> **Não implementado.** A CLI atual não expõe `tb watchdog`.
 
 Monitora saúde e performance dos workers.
 
@@ -1389,7 +1374,9 @@ tb watchdog scale --workers 5
 
 ---
 
-### `tb merge` — Agregação de Resultados
+### `tb merge` — Agregação de Resultados (planejado — Fase 3+)
+
+> **Não implementado.** A CLI atual não expõe `tb merge`.
 
 Agrega resultados de múltiplos workers e resolve conflitos.
 
@@ -1482,11 +1469,12 @@ tb bench run [flags]
 
 Flags:
   --fake               Usa agente fake embutido no binário `tb` (portátil, qualquer repo)
-  --agent <cmd>        Comando do agente externo (fallback: bench.default_agent)
+  --fake-config <path> Arquivo de configuração do agente fake
+  -a, --agent <cmd>    Comando do agente externo (fallback: bench.default_agent)
   -t, --tasks-dir      Diretório das tarefas (fallback: bench.tasks_dir)
   -f, --fixtures-dir   Diretório das fixtures (fallback: bench.fixtures_dir)
-  --repetitions <n>    Número de repetições (default: 1)
-  --output <path>      Arquivo de saída JSONL (sem flag: sob bench.output_dir)
+  -r, --repetitions <n> Número de repetições (default: 1)
+  -o, --output <path>  Arquivo de saída JSONL (sem flag: sob bench.output_dir)
   --label <name>       Rótulo da variante A/B
   --flag key=value     Feature flag (repetível)
   --ab-config <yaml>   Variante A/B a partir de YAML
@@ -1577,7 +1565,49 @@ Transporte unix/tcp e flags `--socket`/`--port`/`--tls-*` são planejados; hoje 
 | `tb_guard_check` | `tb guard check` | `base`/`head` ou `range=A..B`; `strict_fail` por default em SeverityError; `warn_only=true` opt-out; `strict` deprecated (boolean) |
 | `tb_graph_search` / `tb_graph_callers` / `tb_graph_deps` / `tb_graph_impact` / `tb_graph_index` | `tb graph …` | chamada requer `TB_GRAPH=on`; `depth`/`limit` integer; `transitive` boolean |
 
-Schemas tipam `depth`/`limit`/`reviewers`/`max_iter` como integer, `strict`/`transitive`/`skip_unavailable` como boolean, `threshold` como number e `standards` como array de strings; valores string legados ainda são aceitos. Relatórios de verify/review/drift/guard voltam como JSON no `content` (sem código de saída de processo).
+Schemas tipam `depth`/`limit`/`reviewers`/`max_iter` como integer, `strict`/`warn_only`/`transitive`/`skip_unavailable` como boolean, `threshold` como number e `standards` como array de strings; valores string legados ainda são aceitos. Relatórios de verify/review/drift/guard voltam como JSON no `content` (sem código de saída de processo).
+
+---
+
+### `tb init` ✅ IMPLEMENTADO
+
+```bash
+tb init [flags]
+
+Flags:
+  --global         Inicializa em ~/.config/toolbelt
+  --write-agents   Semeia AGENTS.md mínimo se ausente (nunca sobrescreve)
+  --json           Saída em JSON (flag global)
+```
+
+Detalhes de detecção de toolchain e preenchimento de `verify.*` estão na seção `tb verify`.
+
+---
+
+### `tb sandbox` ✅ IMPLEMENTADO
+
+Isolamento Landlock no Linux (`check` / `run`). Não cria worktrees — use `tb workspace` para isso.
+
+```bash
+tb sandbox check
+tb sandbox run <command> [args...] [--workdir <path>] [--timeout <dur>]
+```
+
+`--timeout` default `30s`. Sem `--workdir`, usa o cwd. Com `--json`, `sandbox check` emite `os`/`arch`/`landlock`/`version`/`error`; `sandbox run` emite o `Result` em snake_case (`exit_code`, `timed_out`, `duration_ns`, …). Se o filho sai ≠ 0 sem timeout, `tb` propaga esse exit code.
+
+---
+
+### `tb workspace` ✅ IMPLEMENTADO
+
+Workspaces isolados via git worktree. Alias: `tb ws`.
+
+```bash
+tb workspace create <id> [--base <ref>] [--allow <path>] [--forbid <path>]
+tb workspace list
+tb workspace remove <id>
+```
+
+`--base` default `HEAD`. `--allow`/`--forbid` são repetíveis (`stringSlice`). JSON de create/list usa snake_case.
 
 ---
 
@@ -1594,13 +1624,14 @@ Flags:
 
 ```bash
 tb version
-# toolbelt v0.1.0
-# go version: go1.22.0
-# build time: 2026-01-15T10:00:00Z
-# commit: abc123
+# toolbelt dev
+#   commit: unknown
+#   built:  unknown
+#   go:     go1.22.2
+#   os:     linux/amd64
 
 tb version --json
-# {"version":"0.1.0","go":"1.22.0","commit":"abc123","build_time":"2026-01-15T10:00:00Z"}
+# {"version":"dev","commit":"unknown","build_time":"unknown","go_version":"go1.22.2"}
 ```
 
 Todas as saídas `--json` da CLI (e os payloads de domínio embutidos nas tools MCP)
@@ -1627,10 +1658,10 @@ A saída colorida do CLI segue o tema **Synthwave** definido em [docs/identidade
 
 | Variável | Descrição | Default |
 |----------|-----------|---------|
-| `TB_COLOR` | Habilita cores: auto, always, never | `auto` |
-| `TB_COLOR_MODE` | Modo de cor: ansi, 256, truecolor | `auto` |
 | `NO_COLOR` | Desabilita cores (padrão freedesktop) | - |
+| `TERM=dumb` | Desabilita cores | - |
 
+`TB_COLOR` / `TB_COLOR_MODE` são planejadas e ainda não são lidas pela CLI.
 Consulte `assets/theme/tokens.json` para a tabela completa de mapeamento ANSI/256/TrueColor.
 
 ---
@@ -1639,14 +1670,15 @@ Consulte `assets/theme/tokens.json` para a tabela completa de mapeamento ANSI/25
 
 | Variável | Descrição | Default |
 |----------|-----------|---------|
-| `TB_HOME` | Diretório de dados do toolbelt | `.tb/` |
-| `TB_VAULT` | Caminho do vault Markdown | `$TB_HOME/vault/` |
-| `TB_LOG_LEVEL` | Nível de log: debug, info, warn, error | `info` |
-| `TB_SANDBOX_DEFAULT` | Sandbox por padrão em `tb run` | `false` |
-| `TB_JSON_OUTPUT` | Saída JSON por padrão | `false` |
-| `TB_TIMEOUT_DEFAULT` | Timeout padrão para comandos | `30s` |
-| `TB_COLOR` | Habilita cores: auto, always, never | `auto` |
-| `TB_COLOR_MODE` | Modo de cor: ansi, 256, truecolor | `auto` |
+| `TB_GRAPH` | Habilita grafo sob demanda (`on`/`1`/`true`) | desligado |
+| `NO_COLOR` | Desabilita cores (padrão freedesktop) | - |
+| `TB_BROWSER` | Browser para ruler visual do verify | (auto) |
+| `TB_HOME` | Ecoado em MCP; não define o config dir da CLI | - |
+| `TB_BENCH_PROMPT` / `TB_BENCH_WORKDIR` / `TB_BENCH_TIMEOUT` | Exportados pelo harness `tb bench run` | - |
+
+Variáveis planejadas (ainda não lidas pela CLI): `TB_VAULT`, `TB_LOG_LEVEL`,
+`TB_SANDBOX_DEFAULT`, `TB_JSON_OUTPUT`, `TB_TIMEOUT_DEFAULT`, `TB_COLOR`,
+`TB_COLOR_MODE`.
 
 ---
 
@@ -1658,46 +1690,36 @@ Consulte `assets/theme/tokens.json` para a tabela completa de mapeamento ANSI/25
 
 ## Códigos de Saída
 
+A CLI atual não usa uma tabela estável de códigos 2–7. Na prática:
+
 | Código | Significado |
 |--------|-------------|
-| 0 | Sucesso |
-| 1 | Erro genérico |
-| 2 | Erro de argumentos |
-| 3 | Timeout |
-| 4 | Violação de segurança |
-| 5 | Recurso não encontrado |
-| 6 | Permissão negada |
-| 7 | Snapshot divergente |
+| 0 | Sucesso (`PASS`/`SKIPPED` no verify; guard sem `SeverityError` ou com `--warn-only`) |
+| ≠0 (tipicamente 1) | Erro de parse/domínio, `FAIL`/`ESCALATE` no verify, `SeverityError` no guard, subcomando desconhecido |
+| exit do filho | `tb sandbox run` propaga o exit code do processo quando ≠ 0 e sem timeout |
+
+Quando o comando configurado no verify não existe/não é executável, o **processo filho** reporta 126/127 e o verify falha imediatamente (sem retries); o `tb` sai ≠ 0.
 
 ---
 
 ## Configuração
 
-Arquivo de configuração em `.tb/config.yaml`:
+Arquivo de configuração local em `.toolbelt/config.yaml` (global:
+`~/.config/toolbelt/config.yaml`). A flag `-c/--config` aponta para um YAML
+alternativo.
 
 ```yaml
-defaults:
-  sandbox: false
-  timeout: 30s
-  json_output: false
-
-sandbox:
-  allow_net: []
-  cpu_limit: 100
-  mem_limit: 1G
-  time_limit: 5m
-
+# .toolbelt/config.yaml (exemplo)
+verify:
+  test_cmd: "go test ./..."
+bench:
+  default_agent: "cursor-agent {prompt} --workdir {workdir}"
+  tasks_dir: bench/tasks
+  fixtures_dir: bench/fixtures
+  output_dir: bench/results
 graph:
-  auto_index: true
-  index_on_change: true
-  infer_relations: false
-
-vault:
-  path: .tb/vault
-  sync_on_change: true
-
-logging:
-  level: info
-  file: .tb/logs/tb.log
-  format: json
+  languages: [go, javascript, python]
+  docs: [markdown]
+  frameworks: [react]
+  max_file_bytes: 524288
 ```
