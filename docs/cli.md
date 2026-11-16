@@ -196,8 +196,8 @@ Subcomandos:
   stats     Estatísticas do grafo ✅
 ```
 
-Ferramentas MCP (quando `TB_GRAPH=on`): `tb_graph_search`, `tb_graph_callers`,
-`tb_graph_deps`, `tb_graph_index`.
+Ferramentas MCP de grafo (chamada requer `TB_GRAPH=on`): `tb_graph_search`,
+`tb_graph_callers`, `tb_graph_deps`, `tb_graph_index`.
 
 **`tb graph search`:**
 
@@ -1509,6 +1509,23 @@ tb mcp
 ```
 
 Transporte unix/tcp e flags `--socket`/`--port`/`--tls-*` são planejados; hoje só stdio.
+
+**Ferramentas expostas em `tools/list` / `tools/call`:**
+
+| Tool | Paridade CLI | Notas |
+|------|--------------|-------|
+| `tb_version` | `tb version` | |
+| `tb_echo` | — | smoke |
+| `tb_env` | — | cwd/os/arch |
+| `tb_run` | — | `sh -c` com timeout |
+| `tb_mem_add` / `tb_mem_list` / `tb_mem_check` / `tb_mem_init` | `tb mem …` | arg opcional `cwd` |
+| `tb_verify_run` | `tb verify run` | `ruler=tests\|visual`; args espelham flags |
+| `tb_review` | `tb review` | ticket/base/head/reviewers/standards |
+| `tb_drift` | `tb drift` | retorna `{drift, has_drift}` |
+| `tb_guard_check` | `tb guard check` | `base`/`head` ou `range=A..B`; `strict` → `strict_fail` |
+| `tb_graph_search` / `tb_graph_callers` / `tb_graph_deps` / `tb_graph_index` | `tb graph …` | chamada requer `TB_GRAPH=on` |
+
+Args são strings (como nas tools de grafo). Relatórios de verify/review/drift/guard voltam como JSON no `content` (sem código de saída de processo).
 
 ---
 

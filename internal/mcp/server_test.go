@@ -70,3 +70,27 @@ func TestToolsCall(t *testing.T) {
 		t.Fatalf("erro: %+v", resp.Error)
 	}
 }
+
+func TestDefaultToolsListHasParity(t *testing.T) {
+	srv := NewServer(registry.Default())
+	in := `{"jsonrpc":"2.0","id":3,"method":"tools/list","params":{}}` + "\n"
+	out := &bytes.Buffer{}
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	go func() {
+		time.Sleep(50 * time.Millisecond)
+		cancel()
+	}()
+
+	_ = srv.Run(ctx, strings.NewReader(in), out)
+
+	raw := out.String()
+	for _, name := range []string{
+		"tb_mem_list", "tb_verify_run", "tb_review", "tb_drift", "tb_guard_check",
+	} {
+		if !strings.Contains(raw, name) {
+			t.Errorf("tools/list sem %s: %s", name, raw)
+		}
+	}
+}
