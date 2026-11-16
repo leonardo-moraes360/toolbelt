@@ -246,9 +246,7 @@ func pythonModuleName(rel string) string {
 	slash := filepath.ToSlash(rel)
 	mod := strings.TrimSuffix(slash, filepath.Ext(slash))
 	mod = strings.ReplaceAll(mod, "/", ".")
-	if strings.HasSuffix(mod, ".__init__") {
-		mod = strings.TrimSuffix(mod, ".__init__")
-	}
+	mod = strings.TrimSuffix(mod, ".__init__")
 	if mod == "" || mod == "." {
 		return strings.TrimSuffix(filepath.Base(slash), filepath.Ext(slash))
 	}

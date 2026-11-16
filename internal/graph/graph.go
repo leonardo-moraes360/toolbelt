@@ -12,10 +12,10 @@ import (
 )
 
 const (
-	DefaultIndexFile     = "graph.json"
-	EnvEnable            = "TB_GRAPH"
-	FlagEnv              = "TB_FLAG_GRAPH"
-	MinCallsConfidence   = 0.6
+	DefaultIndexFile      = "graph.json"
+	EnvEnable             = "TB_GRAPH"
+	FlagEnv               = "TB_FLAG_GRAPH"
+	MinCallsConfidence    = 0.6
 	SoftResolveConfidence = 0.75
 )
 
@@ -326,7 +326,7 @@ func (s *Store) findFunctionIDs(name string) []string {
 		if n.Type != NodeFunction {
 			continue
 		}
-		if !functionQueryMatches(n, name) {
+		if !functionQueryMatches(&n, name) {
 			continue
 		}
 		if seen[n.ID] {
@@ -338,7 +338,7 @@ func (s *Store) findFunctionIDs(name string) []string {
 	return ids
 }
 
-func functionQueryMatches(n Node, query string) bool {
+func functionQueryMatches(n *Node, query string) bool {
 	if n.Title == query || strings.HasSuffix(n.Title, "."+query) {
 		return true
 	}

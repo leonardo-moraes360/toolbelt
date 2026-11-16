@@ -252,11 +252,11 @@ func resolveSymTarget(
 	byTitle map[string][]string,
 	importsOf map[string][]string,
 	e Edge,
-) (string, float64, bool) {
+) (target string, confidence float64, ok bool) {
 	name := strings.TrimPrefix(e.TargetID, "sym:")
 	cands := byTitle[strings.ToLower(name)]
 	if len(cands) == 0 {
-		if _, ok := nodes["file:"+name]; ok {
+		if _, exists := nodes["file:"+name]; exists {
 			return "file:" + name, e.Confidence, true
 		}
 		return "", 0, false
@@ -273,15 +273,15 @@ func resolveCallSym(
 	sourceID string,
 	cands []string,
 	conf float64,
-) (string, float64, bool) {
+) (target string, confidence float64, ok bool) {
 	funcs := functionCandidates(nodes, cands)
 	if len(funcs) == 0 {
 		return "", 0, false
 	}
-	src, _ := nodes[sourceID]
-	fileID := sourceFileID(sourceID, src)
+	src := nodes[sourceID]
+	fileID := sourceFileID(sourceID, &src)
 	imported := importsOf[fileID]
-	matched := filterCallCandidates(nodes, funcs, src, imported)
+	matched := filterCallCandidates(nodes, funcs, &src, imported)
 	if len(matched) != 1 {
 		return "", 0, false
 	}
@@ -294,14 +294,14 @@ func resolveCallSym(
 func functionCandidates(nodes map[string]Node, cands []string) []string {
 	var funcs []string
 	for _, id := range cands {
-		if n, ok := nodes[id]; ok && n.Type == NodeFunction {
+		if n, exists := nodes[id]; exists && n.Type == NodeFunction {
 			funcs = append(funcs, id)
 		}
 	}
 	return funcs
 }
 
-func sourceFileID(sourceID string, src Node) string {
+func sourceFileID(sourceID string, src *Node) string {
 	if strings.HasPrefix(sourceID, "file:") {
 		return sourceID
 	}
@@ -311,22 +311,22 @@ func sourceFileID(sourceID string, src Node) string {
 	return sourceID
 }
 
-func filterCallCandidates(nodes map[string]Node, funcs []string, src Node, imported []string) []string {
+func filterCallCandidates(nodes map[string]Node, funcs []string, src *Node, imported []string) []string {
 	var matched []string
 	for _, id := range funcs {
 		n := nodes[id]
-		if sameCallPackage(src, n) || importCovers(imported, n) {
+		if sameCallPackage(src, &n) || importCovers(imported, &n) {
 			matched = append(matched, id)
 		}
 	}
 	return matched
 }
 
-func sameCallPackage(src, tgt Node) bool {
+func sameCallPackage(src, tgt *Node) bool {
 	return src.Package != "" && src.Package == tgt.Package
 }
 
-func importCovers(imported []string, n Node) bool {
+func importCovers(imported []string, n *Node) bool {
 	pkg := n.Package
 	qual := strings.TrimPrefix(n.ID, "func:")
 	qual = strings.ReplaceAll(qual, "/", ".")
