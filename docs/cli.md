@@ -71,7 +71,9 @@ tb run --cgroup-cpu 50 --cgroup-mem 512M "heavy-process"
 
 ---
 
-### `tb proc` — Gerenciamento de Processos
+### `tb proc` — Gerenciamento de Processos (planejado — Fase 3+)
+
+> **Não implementado.** A CLI atual não expõe `tb proc`.
 
 Gerencia processos de longa duração (servidores, watchers).
 
@@ -221,9 +223,10 @@ tb graph callers [flags]
 
 Flags:
   --function <name>   Nome da função (aceita sufixo qualificado, ex. scrubber.redact_secrets)
-  --file <path>       Arquivo da função
   --depth <n>         Profundidade do grafo (default: 1)
 ```
+
+Não há `--file` em `callers` (use `--function`). Para impacto por arquivo, use `tb graph impact --file`.
 
 Em Python, `--function` resolve por título ou sufixo do id qualificado
 (`func:pkg.mod.nome`). Arestas `calls` com confiança &lt; 0.6 (alvos ambíguos /
@@ -330,6 +333,15 @@ Flags:
   --category <cat>    Filtrar por categoria
 ```
 
+**`tb mem check` (implementado):**
+
+```bash
+tb mem check [flags]
+
+Flags:
+  --expect-sha <sha>  Hash esperado pós-compactação
+```
+
 **Exemplos:**
 
 ```bash
@@ -397,7 +409,9 @@ tb md --read-only
 
 ---
 
-### `tb agent` — Gerenciamento de Agentes
+### `tb agent` — Gerenciamento de Agentes (planejado — Fase 3+)
+
+> **Não implementado.** A CLI atual não expõe `tb agent`.
 
 Gerencia agentes na hierarquia.
 
@@ -467,17 +481,20 @@ tb agent reject action-124 --reason "Não autorizado para rede externa"
 Analisa o diff entre commits em busca de paths protegidos e padrões anti-trapaça.
 
 ```bash
-tb guard check <base>..<head> [flags]
+tb guard check [base..head] [flags]
 
 Flags:
-  --strict    Exit ≠ 0 quando há violações de severidade erro
-  --json      Saída em JSON (flag global)
+  --base <ref>   Ref base (default: HEAD~1)
+  --head <ref>   Ref head (default: HEAD)
+  --strict       Exit ≠ 0 quando há violações de severidade erro
+  --json         Saída em JSON (flag global)
 ```
 
 **Exemplos:**
 
 ```bash
 tb guard check HEAD~1..HEAD
+tb guard check --base HEAD~1 --head HEAD
 tb guard check --strict HEAD~1..HEAD
 tb guard check --json HEAD~1..HEAD
 ```
@@ -555,16 +572,13 @@ tb review --ticket rd.md --reviewers 5 --standards scope,invariants,completeness
 tb review --ticket rd.md --json --output review-results.json
 ```
 
-**Padrões de revisão disponíveis**:
+**Padrões de revisão disponíveis** (`--standards`, default `scope,invariants,completeness`):
 
 | Padrão | O que verifica |
 |--------|---------------|
-| `security` | Vulnerabilidades, vazamento de dados, autenticação |
-| `clarity` | Ambiguidades, termos indefinidos, contradições |
-| `completeness` | Requisitos faltantes, edge cases, fluxos incompletos |
-| `consistency` | Alinhamento com código existente, convenções, outros docs |
-| `testability` | Se os requisitos são testáveis |
-| `feasibility` | Riscos de implementação, dependências |
+| `scope` | Mudanças alinhadas ao scope/forbidden do ticket |
+| `invariants` | Respeito às invariantes de `tb mem` |
+| `completeness` | Cobertura do pedido no ticket (lacunas óbvias no diff) |
 
 **Isolamento obrigatório**: Se o sistema não conseguir criar contextos frescos para os revisores, o comando falha com erro ao invés de prosseguir com contexto contaminado.
 
@@ -1184,66 +1198,30 @@ tb board resume
 
 ---
 
-### `tb router` — Controle do Router
+### `tb router` — Controle do Router (stub — não implementado)
 
-Controla o router de delegação de tarefas.
-
-```bash
-tb router <subcommand>
-
-Subcomandos:
-  start     Inicia router para processar tarefas
-  stop      Para router graciosamente
-  status    Exibe status do router
-  config    Mostra/edita configuração
-```
-
-**`tb router start`:**
+Hoje `tb router` é apenas um stub na árvore Cobra (sem subcomandos nem flags
+locais). Imprime aviso de “ainda não implementado” e sai 0. O desenho abaixo
+é **planejado** (Fase 5) e ainda não existe na CLI.
 
 ```bash
-tb router start [flags]
-
-Flags:
-  --workers <n>         Número máximo de workers (default: 3)
-  --strategy <type>     Estratégia: fifo|priority|dependency (default: dependency)
-  --timeout <dur>       Timeout global por ticket (default: 10m)
-  --config <path>       Arquivo de configuração
-  --direct-delivery     Habilita entrega direta a workers subscritos (default: true)
+tb router
 ```
 
-**Exemplos:**
+**Planejado (não disponível):**
 
 ```bash
-# Iniciar router com configuração padrão
-tb router start
-# ═══════════════════════════════════════════════════════════════
-# ROUTER: iniciado
-# ═══════════════════════════════════════════════════════════════
-# Workers máx: 3
-# Estratégia: dependency
-# Timeout: 10m
-# Entrega direta: habilitada
-# 
-# Aguardando tickets em .toolbelt/board/
-
-# Iniciar com mais workers
-tb router start --workers 5 --strategy priority
-
-# Ver status
-tb router status
-# Router: running
-# Workers: 3/5 ativos
-# Tickets processados: 12
-# Tickets pendentes: 4
-# Entregas diretas: 8 (67%)
-# Tempo médio por ticket: 3m 45s
-# Falhas: 1 (TKT-008, timeout)
+# subcomandos futuros — NÃO implementados
+# tb router start [--workers N] [--strategy fifo|priority|dependency]
+# tb router stop
+# tb router status
+# tb router config
 ```
 
-**Configuração do Router:**
+**Configuração planejada do Router:**
 
 ```yaml
-# .toolbelt/router.yaml
+# .toolbelt/router.yaml (planejado)
 router:
   max_workers: 3
   strategy: dependency  # fifo | priority | dependency
@@ -1277,7 +1255,9 @@ router:
 
 ---
 
-### `tb watchdog` — Monitoramento de Workers
+### `tb watchdog` — Monitoramento de Workers (planejado — Fase 3+)
+
+> **Não implementado.** A CLI atual não expõe `tb watchdog`.
 
 Monitora saúde e performance dos workers.
 
@@ -1344,7 +1324,9 @@ tb watchdog scale --workers 5
 
 ---
 
-### `tb merge` — Agregação de Resultados
+### `tb merge` — Agregação de Resultados (planejado — Fase 3+)
+
+> **Não implementado.** A CLI atual não expõe `tb merge`.
 
 Agrega resultados de múltiplos workers e resolve conflitos.
 
@@ -1437,11 +1419,12 @@ tb bench run [flags]
 
 Flags:
   --fake               Usa agente fake embutido no binário `tb` (portátil, qualquer repo)
-  --agent <cmd>        Comando do agente externo (fallback: bench.default_agent)
+  --fake-config <path> Arquivo de configuração do agente fake
+  -a, --agent <cmd>    Comando do agente externo (fallback: bench.default_agent)
   -t, --tasks-dir      Diretório das tarefas (fallback: bench.tasks_dir)
   -f, --fixtures-dir   Diretório das fixtures (fallback: bench.fixtures_dir)
-  --repetitions <n>    Número de repetições (default: 1)
-  --output <path>      Arquivo de saída JSONL (sem flag: sob bench.output_dir)
+  -r, --repetitions <n> Número de repetições (default: 1)
+  -o, --output <path>  Arquivo de saída JSONL (sem flag: sob bench.output_dir)
   --label <name>       Rótulo da variante A/B
   --flag key=value     Feature flag (repetível)
   --ab-config <yaml>   Variante A/B a partir de YAML
@@ -1549,13 +1532,14 @@ Flags:
 
 ```bash
 tb version
-# toolbelt v0.1.0
-# go version: go1.22.0
-# build time: 2026-01-15T10:00:00Z
-# commit: abc123
+# toolbelt dev
+#   commit: unknown
+#   built:  unknown
+#   go:     go1.22.2
+#   os:     linux/amd64
 
 tb version --json
-# {"version":"0.1.0","go":"1.22.0","commit":"abc123","build_time":"2026-01-15T10:00:00Z"}
+# {"version":"dev","commit":"unknown","build_time":"unknown","go_version":"go1.22.2"}
 ```
 
 ---
@@ -1577,10 +1561,10 @@ A saída colorida do CLI segue o tema **Synthwave** definido em [docs/identidade
 
 | Variável | Descrição | Default |
 |----------|-----------|---------|
-| `TB_COLOR` | Habilita cores: auto, always, never | `auto` |
-| `TB_COLOR_MODE` | Modo de cor: ansi, 256, truecolor | `auto` |
 | `NO_COLOR` | Desabilita cores (padrão freedesktop) | - |
+| `TERM=dumb` | Desabilita cores | - |
 
+`TB_COLOR` / `TB_COLOR_MODE` são planejadas e ainda não são lidas pela CLI.
 Consulte `assets/theme/tokens.json` para a tabela completa de mapeamento ANSI/256/TrueColor.
 
 ---
@@ -1589,14 +1573,15 @@ Consulte `assets/theme/tokens.json` para a tabela completa de mapeamento ANSI/25
 
 | Variável | Descrição | Default |
 |----------|-----------|---------|
-| `TB_HOME` | Diretório de dados do toolbelt | `.tb/` |
-| `TB_VAULT` | Caminho do vault Markdown | `$TB_HOME/vault/` |
-| `TB_LOG_LEVEL` | Nível de log: debug, info, warn, error | `info` |
-| `TB_SANDBOX_DEFAULT` | Sandbox por padrão em `tb run` | `false` |
-| `TB_JSON_OUTPUT` | Saída JSON por padrão | `false` |
-| `TB_TIMEOUT_DEFAULT` | Timeout padrão para comandos | `30s` |
-| `TB_COLOR` | Habilita cores: auto, always, never | `auto` |
-| `TB_COLOR_MODE` | Modo de cor: ansi, 256, truecolor | `auto` |
+| `TB_GRAPH` | Habilita grafo sob demanda (`on`/`1`/`true`) | desligado |
+| `NO_COLOR` | Desabilita cores (padrão freedesktop) | - |
+| `TB_BROWSER` | Browser para ruler visual do verify | (auto) |
+| `TB_HOME` | Ecoado em MCP; não define o config dir da CLI | - |
+| `TB_BENCH_PROMPT` / `TB_BENCH_WORKDIR` / `TB_BENCH_TIMEOUT` | Exportados pelo harness `tb bench run` | - |
+
+Variáveis planejadas (ainda não lidas pela CLI): `TB_VAULT`, `TB_LOG_LEVEL`,
+`TB_SANDBOX_DEFAULT`, `TB_JSON_OUTPUT`, `TB_TIMEOUT_DEFAULT`, `TB_COLOR`,
+`TB_COLOR_MODE`.
 
 ---
 
@@ -1617,31 +1602,22 @@ Consulte `assets/theme/tokens.json` para a tabela completa de mapeamento ANSI/25
 
 ## Configuração
 
-Arquivo de configuração em `.tb/config.yaml`:
+Arquivo de configuração local em `.toolbelt/config.yaml` (global:
+`~/.config/toolbelt/config.yaml`). A flag `-c/--config` aponta para um YAML
+alternativo.
 
 ```yaml
-defaults:
-  sandbox: false
-  timeout: 30s
-  json_output: false
-
-sandbox:
-  allow_net: []
-  cpu_limit: 100
-  mem_limit: 1G
-  time_limit: 5m
-
+# .toolbelt/config.yaml (exemplo)
+verify:
+  test_cmd: "go test ./..."
+bench:
+  default_agent: "cursor-agent {prompt} --workdir {workdir}"
+  tasks_dir: bench/tasks
+  fixtures_dir: bench/fixtures
+  output_dir: bench/results
 graph:
-  auto_index: true
-  index_on_change: true
-  infer_relations: false
-
-vault:
-  path: .tb/vault
-  sync_on_change: true
-
-logging:
-  level: info
-  file: .tb/logs/tb.log
-  format: json
+  languages: [go, javascript, python]
+  docs: [markdown]
+  frameworks: [react]
+  max_file_bytes: 524288
 ```

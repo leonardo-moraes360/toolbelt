@@ -7,7 +7,10 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Não Lançado]
 
-Nada ainda.
+### Corrigido
+- Descrição longa do CLI: completa o adjetivo em pt-BR (`persistent` → `persistente`)
+- `docs/cli.md` alinhado à CLI real: remove `graph callers --file`; `router` documentado como stub; seções planejadas (`proc`/`agent`/`watchdog`/`merge`) marcadas; flags/`--standards`/env/config path conferidos contra `--help`
+- Teste `TestDocsCLIExamplesMatchCobra` extrai `tb …` de `docs/cli.md` e valida subcomandos/flags na árvore Cobra
 
 ## [0.0.1] - 2026-11-16
 
