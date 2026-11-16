@@ -121,6 +121,8 @@ def scrub_dict(data):
     return data
 `)
 	mustWrite(t, filepath.Join(root, "svc", "api.py"), `
+from svc.core import scrub_dict
+
 def handle(event):
     return scrub_dict(event)
 `)
@@ -137,6 +139,106 @@ def handle(event):
 	impact := store.Impact("svc/core.py", 2)
 	if len(impact) == 0 {
 		t.Fatalf("impact empty; calls=%v", callEdges(idx))
+	}
+}
+
+func TestPythonCallersQualifiedSuffix(t *testing.T) {
+	root := t.TempDir()
+	mustWrite(t, filepath.Join(root, "guardrails", "scrubber.py"), `
+class Scrubber:
+    def redact_secrets(self, text):
+        return text
+
+    def secret_data(self, text):
+        return self.redact_secrets(text)
+`)
+	mustWrite(t, filepath.Join(root, "guardrails", "api.py"), `
+from guardrails.scrubber import Scrubber
+
+def handle(text):
+    return Scrubber().redact_secrets(text)
+`)
+	opts := DefaultBuildOptions()
+	opts.Languages = []string{"python"}
+	opts.Docs = []string{}
+	opts.Frameworks = []string{}
+	idx, err := BuildFromRootOpts(root, &opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := NewStore(filepath.Join(t.TempDir(), "graph.json"))
+	store.index = idx
+
+	for _, query := range []string{"redact_secrets", "scrubber.redact_secrets", "guardrails.scrubber.redact_secrets"} {
+		callers := store.Callers(query, 1)
+		if len(callers) == 0 {
+			t.Fatalf("callers(%q) empty; ids=%v edges=%v", query, store.findFunctionIDs(query), callEdges(idx))
+		}
+		found := false
+		for _, c := range callers {
+			if c.Title == "secret_data" || c.Title == "handle" {
+				found = true
+			}
+		}
+		if !found {
+			t.Fatalf("callers(%q) missing secret_data/handle: %#v", query, callers)
+		}
+	}
+}
+
+func TestPythonDropsSpuriousLowConfidenceCalls(t *testing.T) {
+	root := t.TempDir()
+	mustWrite(t, filepath.Join(root, "setup.py"), `
+from setuptools import setup
+setup(name="demo")
+`)
+	mustWrite(t, filepath.Join(root, "tests", "conftest.py"), `
+def setup():
+    return True
+`)
+	opts := DefaultBuildOptions()
+	opts.Languages = []string{"python"}
+	opts.Docs = []string{}
+	opts.Frameworks = []string{}
+	idx, err := BuildFromRootOpts(root, &opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range idx.Edges {
+		if e.Type != EdgeCalls {
+			continue
+		}
+		if e.SourceID == "file:setup.py" {
+			t.Fatalf("spurious setup.py calls edge: %#v", e)
+		}
+	}
+	store := NewStore(filepath.Join(t.TempDir(), "graph.json"))
+	store.index = idx
+	if callers := store.Callers("setup", 1); len(callers) != 0 {
+		t.Fatalf("expected no callers(setup) from setuptools noise, got %#v", callers)
+	}
+}
+
+func TestCallersFiltersLowConfidenceEdges(t *testing.T) {
+	store := NewStore(filepath.Join(t.TempDir(), "graph.json"))
+	store.index = &Index{
+		Nodes: []Node{
+			{ID: "func:pkg.a", Type: NodeFunction, Title: "a"},
+			{ID: "func:pkg.b", Type: NodeFunction, Title: "b"},
+			{ID: "func:pkg.c", Type: NodeFunction, Title: "c"},
+		},
+		Edges: []Edge{
+			{SourceID: "func:pkg.a", TargetID: "func:pkg.b", Type: EdgeCalls, Confidence: 0.55},
+			{SourceID: "func:pkg.c", TargetID: "func:pkg.b", Type: EdgeCalls, Confidence: 0.7},
+		},
+	}
+	callers := store.Callers("b", 1)
+	if len(callers) != 1 || callers[0].Title != "c" {
+		t.Fatalf("expected only high-confidence caller c, got %#v", callers)
+	}
+	callers = store.Callers("pkg.b", 1)
+	if len(callers) != 1 || callers[0].Title != "c" {
+		t.Fatalf("suffix query pkg.b: expected caller c, got %#v", callers)
 	}
 }
 

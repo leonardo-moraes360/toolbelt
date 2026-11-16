@@ -101,7 +101,13 @@ func handleGraphCallers(_ context.Context, args map[string]any) (any, error) {
 	if v := StringArg(args, "depth"); v != "" {
 		_, _ = fmt.Sscanf(v, "%d", &depth)
 	}
-	return s.Callers(fn, depth), nil
+	nodes := s.Callers(fn, depth)
+	if len(nodes) == 0 {
+		if reason := s.EmptyCallersReason(fn); reason != nil {
+			return nil, reason
+		}
+	}
+	return nodes, nil
 }
 
 func handleGraphDeps(_ context.Context, args map[string]any) (any, error) {

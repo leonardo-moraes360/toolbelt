@@ -59,7 +59,7 @@ func (PythonIndexer) IndexFile(root, rel string) ([]Node, []Edge, error) {
 	}
 	raw := string(data)
 	code := stripPyNoise(raw)
-	modName := moduleNameFromRel(rel)
+	modName := pythonModuleName(rel)
 	nodes, edges, _, fileID := baseFileNodes(modName, rel, 0.85)
 
 	funcIDs := map[string]string{}
@@ -240,6 +240,17 @@ func pyCalleeName(raw string) string {
 		return raw[i+1:]
 	}
 	return raw
+}
+
+func pythonModuleName(rel string) string {
+	slash := filepath.ToSlash(rel)
+	mod := strings.TrimSuffix(slash, filepath.Ext(slash))
+	mod = strings.ReplaceAll(mod, "/", ".")
+	mod = strings.TrimSuffix(mod, ".__init__")
+	if mod == "" || mod == "." {
+		return strings.TrimSuffix(filepath.Base(slash), filepath.Ext(slash))
+	}
+	return mod
 }
 
 func stripPyNoise(src string) string {
