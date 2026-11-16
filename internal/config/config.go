@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -139,7 +140,7 @@ func DefaultConfig() *Config {
 		Bench: BenchConfig{
 			TasksDir:     "bench/tasks",
 			FixturesDir:  "bench/fixtures",
-			OutputDir:    ".toolbelt/bench",
+			OutputDir:    "bench/results",
 			DefaultAgent: "",
 			Repetitions:  5,
 			Timeout:      "10m",
@@ -151,9 +152,31 @@ func DefaultConfig() *Config {
 	}
 }
 
+// overrideFile, quando não vazio, faz Load usar só esse arquivo (flag -c/--config).
+var overrideFile string
+
+// SetFile define o arquivo de configuração explícito (ex.: -c/--config).
+// Passe "" para limpar e voltar ao merge global+local.
+func SetFile(path string) {
+	overrideFile = strings.TrimSpace(path)
+}
+
+// File retorna o caminho explícito definido por SetFile, ou "".
+func File() string {
+	return overrideFile
+}
+
 // Load carrega a configuração, mesclando global e local.
+// Se SetFile tiver sido chamado com um path, carrega só esse arquivo sobre os defaults.
 func Load() (*Config, error) {
 	cfg := DefaultConfig()
+
+	if overrideFile != "" {
+		if err := loadFromFile(overrideFile, cfg); err != nil {
+			return nil, fmt.Errorf("loading config %s: %w", overrideFile, err)
+		}
+		return cfg, nil
+	}
 
 	// Carrega configuração global
 	globalPath := GlobalConfigPath()

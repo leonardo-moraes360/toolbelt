@@ -42,6 +42,8 @@ Exemplo:
 		// Inicializa logging
 		log.Init(jsonOutput)
 
+		config.SetFile(cfgFile)
+
 		// Carrega configuração se não for command init/version/help
 		if cmd.Name() != "init" && cmd.Name() != "version" && cmd.Name() != "help" {
 			_, err := config.Load()

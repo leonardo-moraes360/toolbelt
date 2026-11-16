@@ -1447,21 +1447,30 @@ tb bench run [flags]
 Flags:
   --fake               Usa agente fake embutido no binário `tb` (portátil, qualquer repo)
   --agent <cmd>        Comando do agente externo (fallback: bench.default_agent)
+  -t, --tasks-dir      Diretório das tarefas (fallback: bench.tasks_dir)
+  -f, --fixtures-dir   Diretório das fixtures (fallback: bench.fixtures_dir)
   --repetitions <n>    Número de repetições (default: 1)
-  --output <path>      Arquivo de saída JSONL
+  --output <path>      Arquivo de saída JSONL (sem flag: sob bench.output_dir)
   --label <name>       Rótulo da variante A/B
   --flag key=value     Feature flag (repetível)
   --ab-config <yaml>   Variante A/B a partir de YAML
   --task <id>          Filtra tarefas
 ```
 
+Precedência dos paths e do agente: **flag CLI explícita** > **`config.yaml`** > **default**.
+A flag global `-c/--config` alimenta `config.Load()` (inclui `bench.*`).
+
 Se `--agent` e `--fake` forem omitidos, `tb bench run` usa `bench.default_agent`
-de `.toolbelt/config.yaml` (quando definido).
+do YAML carregado (quando definido). Sem `-t`/`-f`/`-o`, usa
+`bench.tasks_dir` / `bench.fixtures_dir` / `bench.output_dir`.
 
 ```yaml
 # .toolbelt/config.yaml
 bench:
   default_agent: "cursor-agent {prompt} --workdir {workdir}"
+  tasks_dir: /abs/path/to/bench/tasks
+  fixtures_dir: /abs/path/to/bench/fixtures
+  output_dir: /abs/path/to/bench/results
 ```
 
 Placeholders `{prompt}`, `{workdir}` e `{timeout}` são interpolados com
@@ -1492,7 +1501,8 @@ O relatório Markdown e o JSONL incluem métricas de **sucesso (pass@1)**, **tem
 ```bash
 tb bench run --fake --label graph-off --flag graph=off
 tb bench run --fake --ab-config bench/ab/graph-on.yaml
-tb bench run -r 1   # usa bench.default_agent do config
+tb bench run -r 1   # usa bench.default_agent / tasks_dir do config
+tb -c /tmp/alt-config.yaml bench run -r 1   # -c alimenta config.Load()
 tb bench compare --before bench/results/graph-off.jsonl \
                  --after bench/results/graph-on.jsonl
 tb bench list

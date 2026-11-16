@@ -42,6 +42,8 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 - Stubs para comandos futuros: `sandbox`, `verify`, `mem`, `graph`, `router`, `mcp`
 
 ### Corrigido
+- `tb bench`: honra `bench.tasks_dir` / `fixtures_dir` / `output_dir` do config.yaml
+  (precedência: flag CLI > YAML > default); a flag global `-c/--config` alimenta `config.Load()`
 - `tb review`: invariante `tests/hidden` (e `thresholds.yaml`) casa por prefixo/segmento
   de path nos arquivos alterados, não por substring no diff (evita FP quando o ticket
   só menciona a regra)
