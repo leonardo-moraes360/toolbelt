@@ -119,11 +119,7 @@ func indexersFor(path string, opts *BuildOptions) []LanguageIndexer {
 		return others
 	}
 	out := append([]LanguageIndexer{}, frameworks...)
-	for _, idx := range others {
-		if idx.Category() == CategoryDoc {
-			out = append(out, idx)
-		}
-	}
+	out = append(out, others...)
 	return out
 }
 
@@ -309,13 +305,23 @@ func resolveCallSym(
 }
 
 func functionCandidates(nodes map[string]Node, cands []string) []string {
-	var funcs []string
+	var funcs, comps []string
 	for _, id := range cands {
-		if n, exists := nodes[id]; exists && n.Type == NodeFunction {
+		n, exists := nodes[id]
+		if !exists {
+			continue
+		}
+		switch n.Type {
+		case NodeFunction:
 			funcs = append(funcs, id)
+		case NodeComponent, NodeHook:
+			comps = append(comps, id)
 		}
 	}
-	return funcs
+	if len(funcs) > 0 {
+		return funcs
+	}
+	return comps
 }
 
 func sourceFileID(sourceID string, src *Node) string {
@@ -332,7 +338,7 @@ func filterCallCandidates(nodes map[string]Node, funcs []string, src *Node, impo
 	var matched []string
 	for _, id := range funcs {
 		n := nodes[id]
-		if sameCallPackage(src, &n) || importCovers(imported, &n) {
+		if sameCallPackage(src, &n) || importCovers(imported, src.Path, &n) {
 			matched = append(matched, id)
 		}
 	}
@@ -343,10 +349,9 @@ func sameCallPackage(src, tgt *Node) bool {
 	return src.Package != "" && src.Package == tgt.Package
 }
 
-func importCovers(imported []string, n *Node) bool {
+func importCovers(imported []string, srcPath string, n *Node) bool {
 	pkg := n.Package
-	qual := strings.TrimPrefix(n.ID, "func:")
-	qual = strings.ReplaceAll(qual, "/", ".")
+	qual := callSymbolQual(n)
 	for _, imp := range imported {
 		if imp == "" {
 			continue
@@ -357,8 +362,50 @@ func importCovers(imported []string, n *Node) bool {
 		if strings.HasPrefix(qual, imp+".") {
 			return true
 		}
+		if relativeImportCovers(imp, srcPath, n) {
+			return true
+		}
 	}
 	return false
+}
+
+func callSymbolQual(n *Node) string {
+	qual := n.ID
+	for _, prefix := range []string{"func:", "component:", "hook:"} {
+		if strings.HasPrefix(qual, prefix) {
+			qual = strings.TrimPrefix(qual, prefix)
+			break
+		}
+	}
+	return strings.ReplaceAll(qual, "/", ".")
+}
+
+func relativeImportCovers(imp, srcPath string, n *Node) bool {
+	if srcPath == "" || !strings.HasPrefix(imp, ".") {
+		return false
+	}
+	resolved := filepath.ToSlash(filepath.Clean(filepath.Join(filepath.Dir(srcPath), imp)))
+	resolved = stripJSImportExt(resolved)
+	if n.Path != "" {
+		base := stripJSImportExt(filepath.ToSlash(strings.TrimSuffix(n.Path, filepath.Ext(n.Path))))
+		if base == resolved || strings.HasPrefix(base, resolved+"/") {
+			return true
+		}
+	}
+	if n.Package != "" && (resolved == n.Package || strings.HasPrefix(resolved, n.Package+"/")) {
+		return true
+	}
+	return false
+}
+
+func stripJSImportExt(path string) string {
+	lower := strings.ToLower(path)
+	for _, ext := range []string{".tsx", ".ts", ".jsx", ".js", ".mjs", ".cjs"} {
+		if strings.HasSuffix(lower, ext) {
+			return path[:len(path)-len(ext)]
+		}
+	}
+	return path
 }
 
 func skipIndexedTestFile(path string) bool {

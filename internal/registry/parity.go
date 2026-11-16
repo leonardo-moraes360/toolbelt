@@ -142,11 +142,12 @@ func registerGuardTools() {
 		InputSchema: &InputSchema{
 			Type: "object",
 			Properties: map[string]Property{
-				"cwd":    {Type: "string", Description: "Diretório do repositório"},
-				"base":   {Type: "string", Description: "Ref base", Default: "HEAD~1"},
-				"head":   {Type: "string", Description: "Ref head", Default: "HEAD"},
-				"range":  {Type: "string", Description: "Intervalo base..head (alternativa a base/head)"},
-				"strict": {Type: "string", Description: "true para marcar strict_fail em erros", Default: "false"},
+				"cwd":       {Type: "string", Description: "Diretório do repositório"},
+				"base":      {Type: "string", Description: "Ref base", Default: "HEAD~1"},
+				"head":      {Type: "string", Description: "Ref head", Default: "HEAD"},
+				"range":     {Type: "string", Description: "Intervalo base..head (alternativa a base/head)"},
+				"warn_only": {Type: "string", Description: "true para não marcar strict_fail em SeverityError (opt-out)", Default: "false"},
+				"strict":    {Type: "string", Description: "deprecated: strict_fail já é o default em SeverityError; use warn_only=true para opt-out", Default: "false"},
 			},
 		},
 		Handler: handleGuardCheck,
@@ -424,12 +425,14 @@ func handleGuardCheck(_ context.Context, args map[string]any) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	strictFail := StringArg(args, "strict") == "true" && hasGuardStrictError(res.Violations)
+	warnOnly := StringArg(args, "warn_only") == "true"
+	strictFail := hasGuardStrictError(res.Violations) && !warnOnly
 	return map[string]any{
-		"base_ref":    res.BaseRef,
-		"head_ref":    res.HeadRef,
-		"violations":  res.Violations,
-		"strict_fail": strictFail,
+		"base_ref":      res.BaseRef,
+		"head_ref":      res.HeadRef,
+		"rules_checked": res.RulesChecked,
+		"violations":    res.Violations,
+		"strict_fail":   strictFail,
 	}, nil
 }
 

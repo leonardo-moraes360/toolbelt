@@ -138,7 +138,7 @@ Linguagens e docs (extensível via `LanguageIndexer`, regex leve, sem cgo):
 | `graph.languages` | Extensões |
 |-------------------|-----------|
 | `go` | `.go` (AST; arestas `calls`) |
-| `javascript` | `.js`, `.mjs`, `.cjs`, `.ts` (`.tsx`/`.jsx` via `react` quando ligado; arestas `calls`) |
+| `javascript` | `.js`, `.mjs`, `.cjs`, `.ts`, `.tsx`, `.jsx` (funções/`const` arrow, JSX `<Comp />` como `calls`; resolve imports relativos ao símbolo do módulo importado) |
 | `python` | `.py` (defines/imports + arestas `calls` por módulo qualificado; `callers`/`impact` ignoram arestas com confiança &lt; 0.6) |
 | `java` | `.java` |
 | `kotlin` | `.kt`, `.kts` |
@@ -158,7 +158,7 @@ Linguagens e docs (extensível via `LanguageIndexer`, regex leve, sem cgo):
 
 | `graph.frameworks` | Extensões / convenção | O que indexa |
 |--------------------|-----------------------|--------------|
-| `react` | `.tsx`, `.jsx` | componentes, hooks `use*`, arestas `renders` |
+| `react` | `.tsx`, `.jsx` | componentes, hooks `use*`, arestas `renders` (em paralelo com `javascript` para `calls`/callers/impact) |
 | `vue` | `.vue` | SFC script/template, imports, componentes no template |
 | `svelte` | `.svelte` | script, imports, componentes no markup |
 | `astro` | `.astro` | frontmatter, imports, componentes no body |
@@ -166,8 +166,10 @@ Linguagens e docs (extensível via `LanguageIndexer`, regex leve, sem cgo):
 | `routes` | Next `app/`/`pages/`, SvelteKit `routes/`, Nuxt `pages/` | nós `route` por convenção de arquivo |
 | `mdx` | `.mdx` | doc (headings/links) + imports/componentes JSX |
 
-Frameworks têm prioridade sobre o indexador genérico de linguagem no mesmo
-arquivo (ex.: `.tsx` com `react` ligado não cai só como JS).
+Frameworks rodam junto com o indexador de linguagem no mesmo arquivo (ex.:
+`.tsx` recebe `react` + `javascript`, para componentes/`renders` e
+`calls`/callers/impact). Docs também podem indexar o mesmo path quando a
+extensão casa.
 
 ```yaml
 # .toolbelt/config.yaml (todos ligados por padrão)
@@ -225,9 +227,12 @@ Flags:
   --depth <n>         Profundidade do grafo (default: 1)
 ```
 
-Em Python, `--function` resolve por título ou sufixo do id qualificado
-(`func:pkg.mod.nome`). Arestas `calls` com confiança &lt; 0.6 (alvos ambíguos /
-sem import) ficam de fora do resultado default de `callers` e `impact`.
+Em Python/JS/TS, `--function` resolve por título ou sufixo do id qualificado
+(`func:pkg.mod.nome`; componentes/hooks React também). Arestas `calls` com
+confiança &lt; 0.6 (alvos ambíguos / sem import) ficam de fora do resultado
+default de `callers` e `impact`. Em TS/JS, imports relativos
+(`../components/Layout`) resolvem para o símbolo do módulo importado
+(`components.Layout`), inclusive uso JSX `<Layout />`.
 
 **`tb graph deps`:**
 
@@ -470,15 +475,19 @@ Analisa o diff entre commits em busca de paths protegidos e padrões anti-trapa�
 tb guard check <base>..<head> [flags]
 
 Flags:
-  --strict    Exit ≠ 0 quando há violações de severidade erro
-  --json      Saída em JSON (flag global)
+  --warn-only   Exit 0 mesmo com SeverityError (opt-out do default CI-safe)
+  --strict      Deprecated: falha em SeverityError já é o default
+  --json        Saída em JSON (flag global)
 ```
+
+Por default, exit ≠ 0 quando há `SeverityError`. No modo texto limpo imprime
+`guard: ok (N regras, 0 violações)`.
 
 **Exemplos:**
 
 ```bash
 tb guard check HEAD~1..HEAD
-tb guard check --strict HEAD~1..HEAD
+tb guard check --warn-only HEAD~1..HEAD
 tb guard check --json HEAD~1..HEAD
 ```
 
@@ -667,10 +676,12 @@ Flags:
 ```
 
 `tb init` preenche `verify.test_cmd` a partir da toolchain do repositório
-(`go.mod` → `go test ./...`, `package.json` + scripts.test → `npm`/`pnpm`/`yarn test`,
+(`go.mod` → `go test ./...`, `package.json` + scripts.test → `npm`/`pnpm`/`yarn`/`bun test`
+via lockfile `pnpm-lock.yaml`/`yarn.lock`/`package-lock.json`/`bun.lockb`,
 `pyproject.toml`/`uv.lock` → `pytest`/`uv run pytest`, `Cargo.toml` → `cargo test`,
 `Makefile` com target `test`/`check` → `make test`/`make check`). Sem marcadores
-reconhecidos, permanece o default Go. O binário do comando escolhido é validado no
+reconhecidos, `verify.test_cmd` fica **vazio** e o init emite um aviso — nunca
+mantém `go test ./...` sem `go.mod`. O binário do comando escolhido é validado no
 `PATH`: se `uv` estiver ausente com `uv.lock`, faz fallback para `pytest` ou
 `python -m pytest` / `python3 -m pytest` (e avisa); managers Node ausentes
 caem para `npm test` quando possível.
@@ -686,12 +697,13 @@ Quando há marcadores claros, o init também preenche `verify.build_cmd` e
 | Toolchain | `build_cmd` | `lint_cmd` |
 |-----------|-------------|------------|
 | `go.mod` | `go build ./...` | `.golangci.y*ml`/`.toml` → `golangci-lint run`; senão target `make lint` |
-| `package.json` | script `build` → `npm run build` / `pnpm run build` / `yarn build` | script `lint` → análogo |
+| `package.json` | script `build`, senão `typecheck`/`type-check` → `npm run …` / `pnpm run …` / `yarn …` | script `lint` → análogo |
 | `Cargo.toml` | `cargo build` | `cargo clippy` |
 | Python (`pyproject`/`uv.lock`/…) | (vazio) | `[tool.ruff]`/`ruff.toml` → `ruff check .` (ou `uv run …`); senão mypy |
 | só `Makefile` | target `build` → `make build` | target `lint` → `make lint` |
 
-Ausência de script/config → campo omitido (verify continua só com `test_cmd`).
+Ausência de script/config → campo omitido. Sem `test_cmd` detectado, o verify
+não inventa `go test` (configure à mão ou adicione script/marcador).
 
 A suite oculta permanece escondida do agente (paths em `tests/hidden/` protegidos
 pelo `tb guard`). O comando configurado em `verify.hidden_test_cmd` ou
@@ -716,9 +728,10 @@ de **abortar antes de build/test** depende da origem do `protected_path`:
 | Defaults embutidos (`tests/hidden/*`, `benchmarks/*`, `.toolbelt/thresholds.yaml`) | **aborta** (FAIL, 0 iterações) | **aborta** | **aborta** |
 | `protected_paths` de `.toolbelt/guard.yaml` (custom) | reporta como **warning** e **continua** build/test | reporta warning (exceção de Scope) e **continua** | **aborta** |
 
-`tb guard check --strict` continua tratando violações custom como `SeverityError`
-(CI não muda). Só o loop de `tb verify run` aplica a exceção acima para não
-matar o mandate quando o manifesto lista o próprio arquivo da tarefa.
+`tb guard check` (e o alias deprecated `--strict`) trata violações custom como
+`SeverityError` e falha o exit code por default; use `--warn-only` para opt-out.
+Só o loop de `tb verify run` aplica a exceção acima para não matar o mandate
+quando o manifesto lista o próprio arquivo da tarefa.
 
 ```yaml
 # .toolbelt/config.yaml
@@ -851,16 +864,21 @@ tb guard check [base..head] [flags]
 Flags:
   --base <ref>          Commit/ref base (default: HEAD~1; ignorado se base..head for passado)
   --head <ref>          Commit/ref head (default: HEAD; ignorado se base..head for passado)
-  --strict              Falha se qualquer path protegido foi modificado sem decisão
+  --warn-only           Exit 0 mesmo com SeverityError (opt-out do default CI-safe)
+  --strict              Deprecated: falha em SeverityError já é o default (alias sem efeito)
   --json                Saída em JSON
 ```
 
 Aceita o intervalo posicional `base..head` (forma clássica) ou as flags `--base`/`--head`, alinhadas a `tb review` / `tb drift` / `tb verify`.
 
+Por default, exit ≠ 0 quando há `SeverityError` (CI-safe). No modo texto sem
+violações imprime `guard: ok (N regras, 0 violações)` (`N` = paths protegidos
+carregados: defaults + `.toolbelt/guard.yaml`).
+
 **Exemplos:**
 
 ```bash
-# Verificar mudanças entre main e branch atual
+# Verificar mudanças entre main e branch atual (exit ≠ 0 se SeverityError)
 tb guard check main..HEAD
 
 # Mesmo intervalo via flags (como review/drift)
@@ -869,14 +887,13 @@ tb guard check --base main --head HEAD
 # Defaults HEAD~1..HEAD quando nenhum intervalo é passado
 tb guard check --json
 
-# Modo strict para CI
-tb guard check origin/main..HEAD --strict
-# Exit code 1 se houver SeverityError
+# Opt-out: lista violações mas exit 0
+tb guard check origin/main..HEAD --warn-only
 
-# Saída JSON (exit 0 mesmo com violações)
+# JSON + exit ≠ 0 se houver SeverityError (default)
 tb guard check main..HEAD --json
 
-# Strict + JSON: imprime JSON válido e sai ≠ 0 se houver SeverityError
+# Alias deprecated --strict (mesmo comportamento do default)
 tb guard check origin/main..HEAD --strict --json
 ```
 
@@ -1520,7 +1537,7 @@ Transporte unix/tcp e flags `--socket`/`--port`/`--tls-*` são planejados; hoje 
 | `tb_verify_run` | `tb verify run` | `ruler=tests\|visual`; args espelham flags |
 | `tb_review` | `tb review` | ticket/base/head/reviewers/standards |
 | `tb_drift` | `tb drift` | retorna `{drift, has_drift}` |
-| `tb_guard_check` | `tb guard check` | `base`/`head` ou `range=A..B`; `strict` → `strict_fail` |
+| `tb_guard_check` | `tb guard check` | `base`/`head` ou `range=A..B`; `strict_fail` por default em SeverityError; `warn_only=true` opt-out; `strict` deprecated |
 | `tb_graph_search` / `tb_graph_callers` / `tb_graph_deps` / `tb_graph_index` | `tb graph …` | chamada requer `TB_GRAPH=on` |
 
 Args são strings (como nas tools de grafo). Relatórios de verify/review/drift/guard voltam como JSON no `content` (sem código de saída de processo).
