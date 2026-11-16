@@ -139,7 +139,7 @@ Linguagens e docs (extensível via `LanguageIndexer`, regex leve, sem cgo):
 |-------------------|-----------|
 | `go` | `.go` (AST; arestas `calls`) |
 | `javascript` | `.js`, `.mjs`, `.cjs`, `.ts` (`.tsx`/`.jsx` via `react` quando ligado; arestas `calls`) |
-| `python` | `.py` (defines/imports + arestas `calls` resolvíveis no repositório) |
+| `python` | `.py` (defines/imports + arestas `calls` por módulo qualificado; `callers`/`impact` ignoram arestas com confiança &lt; 0.6) |
 | `java` | `.java` |
 | `kotlin` | `.kt`, `.kts` |
 | `csharp` | `.cs` |
@@ -220,9 +220,14 @@ Flags:
 tb graph callers [flags]
 
 Flags:
-  --function <name>   Nome da função
+  --function <name>   Nome da função (aceita sufixo qualificado, ex. scrubber.redact_secrets)
+  --file <path>       Arquivo da função
   --depth <n>         Profundidade do grafo (default: 1)
 ```
+
+Em Python, `--function` resolve por título ou sufixo do id qualificado
+(`func:pkg.mod.nome`). Arestas `calls` com confiança &lt; 0.6 (alvos ambíguos /
+sem import) ficam de fora do resultado default de `callers` e `impact`.
 
 **`tb graph deps`:**
 

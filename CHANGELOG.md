@@ -45,6 +45,7 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 - Stubs para comandos futuros: `sandbox`, `verify`, `mem`, `graph`, `router`, `mcp`
 
 ### Corrigido
+- `tb graph callers`/`impact` em Python: resolve por sufixo de nome qualificado e ignora arestas `calls` com confiança &lt; 0.6 (reduz alvos espúrios como `setup.py`→`tests.setup`)
 - docs/cli.md alinhado à CLI real: `graph index [path]` (sem `--path`), sem `graph query`, `review`/`drift` só `--output` (sem `-o`), flags de graph/mem verificadas contra `--help`
 - `tb bench`: honra `bench.tasks_dir` / `fixtures_dir` / `output_dir` do config.yaml
   (precedência: flag CLI > YAML > default); a flag global `-c/--config` alimenta `config.Load()`
