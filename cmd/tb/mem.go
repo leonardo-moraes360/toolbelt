@@ -183,7 +183,7 @@ var memCheckCmd = &cobra.Command{
 		}
 		rep, err := s.Check(sha, ids, all)
 		if err != nil {
-			if initErr := mem.EnsureDefaultAntiCheat(dir); initErr == nil && sha == "" {
+			if _, initErr := mem.EnsureDefaultAntiCheat(dir); initErr == nil && sha == "" {
 				list, _ = s.List("", all)
 				ids = ids[:0]
 				for _, inv := range list {
@@ -216,7 +216,22 @@ var memInitCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cwd, _ := os.Getwd()
 		dir := mem.LocateRepoToolbeltDir(cwd)
-		return mem.EnsureDefaultAntiCheat(dir)
+		result, err := mem.EnsureDefaultAntiCheat(dir)
+		if err != nil {
+			return err
+		}
+		if jsonOutput {
+			return json.NewEncoder(os.Stdout).Encode(result)
+		}
+		if result.Created {
+			fmt.Printf("criadas %d invariantes em %s\n", result.Count, result.Path)
+		} else {
+			fmt.Printf("já existiam %d invariantes em %s\n", result.Count, result.Path)
+		}
+		for i := range result.Invariants {
+			fmt.Println(formatInvariantLine(&result.Invariants[i]))
+		}
+		return nil
 	},
 }
 

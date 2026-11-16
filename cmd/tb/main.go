@@ -172,6 +172,16 @@ Exemplo:
 		}
 
 		if !global && repoRoot != "" {
+			excludePath, err := config.EnsureLocalGitExclude(repoRoot)
+			if err != nil {
+				return fmt.Errorf("atualizando .git/info/exclude: %w", err)
+			}
+			if excludePath != "" {
+				log.Info("estado local ignorado via .git/info/exclude",
+					"path", excludePath,
+					"patterns", strings.Join(config.LocalCacheExcludePatterns, ","))
+			}
+
 			docs, err := config.HandleAgentDocs(repoRoot, dir, writeAgents)
 			if err != nil {
 				return fmt.Errorf("processando AGENTS.md/CLAUDE.md: %w", err)

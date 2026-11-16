@@ -335,6 +335,10 @@ Flags:
   --ref <path>        Vínculo com ADR/decisions.md (ex: docs/adr/0001.md)
 ```
 
+Categoria inválida ou `--ref` fora do formato ADR/decisions saem ≠ 0 com a lista
+dos valores válidos (`anti_cheat, mandate, security`; refs como
+`docs/adr/<arquivo>.md` / `docs/decisions/<arquivo>.md`).
+
 **`tb mem list` / `search` / `check`:**
 
 ```bash
@@ -343,6 +347,8 @@ tb mem search <query> [--all]
 tb mem check [--expect-sha <sha>] [--all]
 ```
 
+`search` é case- e accent-insensitive (Unicode NFD + remoção de marcas).
+
 **`tb mem show` / `edit` / `retire`:**
 
 ```bash
@@ -350,6 +356,10 @@ tb mem show <id>
 tb mem edit <id> [--category <cat>] [--rule <texto>] [--ref <path>]
 tb mem retire <id>
 ```
+
+**`tb mem init`:** cria o conjunto padrão anti-trapaça e imprime o caminho + as
+invariantes criadas (ou `já existiam N…` se o arquivo já tinha entradas). Com
+`--json`, emite `path`/`created`/`count`/`invariants`.
 
 **`tb mem check` (implementado):**
 
@@ -373,6 +383,7 @@ tb mem list
 tb mem list --category anti_cheat
 tb mem list --all
 tb mem search thresholds
+tb mem search autenticacao   # encontra "autenticação"
 tb mem show inv-123
 tb mem edit inv-123 --ref docs/decisions/auth.md --rule "Escopo via ticket"
 tb mem retire inv-123
@@ -1625,6 +1636,26 @@ Flags:
 ```
 
 Detalhes de detecção de toolchain e preenchimento de `verify.*` estão na seção `tb verify`.
+
+**Estado local vs config (`.git/info/exclude`):** em repositório Git (sem `--global`),
+o init escreve em `.git/info/exclude` (não altera o `.gitignore` do projeto) os
+padrões de **cache/derivados**:
+
+- `.toolbelt/graph.json`
+- `.toolbelt/logs/`
+- `.toolbelt/vault/`
+- `.toolbelt/workspaces/`
+- `.toolbelt/captures/`
+- `.toolbelt/bench/`
+
+Assim `git stash -u` / `git clean` não apagam o índice/grafo por engano, sem
+bloquear o versionamento de config.
+
+**Recomendação — versionar invariantes:** `invariants.yaml` (e, quando fizer
+sentido para o time, `config.yaml` / `guard.yaml` / `thresholds.yaml`) deve
+permanecer **versionável**. São política compartilhada (ADR-010), não cache.
+O init **não** coloca `.toolbelt/` inteiro no exclude justamente para separar
+cache de config.
 
 ---
 

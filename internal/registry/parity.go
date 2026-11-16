@@ -358,7 +358,7 @@ func handleMemCheck(_ context.Context, args map[string]any) (any, error) {
 	all := boolArgTrue(args, "all")
 	rep, err := memCheckReport(s, sha, all)
 	if err != nil {
-		if initErr := mem.EnsureDefaultAntiCheat(dir); initErr == nil && sha == "" {
+		if _, initErr := mem.EnsureDefaultAntiCheat(dir); initErr == nil && sha == "" {
 			return memCheckReport(s, "", all)
 		}
 		return nil, err
@@ -400,10 +400,11 @@ func handleMemInit(_ context.Context, args map[string]any) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := mem.EnsureDefaultAntiCheat(dir); err != nil {
+	result, err := mem.EnsureDefaultAntiCheat(dir)
+	if err != nil {
 		return nil, err
 	}
-	return map[string]any{"ok": true, "path": filepath.Join(dir, mem.DefaultInvariantsFile)}, nil
+	return result, nil
 }
 
 func handleVerifyRun(ctx context.Context, args map[string]any) (any, error) {
