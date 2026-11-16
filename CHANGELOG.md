@@ -47,6 +47,9 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 - Stubs para comandos futuros: `sandbox`, `verify`, `mem`, `graph`, `router`, `mcp`
 
 ### Corrigido
+- `tb init`: hints de `AGENTS.md`/`CLAUDE.md` ignoram fences de código longos e
+  aceitam prosa curta (“use/run/prefer …”); `verify.test_cmd` valida o binário no
+  `PATH` com fallback (ex. `uv` ausente → `pytest` / `python -m pytest`)
 - `tb bench`: honra `bench.tasks_dir` / `fixtures_dir` / `output_dir` do config.yaml
   (precedência: flag CLI > YAML > default); a flag global `-c/--config` alimenta `config.Load()`
 - `protected_paths` com barra final (`secrets/`) passa a proteger filhos do diretório

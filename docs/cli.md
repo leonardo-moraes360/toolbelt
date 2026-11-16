@@ -733,7 +733,15 @@ Flags:
 (`go.mod` → `go test ./...`, `package.json` + scripts.test → `npm`/`pnpm`/`yarn test`,
 `pyproject.toml`/`uv.lock` → `pytest`/`uv run pytest`, `Cargo.toml` → `cargo test`,
 `Makefile` com target `test`/`check` → `make test`/`make check`). Sem marcadores
-reconhecidos, permanece o default Go.
+reconhecidos, permanece o default Go. O binário do comando escolhido é validado no
+`PATH`: se `uv` estiver ausente com `uv.lock`, faz fallback para `pytest` ou
+`python -m pytest` / `python3 -m pytest` (e avisa); managers Node ausentes
+caem para `npm test` quando possível.
+
+Quando há `AGENTS.md`/`CLAUDE.md`, o init grava `.toolbelt/agent_docs.yaml` com
+`sources` e `hints` de comandos curtos (inline, fences shell e prosa do tipo
+“use/run/prefer …”). Fences de código longo (ex. ` ```go `) são ignorados para
+não poluir as dicas.
 
 Quando há marcadores claros, o init também preenche `verify.build_cmd` e
 `verify.lint_cmd` de forma conservadora:
