@@ -23,6 +23,7 @@ func init() {
 	driftCmd.Flags().String("base", "HEAD~1", "commit/ref base")
 	driftCmd.Flags().String("head", "HEAD", "commit/ref head")
 	driftCmd.Flags().String("approved-sha", "", "SHA aprovado; compara patch-id estável com o head")
+	driftCmd.Flags().String("approved-base", "", "base do range aprovado; default: merge-base(approved, base)")
 	driftCmd.Flags().String("ticket", "rd.md", "caminho do ticket/rd.md")
 	driftCmd.Flags().String("output", "", "arquivo de saída JSON")
 }
@@ -54,6 +55,7 @@ func driftConfigFromFlags(cmd *cobra.Command, args []string) (*review.Config, er
 	base, _ := cmd.Flags().GetString("base")
 	head, _ := cmd.Flags().GetString("head")
 	approved, _ := cmd.Flags().GetString("approved-sha")
+	approvedBase, _ := cmd.Flags().GetString("approved-base")
 
 	ticket, err := review.LoadTicket(ticketPath)
 	if err != nil && !os.IsNotExist(err) {
@@ -67,6 +69,7 @@ func driftConfigFromFlags(cmd *cobra.Command, args []string) (*review.Config, er
 	cfg.BaseRef = base
 	cfg.HeadRef = head
 	cfg.ApprovedSHA = approved
+	cfg.ApprovedBase = approvedBase
 	cfg.TicketPath = ticketPath
 	cfg.Reviewers = 1
 	cfg.Standards = []string{"scope"}

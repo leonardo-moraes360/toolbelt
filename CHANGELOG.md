@@ -7,6 +7,13 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Não Lançado]
 
+### Corrigido
+- `tb review` / `tb drift` / `tb stack`: `--approved-sha` compara
+  `approved_base..approved` vs `head_base..head` (não a mesma `--base` nos dois
+  lados); default das bases via `git merge-base`; nova flag `--approved-base`;
+  range-diff só com `=` (e patch-id igual) conta como match após rebase limpo;
+  JSON de `pinned_approval` expõe `approved_base` e `head_base`
+
 ## [0.0.2] - 2026-11-16
 
 ### Adicionado

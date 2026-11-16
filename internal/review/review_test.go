@@ -830,7 +830,7 @@ func writeTicket(t *testing.T, repo, scopeFile string) string {
 func TestCheckPinnedApprovalMatch(t *testing.T) {
 	repo, base, approved, run := pinnedFixture(t, "package a\n\nfunc OK() {}\n")
 	_ = run
-	pinned, err := CheckPinnedApproval(repo, base, approved, "HEAD")
+	pinned, err := CheckPinnedApproval(repo, base, "", approved, "HEAD")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -839,6 +839,9 @@ func TestCheckPinnedApprovalMatch(t *testing.T) {
 	}
 	if pinned.ApprovedSHA != approved || pinned.PatchID == "" || pinned.PatchID != pinned.HeadPatchID {
 		t.Fatalf("pinned=%#v", pinned)
+	}
+	if pinned.ApprovedBase == "" || pinned.HeadBase == "" {
+		t.Fatalf("bases devem ser expostas; pinned=%#v", pinned)
 	}
 	if pinned.RangeDiffSummary != "" {
 		t.Fatalf("match não deve ter range-diff: %q", pinned.RangeDiffSummary)
@@ -853,7 +856,7 @@ func TestCheckPinnedApprovalMismatch(t *testing.T) {
 	run("add", ".")
 	run("commit", "-m", "diverged")
 
-	pinned, err := CheckPinnedApproval(repo, base, approved, "HEAD")
+	pinned, err := CheckPinnedApproval(repo, base, "", approved, "HEAD")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -961,11 +964,193 @@ func TestCheckPinnedApprovalIdenticalContentDifferentCommit(t *testing.T) {
 	run("commit", "-m", "copy-same-patch")
 	copySHA := gitRevParse(t, repo, "HEAD")
 
-	pinned, err := CheckPinnedApproval(repo, base, approved, copySHA)
+	pinned, err := CheckPinnedApproval(repo, base, "", approved, copySHA)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if pinned == nil || !pinned.Match {
 		t.Fatalf("mesmo patch em commits distintos deve match; got %#v", pinned)
+	}
+}
+
+func TestCheckPinnedApprovalCleanRebaseMatch(t *testing.T) {
+	repo := t.TempDir()
+	run := initGitRepo(t, repo)
+	if err := os.WriteFile(filepath.Join(repo, "file.txt"), []byte("base\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	run("add", ".")
+	run("commit", "-m", "base")
+	m1 := gitRevParse(t, repo, "HEAD")
+
+	run("checkout", "-b", "feature")
+	if err := os.WriteFile(filepath.Join(repo, "feat.go"), []byte("package feat\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	run("add", ".")
+	run("commit", "-m", "approved")
+	approved := gitRevParse(t, repo, "HEAD")
+
+	run("checkout", "master")
+	if err := os.WriteFile(filepath.Join(repo, "other.txt"), []byte("main2\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	run("add", ".")
+	run("commit", "-m", "main2")
+	m2 := gitRevParse(t, repo, "HEAD")
+
+	run("checkout", "feature")
+	run("rebase", "master")
+	head := gitRevParse(t, repo, "HEAD")
+
+	pinned, err := CheckPinnedApproval(repo, m2, "", approved, head)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pinned == nil || !pinned.Match {
+		t.Fatalf("rebase limpo deve match; got %#v", pinned)
+	}
+	if pinned.ApprovedBase != m1 {
+		t.Fatalf("approved_base=%s want %s", pinned.ApprovedBase, m1)
+	}
+	if pinned.HeadBase != m2 {
+		t.Fatalf("head_base=%s want %s", pinned.HeadBase, m2)
+	}
+	if pinned.PatchID == "" || pinned.PatchID != pinned.HeadPatchID {
+		t.Fatalf("patch-ids devem coincidir; pinned=%#v", pinned)
+	}
+}
+
+func TestCheckPinnedApprovalRebasePatchChangeDiverges(t *testing.T) {
+	repo := t.TempDir()
+	run := initGitRepo(t, repo)
+	if err := os.WriteFile(filepath.Join(repo, "file.txt"), []byte("base\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	run("add", ".")
+	run("commit", "-m", "base")
+
+	run("checkout", "-b", "feature")
+	if err := os.WriteFile(filepath.Join(repo, "feat.go"), []byte("package feat\n\nfunc A() {}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	run("add", ".")
+	run("commit", "-m", "approved")
+	approved := gitRevParse(t, repo, "HEAD")
+
+	run("checkout", "master")
+	if err := os.WriteFile(filepath.Join(repo, "other.txt"), []byte("main2\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	run("add", ".")
+	run("commit", "-m", "main2")
+	m2 := gitRevParse(t, repo, "HEAD")
+
+	run("checkout", "feature")
+	run("rebase", "master")
+	if err := os.WriteFile(filepath.Join(repo, "feat.go"), []byte("package feat\n\nfunc Changed() {}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	run("add", ".")
+	run("commit", "--amend", "--no-edit")
+	head := gitRevParse(t, repo, "HEAD")
+
+	pinned, err := CheckPinnedApproval(repo, m2, "", approved, head)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pinned == nil || pinned.Match {
+		t.Fatalf("rebase com patch alterado deve divergir; got %#v", pinned)
+	}
+	if pinned.RangeDiffSummary == "" {
+		t.Fatal("mismatch deve incluir range-diff")
+	}
+}
+
+func TestCheckPinnedApprovalAmendMatch(t *testing.T) {
+	repo, base, approved, run := pinnedFixture(t, "package a\n\nfunc OK() {}\n")
+	run("commit", "--amend", "-m", "approved-amended")
+	head := gitRevParse(t, repo, "HEAD")
+	if head == approved {
+		t.Fatal("amend deveria gerar SHA novo")
+	}
+
+	pinned, err := CheckPinnedApproval(repo, base, "", approved, head)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pinned == nil || !pinned.Match {
+		t.Fatalf("amend com mesmo patch deve match; got %#v", pinned)
+	}
+}
+
+func TestCheckPinnedApprovalHeadAdvancesDiverges(t *testing.T) {
+	repo, base, approved, run := pinnedFixture(t, "package a\n\nfunc OK() {}\n")
+	if err := os.WriteFile(filepath.Join(repo, "extra.go"), []byte("package a\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	run("add", ".")
+	run("commit", "-m", "extra")
+
+	pinned, err := CheckPinnedApproval(repo, base, "", approved, "HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pinned == nil || pinned.Match {
+		t.Fatalf("head que avança deve divergir; got %#v", pinned)
+	}
+}
+
+func TestCheckPinnedApprovalExplicitApprovedBase(t *testing.T) {
+	repo := t.TempDir()
+	run := initGitRepo(t, repo)
+	if err := os.WriteFile(filepath.Join(repo, "file.txt"), []byte("base\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	run("add", ".")
+	run("commit", "-m", "base")
+	m1 := gitRevParse(t, repo, "HEAD")
+
+	run("checkout", "-b", "feature")
+	if err := os.WriteFile(filepath.Join(repo, "feat.go"), []byte("package feat\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	run("add", ".")
+	run("commit", "-m", "approved")
+	approved := gitRevParse(t, repo, "HEAD")
+
+	run("checkout", "master")
+	if err := os.WriteFile(filepath.Join(repo, "other.txt"), []byte("main2\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	run("add", ".")
+	run("commit", "-m", "main2")
+	m2 := gitRevParse(t, repo, "HEAD")
+
+	run("checkout", "feature")
+	run("rebase", "master")
+	head := gitRevParse(t, repo, "HEAD")
+
+	pinned, err := CheckPinnedApproval(repo, m2, m1, approved, head)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pinned == nil || !pinned.Match {
+		t.Fatalf("--approved-base explícito em rebase limpo deve match; got %#v", pinned)
+	}
+	if pinned.ApprovedBase != m1 || pinned.HeadBase != m2 {
+		t.Fatalf("bases=%s/%s want %s/%s", pinned.ApprovedBase, pinned.HeadBase, m1, m2)
+	}
+}
+
+func TestRangeDiffAllEqual(t *testing.T) {
+	if !rangeDiffAllEqual("1:  abcdef0 = 1:  1234567 subject") {
+		t.Fatal("linha = deve ser equal")
+	}
+	if rangeDiffAllEqual("1:  abcdef0 ! 1:  1234567 subject") {
+		t.Fatal("linha ! não deve ser equal")
+	}
+	if !rangeDiffAllEqual("") {
+		t.Fatal("summary vazio deve ser equal")
 	}
 }

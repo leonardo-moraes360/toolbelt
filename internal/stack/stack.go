@@ -64,6 +64,7 @@ type Options struct {
 	FailFast      bool
 	Ticket        string
 	ApprovedSHA   string
+	ApprovedBase  string
 	WarnOnly      bool
 	TestCmd       string
 	HiddenTestCmd string
@@ -359,6 +360,7 @@ func runReview(opts *Options, shared *Shared) (StepResult, error) {
 	cfg.BaseRef = shared.Base
 	cfg.HeadRef = shared.Head
 	cfg.ApprovedSHA = opts.ApprovedSHA
+	cfg.ApprovedBase = opts.ApprovedBase
 	cfg.TicketPath = resolveTicket(shared.RepoDir, ticketOrDefault(opts.Ticket))
 	if opts.Reviewers > 0 {
 		cfg.Reviewers = opts.Reviewers
@@ -385,6 +387,7 @@ func runDrift(opts *Options, shared *Shared) (StepResult, error) {
 	cfg.BaseRef = shared.Base
 	cfg.HeadRef = shared.Head
 	cfg.ApprovedSHA = opts.ApprovedSHA
+	cfg.ApprovedBase = opts.ApprovedBase
 	cfg.TicketPath = ticketPath
 	cfg.Reviewers = 1
 	cfg.Standards = []string{"scope"}

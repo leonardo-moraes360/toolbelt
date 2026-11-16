@@ -50,14 +50,15 @@ type Shared struct {
 }
 
 type Config struct {
-	RepoDir     string
-	BaseRef     string
-	HeadRef     string
-	ApprovedSHA string
-	TicketPath  string
-	Reviewers   int
-	Standards   []string
-	Shared      *Shared
+	RepoDir      string
+	BaseRef      string
+	HeadRef      string
+	ApprovedSHA  string
+	ApprovedBase string
+	TicketPath   string
+	Reviewers    int
+	Standards    []string
+	Shared       *Shared
 }
 
 type Report struct {
@@ -134,7 +135,7 @@ func Run(cfg *Config) (*Report, error) {
 	reconcileDriftBase(cfg.RepoDir, drift)
 	report.Drift = drift
 
-	pinned, err := CheckPinnedApproval(cfg.RepoDir, cfg.BaseRef, cfg.ApprovedSHA, cfg.HeadRef)
+	pinned, err := CheckPinnedApproval(cfg.RepoDir, cfg.BaseRef, cfg.ApprovedBase, cfg.ApprovedSHA, cfg.HeadRef)
 	if err != nil {
 		return nil, err
 	}

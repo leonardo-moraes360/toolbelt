@@ -31,6 +31,7 @@ func init() {
 	stackCmd.Flags().Bool("fail-fast", false, "para na primeira etapa que falhar")
 	stackCmd.Flags().String("ticket", "rd.md", "caminho do ticket/rd.md (review/drift/verify)")
 	stackCmd.Flags().String("approved-sha", "", "SHA aprovado (review/drift)")
+	stackCmd.Flags().String("approved-base", "", "base do range aprovado; default: merge-base(approved, base)")
 	stackCmd.Flags().Bool("warn-only", false, "guard: não falha exit em SeverityError")
 	stackCmd.Flags().String("test-cmd", "", "verify: linha de testes visíveis")
 	stackCmd.Flags().String("hidden-test-cmd", "", "verify: linha de testes ocultos")
@@ -59,6 +60,7 @@ func runStack(cmd *cobra.Command, args []string) error {
 	failFast, _ := cmd.Flags().GetBool("fail-fast")
 	ticket, _ := cmd.Flags().GetString("ticket")
 	approved, _ := cmd.Flags().GetString("approved-sha")
+	approvedBase, _ := cmd.Flags().GetString("approved-base")
 	warnOnly, _ := cmd.Flags().GetBool("warn-only")
 	testCmd, _ := cmd.Flags().GetString("test-cmd")
 	hiddenCmd, _ := cmd.Flags().GetString("hidden-test-cmd")
@@ -74,6 +76,7 @@ func runStack(cmd *cobra.Command, args []string) error {
 		FailFast:      failFast,
 		Ticket:        ticket,
 		ApprovedSHA:   approved,
+		ApprovedBase:  approvedBase,
 		WarnOnly:      warnOnly,
 		TestCmd:       testCmd,
 		HiddenTestCmd: hiddenCmd,

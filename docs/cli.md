@@ -517,6 +517,7 @@ Flags:
   --fail-fast            Para na primeira etapa que falhar
   --ticket <path>        Ticket/rd.md (review/drift/verify; default: rd.md)
   --approved-sha <sha>   SHA aprovado (review/drift)
+  --approved-base <ref>  Base do range aprovado (default: merge-base(approved, base))
   --warn-only            guard: exit 0 mesmo com SeverityError
   --test-cmd <cmd>       verify: testes visíveis
   --hidden-test-cmd <cmd> verify: testes ocultos
@@ -585,7 +586,8 @@ tb review [ticket] [flags]
 Flags:
   --base <ref>          Commit base (default: HEAD~1 ou base_commit do ticket)
   --head <ref>          Commit head (default: HEAD)
-  --approved-sha <sha>  SHA aprovado; compara `git patch-id --stable` de base..approved vs base..head
+  --approved-sha <sha>  SHA aprovado; compara `git patch-id --stable` de approved_base..approved vs head_base..head
+  --approved-base <ref> Base do range aprovado (default: `git merge-base <approved> <base>`)
   --ticket <path>       Ticket/rd.md (default: rd.md)
   --reviewers <n>       Máximo de goldfish distintos (default: 3; não clona)
   --standards <stds>    Papéis: scope,quality,acceptance (default)
@@ -596,9 +598,11 @@ Flags:
 Também reporta drift de escopo e commit base. Isolamento fresco é obrigatório.
 `tb review -o …` é rejeitado (`unknown shorthand flag: 'o'`); use `--output`.
 
-Com `--approved-sha`, o JSON inclui `pinned_approval` (`approved_sha`, `patch_id`,
-`head_patch_id`, `match` e, se divergir, `range_diff`). Patch diferente do aprovado
-imprime um resumo de `git range-diff` e sai com código ≠ 0.
+Com `--approved-sha`, o JSON inclui `pinned_approval` (`approved_sha`, `approved_base`,
+`head_base`, `patch_id`, `head_patch_id`, `match` e, se divergir, `range_diff`).
+As bases default são `merge-base(approved, base)` e `merge-base(head, base)`.
+Patch-id igual **ou** `git range-diff` só com `=` conta como match (rebase limpo).
+Patch diferente do aprovado imprime um resumo de `git range-diff` e sai com código ≠ 0.
 
 O ticket/rd.md aceita frontmatter YAML ou Markdown: seção `## Scope` / `## Escopo`
 (ou `Scope:` / `Escopo:`) e `## Forbidden` / `## Proibido` (ou `Forbidden:` /
@@ -673,14 +677,16 @@ tb drift [ticket] [flags]
 Flags:
   --base <ref>          Commit base (default: HEAD~1 ou base_commit do ticket)
   --head <ref>          Commit head (default: HEAD)
-  --approved-sha <sha>  SHA aprovado; compara `git patch-id --stable` de base..approved vs base..head
+  --approved-sha <sha>  SHA aprovado; compara `git patch-id --stable` de approved_base..approved vs head_base..head
+  --approved-base <ref> Base do range aprovado (default: `git merge-base <approved> <base>`)
   --ticket <path>       Ticket/rd.md (default: rd.md)
   --output <path>       Saída JSON (sem shorthand `-o`)
   --json                Saída em JSON (flag global)
 ```
 
 Com `--approved-sha`, o JSON de drift inclui `pinned_approval` (mesmo formato do
-`tb review`). Divergência de patch-id sai com código ≠ 0 e mostra `git range-diff`.
+`tb review`, com `approved_base`/`head_base`). Match por patch-id igual ou
+range-diff só com `=`. Divergência sai com código ≠ 0 e mostra `git range-diff`.
 
 **Exemplos:**
 
@@ -1603,10 +1609,10 @@ Transporte unix/tcp e flags `--socket`/`--port`/`--tls-*` são planejados; hoje 
 | `tb_run` | — | `sh -c` com timeout |
 | `tb_mem_add` / `tb_mem_list` / `tb_mem_show` / `tb_mem_edit` / `tb_mem_retire` / `tb_mem_search` / `tb_mem_check` / `tb_mem_init` | `tb mem …` | arg opcional `cwd`; `ref`/`all` onde aplicável |
 | `tb_verify_run` | `tb verify run` | `ruler=tests\|visual`; args espelham flags |
-| `tb_review` | `tb review` | ticket/base/head/approved_sha/reviewers/standards |
-| `tb_drift` | `tb drift` | retorna `{drift, has_drift, pinned_approval}` |
+| `tb_review` | `tb review` | ticket/base/head/approved_sha/approved_base/reviewers/standards |
+| `tb_drift` | `tb drift` | retorna `{drift, has_drift, pinned_approval}`; `approved_sha`/`approved_base` |
 | `tb_guard_check` | `tb guard check` | `base`/`head` ou `range=A..B`; `strict_fail` por default em SeverityError; `warn_only=true` opt-out; `strict` deprecated (boolean) |
-| `tb_stack` | `tb stack` | `ops` (array), `base`/`head`, `fail_fast` (boolean); retorna JSON agregado |
+| `tb_stack` | `tb stack` | `ops` (array), `base`/`head`, `fail_fast` (boolean), `approved_sha`/`approved_base`; retorna JSON agregado |
 | `tb_graph_search` / `tb_graph_callers` / `tb_graph_deps` / `tb_graph_impact` / `tb_graph_index` | `tb graph …` | chamada requer `TB_GRAPH=on`; `depth`/`limit` integer; `transitive` boolean |
 
 Schemas tipam `depth`/`limit`/`reviewers`/`max_iter` como integer, `strict`/`warn_only`/`transitive`/`skip_unavailable` como boolean, `threshold` como number e `standards` como array de strings; valores string legados ainda são aceitos. Relatórios de verify/review/drift/guard voltam como JSON no `content` (sem código de saída de processo).
