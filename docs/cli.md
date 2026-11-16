@@ -301,15 +301,15 @@ tb mem <subcommand>
 
 Subcomandos:
   add       Adiciona regra invariante
-  list      Lista invariantes
+  list      Lista invariantes (omite retired; --all inclui)
+  show      Exibe invariante por id
+  edit      Edita category/rule/ref
+  retire    Soft-retire (omitida de list/check/search por padrão)
+  search    Busca em id/categoria/regra/ref
   check     Verifica integridade (hash e retenção)
   init      Cria conjunto padrão anti-trapaça
 
 Subcomandos (planejados — vault Markdown):
-  search    Busca na memória
-  show      Exibe entrada
-  show      Exibe entrada específica
-  edit      Edita entrada
   link      Cria link entre entradas
   tag       Gerencia tags
   export    Exporta memória
@@ -317,22 +317,32 @@ Subcomandos (planejados — vault Markdown):
   sync      Sincroniza vault → SQLite
 ```
 
-**`tb mem add` (implementado):**
+Subcomando desconhecido (`tb mem foo`) sai com código ≠ 0 e mensagem `unknown command`.
+
+**`tb mem add`:**
 
 ```bash
 tb mem add <regra> [flags]
 
 Flags:
   --category <cat>    Categoria: anti_cheat|mandate|security (default: anti_cheat)
+  --ref <path>        Vínculo com ADR/decisions.md (ex: docs/adr/0001.md)
 ```
 
-**`tb mem list` (implementado):**
+**`tb mem list` / `search` / `check`:**
 
 ```bash
-tb mem list [flags]
+tb mem list [--category <cat>] [--all]
+tb mem search <query> [--all]
+tb mem check [--expect-sha <sha>] [--all]
+```
 
-Flags:
-  --category <cat>    Filtrar por categoria
+**`tb mem show` / `edit` / `retire`:**
+
+```bash
+tb mem show <id>
+tb mem edit <id> [--category <cat>] [--rule <texto>] [--ref <path>]
+tb mem retire <id>
 ```
 
 **Exemplos:**
@@ -340,17 +350,22 @@ Flags:
 ```bash
 # Adicionar invariante (argumento posicional obrigatório)
 tb mem add "Não modificar tests/hidden/**"
-tb mem add --category security "Não relaxar thresholds sem revisão"
+tb mem add --category security --ref docs/adr/0005.md "Não relaxar thresholds sem revisão"
 
-# Listar / checar / seed anti-trapaça
+# Listar / buscar / exibir / editar / aposentar
 tb mem list
 tb mem list --category anti_cheat
+tb mem list --all
+tb mem search thresholds
+tb mem show inv-123
+tb mem edit inv-123 --ref docs/decisions/auth.md --rule "Escopo via ticket"
+tb mem retire inv-123
 tb mem check
 tb mem init
 ```
 
-> Subcomandos de vault Markdown (`search`, `show`, `edit`, `link`, `tag`, `export`, `import`, `sync`) e flags vault `--type`/`--title` **não existem** na CLI atual — são planejados.
-> `tb mem add` aceita só a regra posicional e `--category` (`anti_cheat|mandate|security`). Exemplos no estilo `mem add --type fact …` são rejeitados (`unknown flag: --type`).
+> Soft-retire mantém a entrada no YAML; `list`/`search`/`check` omitem retired a menos que `--all`.
+> Flags vault `--type`/`--title` **não existem** — `tb mem add` aceita regra posicional, `--category` e `--ref`.
 
 ---
 
@@ -1533,7 +1548,7 @@ Transporte unix/tcp e flags `--socket`/`--port`/`--tls-*` são planejados; hoje 
 | `tb_echo` | — | smoke |
 | `tb_env` | — | cwd/os/arch |
 | `tb_run` | — | `sh -c` com timeout |
-| `tb_mem_add` / `tb_mem_list` / `tb_mem_check` / `tb_mem_init` | `tb mem …` | arg opcional `cwd` |
+| `tb_mem_add` / `tb_mem_list` / `tb_mem_show` / `tb_mem_edit` / `tb_mem_retire` / `tb_mem_search` / `tb_mem_check` / `tb_mem_init` | `tb mem …` | arg opcional `cwd`; `ref`/`all` onde aplicável |
 | `tb_verify_run` | `tb verify run` | `ruler=tests\|visual`; args espelham flags |
 | `tb_review` | `tb review` | ticket/base/head/reviewers/standards |
 | `tb_drift` | `tb drift` | retorna `{drift, has_drift}` |
