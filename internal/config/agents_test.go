@@ -164,6 +164,34 @@ func TestSeedAgentsMD_OmitsEmptyBuildLint(t *testing.T) {
 	}
 }
 
+func TestSeedAgentsMD_EmptyTestCmdDoesNotFallbackToGo(t *testing.T) {
+	root := t.TempDir()
+	seeded, err := SeedAgentsMD(root, VerifyConfig{
+		BuildCmd: "npm run build",
+		LintCmd:  "npm run lint",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !seeded {
+		t.Fatal("expected seeded=true")
+	}
+	data, err := os.ReadFile(filepath.Join(root, AgentsMDName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(data)
+	if strings.Contains(text, "go test") {
+		t.Fatalf("seed must not invent go test without go.mod: %s", text)
+	}
+	if !strings.Contains(text, "npm run build") {
+		t.Fatalf("seed missing build_cmd: %s", text)
+	}
+	if !strings.Contains(text, "verify.test_cmd") {
+		t.Fatalf("seed must still mention test_cmd field: %s", text)
+	}
+}
+
 func TestSeedAgentsMD_NeverOverwrites(t *testing.T) {
 	root := t.TempDir()
 	path := filepath.Join(root, AgentsMDName)
