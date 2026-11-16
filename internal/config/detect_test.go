@@ -142,8 +142,8 @@ func TestDetectBuildLintCmd(t *testing.T) {
 		{
 			name: "go with golangci config",
 			files: map[string]string{
-				"go.mod":         "module example.com/x\n",
-				".golangci.yml":  "run:\n  timeout: 5m\n",
+				"go.mod":        "module example.com/x\n",
+				".golangci.yml": "run:\n  timeout: 5m\n",
 			},
 			wantBuild: "go build ./...",
 			wantLint:  "golangci-lint run",

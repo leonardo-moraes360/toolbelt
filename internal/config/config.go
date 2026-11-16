@@ -224,27 +224,34 @@ func Init(dir string) error {
 		}
 	}
 
-	// Salva configuração padrão
 	configPath := filepath.Join(dir, DefaultConfigFile)
-	if _, err := os.Stat(configPath); errors.Is(err, os.ErrNotExist) {
-		cfg := DefaultConfig()
-		if root, ok := projectRootForInit(dir); ok {
-			if cmd := DetectTestCmd(root); cmd != "" {
-				cfg.Verify.TestCmd = cmd
-			}
-			if cmd := DetectBuildCmd(root); cmd != "" {
-				cfg.Verify.BuildCmd = cmd
-			}
-			if cmd := DetectLintCmd(root); cmd != "" {
-				cfg.Verify.LintCmd = cmd
-			}
-		}
-		if err := Save(cfg, configPath); err != nil {
-			return fmt.Errorf("saving default config: %w", err)
-		}
+	if _, err := os.Stat(configPath); !errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+
+	cfg := DefaultConfig()
+	applyDetectedVerifyCmds(cfg, dir)
+	if err := Save(cfg, configPath); err != nil {
+		return fmt.Errorf("saving default config: %w", err)
 	}
 
 	return nil
+}
+
+func applyDetectedVerifyCmds(cfg *Config, dir string) {
+	root, ok := projectRootForInit(dir)
+	if !ok {
+		return
+	}
+	if cmd := DetectTestCmd(root); cmd != "" {
+		cfg.Verify.TestCmd = cmd
+	}
+	if cmd := DetectBuildCmd(root); cmd != "" {
+		cfg.Verify.BuildCmd = cmd
+	}
+	if cmd := DetectLintCmd(root); cmd != "" {
+		cfg.Verify.LintCmd = cmd
+	}
 }
 
 // Exists verifica se o diretório de configuração existe.
