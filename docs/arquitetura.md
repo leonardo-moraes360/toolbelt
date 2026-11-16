@@ -1131,7 +1131,9 @@ graph LR
     DEC -->|Não| FLAG[Flag: justificativa necessária]
 ```
 
-**Paths protegidos** (configurados em `.toolbelt/guard.yaml`):
+**Paths protegidos** (defaults embutidos + opcional `.toolbelt/guard.yaml`):
+
+Defaults: `tests/hidden/*`, `benchmarks/*`, `.toolbelt/thresholds.yaml`. Entradas em `protected_paths` do YAML (string ou `pattern`) são unidas a esses defaults; arquivo ausente não remove os defaults.
 
 ```yaml
 protected_paths:

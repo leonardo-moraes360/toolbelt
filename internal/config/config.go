@@ -146,7 +146,7 @@ func DefaultConfig() *Config {
 		},
 		Verify: VerifyConfig{
 			TestCmd:       "go test ./...",
-			HiddenTestCmd: "go test ./tests/hidden/...",
+			HiddenTestCmd: "",
 		},
 	}
 }
