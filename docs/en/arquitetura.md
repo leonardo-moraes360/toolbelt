@@ -1136,7 +1136,7 @@ graph LR
 
 **Protected paths** (built-in defaults + optional `.toolbelt/guard.yaml`):
 
-Defaults: `tests/hidden/*`, `benchmarks/*`, `.toolbelt/thresholds.yaml`. Entries in `protected_paths` in the YAML (string or `pattern`) are merged with these defaults; a missing file does not remove the defaults. A pattern with a trailing slash (`secrets/`) is treated as a directory prefix (protects children).
+Defaults: `tests/hidden/*`, `benchmarks/*`, `.toolbelt/thresholds.yaml`, `.toolbelt/guard.yaml`. Entries in `protected_paths` in the YAML on the **base** (string or `pattern`) are merged with these defaults; a missing file does not remove the defaults. Case-insensitive matching with globs (`**`); malformed YAML fails closed. A pattern with a trailing slash (`secrets/`) is treated as a directory prefix (protects children).
 
 ```yaml
 protected_paths:

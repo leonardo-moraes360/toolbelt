@@ -612,7 +612,8 @@ Flags:
   --head <ref>           Ref head compartilhada (default: HEAD)
   --fail-fast            Para na primeira etapa que falhar
   --ticket <path>        Ticket/rd.md (review/drift/verify; default: rd.md)
-  --approved-sha <sha>   SHA aprovado (review/drift)
+  --approved-sha <sha>   SHA aprovado; patch-id verbatim (review/drift)
+  --require-approved-sha Falha se --approved-sha estiver ausente (ou `review.require_approved_sha`)
   --warn-only            guard: exit 0 mesmo com SeverityError
   --test-cmd <cmd>       verify: testes visíveis
   --hidden-test-cmd <cmd> verify: testes ocultos
@@ -663,7 +664,8 @@ Flags:
 By default, exit ≠ 0 when there is `SeverityError` (strict behavior).
 `--strict` is **deprecated** (no-op alias: the default already fails on
 `SeverityError`); prefer omitting the flag or using `--warn-only` to opt out.
-In clean text mode it prints `guard: ok (N regras, 0 violações)`.
+In clean text mode it prints `guard: ok (N regras, 0 violações)` (`N` = valid
+rules from the base + defaults).
 
 **Examples:**
 
@@ -690,22 +692,30 @@ tb review [ticket] [flags]
 Flags:
   --base <ref>          Commit base (default: HEAD~1 ou base_commit do ticket)
   --head <ref>          Commit head (default: HEAD)
-  --approved-sha <sha>  SHA aprovado; compara `git patch-id --stable` de base..approved vs base..head
-  --ticket <path>       Ticket/rd.md (default: rd.md)
-  --reviewers <n>       Máximo de goldfish distintos (default: 3; não clona)
-  --standards <stds>    Papéis: scope,quality,acceptance (default)
-  --output <path>       Relatório JSON (sem shorthand `-o`; use `--output`)
-  --json                Saída em JSON (flag global)
+  --approved-sha <sha>       SHA aprovado; compara `git patch-id --verbatim` de base..approved vs base..head
+  --require-approved-sha     Falha se `--approved-sha` estiver ausente (ou `review.require_approved_sha` na config)
+  --ticket <path>            Ticket/rd.md (default: rd.md)
+  --reviewers <n>            Máximo de goldfish distintos (default: 3; não clona)
+  --standards <stds>         Papéis: scope,quality,acceptance (default)
+  --output <path>            Relatório JSON (sem shorthand `-o`; use `--output`)
+  --json                     Saída em JSON (flag global)
 ```
 
 Also reports scope and base-commit drift. Fresh isolation is mandatory.
 `tb review -o …` is rejected (`unknown shorthand flag: 'o'`); use `--output`.
 
-With `--approved-sha`, the JSON includes `pinned_approval` (`approved_sha`, `patch_id`,
-`head_patch_id`, `match`, and if they diverge, `range_diff`). A patch different from the approved one
+Base and head are resolved to SHA **once** at the start of the flow (anti-TOCTOU) and
+that pinned SHA is used for the rest.
+
+The JSON always includes `pinned_approval`. Without `--approved-sha`:
+`{"checked": false}`. With the flag: `checked`, `approved_sha`, `patch_id`,
+`head_patch_id`, `match`, and if they diverge, `range_diff`. Comparison uses
+`git patch-id --verbatim` (whitespace-sensitive). A patch different from the approved one
 prints a `git range-diff` summary and exits with code ≠ 0. If `--approved-sha`
 coincides with the base (empty `base..approved` range), the CLI does **not** dump
 `git range-diff` usage — it shows a clear message about the invalid range.
+With `--require-approved-sha` (or `review.require_approved_sha: true` in
+`.toolbelt/config.yaml`), missing `--approved-sha` is an error.
 
 The ticket/rd.md accepts YAML frontmatter or Markdown: section `## Scope` / `## Escopo`
 (or `Scope:` / `Escopo:`) and `## Forbidden` / `## Proibido` (or `Forbidden:` /
@@ -799,14 +809,16 @@ tb drift [ticket] [flags]
 Flags:
   --base <ref>          Commit base (default: HEAD~1 ou base_commit do ticket)
   --head <ref>          Commit head (default: HEAD)
-  --approved-sha <sha>  SHA aprovado; compara `git patch-id --stable` de base...approved vs base...head
-  --ticket <path>       Ticket/rd.md (default: rd.md)
-  --output <path>       Saída JSON (sem shorthand `-o`)
-  --json                Saída em JSON (flag global)
+  --approved-sha <sha>       SHA aprovado; compara `git patch-id --verbatim` de base..approved vs base..head
+  --require-approved-sha     Falha se `--approved-sha` estiver ausente (ou `review.require_approved_sha`)
+  --ticket <path>            Ticket/rd.md (default: rd.md)
+  --output <path>            Saída JSON (sem shorthand `-o`)
+  --json                     Saída em JSON (flag global)
 ```
 
-With `--approved-sha`, the drift JSON includes `pinned_approval` (same format as
-`tb review`). Patch-id divergence exits with code ≠ 0 and shows `git range-diff`.
+The drift JSON includes `pinned_approval` in the same format as `tb review`
+(`checked: false` without the flag; verbatim patch-id with the flag). Divergence exits
+with code ≠ 0 and shows `git range-diff`. Base/head are pinned to SHA at the start.
 `--approved-sha` equal to the base follows the same clear message as `tb review` (no
 usage dump).
 
@@ -942,8 +954,8 @@ to **abort before build/test** depends on the origin of the `protected_path`:
 
 | Origin | Without `--ticket` | With `--ticket` and path in Scope | With `--ticket` and path outside Scope |
 |--------|--------------------|-----------------------------------|----------------------------------------|
-| Built-in defaults (`tests/hidden/*`, `benchmarks/*`, `.toolbelt/thresholds.yaml`) | **aborts** (FAIL, 0 iterations) | **aborts** | **aborts** |
-| `protected_paths` from `.toolbelt/guard.yaml` (custom) | reports as **warning** and **continues** build/test | reports warning (Scope exception) and **continues** | **aborts** |
+| Built-in defaults (`tests/hidden/*`, `benchmarks/*`, `.toolbelt/thresholds.yaml`, `.toolbelt/guard.yaml`) | **aborts** (FAIL, 0 iterations) | **aborts** | **aborts** |
+| `protected_paths` from `.toolbelt/guard.yaml` on the **base** (custom) | reports as **warning** and **continues** build/test | reports warning (Scope exception) and **continues** | **aborts** |
 
 `tb guard check` (and the deprecated `--strict` alias) treats custom violations as
 `SeverityError` and fails the exit code by default; use `--warn-only` to opt out.
@@ -1090,8 +1102,9 @@ Accepts the positional range `base..head` (classic form) or the `--base`/`--head
 
 By default, exit ≠ 0 when there is `SeverityError` (CI-safe). `--strict` is
 **deprecated** (replaced by the strict default + `--warn-only`). In text mode
-with no violations it prints `guard: ok (N regras, 0 violações)` (`N` = protected paths
-loaded: defaults + `.toolbelt/guard.yaml`).
+with no violations it prints `guard: ok (N regras, 0 violações)` (`N` = valid
+protected paths loaded: defaults + `.toolbelt/guard.yaml` from the **base**; invalid
+patterns are ignored and do not count toward `rules_checked`).
 
 **Examples:**
 
@@ -1114,7 +1127,21 @@ tb guard check main..HEAD --json
 
 **Protected paths manifesto (`.toolbelt/guard.yaml`):**
 
-The guard loads `protected_paths` from `.toolbelt/guard.yaml` (when present) and **merges** them with the built-in defaults (`tests/hidden/*`, `benchmarks/*`, `.toolbelt/thresholds.yaml`). Each entry may be a string (`lib/help.js`) or an object with `pattern`. An entry with a trailing slash (`secrets/`) protects the directory and all children (prefix). `secrets/*` remains valid for one level via glob. Without the file, only the defaults apply. Violations get `source: default` (built-in anti-cheat) or `source: custom` (YAML). In `tb verify run`, only `default` (and custom outside the `--ticket` Scope) abort the loop; custom in the mandate is reported and verify continues — see the verify section above.
+The guard reads `protected_paths` from `.toolbelt/guard.yaml` **on the base ref**
+(`git show base:.toolbelt/guard.yaml`) and **merges** them with the built-in defaults
+(`tests/hidden/*`, `benchmarks/*`, `.toolbelt/thresholds.yaml`,
+`.toolbelt/guard.yaml`). Any change to `.toolbelt/guard.yaml` in the diff
+is a violation. Malformed YAML on the base fails **closed** (exit ≠ 0, clear error).
+Path matching is **case-insensitive** and honors globs (`*`, `?`, `**`).
+Renames (`R*`) check source and destination. The anti-cheat scan uses
+diff content / `git show head:path` (not the working tree) and covers Go and
+JS/TS (`it.skip` / `describe.skip` / `test.skip` / `xit` / `.only` /
+trivial assertions such as `expect(true).toBe(true)`). Each YAML entry may be
+a string (`lib/help.js`) or an object with `pattern`. A trailing slash (`secrets/`)
+protects the directory and children. Without the file on the base, only the defaults apply.
+Violations get `source: default` or `source: custom`. In `tb verify run`,
+only `default` (and custom outside the `--ticket` Scope) abort the loop; custom in the
+mandate is reported and verify continues — see the verify section above.
 
 ```yaml
 # .toolbelt/guard.yaml
@@ -1719,8 +1746,8 @@ Unix/tcp transport and `--socket`/`--port`/`--tls-*` flags are planned; today on
 | `tb_run` | — | `sh -c` with timeout; filtered env; `env`/`pass_env` args (arrays) |
 | `tb_mem_add` / `tb_mem_list` / `tb_mem_show` / `tb_mem_edit` / `tb_mem_retire` / `tb_mem_search` / `tb_mem_check` / `tb_mem_init` | `tb mem …` | optional `cwd` arg; `ref`/`all` (boolean; legacy strings ok) where applicable |
 | `tb_verify_run` | `tb verify run` | `ruler=tests\|visual`; args mirror flags + `env`/`pass_env` |
-| `tb_review` | `tb review` | ticket/base/head/approved_sha/reviewers/standards |
-| `tb_drift` | `tb drift` | returns `{drift, has_drift, pinned_approval}` |
+| `tb_review` | `tb review` | ticket/base/head/approved_sha/require_approved_sha/reviewers/standards |
+| `tb_drift` | `tb drift` | returns `{drift, has_drift, pinned_approval}` (`checked` explicit) |
 | `tb_guard_check` | `tb guard check` | `base`/`head` or `range=A..B`; `strict_fail` by default on SeverityError; `warn_only=true` opt-out; `strict` deprecated (boolean) |
 | `tb_stack` | `tb stack` | `ops` (array), `base`/`head`, `fail_fast` (boolean), `env`/`pass_env`; returns aggregated JSON |
 | `tb_graph_search` / `tb_graph_callers` / `tb_graph_deps` / `tb_graph_impact` / `tb_graph_index` | `tb graph …` | call requires `TB_GRAPH=on`; `depth`/`limit` integer; `transitive` boolean |
@@ -1773,10 +1800,34 @@ Landlock isolation on Linux (`check` / `run`). Does not create worktrees — use
 
 ```bash
 tb sandbox check
-tb sandbox run <command> [args...] [--workdir <path>] [--timeout <dur>]
+tb sandbox run <command> [args...] [flags]
 ```
 
-`--timeout` defaults to `30s`. Without `--workdir`, uses cwd. With `--json`, `sandbox check` emits `os`/`arch`/`landlock`/`version`/`error`; `sandbox run` emits the `Result` in snake_case (`exit_code`, `timed_out`, `duration_ns`, …). If the child exits ≠ 0 without timeout, `tb` propagates that exit code.
+**Flags for `tb sandbox run`:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--workdir <path>` | cwd | Working directory (write allowed) |
+| `--timeout <dur>` | `30s` | Process timeout |
+| `--allow-unsandboxed` | `false` | Explicit opt-in to run **without** Landlock |
+
+**Fail-closed** behavior: if the kernel has no Landlock (or ruleset application fails), `tb sandbox run` **refuses** to execute and returns a clear error asking for `--allow-unsandboxed`. There is no silent fallback to unsandboxed execution.
+
+On Linux with Landlock, writes are restricted to `--workdir` and the system temp directory (`os.TempDir()`, typically `/tmp`) when that is not an ancestor of the workdir. System paths needed for execution (`/bin`, `/usr`, `/lib`, `/etc`, `/dev`, `/proc`, …) are read-only. The ruleset is applied in the child process (re-exec + `PR_SET_NO_NEW_PRIVS` + `landlock_restrict_self`) **before** `exec` of the command.
+
+```bash
+tb sandbox check
+# Landlock: true
+# ABI: 6
+
+tb sandbox run --workdir /tmp/job sh -c 'echo ok > out.txt'
+# write outside workdir → Permission denied
+
+# Without Landlock (or for CI without LSM): explicit opt-in
+tb sandbox run --allow-unsandboxed echo hello
+```
+
+With `--json`, `sandbox check` emits `os`/`arch`/`landlock`/`version`/`error`; `sandbox run` emits the `Result` in snake_case (`exit_code`, `timed_out`, `duration_ns`, `sandboxed`, …). If the child exits ≠ 0 without timeout, `tb` propagates that exit code.
 
 ---
 

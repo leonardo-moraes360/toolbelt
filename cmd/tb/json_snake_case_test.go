@@ -97,18 +97,20 @@ func TestJSONOutputSnakeCaseKeys(t *testing.T) {
 				BaseMismatch: false,
 				ActualBase:   "HEAD~1",
 				PinnedApproval: &review.PinnedApproval{
+					Checked:          true,
 					ApprovedSHA:      "abc",
 					PatchID:          "p1",
 					HeadPatchID:      "p2",
-					Match:            false,
+					Match:            boolPtr(false),
 					RangeDiffSummary: "1:  aaa ! 1:  bbb",
 				},
 			},
 			PinnedApproval: &review.PinnedApproval{
+				Checked:     true,
 				ApprovedSHA: "abc",
 				PatchID:     "p1",
 				HeadPatchID: "p1",
-				Match:       true,
+				Match:       boolPtr(true),
 			},
 			FreshOK:   true,
 			Reviewers: 3,
@@ -129,6 +131,8 @@ func TestJSONOutputSnakeCaseKeys(t *testing.T) {
 		})
 	}
 }
+
+func boolPtr(v bool) *bool { return &v }
 
 func assertNoPascalCaseJSONKeys(t *testing.T, v any) {
 	t.Helper()
