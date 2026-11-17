@@ -27,6 +27,12 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
   `created`/`count`/`invariants`
 
 ### Mudanças
+- `tb review` / `tb drift` / `tb stack`: `--approved-sha` passa a usar
+  `git patch-id --verbatim` (sensível a whitespace); JSON sempre expõe
+  `pinned_approval.checked` (`false` quando a checagem não rodou);
+  `--require-approved-sha` e config `review.require_approved_sha` falham se a
+  flag estiver ausente; base/head são resolvidos para SHA uma vez no início
+  (anti-TOCTOU) e reutilizados no fluxo
 - **Breaking (JSON grafo):** consultas MCP/CLI (`search`/`callers`/`deps`/`impact`) passam a
   emitir `{"stale": bool, "nodes": [...]}` em vez de um array nu; `stats`/`index` incluem `stale`
 - Indexador JS/TS indexa `*.test.*`, `*.spec.*`, `__tests__` e `e2e` (antes eram omitidos);

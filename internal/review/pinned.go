@@ -9,36 +9,45 @@ import (
 )
 
 type PinnedApproval struct {
-	ApprovedSHA      string `json:"approved_sha"`
-	PatchID          string `json:"patch_id"`
-	HeadPatchID      string `json:"head_patch_id"`
-	Match            bool   `json:"match"`
+	Checked          bool   `json:"checked"`
+	ApprovedSHA      string `json:"approved_sha,omitempty"`
+	PatchID          string `json:"patch_id,omitempty"`
+	HeadPatchID      string `json:"head_patch_id,omitempty"`
+	Match            *bool  `json:"match,omitempty"`
 	RangeDiffSummary string `json:"range_diff,omitempty"`
+}
+
+func boolPtr(v bool) *bool { return &v }
+
+func (p *PinnedApproval) Diverged() bool {
+	return p != nil && p.Checked && p.Match != nil && !*p.Match
 }
 
 func CheckPinnedApproval(repo, base, approved, head string) (*PinnedApproval, error) {
 	if approved == "" {
-		return nil, nil
+		return &PinnedApproval{Checked: false}, nil
 	}
 	resolved, err := resolveGitRef(repo, approved)
 	if err != nil {
 		return nil, fmt.Errorf("approved-sha: %w", err)
 	}
-	approvedID, err := gitPatchIDStable(repo, base, resolved)
+	approvedID, err := gitPatchIDVerbatim(repo, base, resolved)
 	if err != nil {
 		return nil, fmt.Errorf("patch-id base..approved: %w", err)
 	}
-	headID, err := gitPatchIDStable(repo, base, head)
+	headID, err := gitPatchIDVerbatim(repo, base, head)
 	if err != nil {
 		return nil, fmt.Errorf("patch-id base..head: %w", err)
 	}
+	match := approvedID == headID
 	out := &PinnedApproval{
+		Checked:     true,
 		ApprovedSHA: resolved,
 		PatchID:     approvedID,
 		HeadPatchID: headID,
-		Match:       approvedID == headID,
+		Match:       boolPtr(match),
 	}
-	if out.Match {
+	if match {
 		return out, nil
 	}
 	summary, err := gitRangeDiff(repo, base, resolved, head)
@@ -49,17 +58,17 @@ func CheckPinnedApproval(repo, base, approved, head string) (*PinnedApproval, er
 	return out, nil
 }
 
-func gitPatchIDStable(repo, base, head string) (string, error) {
+func gitPatchIDVerbatim(repo, base, head string) (string, error) {
 	diff, err := gitDiff(repo, base, head)
 	if err != nil {
 		return "", err
 	}
-	cmd := exec.Command("git", "patch-id", "--stable")
+	cmd := exec.Command("git", "patch-id", "--verbatim")
 	cmd.Dir = repo
 	cmd.Stdin = strings.NewReader(diff)
 	out, err := cmd.Output()
 	if err != nil {
-		return "", git.Wrap(err, nil, "patch-id", "--stable")
+		return "", git.Wrap(err, nil, "patch-id", "--verbatim")
 	}
 	fields := strings.Fields(string(out))
 	if len(fields) == 0 {
