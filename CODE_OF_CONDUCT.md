@@ -1,3 +1,5 @@
+🇧🇷 Português | [🇺🇸 English](CODE_OF_CONDUCT.en.md)
+
 # Código de Conduta do Contributor Covenant
 
 ## Nosso Compromisso

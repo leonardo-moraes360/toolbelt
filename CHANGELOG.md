@@ -10,6 +10,11 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 ### Adicionado
 - Release: SBOM (syft via `sboms:` no GoReleaser), assinatura keyless cosign do `checksums.txt` (OIDC GitHub) e atestação de proveniência SLSA (`actions/attest-build-provenance`)
 - CI: job `govulncheck` em todo push/PR
+- Espelho completo da documentação em inglês (`README.en.md`, `*.en.md` na raiz,
+  `docs/en/**`) com seletores de idioma; PT permanece a fonte de verdade
+  (`docs/en/TRANSLATION.md`, `docs/TRANSLATION.md`)
+- Teste `TestDocsEnglishMirrorComplete` exige par em `docs/en/` para cada `.md` em
+  `docs/`; `TestDocsCLIExamplesMatchCobra` também valida `docs/en/cli.md`
 - `tb sandbox run --allow-unsandboxed`: opt-in explícito para executar sem isolamento Landlock
 - Teste de integração que tenta escrever fora do workdir (pula se o kernel não tiver Landlock)
 - Grafo TS/JS: fingerprint no `graph.json` e detecção de índice desatualizado;

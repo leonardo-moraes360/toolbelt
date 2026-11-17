@@ -1,3 +1,5 @@
+🇧🇷 Português | [🇺🇸 English](../en/adr/README.md)
+
 # Registros de Decisão Arquitetural (ADRs)
 
 Este diretório contém os ADRs (Architecture Decision Records) do projeto toolbelt.

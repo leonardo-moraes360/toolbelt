@@ -1,3 +1,5 @@
+🇧🇷 Português | [🇺🇸 English](../en/campo/requests.md)
+
 # Estudo de campo: psf/requests
 
 Grupo: sem instrumentação de agente de IA (sem AGENTS.md / CLAUDE.md / .cursorrules).  

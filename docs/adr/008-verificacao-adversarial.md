@@ -1,3 +1,5 @@
+🇧🇷 Português | [🇺🇸 English](../en/adr/008-verificacao-adversarial.md)
+
 # ADR-008: Verificação Adversarial (Gerador vs Discriminador)
 
 ## Status

@@ -1,3 +1,5 @@
+🇧🇷 Português | [🇺🇸 English](../../en/campo/rodada2/ruff.md)
+
 # Estudo de campo rodada 2: `tb` em astral-sh/ruff
 
 Data: 2026-11-16. Clone local em `/tmp/target/ruff` (shallow). Nenhuma interação com o remoto do alvo. Alterações de código ficaram só no clone local; neste repositório toolbelt só este arquivo.

@@ -1,3 +1,7 @@
+🇧🇷 Português | [🇺🇸 English](en/site.md)
+
+🇧🇷 Português | [🇺🇸 English](en/site.md)
+
 # Landing page (GitHub Pages)
 
 O site estático em [`site/`](../site/) é a landing pública do toolbelt (`tb`).

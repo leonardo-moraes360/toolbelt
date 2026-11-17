@@ -1,3 +1,5 @@
+🇧🇷 Português | [🇺🇸 English](../en/adr/005-anti-trapaca.md)
+
 # ADR-005: Estratégia Anti-Trapaça
 
 ## Status

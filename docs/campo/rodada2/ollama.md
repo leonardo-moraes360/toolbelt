@@ -1,3 +1,5 @@
+🇧🇷 Português | [🇺🇸 English](../../en/campo/rodada2/ollama.md)
+
 # Estudo de campo rodada 2: ollama/ollama
 
 Estudo em 2026-11-16 com `tb` buildado de `main` (`make build` → `toolbelt a46c295`). Clone shallow local em `/tmp/target/ollama`. Grupo: **com instrumentação AI existente**. **Nenhuma interação** com o upstream (sem push, issue, PR ou comentário).

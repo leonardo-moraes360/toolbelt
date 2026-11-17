@@ -1,3 +1,5 @@
+🇧🇷 Português | [🇺🇸 English](../en/adr/009-router-e-workers.md)
+
 # ADR-009: Padrão Router e Workers para Delegação de Tarefas
 
 ## Status
