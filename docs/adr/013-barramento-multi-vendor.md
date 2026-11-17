@@ -259,6 +259,7 @@ Serão medidas com `tb bus` + `tb bench compare` antes de mudar o status para `a
 
 ## Referências
 
+- [Protocolo do barramento](../bus-protocolo.md) — spec B0 (envelope, Agent Card, convite)
 - [ADR-002](002-mcp-a2a-protocolos.md) — MCP + A2A
 - [ADR-003](003-sqlite-fts5-grafo.md) — SQLite + FTS5
 - [ADR-004](004-sandbox-isolamento.md) — sandbox

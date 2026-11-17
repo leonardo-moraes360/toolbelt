@@ -90,7 +90,8 @@ tb  (implementado hoje)
 ├── board        Board de tickets (list|watch|pause|resume|drain)          ✓ Fase 3
 ├── router       Scheduler em primeiro plano (run|status|config)           ✓ Fase 3
 ├── watchdog     Alertas e controle de workers (status|alerts|kill)       ✓ Fase 3
-└── merge        Integra tickets done (fail|last_wins)                     ✓ Fase 3
+├── merge        Integra tickets done (fail|last_wins)                     ✓ Fase 3
+└── bus          Barramento entre agentes (channel|invite|join|send|recv|claim|complete|log)  ✓ B1
 
 tb  (planejado)
 ├── run / proc / md / agent
@@ -1661,6 +1662,38 @@ tb merge TKT-002 TKT-003
 
 ---
 
+### `tb bus` — Barramento entre Agentes (✓ B1, ADR-013)
+
+Barramento local para agentes de vendors diferentes (Claude Code, Codex, Grok, ...) trocarem mensagens `bus/0.1` pelo mesmo store (`.toolbelt/bus/bus.db`, SQLite WAL, sem daemon). Spec do envelope, Agent Card e convite: [bus-protocolo.md](bus-protocolo.md). Lease/heartbeat (B2) e `tb bus run` (B3) ainda não existem.
+
+```bash
+tb bus channel create feature-x --owner claude-main --ttl 2h
+tb bus invite feature-x --role worker
+tb bus join feature-x --invite K7Q2-9XMD --name grok-1 --vendor xai --role worker
+tb bus send --channel feature-x --as claude-main --to role:worker --type task.assign --thread TKT-001 --payload '{"ticket":"TKT-001"}'
+tb bus recv --channel feature-x --as grok-1 --wait 20s
+tb bus claim TKT-001 --channel feature-x --as grok-1
+tb bus complete TKT-001 --channel feature-x --as grok-1 --result '{"verdict":"PASS"}'
+tb bus log feature-x --thread TKT-001
+tb bus channel list
+tb bus channel show feature-x
+```
+
+| Comando | Quem | Função |
+|---|---|---|
+| `channel create <canal> --owner N` | humano | cria canal (`--ttl`, padrão sem expiração) e convite do dono (papel `supervisor`) |
+| `invite <canal> --role R` | humano | convite de uso único com papel fixado (`--ttl`, padrão `10m`) |
+| `join <canal> --invite C` | agente | entra com Agent Card (`--name`, `--vendor`, `--model`, `--tier`, `--wake`, `--session`, `--capability` ou `--card card.json`); grava a sessão em `.toolbelt/bus/sessions/` (`0600`) |
+| `send` | agente | `--to agent:\|role:\|topic:`, `--type`, `--thread`, `--causation`, `--idempotency-key`, `--ttl`, `--payload` (JSON ou `@arquivo`) |
+| `recv` | agente | lê e avança o cursor; `--wait` (máx. 25s), `--limit`, `--peek`, `--since` |
+| `claim <thread>` | agente | dono único da thread |
+| `complete <thread>` | dono | `--result`; publica `task.result` em `topic:board` |
+| `log <canal>` | humano | trilha de auditoria (payload redigido); `--thread`, `--limit` |
+
+Comandos de agente exigem `--channel` e `--as`. O token de sessão nunca é impresso. `--json` devolve envelopes JSON-RPC.
+
+---
+
 ### `tb bench` — Benchmark ✅ IMPLEMENTADO (A/B na Fase 2)
 
 Executa benchmarks e mede KPIs. Suporta comparação A/B entre configs/feature flags.
@@ -1783,6 +1816,7 @@ Transporte unix/tcp e flags `--socket`/`--port`/`--tls-*` são planejados; hoje 
 | `tb_router_status` | `tb router status` | só leitura de `state.json` |
 | `tb_watchdog_alerts` | `tb watchdog alerts` | `since`, `kind`, `limit` (integer) |
 | `tb_merge` | `tb merge` | `ids` (array), `strategy`, `into`, `force`, `allow_sensitive` (padrão `false`); **dry-run por padrão** — só altera refs com `apply=true` |
+| `tb_bus_join` / `tb_bus_send` / `tb_bus_recv` / `tb_bus_claim` / `tb_bus_complete` | `tb bus …` | identidade presa à conexão após `tb_bus_join` (`channel`, `invite`, `name` + Agent Card); `payload`/`result` como objeto; `wait` string (máx. 25s); criar canal/convite **não** existe via MCP |
 | `tb_graph_search` / `tb_graph_callers` / `tb_graph_deps` / `tb_graph_impact` / `tb_graph_index` | `tb graph …` | chamada requer `TB_GRAPH=on`; `depth`/`limit` integer; `transitive` boolean |
 
 Schemas tipam `depth`/`limit`/`reviewers`/`max_iter` como integer, `strict`/`warn_only`/`transitive`/`skip_unavailable`/`all` (mem) como boolean, `threshold` como number e `standards` como array de strings; valores string legados ainda são aceitos. Relatórios de verify/review/drift/guard voltam como JSON no `content` (sem código de saída de processo). Listas vazias usam `[]`; `hidden_passed` é `null` se a suíte oculta não se aplica.

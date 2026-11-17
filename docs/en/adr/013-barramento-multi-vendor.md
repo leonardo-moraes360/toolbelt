@@ -259,6 +259,7 @@ They will be measured with `tb bus` + `tb bench compare` before moving the statu
 
 ## References
 
+- [Bus protocol](../bus-protocolo.md) — B0 spec (envelope, Agent Card, invite)
 - [ADR-002](002-mcp-a2a-protocolos.md) — MCP + A2A
 - [ADR-003](003-sqlite-fts5-grafo.md) — SQLite + FTS5
 - [ADR-004](004-sandbox-isolamento.md) — sandbox
