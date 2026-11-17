@@ -20,17 +20,8 @@ func TestRouterToolsRegistered(t *testing.T) {
 	}
 }
 
-func TestRouterToolsReadPersistedState(t *testing.T) {
-	dir := t.TempDir()
-	res, text := callTool(t, "tb_router_status", map[string]any{"cwd": dir})
-	if res.IsError || text == "" {
-		t.Fatalf("status sem router: %v %s", res.IsError, text)
-	}
-	var none map[string]any
-	if err := json.Unmarshal([]byte(text), &none); err != nil || none["status"] != "none" {
-		t.Fatalf("esperava status none: %s", text)
-	}
-
+func writeRouterPersistedState(t *testing.T, dir string) {
+	t.Helper()
 	rdir := filepath.Join(dir, ".toolbelt", "router")
 	if err := os.MkdirAll(rdir, 0o755); err != nil {
 		t.Fatal(err)
@@ -46,8 +37,23 @@ func TestRouterToolsReadPersistedState(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(rdir, "alerts.jsonl"), []byte(alerts), 0o644); err != nil {
 		t.Fatal(err)
 	}
+}
 
-	_, text = callTool(t, "tb_router_status", map[string]any{"cwd": dir})
+func assertRouterStatusNone(t *testing.T, dir string) {
+	t.Helper()
+	res, text := callTool(t, "tb_router_status", map[string]any{"cwd": dir})
+	if res.IsError || text == "" {
+		t.Fatalf("status sem router: %v %s", res.IsError, text)
+	}
+	var none map[string]any
+	if err := json.Unmarshal([]byte(text), &none); err != nil || none["status"] != "none" {
+		t.Fatalf("esperava status none: %s", text)
+	}
+}
+
+func assertRouterPersistedReads(t *testing.T, dir string) {
+	t.Helper()
+	_, text := callTool(t, "tb_router_status", map[string]any{"cwd": dir})
 	var st map[string]any
 	if err := json.Unmarshal([]byte(text), &st); err != nil || st["stale"] != true || st["strategy"] != "fifo" {
 		t.Fatalf("status: %s", text)
@@ -62,8 +68,15 @@ func TestRouterToolsReadPersistedState(t *testing.T) {
 	if err := json.Unmarshal([]byte(text), &some); err != nil || len(some) != 1 || some[0]["action"] != "retry" {
 		t.Fatalf("alerts filtrados: %s", text)
 	}
-	res, _ = callTool(t, "tb_watchdog_alerts", map[string]any{"cwd": dir, "since": "xyz"})
+	res, _ := callTool(t, "tb_watchdog_alerts", map[string]any{"cwd": dir, "since": "xyz"})
 	if !res.IsError {
 		t.Fatal("since inválido deveria ser erro")
 	}
+}
+
+func TestRouterToolsReadPersistedState(t *testing.T) {
+	dir := t.TempDir()
+	assertRouterStatusNone(t, dir)
+	writeRouterPersistedState(t, dir)
+	assertRouterPersistedReads(t, dir)
 }

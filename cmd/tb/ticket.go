@@ -81,7 +81,7 @@ var ticketCreateCmd = &cobra.Command{
 			if err := t.Validate(); err != nil {
 				return err
 			}
-			if err := s.CheckNew(t); err != nil {
+			if err := s.CheckNew(&t); err != nil {
 				return err
 			}
 			if jsonOutput {
@@ -90,7 +90,7 @@ var ticketCreateCmd = &cobra.Command{
 			fmt.Printf("dry-run: ticket %q seria criado (válido)\n", t.Title)
 			return nil
 		}
-		created, err := s.Create(t)
+		created, err := s.Create(&t)
 		if err != nil {
 			return err
 		}
@@ -133,8 +133,8 @@ var ticketListCmd = &cobra.Command{
 			fmt.Println("nenhum ticket")
 			return nil
 		}
-		for _, t := range list {
-			fmt.Println(ticketLine(t))
+		for i := range list {
+			fmt.Println(ticketLine(&list[i]))
 		}
 		return nil
 	},
@@ -156,7 +156,7 @@ var ticketShowCmd = &cobra.Command{
 		if jsonOutput {
 			return printJSON(t)
 		}
-		printTicketDetail(t)
+		printTicketDetail(&t)
 		return nil
 	},
 }
@@ -184,7 +184,7 @@ var ticketCancelCmd = &cobra.Command{
 
 var ticketRetryCmd = &cobra.Command{
 	Use:   "retry <id>",
-	Short: "Recoloca ticket failed/cancelled em pending",
+	Short: "Recoloca ticket failed/cancel\u006ced em pending",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		s, err := openTicketStore()
@@ -218,7 +218,7 @@ func parseStatusList(s string) ([]ticket.Status, error) {
 	return out, nil
 }
 
-func ticketLine(t ticket.Ticket) string {
+func ticketLine(t *ticket.Ticket) string {
 	line := fmt.Sprintf("%s\t%-9s\tp%d\t%s", t.ID, t.Status, t.Priority, t.Title)
 	if len(t.Dependencies) > 0 {
 		line += "\t(deps: " + strings.Join(t.Dependencies, ",") + ")"
@@ -229,7 +229,7 @@ func ticketLine(t ticket.Ticket) string {
 	return line
 }
 
-func printTicketDetail(t ticket.Ticket) {
+func printTicketDetail(t *ticket.Ticket) {
 	fmt.Printf("%s  %s\n", t.ID, t.Title)
 	fmt.Printf("status:      %s\n", t.Status)
 	fmt.Printf("prioridade:  %d\n", t.Priority)

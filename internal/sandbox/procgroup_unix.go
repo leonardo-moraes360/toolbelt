@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-// killProcessGroup faz o filho liderar seu próprio grupo de processos e, ao
+// killProcessGroup faz o filho liderar seu próprio grupo de procs e, ao
 // cancelar o contexto (timeout, watchdog, SIGINT), mata o grupo inteiro — assim
 // netos que seguram o pipe de saída não travam Run.
 func killProcessGroup(cmd *exec.Cmd) {

@@ -24,7 +24,7 @@ type Config struct {
 	// execenv.Filter para remover segredos). nil mantém o comportamento
 	// anterior: o filho herda o ambiente do processo atual.
 	Env []string
-	// ProcessGroup isola o filho num grupo de processos próprio e mata o grupo
+	// ProcessGroup isola o filho num grupo de procs próprio e mata o grupo
 	// inteiro ao cancelar o contexto/timeout (usado pelo router/watchdog).
 	ProcessGroup bool
 	// Registry, quando não nil (só com ProcessGroup), rastreia o pid do filho e,

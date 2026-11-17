@@ -5,20 +5,20 @@ import (
 	"sync"
 )
 
-// Registry rastreia os processos-filho que ESTE processo iniciou (líderes de
+// Registry rastreia os procs-filho que ESTE processo iniciou (líderes de
 // agente e subprocessos git do router) e, no Linux com PR_SET_CHILD_SUBREAPER
 // ativo (AcquireSubreaper), identifica e mata descendentes que escaparam do
-// grupo de processos (setsid/setpgid) e foram reparentados ao router.
+// grupo de procs (setsid/setpgid) e foram reparentados ao router.
 //
 // Política: agentes não devem se desacoplar; qualquer processo-filho direto
 // não rastreado é encerrado (SIGKILL) e colhido (wait4). Em plataformas sem
 // subreaper (macOS/Windows) Sweep é no-op: só vale o comportamento de grupo de
-// processos (limitação documentada).
+// procs (limitação documentada).
 //
 // O mutex é mantido só durante cmd.Start+registro e durante Sweep: assim um
 // filho recém-iniciado nunca é visto como órfão e o wait4 do Sweep nunca
 // compete com o Wait do os/exec (só pids não rastreados são colhidos). Quem
-// inicia processos por fora (ex.: bibliotecas que chamam exec direto) deve
+// inicia procs por fora (ex.: bibliotecas que chamam exec direto) deve
 // roteá-los por Run para ficarem rastreados; não existe lock mantido durante a
 // vida do filho, então Sweep nunca fica bloqueado por um git lento.
 type Registry struct {
@@ -28,7 +28,7 @@ type Registry struct {
 	found    []Orphan                // escapes detectados, ainda não entregues
 	vars     []string                // variáveis de ambiente a capturar de cada escapado
 	ownerVar string                  // variável que identifica o dono (ticket) de um grupo
-	windows  []*spawnWindow          // janelas de spawn de processos não-agente (ex.: git worktree add)
+	windows  []*spawnWindow          // janelas de spawn de procs não-agente (ex.: git worktree add)
 }
 
 // groupKey identifica um grupo de agente: o pid do líder sozinho pode ser
@@ -136,7 +136,7 @@ func (r *Registry) Run(cmd *exec.Cmd, group bool) error {
 }
 
 // RunOwned é Run com dono: owner é o valor esperado de ownerVar (ticket) nos
-// processos do grupo; só tem efeito com group=true.
+// procs do grupo; só tem efeito com group=true.
 func (r *Registry) RunOwned(cmd *exec.Cmd, group bool, owner string) error {
 	if err := r.start(cmd, group, owner); err != nil {
 		return err
@@ -192,9 +192,9 @@ func (r *Registry) finishGroup(pgid int) {
 	r.mu.Unlock()
 }
 
-// pruneGroupsLocked remove grupos encerrados cujo grupo de processos já sumiu.
+// pruneGroupsLocked remove grupos encerrados cujo grupo de procs já sumiu.
 // O kernel não reutiliza um pid enquanto existir grupo com esse pgid, então
-// "grupo sumiu" é o momento seguro de esquecer a entrada (sem acúmulo nem
+// "grupo sumiu" é o ponto seguro de esquecer a entrada (sem acúmulo nem
 // colisão por reuso de pid).
 func (r *Registry) pruneGroupsLocked() {
 	for k, g := range r.groups {

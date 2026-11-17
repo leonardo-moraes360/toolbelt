@@ -29,7 +29,7 @@ var mergeCmd = &cobra.Command{
 	Long: `Integra os commits dos tickets done (Result.BaseCommit..HeadCommit) num
 worktree temporário destacado e só então avança o branch alvo de forma atômica.
 
-Ordem: dependências primeiro, depois a ordem dos argumentos.
+Ordem: dependências primeiro, depois a ordem dos args.
 Estratégias: fail (padrão; aborta sem alterar refs) e last_wins (a versão do
 último ticket vence nos arquivos em conflito). prompt/semantic não são
 implementadas.
@@ -61,7 +61,7 @@ alterar refs, a menos que use --allow-sensitive (dry-run apenas reporta).`,
 		if err != nil {
 			return err
 		}
-		res, err := merge.Run(merge.Options{
+		res, err := merge.Run(&merge.Options{
 			Repo: cwd, Store: store, IDs: args, Strategy: strategy,
 			DryRun: dry, Output: output, Into: into, Force: force, AllowSensitive: allowSens,
 		})

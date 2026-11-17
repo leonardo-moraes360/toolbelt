@@ -141,21 +141,24 @@ type prepared struct {
 	files   []string
 }
 
-// Run executa a integração.
-func Run(opts Options) (*Result, error) {
+func validateRunOpts(opts *Options) (Strategy, error) {
 	strategy := opts.Strategy
 	if strategy == "" {
 		strategy = StrategyFail
 	}
 	if strategy != StrategyFail && strategy != StrategyLastWins {
-		return nil, fmt.Errorf("estratégia %q não implementado", strategy)
+		return "", fmt.Errorf("estratégia %q não implementado", strategy)
 	}
 	if opts.Store == nil {
-		return nil, fmt.Errorf("store de tickets ausente")
+		return "", fmt.Errorf("store de tickets ausente")
 	}
 	if len(opts.IDs) == 0 {
-		return nil, fmt.Errorf("informe ao menos um ID de ticket")
+		return "", fmt.Errorf("informe ao menos um ID de ticket")
 	}
+	return strategy, nil
+}
+
+func openMergeRepo(opts *Options) (runner, string, error) {
 	repoDir := opts.Repo
 	if repoDir == "" {
 		repoDir = "."
@@ -163,91 +166,68 @@ func Run(opts Options) (*Result, error) {
 	r := runner{repo: repoDir}
 	top, err := r.out(repoDir, "rev-parse", "--show-toplevel")
 	if err != nil {
-		return nil, fmt.Errorf("não é um repositório git: %w", err)
+		return r, "", fmt.Errorf("não é um repositório git: %w", err)
 	}
 	r.repo = top
 	if email, _ := r.out(top, "config", "user.email"); email == "" {
 		r.cfg = []string{"-c", "user.name=toolbelt", "-c", "user.email=toolbelt@localhost"}
 	}
+	return r, top, nil
+}
 
-	// Alvo.
-	target, startSHA, err := resolveTarget(r, opts.Into)
-	if err != nil {
-		return nil, err
-	}
-	canApply := !opts.DryRun && opts.Output == ""
-	if canApply && target == "" {
-		return nil, fmt.Errorf("HEAD destacado: informe --into <branch> (ou use --dry-run/--output)")
-	}
-
-	// Tickets.
-	prep, err := prepare(r, opts)
-	if err != nil {
-		return nil, err
-	}
-
-	res := &Result{Strategy: strategy, Target: target, StartSHA: startSHA, DryRun: opts.DryRun, Conflicts: []Conflict{}}
-	byFile := map[string][]string{}
-	for _, p := range prep {
+func indexPrepared(res *Result, prep []prepared) (byFile map[string][]string, status map[string]string) {
+	byFile = map[string][]string{}
+	status = map[string]string{}
+	for i := range prep {
+		p := &prep[i]
 		res.Tickets = append(res.Tickets, TicketInfo{ID: p.t.ID, Branch: p.t.Result.Branch, Commits: len(p.commits), Files: nonNil(p.files)})
 		for _, f := range p.files {
 			byFile[f] = append(byFile[f], p.t.ID)
 		}
 	}
-	status := map[string]string{}
+	return byFile, status
+}
 
-	// Gate de confiança: caminhos que viram execução de código fora do sandbox.
-	res.Sensitive, err = detectSensitive(r, prep)
-	if err != nil {
-		return nil, err
+func sensitiveBlocked(res *Result, canApply, allow bool) error {
+	if len(res.Sensitive) == 0 || !canApply || allow {
+		return nil
 	}
-	if len(res.Sensitive) > 0 && canApply && !opts.AllowSensitive {
-		var b strings.Builder
-		for _, s := range res.Sensitive {
-			fmt.Fprintf(&b, "\n  %s: %s (%s)", s.Ticket, s.Path, s.Reason)
+	var b strings.Builder
+	for _, s := range res.Sensitive {
+		fmt.Fprintf(&b, "\n  %s: %s (%s)", s.Ticket, s.Path, s.Reason)
+	}
+	return fmt.Errorf("%w; nenhuma ref foi alterada (revise e use --allow-sensitive):%s", ErrSensitive, b.String())
+}
+
+func recordConflicts(res *Result, status map[string]string, conflicts []Conflict) {
+	for _, cf := range conflicts {
+		res.Conflicts = append(res.Conflicts, cf)
+		if cf.Resolution == "" {
+			status[cf.File] = "conflict"
+		} else if status[cf.File] != "conflict" {
+			status[cf.File] = "last_wins"
 		}
-		return res, fmt.Errorf("%w; nenhuma ref foi alterada (revise e use --allow-sensitive):%s", ErrSensitive, b.String())
 	}
+}
 
-	// Worktree temporário destacado.
-	tmp, err := os.MkdirTemp("", "tb-merge-")
-	if err != nil {
-		return nil, err
-	}
-	wt := filepath.Join(tmp, "wt")
-	if _, err := r.git(top, "worktree", "add", "--detach", "--quiet", wt, startSHA); err != nil {
-		_ = os.RemoveAll(tmp)
-		return nil, err
-	}
-	defer func() {
-		_, _ = r.git(top, "worktree", "remove", "--force", wt)
-		_ = os.RemoveAll(tmp)
-		_, _ = r.git(top, "worktree", "prune")
-	}()
-
-	failed := false
-loop:
-	for _, p := range prep {
+func cherryPickAll(r runner, wt string, prep []prepared, strategy Strategy, byFile map[string][]string, res *Result, status map[string]string) (failed bool, err error) {
+	for i := range prep {
+		p := &prep[i]
 		for _, c := range p.commits {
-			conflicts, err := pick(r, wt, c, p, strategy, byFile)
-			if err != nil {
-				return nil, err
+			conflicts, perr := pick(r, wt, c, p, strategy, byFile)
+			if perr != nil {
+				return false, perr
 			}
-			for _, cf := range conflicts {
-				res.Conflicts = append(res.Conflicts, cf)
-				if cf.Resolution == "" {
-					status[cf.File] = "conflict"
-				} else if status[cf.File] != "conflict" {
-					status[cf.File] = "last_wins"
-				}
-			}
+			recordConflicts(res, status, conflicts)
 			if strategy == StrategyFail && len(conflicts) > 0 {
-				failed = true
-				break loop
+				return true, nil
 			}
 		}
 	}
+	return false, nil
+}
 
+func fillFileReport(res *Result, byFile map[string][]string, status map[string]string) {
 	paths := make([]string, 0, len(byFile))
 	for f := range byFile {
 		paths = append(paths, f)
@@ -263,46 +243,125 @@ loop:
 	if res.Files == nil {
 		res.Files = []File{}
 	}
-	if failed {
-		return res, fmt.Errorf("%w: %d arquivo(s) em conflito; nenhuma ref foi alterada (use --strategy last_wins para resolver)", ErrConflict, len(res.Conflicts))
-	}
+}
 
-	sha, err := r.out(wt, "rev-parse", "HEAD")
-	if err != nil {
-		return nil, err
-	}
-	res.ResultSHA = sha
-	res.NoChanges = sha == startSHA
-
+func publishResult(r runner, top string, opts *Options, prep []prepared, res *Result, startSHA, sha string) error {
 	if opts.Output != "" {
 		diff, err := r.git(top, "diff", "--no-ext-diff", "--binary", startSHA, sha)
 		if err != nil {
-			return nil, err
+			return err
 		}
-		if err := os.WriteFile(opts.Output, []byte(diff), 0o644); err != nil {
-			return nil, err
+		if err := os.WriteFile(opts.Output, []byte(diff), 0o600); err != nil {
+			return err
 		}
 		res.Output = opts.Output
-		return res, nil
+		return nil
 	}
 	if opts.DryRun {
-		return res, nil
+		return nil
 	}
-
 	if !res.NoChanges {
-		if err := advance(r, top, target, startSHA, sha); err != nil {
-			return nil, err
+		if err := advance(r, top, res.Target, startSHA, sha); err != nil {
+			return err
 		}
 	}
 	res.Applied = true
 	now := time.Now().UTC()
-	for _, p := range prep {
+	for i := range prep {
+		p := &prep[i]
 		if _, err := opts.Store.Update(p.t.ID, func(t *ticket.Ticket) error {
 			t.MergedAt = &now
 			return nil
 		}); err != nil {
-			return res, fmt.Errorf("refs atualizadas, mas falhou marcar %s como mergeado: %w", p.t.ID, err)
+			return fmt.Errorf("refs atualizadas, mas falhou marcar %s como mergeado: %w", p.t.ID, err)
 		}
+	}
+	return nil
+}
+
+func withMergeWorktree(r runner, top, startSHA string, fn func(wt string) error) error {
+	tmp, err := os.MkdirTemp("", "tb-merge-")
+	if err != nil {
+		return err
+	}
+	wt := filepath.Join(tmp, "wt")
+	if _, err := r.git(top, "worktree", "add", "--detach", "--quiet", wt, startSHA); err != nil {
+		_ = os.RemoveAll(tmp)
+		return err
+	}
+	defer func() {
+		_, _ = r.git(top, "worktree", "remove", "--force", wt)
+		_ = os.RemoveAll(tmp)
+		_, _ = r.git(top, "worktree", "prune")
+	}()
+	return fn(wt)
+}
+
+func integratePrep(r runner, top string, opts *Options, prep []prepared, strategy Strategy, res *Result, byFile map[string][]string, status map[string]string, startSHA string) error {
+	var failed bool
+	err := withMergeWorktree(r, top, startSHA, func(wt string) error {
+		var perr error
+		failed, perr = cherryPickAll(r, wt, prep, strategy, byFile, res, status)
+		if perr != nil {
+			return perr
+		}
+		fillFileReport(res, byFile, status)
+		if failed {
+			return nil
+		}
+		sha, perr := r.out(wt, "rev-parse", "HEAD")
+		if perr != nil {
+			return perr
+		}
+		res.ResultSHA = sha
+		res.NoChanges = sha == startSHA
+		return publishResult(r, top, opts, prep, res, startSHA, sha)
+	})
+	if err != nil {
+		return err
+	}
+	if failed {
+		return fmt.Errorf("%w: %d arquivo(s) em conflito; nenhuma ref foi alterada (use --strategy last_wins para resolver)", ErrConflict, len(res.Conflicts))
+	}
+	return nil
+}
+
+// Run executa a integração.
+func Run(opts *Options) (*Result, error) {
+	strategy, err := validateRunOpts(opts)
+	if err != nil {
+		return nil, err
+	}
+	r, top, err := openMergeRepo(opts)
+	if err != nil {
+		return nil, err
+	}
+	target, startSHA, err := resolveTarget(r, opts.Into)
+	if err != nil {
+		return nil, err
+	}
+	canApply := !opts.DryRun && opts.Output == ""
+	if canApply && target == "" {
+		return nil, fmt.Errorf("HEAD destacado: informe --into <branch> (ou use --dry-run/--output)")
+	}
+	prep, err := prepare(r, opts)
+	if err != nil {
+		return nil, err
+	}
+	res := &Result{Strategy: strategy, Target: target, StartSHA: startSHA, DryRun: opts.DryRun, Conflicts: []Conflict{}}
+	byFile, status := indexPrepared(res, prep)
+	res.Sensitive, err = detectSensitive(r, prep)
+	if err != nil {
+		return nil, err
+	}
+	if err := sensitiveBlocked(res, canApply, opts.AllowSensitive); err != nil {
+		return res, err
+	}
+	if err := integratePrep(r, top, opts, prep, strategy, res, byFile, status, startSHA); err != nil {
+		if res.Applied || (len(res.Conflicts) > 0 && errors.Is(err, ErrConflict)) {
+			return res, err
+		}
+		return nil, err
 	}
 	return res, nil
 }
@@ -315,19 +374,19 @@ func nonNil(s []string) []string {
 }
 
 // resolveTarget devolve (branch, sha). branch vazio = HEAD destacado.
-func resolveTarget(r runner, into string) (string, string, error) {
+func resolveTarget(r runner, into string) (branch, sha string, err error) {
 	if into != "" {
 		if err := gitref.Validate(into); err != nil {
 			return "", "", err
 		}
 		into = strings.TrimPrefix(into, "refs/heads/")
-		sha, err := r.out(r.repo, "rev-parse", "--verify", "--end-of-options", "refs/heads/"+into+"^{commit}")
+		sha, err = r.out(r.repo, "rev-parse", "--verify", "--end-of-options", "refs/heads/"+into+"^{commit}")
 		if err != nil {
 			return "", "", fmt.Errorf("branch alvo %q não existe", into)
 		}
 		return into, sha, nil
 	}
-	sha, err := r.out(r.repo, "rev-parse", "--verify", "HEAD^{commit}")
+	sha, err = r.out(r.repo, "rev-parse", "--verify", "HEAD^{commit}")
 	if err != nil {
 		return "", "", fmt.Errorf("repositório sem commits: %w", err)
 	}
@@ -338,10 +397,10 @@ func resolveTarget(r runner, into string) (string, string, error) {
 	return br, sha, nil
 }
 
-func prepare(r runner, opts Options) ([]prepared, error) {
+func normalizeMergeIDs(raws []string) ([]string, error) {
 	seen := map[string]bool{}
 	var ids []string
-	for _, raw := range opts.IDs {
+	for _, raw := range raws {
 		id, err := ticket.NormalizeID(raw)
 		if err != nil {
 			return nil, err
@@ -351,6 +410,54 @@ func prepare(r runner, opts Options) ([]prepared, error) {
 			ids = append(ids, id)
 		}
 	}
+	return ids, nil
+}
+
+func prepareOne(r runner, opts *Options, id string) (prepared, error) {
+	t, err := opts.Store.Get(id)
+	if err != nil {
+		return prepared{}, err
+	}
+	if t.Status != ticket.StatusDone {
+		return prepared{}, fmt.Errorf("ticket %s não está done (status %s)", id, t.Status)
+	}
+	if t.Result == nil || t.Result.HeadCommit == "" || t.Result.BaseCommit == "" {
+		return prepared{}, fmt.Errorf("ticket %s sem resultado (base/head commit) para mergear", id)
+	}
+	if t.MergedAt != nil && !opts.Force {
+		return prepared{}, fmt.Errorf("ticket %s já foi mergeado em %s (use --force para refazer)", id, t.MergedAt.Format(time.RFC3339))
+	}
+	base, head := t.Result.BaseCommit, t.Result.HeadCommit
+	if base, err = gitref.Resolve(r.repo, base); err != nil {
+		return prepared{}, fmt.Errorf("ticket %s base: %w", id, err)
+	}
+	if head, err = gitref.Resolve(r.repo, head); err != nil {
+		return prepared{}, fmt.Errorf("ticket %s head: %w", id, err)
+	}
+	list, err := r.out(r.repo, "rev-list", "--reverse", "--topo-order", "--no-merges", base+".."+head)
+	if err != nil {
+		return prepared{}, err
+	}
+	files, err := r.git(r.repo, "diff", "--no-ext-diff", "--name-only", "--no-renames", "-z", base, head)
+	if err != nil {
+		return prepared{}, err
+	}
+	p := prepared{t: t, base: base, head: head}
+	p.commits = append(p.commits, strings.Fields(list)...)
+	for _, f := range strings.Split(files, "\x00") {
+		if f != "" {
+			p.files = append(p.files, f)
+		}
+	}
+	sort.Strings(p.files)
+	return p, nil
+}
+
+func prepare(r runner, opts *Options) ([]prepared, error) {
+	ids, err := normalizeMergeIDs(opts.IDs)
+	if err != nil {
+		return nil, err
+	}
 	all, err := opts.Store.List(ticket.Filter{})
 	if err != nil {
 		return nil, err
@@ -358,48 +465,54 @@ func prepare(r runner, opts Options) ([]prepared, error) {
 	depth := ticket.Depths(all)
 	var prep []prepared
 	for _, id := range ids {
-		t, err := opts.Store.Get(id)
+		p, err := prepareOne(r, opts, id)
 		if err != nil {
 			return nil, err
 		}
-		if t.Status != ticket.StatusDone {
-			return nil, fmt.Errorf("ticket %s não está done (status %s)", id, t.Status)
-		}
-		if t.Result == nil || t.Result.HeadCommit == "" || t.Result.BaseCommit == "" {
-			return nil, fmt.Errorf("ticket %s sem resultado (base/head commit) para mergear", id)
-		}
-		if t.MergedAt != nil && !opts.Force {
-			return nil, fmt.Errorf("ticket %s já foi mergeado em %s (use --force para refazer)", id, t.MergedAt.Format(time.RFC3339))
-		}
-		base, head := t.Result.BaseCommit, t.Result.HeadCommit
-		if base, err = gitref.Resolve(r.repo, base); err != nil {
-			return nil, fmt.Errorf("ticket %s base: %w", id, err)
-		}
-		if head, err = gitref.Resolve(r.repo, head); err != nil {
-			return nil, fmt.Errorf("ticket %s head: %w", id, err)
-		}
-		list, err := r.out(r.repo, "rev-list", "--reverse", "--topo-order", "--no-merges", base+".."+head)
-		if err != nil {
-			return nil, err
-		}
-		files, err := r.git(r.repo, "diff", "--no-ext-diff", "--name-only", "--no-renames", "-z", base, head)
-		if err != nil {
-			return nil, err
-		}
-		p := prepared{t: t, base: base, head: head}
-		for _, c := range strings.Fields(list) {
-			p.commits = append(p.commits, c)
-		}
-		for _, f := range strings.Split(files, "\x00") {
-			if f != "" {
-				p.files = append(p.files, f)
-			}
-		}
-		sort.Strings(p.files)
 		prep = append(prep, p)
 	}
 	sort.SliceStable(prep, func(i, j int) bool { return depth[prep[i].t.ID] < depth[prep[j].t.ID] })
 	return prep, nil
+}
+
+func abortPick(r runner, wt string) {
+	_, _ = r.git(wt, "cherry-pick", "--abort")
+}
+
+func resolveLastWinsFile(r runner, wt, commit, f string) error {
+	if _, e := r.git(wt, "cat-file", "-e", commit+":"+f); e != nil {
+		if _, e := r.git(wt, "rm", "-f", "--quiet", "--", f); e != nil {
+			abortPick(r, wt)
+			return e
+		}
+		return nil
+	}
+	if _, e := r.git(wt, "checkout", "--theirs", "--", f); e != nil {
+		if _, e2 := r.git(wt, "checkout", commit, "--", f); e2 != nil {
+			abortPick(r, wt)
+			return e2
+		}
+	}
+	if _, e := r.git(wt, "add", "--", f); e != nil {
+		abortPick(r, wt)
+		return e
+	}
+	return nil
+}
+
+func finishLastWinsPick(r runner, wt string, out []Conflict) ([]Conflict, error) {
+	if _, e := r.git(wt, "diff", "--no-ext-diff", "--cached", "--quiet"); e == nil {
+		if _, e2 := r.wtGit(wt, "cherry-pick", "--skip"); e2 != nil {
+			abortPick(r, wt)
+			return nil, e2
+		}
+		return out, nil
+	}
+	if _, e := r.wtGit(wt, "cherry-pick", "--continue"); e != nil {
+		abortPick(r, wt)
+		return nil, e
+	}
+	return out, nil
 }
 
 // pick aplica um commit no worktree e devolve os conflitos encontrados
@@ -408,14 +521,14 @@ func prepare(r runner, opts Options) ([]prepared, error) {
 // last_wins: em conflito, a versão INTEIRA do arquivo no commit do ticket
 // posterior substitui a acumulada (não há merge por hunk); alterações de
 // tickets anteriores nesse mesmo arquivo são descartadas.
-func pick(r runner, wt, commit string, p prepared, strategy Strategy, byFile map[string][]string) ([]Conflict, error) {
+func pick(r runner, wt, commit string, p *prepared, strategy Strategy, byFile map[string][]string) ([]Conflict, error) {
 	_, err := r.wtGit(wt, "cherry-pick", "--allow-empty", "--keep-redundant-commits", commit)
 	if err == nil {
 		return nil, nil
 	}
 	unmerged, uerr := r.out(wt, "diff", "--no-ext-diff", "--name-only", "-z", "--diff-filter=U")
 	if uerr != nil {
-		_, _ = r.git(wt, "cherry-pick", "--abort")
+		abortPick(r, wt)
 		return nil, err
 	}
 	var files []string
@@ -425,7 +538,7 @@ func pick(r runner, wt, commit string, p prepared, strategy Strategy, byFile map
 		}
 	}
 	if len(files) == 0 {
-		_, _ = r.git(wt, "cherry-pick", "--abort")
+		abortPick(r, wt)
 		return nil, err
 	}
 	var out []Conflict
@@ -439,52 +552,26 @@ func pick(r runner, wt, commit string, p prepared, strategy Strategy, byFile map
 		out = append(out, Conflict{File: f, Ticket: p.t.ID, Commit: commit, Others: others})
 	}
 	if strategy == StrategyFail {
-		_, _ = r.git(wt, "cherry-pick", "--abort")
+		abortPick(r, wt)
 		return out, nil
 	}
 	for i, f := range files {
-		if _, e := r.git(wt, "cat-file", "-e", commit+":"+f); e == nil {
-			if _, e := r.git(wt, "checkout", "--theirs", "--", f); e != nil {
-				// fallback: conteúdo do commit
-				if _, e2 := r.git(wt, "checkout", commit, "--", f); e2 != nil {
-					_, _ = r.git(wt, "cherry-pick", "--abort")
-					return nil, e2
-				}
-			}
-			if _, e := r.git(wt, "add", "--", f); e != nil {
-				_, _ = r.git(wt, "cherry-pick", "--abort")
-				return nil, e
-			}
-		} else if _, e := r.git(wt, "rm", "-f", "--quiet", "--", f); e != nil {
-			_, _ = r.git(wt, "cherry-pick", "--abort")
-			return nil, e
+		if err := resolveLastWinsFile(r, wt, commit, f); err != nil {
+			return nil, err
 		}
 		out[i].Resolution = string(StrategyLastWins)
 	}
-	// Só vira skip quando o pick ficou vazio após a resolução (nada staged
-	// contra HEAD). Qualquer outra falha do continue aborta, sem perder commit.
-	if _, e := r.git(wt, "diff", "--no-ext-diff", "--cached", "--quiet"); e == nil {
-		if _, e2 := r.wtGit(wt, "cherry-pick", "--skip"); e2 != nil {
-			_, _ = r.git(wt, "cherry-pick", "--abort")
-			return nil, e2
-		}
-		return out, nil
-	}
-	if _, e := r.wtGit(wt, "cherry-pick", "--continue"); e != nil {
-		_, _ = r.git(wt, "cherry-pick", "--abort")
-		return nil, e
-	}
-	return out, nil
+	return finishLastWinsPick(r, wt, out)
 }
 
-// advance move o alvo de old para new de forma atômica.
-func advance(r runner, top, branch, old, new string) error {
+// advance move o alvo de oldSHA para newSHA de forma atômica.
+func advance(r runner, top, branch, oldSHA, newSHA string) error {
 	cur, err := r.out(top, "rev-parse", "--verify", "refs/heads/"+branch)
 	if err != nil {
 		return err
 	}
-	if cur != old {
-		return fmt.Errorf("branch %s mudou durante a integração (%s != %s); refaça o merge", branch, short(cur), short(old))
+	if cur != oldSHA {
+		return fmt.Errorf("branch %s mudou durante a integração (%s != %s); refaça o merge", branch, short(cur), short(oldSHA))
 	}
 	if dir := checkedOutAt(r, top, branch); dir != "" {
 		dirty, err := r.out(dir, "status", "--porcelain", "--untracked-files=no")
@@ -494,12 +581,12 @@ func advance(r runner, top, branch, old, new string) error {
 		if dirty != "" {
 			return fmt.Errorf("árvore de trabalho de %s está suja; faça commit/stash antes de mergear em %s", dir, branch)
 		}
-		if _, err := r.git(dir, "merge", "--ff-only", "--quiet", new); err != nil {
+		if _, err := r.git(dir, "merge", "--ff-only", "--quiet", newSHA); err != nil {
 			return err
 		}
 		return nil
 	}
-	if _, err := r.git(top, "update-ref", "-m", "tb merge", "refs/heads/"+branch, new, old); err != nil {
+	if _, err := r.git(top, "update-ref", "-m", "tb merge", "refs/heads/"+branch, newSHA, oldSHA); err != nil {
 		return fmt.Errorf("branch %s mudou durante a integração: %w", branch, err)
 	}
 	return nil

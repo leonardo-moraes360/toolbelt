@@ -28,20 +28,20 @@ type Manager struct {
 	baseDir string
 	repoDir string
 	// gitArgs são opções "-c" prefixadas a todo git de Create/Remove (ver
-	// SetGitArgs); run, quando não nil, executa esses comandos (ver SetRunner).
+	// SetGitArgs); run, quando não nil, executa esses cmds (ver SetRunner).
 	gitArgs []string
 	run     func(*exec.Cmd) ([]byte, error)
 }
 
-// SetGitArgs define argumentos globais do git (ex.: "-c", "core.hooksPath=/dev/null")
+// SetGitArgs define args globais do git (ex.: "-c", "core.hooksPath=/dev/null")
 // inseridos antes do subcomando em Create/Remove. Opcional e aditivo: sem
 // chamada, o comportamento é o anterior (config do usuário integral, hooks
 // inclusive). O router o usa para que worktrees criados por ele nunca rodem
 // hooks/fsmonitor do usuário.
 func (m *Manager) SetGitArgs(args ...string) { m.gitArgs = append([]string(nil), args...) }
 
-// SetRunner substitui a execução dos comandos git de Create/Remove (devolve a
-// saída combinada). Permite ao chamador rastrear os processos-filho (o router os
+// SetRunner substitui a execução dos cmds git de Create/Remove (devolve a
+// saída combinada). Permite ao chamador rastrear os procs-filho (o router os
 // registra para que nunca sejam confundidos com descendentes escapados).
 func (m *Manager) SetRunner(fn func(*exec.Cmd) ([]byte, error)) { m.run = fn }
 
@@ -54,7 +54,7 @@ func (m *Manager) combined(cmd *exec.Cmd) ([]byte, error) {
 
 func (m *Manager) gitCmd(dir string, args ...string) *exec.Cmd {
 	full := append(append([]string(nil), m.gitArgs...), args...)
-	cmd := exec.Command("git", full...) //nolint:gosec // argumentos controlados pelo workspace manager
+	cmd := exec.Command("git", full...) //nolint:gosec // args controlados pelo workspace manager
 	cmd.Dir = dir
 	return cmd
 }

@@ -113,7 +113,8 @@ func sensitiveReason(p string, c change, hooks []string) string {
 func detectSensitive(r runner, prep []prepared) ([]Sensitive, error) {
 	hooks := hooksDirs(r)
 	out := []Sensitive{}
-	for _, p := range prep {
+	for i := range prep {
+		p := &prep[i]
 		base, head := p.base, p.head
 		cs, err := changes(r, base, head)
 		if err != nil {

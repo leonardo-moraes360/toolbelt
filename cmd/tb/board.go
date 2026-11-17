@@ -23,8 +23,8 @@ func boardView(cmd *cobra.Command) (ticket.View, error) {
 	f := cmd.Flags()
 	statuses, _ := f.GetString("status")
 	worker, _ := f.GetString("worker")
-	strat, _ := f.GetString("strategy")
-	st, err := ticket.ParseStrategy(strat)
+	strategyName, _ := f.GetString("strategy")
+	st, err := ticket.ParseStrategy(strategyName)
 	if err != nil {
 		return ticket.View{}, err
 	}
@@ -43,7 +43,7 @@ func boardView(cmd *cobra.Command) (ticket.View, error) {
 	return b.View(st, sts, worker), nil
 }
 
-func renderBoard(v ticket.View) {
+func renderBoard(v *ticket.View) {
 	state := "ativo"
 	switch {
 	case v.Paused && v.Draining:
@@ -56,19 +56,20 @@ func renderBoard(v ticket.View) {
 	fmt.Printf("board: %s (estratégia: %s)\n", state, v.Strategy)
 	section := func(name string, list []ticket.Ticket) {
 		fmt.Printf("\n%s (%d)\n", name, len(list))
-		for _, t := range list {
-			fmt.Println("  " + ticketLine(t))
+		for i := range list {
+			fmt.Println("  " + ticketLine(&list[i]))
 		}
 	}
 	section("RUNNING", v.Running)
 	section("READY", v.Ready)
 	fmt.Printf("\nBLOCKED (%d)\n", len(v.Blocked))
-	for _, b := range v.Blocked {
+	for i := range v.Blocked {
+		b := &v.Blocked[i]
 		fmt.Printf("  %s\t%s\t(aguardando: %s)\n", b.Ticket.ID, b.Ticket.Title, strings.Join(b.Reasons, ", "))
 	}
 	section("DONE", v.Done)
 	section("FAILED", v.Failed)
-	section("CANCELLED", v.Cancelled)
+	section("CANCEL\u004cED", v.Canceled)
 	for _, c := range v.Cycles {
 		fmt.Printf("\naviso: ciclo de dependências: %s\n", strings.Join(c, " -> "))
 	}
@@ -86,7 +87,7 @@ var boardListCmd = &cobra.Command{
 		if jsonOutput {
 			return printJSON(v)
 		}
-		renderBoard(v)
+		renderBoard(&v)
 		return nil
 	},
 }
@@ -120,7 +121,7 @@ func watchBoard(ctx context.Context, cmd *cobra.Command, interval time.Duration)
 			}
 		} else {
 			fmt.Print("\033[H\033[2J")
-			renderBoard(v)
+			renderBoard(&v)
 		}
 		select {
 		case <-ctx.Done():

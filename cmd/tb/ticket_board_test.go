@@ -30,7 +30,7 @@ func TestTicketBoardCLI(t *testing.T) {
 		return out
 	}
 	must("ticket", "create", "--title", "base", "--priority", "1", "--timeout", "5m")
-	must("ticket", "create", "--title", "dependente", "--dep", "TKT-001")
+	must("ticket", "create", "--title", "child-dep", "--dep", "TKT-001")
 	must("ticket", "create", "--title", "livre", "--priority", "5")
 
 	if out, err := runTB(t, bin, dir, "ticket", "create", "--title", "x", "--dep", "TKT-042"); err == nil || !strings.Contains(out, "desconhecida") {

@@ -9,13 +9,12 @@ import (
 	"github.com/leonardo-moraes360/toolbelt/internal/ticket"
 )
 
-func callTool(t *testing.T, name string, args map[string]any) (ToolResult, string) {
+func callTool(t *testing.T, name string, args map[string]any) (result ToolResult, text string) {
 	t.Helper()
 	res, err := Default().Call(context.Background(), name, args)
 	if err != nil {
 		t.Fatalf("%s: %v", name, err)
 	}
-	text := ""
 	if len(res.Content) > 0 {
 		text = res.Content[0].Text
 	}
@@ -34,6 +33,62 @@ func TestTicketToolsRegistered(t *testing.T) {
 	}
 }
 
+func mustToolOK(t *testing.T, name string, args map[string]any) string {
+	t.Helper()
+	res, text := callTool(t, name, args)
+	if res.IsError {
+		t.Fatal(text)
+	}
+	return text
+}
+
+func ticketToolsCreateFlow(t *testing.T, with func(map[string]any) map[string]any) {
+	t.Helper()
+	text := mustToolOK(t, "tb_ticket_create", with(map[string]any{"title": "um", "priority": 2, "scope": []any{"internal/**"}}))
+	var a ticket.Ticket
+	if err := json.Unmarshal([]byte(text), &a); err != nil || a.ID != "TKT-001" || a.Priority != 2 {
+		t.Fatalf("create: %v %s", err, text)
+	}
+	mustToolOK(t, "tb_ticket_create", with(map[string]any{"title": "dois", "dep": []any{"TKT-001"}}))
+	res, text := callTool(t, "tb_ticket_create", with(map[string]any{"title": "ruim", "dep": []any{"TKT-099"}}))
+	if !res.IsError || !strings.Contains(text, "desconhecida") {
+		t.Fatalf("dep desconhecida deveria falhar: %v %s", res.IsError, text)
+	}
+	mustToolOK(t, "tb_ticket_create", with(map[string]any{"title": "dry", "dry_run": true}))
+}
+
+func ticketToolsListShow(t *testing.T, cwd map[string]any, with func(map[string]any) map[string]any) {
+	t.Helper()
+	text := mustToolOK(t, "tb_ticket_list", cwd)
+	var list []ticket.Ticket
+	if err := json.Unmarshal([]byte(text), &list); err != nil || len(list) != 2 {
+		t.Fatalf("list: %v %s", err, text)
+	}
+	text = mustToolOK(t, "tb_ticket_show", with(map[string]any{"id": "TKT-002"}))
+	var b ticket.Ticket
+	if err := json.Unmarshal([]byte(text), &b); err != nil || b.Dependencies[0] != "TKT-001" {
+		t.Fatalf("show: %v %s", err, text)
+	}
+}
+
+func ticketToolsBoardFlow(t *testing.T, cwd map[string]any, with func(map[string]any) map[string]any) {
+	t.Helper()
+	text := mustToolOK(t, "tb_board", cwd)
+	var v ticket.View
+	if err := json.Unmarshal([]byte(text), &v); err != nil || len(v.Ready) != 1 || len(v.Blocked) != 1 {
+		t.Fatalf("board: %v %s", err, text)
+	}
+	text = mustToolOK(t, "tb_board", with(map[string]any{"action": "pause"}))
+	var c ticket.Control
+	if err := json.Unmarshal([]byte(text), &c); err != nil || !c.Paused {
+		t.Fatalf("pause: %v %s", err, text)
+	}
+	res, _ := callTool(t, "tb_board", with(map[string]any{"action": "bogus"}))
+	if !res.IsError {
+		t.Fatal("action inválida deveria falhar")
+	}
+}
+
 func TestTicketToolsFlow(t *testing.T) {
 	dir := t.TempDir()
 	cwd := map[string]any{"cwd": dir}
@@ -41,51 +96,7 @@ func TestTicketToolsFlow(t *testing.T) {
 		m["cwd"] = dir
 		return m
 	}
-
-	res, text := callTool(t, "tb_ticket_create", with(map[string]any{"title": "um", "priority": 2, "scope": []any{"internal/**"}}))
-	if res.IsError {
-		t.Fatal(text)
-	}
-	var a ticket.Ticket
-	if err := json.Unmarshal([]byte(text), &a); err != nil || a.ID != "TKT-001" || a.Priority != 2 {
-		t.Fatalf("create: %v %s", err, text)
-	}
-	res, text = callTool(t, "tb_ticket_create", with(map[string]any{"title": "dois", "dep": []any{"TKT-001"}}))
-	if res.IsError {
-		t.Fatal(text)
-	}
-	res, text = callTool(t, "tb_ticket_create", with(map[string]any{"title": "ruim", "dep": []any{"TKT-099"}}))
-	if !res.IsError || !strings.Contains(text, "desconhecida") {
-		t.Fatalf("dep desconhecida deveria falhar: %v %s", res.IsError, text)
-	}
-	res, text = callTool(t, "tb_ticket_create", with(map[string]any{"title": "dry", "dry_run": true}))
-	if res.IsError {
-		t.Fatal(text)
-	}
-
-	_, text = callTool(t, "tb_ticket_list", cwd)
-	var list []ticket.Ticket
-	if err := json.Unmarshal([]byte(text), &list); err != nil || len(list) != 2 {
-		t.Fatalf("list: %v %s", err, text)
-	}
-	_, text = callTool(t, "tb_ticket_show", with(map[string]any{"id": "TKT-002"}))
-	var b ticket.Ticket
-	if err := json.Unmarshal([]byte(text), &b); err != nil || b.Dependencies[0] != "TKT-001" {
-		t.Fatalf("show: %v %s", err, text)
-	}
-
-	_, text = callTool(t, "tb_board", cwd)
-	var v ticket.View
-	if err := json.Unmarshal([]byte(text), &v); err != nil || len(v.Ready) != 1 || len(v.Blocked) != 1 {
-		t.Fatalf("board: %v %s", err, text)
-	}
-	_, text = callTool(t, "tb_board", with(map[string]any{"action": "pause"}))
-	var c ticket.Control
-	if err := json.Unmarshal([]byte(text), &c); err != nil || !c.Paused {
-		t.Fatalf("pause: %v %s", err, text)
-	}
-	res, _ = callTool(t, "tb_board", with(map[string]any{"action": "bogus"}))
-	if !res.IsError {
-		t.Fatal("action inválida deveria falhar")
-	}
+	ticketToolsCreateFlow(t, with)
+	ticketToolsListShow(t, cwd, with)
+	ticketToolsBoardFlow(t, cwd, with)
 }

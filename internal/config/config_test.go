@@ -266,16 +266,31 @@ func TestLocalOverridesGlobal(t *testing.T) {
 	}
 }
 
-func TestRouterConfigDefaultsAndOverride(t *testing.T) {
-	r := DefaultConfig().Router
-	if r.MaxWorkers != 3 || r.Strategy != "dependency" || !r.DirectDelivery.Enabled ||
-		r.DirectDelivery.SubscriptionTTL != "30m" || r.DirectDelivery.MaxSubscriptionsPerWorker != 5 ||
-		r.Timeouts.PerTicket != "10m" || r.Timeouts.Global != "1h" || r.Retry.MaxAttempts != 2 || r.SlowThreshold != 0.8 {
+func assertRouterDefaults(t *testing.T, r *RouterConfig) {
+	t.Helper()
+	ok := r.MaxWorkers == 3 && r.Strategy == "dependency" && r.DirectDelivery.Enabled &&
+		r.DirectDelivery.SubscriptionTTL == "30m" && r.DirectDelivery.MaxSubscriptionsPerWorker == 5 &&
+		r.Timeouts.PerTicket == "10m" && r.Timeouts.Global == "1h" && r.Retry.MaxAttempts == 2 && r.SlowThreshold == 0.8
+	if !ok {
 		t.Fatalf("defaults do router inesperados: %+v", r)
 	}
 	if err := r.Validate(); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func assertRouterOverride(t *testing.T, got *RouterConfig) {
+	t.Helper()
+	if got.MaxWorkers != 5 || got.DirectDelivery.Enabled || got.Retry.MaxAttempts != 4 || len(got.AgentCmd) != 3 {
+		t.Fatalf("override: %+v", got)
+	}
+	if got.DirectDelivery.SubscriptionTTL != "30m" || got.Timeouts.PerTicket != "10m" || got.Strategy != "dependency" {
+		t.Fatalf("padrões perdidos: %+v", got)
+	}
+}
+
+func TestRouterConfigDefaultsAndOverride(t *testing.T) {
+	assertRouterDefaults(t, &DefaultConfig().Router)
 
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	yml := "router:\n  max_workers: 5\n  agent_cmd: [\"sh\", \"-c\", \"true\"]\n  direct_delivery:\n    enabled: false\n  retry:\n    max_attempts: 4\n"
@@ -286,14 +301,7 @@ func TestRouterConfigDefaultsAndOverride(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got := cfg.Router
-	if got.MaxWorkers != 5 || got.DirectDelivery.Enabled || got.Retry.MaxAttempts != 4 || len(got.AgentCmd) != 3 {
-		t.Fatalf("override: %+v", got)
-	}
-	// campos não mencionados mantêm o padrão
-	if got.DirectDelivery.SubscriptionTTL != "30m" || got.Timeouts.PerTicket != "10m" || got.Strategy != "dependency" {
-		t.Fatalf("padrões perdidos: %+v", got)
-	}
+	assertRouterOverride(t, &cfg.Router)
 }
 
 func TestRouterConfigValidate(t *testing.T) {

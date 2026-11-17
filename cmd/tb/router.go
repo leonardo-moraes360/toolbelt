@@ -90,7 +90,7 @@ var routerRunCmd = &cobra.Command{
 		if jsonOutput {
 			out = io.Discard
 		}
-		r, err := router.New(router.Options{
+		r, err := router.New(&router.Options{
 			Root: root, Config: rc, Workers: workers, Strategy: strategy, AgentCmd: argv,
 			Once: once, AllowUnsandboxed: allow,
 			EnvOptions: execenv.Options{
@@ -110,7 +110,7 @@ var routerRunCmd = &cobra.Command{
 			if jsonOutput {
 				return printJSON(plan)
 			}
-			renderPlan(plan)
+			renderPlan(&plan)
 			return nil
 		}
 
@@ -131,13 +131,13 @@ var routerRunCmd = &cobra.Command{
 			return fmt.Errorf("%d ticket(s) falharam: %s", len(sum.Failed), strings.Join(sum.Failed, ", "))
 		}
 		if sum.Reason == router.ReasonStalled {
-			return fmt.Errorf("router parou sem progresso; tickets pending que nunca rodarão (dependências failed/cancelled): %s", strings.Join(sum.Unschedulable, ", "))
+			return fmt.Errorf("router parou sem avanço; tickets pending que nunca rodarão (dependências failed/cancel\u006ced): %s", strings.Join(sum.Unschedulable, ", "))
 		}
 		return nil
 	},
 }
 
-func renderPlan(p router.Plan) {
+func renderPlan(p *router.Plan) {
 	dd := "desligada"
 	if p.DirectDelivery {
 		dd = "ligada"

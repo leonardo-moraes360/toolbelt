@@ -60,7 +60,7 @@ func addTicket(t *testing.T, dir string, deps []string, edits map[string]string)
 func addTicketForce(t *testing.T, dir string, deps []string, edits map[string]string, force []string) ticket.Ticket {
 	t.Helper()
 	s := ticket.Open(dir)
-	tk, err := s.Create(ticket.Ticket{Title: "t", Dependencies: deps})
+	tk, err := s.Create(&ticket.Ticket{Title: "t", Dependencies: deps})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -116,7 +116,7 @@ func TestDisjointMergeAdvancesBranch(t *testing.T) {
 	a := addTicket(t, dir, nil, map[string]string{"x.txt": "x\n"})
 	b := addTicket(t, dir, nil, map[string]string{"y.txt": "y\n"})
 	start := git(t, dir, "rev-parse", "main")
-	res, err := Run(Options{Repo: dir, Store: ticket.Open(dir), IDs: []string{a.ID, "2"}})
+	res, err := Run(&Options{Repo: dir, Store: ticket.Open(dir), IDs: []string{a.ID, "2"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -139,10 +139,10 @@ func TestDisjointMergeAdvancesBranch(t *testing.T) {
 	}
 	assertNoTempWorktree(t, dir)
 	// já mergeado exige --force
-	if _, err := Run(Options{Repo: dir, Store: s, IDs: []string{a.ID}}); err == nil || !strings.Contains(err.Error(), "--force") {
+	if _, err := Run(&Options{Repo: dir, Store: s, IDs: []string{a.ID}}); err == nil || !strings.Contains(err.Error(), "--force") {
 		t.Fatalf("esperava erro de já mergeado: %v", err)
 	}
-	if _, err := Run(Options{Repo: dir, Store: s, IDs: []string{a.ID}, Force: true}); err != nil {
+	if _, err := Run(&Options{Repo: dir, Store: s, IDs: []string{a.ID}, Force: true}); err != nil {
 		t.Fatalf("force: %v", err)
 	}
 }
@@ -151,7 +151,7 @@ func TestOverlapNonConflicting(t *testing.T) {
 	dir := newRepo(t)
 	addTicket(t, dir, nil, map[string]string{"shared.txt": "L1\nl2\nl3\nl4\nl5\nl6\nl7\nl8\nl9\n"})
 	addTicket(t, dir, nil, map[string]string{"shared.txt": "l1\nl2\nl3\nl4\nl5\nl6\nl7\nl8\nL9\n"})
-	res, err := Run(Options{Repo: dir, Store: ticket.Open(dir), IDs: []string{"TKT-001", "TKT-002"}})
+	res, err := Run(&Options{Repo: dir, Store: ticket.Open(dir), IDs: []string{"TKT-001", "TKT-002"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -174,7 +174,7 @@ func TestConflictFailChangesNothing(t *testing.T) {
 	dir := conflictRepo(t)
 	start := git(t, dir, "rev-parse", "main")
 	s := ticket.Open(dir)
-	res, err := Run(Options{Repo: dir, Store: s, IDs: []string{"TKT-001", "TKT-002"}})
+	res, err := Run(&Options{Repo: dir, Store: s, IDs: []string{"TKT-001", "TKT-002"}})
 	if !errors.Is(err, ErrConflict) {
 		t.Fatalf("esperava ErrConflict: %v", err)
 	}
@@ -198,7 +198,7 @@ func TestConflictFailChangesNothing(t *testing.T) {
 
 func TestConflictLastWins(t *testing.T) {
 	dir := conflictRepo(t)
-	res, err := Run(Options{Repo: dir, Store: ticket.Open(dir), IDs: []string{"TKT-001", "TKT-002"}, Strategy: StrategyLastWins})
+	res, err := Run(&Options{Repo: dir, Store: ticket.Open(dir), IDs: []string{"TKT-001", "TKT-002"}, Strategy: StrategyLastWins})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -216,7 +216,7 @@ func TestDryRunAndOutput(t *testing.T) {
 	addTicket(t, dir, nil, map[string]string{"x.txt": "x\n"})
 	start := git(t, dir, "rev-parse", "main")
 	s := ticket.Open(dir)
-	res, err := Run(Options{Repo: dir, Store: s, IDs: []string{"1"}, DryRun: true})
+	res, err := Run(&Options{Repo: dir, Store: s, IDs: []string{"1"}, DryRun: true})
 	if err != nil || res.Applied || res.ResultSHA == "" {
 		t.Fatalf("dry: %+v %v", res, err)
 	}
@@ -227,7 +227,7 @@ func TestDryRunAndOutput(t *testing.T) {
 		t.Fatal("dry-run marcou MergedAt")
 	}
 	patch := filepath.Join(t.TempDir(), "out.patch")
-	if _, err := Run(Options{Repo: dir, Store: s, IDs: []string{"1"}, Output: patch}); err != nil {
+	if _, err := Run(&Options{Repo: dir, Store: s, IDs: []string{"1"}, Output: patch}); err != nil {
 		t.Fatal(err)
 	}
 	if b, _ := os.ReadFile(patch); !strings.Contains(string(b), "+++ b/x.txt") {
@@ -246,7 +246,7 @@ func TestIntoNonCheckedOutBranchCAS(t *testing.T) {
 	addTicket(t, dir, nil, map[string]string{"x.txt": "x\n"})
 	git(t, dir, "branch", "integ", "main")
 	mainSHA := git(t, dir, "rev-parse", "main")
-	res, err := Run(Options{Repo: dir, Store: ticket.Open(dir), IDs: []string{"1"}, Into: "integ"})
+	res, err := Run(&Options{Repo: dir, Store: ticket.Open(dir), IDs: []string{"1"}, Into: "integ"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -264,7 +264,7 @@ func TestDirtyCheckedOutTargetRefused(t *testing.T) {
 	addTicket(t, dir, nil, map[string]string{"x.txt": "x\n"})
 	write(t, dir, "a.txt", "sujo\n")
 	start := git(t, dir, "rev-parse", "main")
-	_, err := Run(Options{Repo: dir, Store: ticket.Open(dir), IDs: []string{"1"}})
+	_, err := Run(&Options{Repo: dir, Store: ticket.Open(dir), IDs: []string{"1"}})
 	if err == nil || !strings.Contains(err.Error(), "suja") {
 		t.Fatalf("esperava recusa: %v", err)
 	}
@@ -277,10 +277,10 @@ func TestDirtyCheckedOutTargetRefused(t *testing.T) {
 func TestNotDoneRejected(t *testing.T) {
 	dir := newRepo(t)
 	s := ticket.Open(dir)
-	if _, err := s.Create(ticket.Ticket{Title: "p"}); err != nil {
+	if _, err := s.Create(&ticket.Ticket{Title: "p"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Run(Options{Repo: dir, Store: s, IDs: []string{"1"}}); err == nil || !strings.Contains(err.Error(), "não está done") {
+	if _, err := Run(&Options{Repo: dir, Store: s, IDs: []string{"1"}}); err == nil || !strings.Contains(err.Error(), "não está done") {
 		t.Fatalf("err: %v", err)
 	}
 }
@@ -291,7 +291,7 @@ func TestDependencyOrder(t *testing.T) {
 	b := addTicket(t, dir, nil, map[string]string{"shared.txt": "base-dep\n"})
 	_ = b
 	s := ticket.Open(dir)
-	tk, err := s.Create(ticket.Ticket{Title: "filho", Dependencies: []string{"TKT-001"}})
+	tk, err := s.Create(&ticket.Ticket{Title: "filho", Dependencies: []string{"TKT-001"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -309,7 +309,7 @@ func TestDependencyOrder(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	res, err := Run(Options{Repo: dir, Store: s, IDs: []string{tk.ID, "TKT-001"}, Strategy: StrategyLastWins})
+	res, err := Run(&Options{Repo: dir, Store: s, IDs: []string{tk.ID, "TKT-001"}, Strategy: StrategyLastWins})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -332,10 +332,10 @@ func TestParseStrategyAndRefs(t *testing.T) {
 	}
 	dir := newRepo(t)
 	addTicket(t, dir, nil, map[string]string{"x.txt": "x\n"})
-	if _, err := Run(Options{Repo: dir, Store: ticket.Open(dir), IDs: []string{"1"}, Into: "--help"}); err == nil {
+	if _, err := Run(&Options{Repo: dir, Store: ticket.Open(dir), IDs: []string{"1"}, Into: "--help"}); err == nil {
 		t.Fatal("into com '-' deveria falhar")
 	}
-	if _, err := Run(Options{Repo: dir, Store: ticket.Open(dir), IDs: []string{"1"}, Into: "nao-existe"}); err == nil {
+	if _, err := Run(&Options{Repo: dir, Store: ticket.Open(dir), IDs: []string{"1"}, Into: "nao-existe"}); err == nil {
 		t.Fatal("branch inexistente deveria falhar")
 	}
 }
@@ -344,7 +344,7 @@ func TestOverlapDetectedAcrossRename(t *testing.T) {
 	dir := newRepo(t)
 	// ticket A renomeia shared.txt -> moved.txt
 	s := ticket.Open(dir)
-	tk, err := s.Create(ticket.Ticket{Title: "rename"})
+	tk, err := s.Create(&ticket.Ticket{Title: "rename"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -366,7 +366,7 @@ func TestOverlapDetectedAcrossRename(t *testing.T) {
 	}
 	// ticket B edita o caminho antigo
 	addTicket(t, dir, nil, map[string]string{"shared.txt": "l1\nl2\nl3\nl4\nl5\nl6\nl7\nl8\nL9\n"})
-	res, err := Run(Options{Repo: dir, Store: s, IDs: []string{"TKT-001", "TKT-002"}, DryRun: true})
+	res, err := Run(&Options{Repo: dir, Store: s, IDs: []string{"TKT-001", "TKT-002"}, DryRun: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -397,7 +397,7 @@ func TestLastWinsSurvivesGPGSignAndHooks(t *testing.T) {
 		}
 	}
 	start := git(t, dir, "rev-parse", "main")
-	res, err := Run(Options{Repo: dir, Store: ticket.Open(dir), IDs: []string{"TKT-001", "TKT-002"}, Strategy: StrategyLastWins, DryRun: true})
+	res, err := Run(&Options{Repo: dir, Store: ticket.Open(dir), IDs: []string{"TKT-001", "TKT-002"}, Strategy: StrategyLastWins, DryRun: true})
 	if err != nil {
 		t.Fatalf("last_wins deveria ignorar gpgsign/hooks: %v", err)
 	}
@@ -425,7 +425,7 @@ func TestLastWinsContinueFailureDoesNotLoseCommit(t *testing.T) {
 	if err := os.Chmod(filepath.Join(hooks, "commit-msg"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	res, err := Run(Options{Repo: dir, Store: ticket.Open(dir), IDs: []string{"TKT-001", "TKT-002"}, Strategy: StrategyLastWins, DryRun: true})
+	res, err := Run(&Options{Repo: dir, Store: ticket.Open(dir), IDs: []string{"TKT-001", "TKT-002"}, Strategy: StrategyLastWins, DryRun: true})
 	if err != nil {
 		t.Fatalf("hook ignorado no worktree interno: %v", err)
 	}
@@ -470,7 +470,7 @@ func TestSensitiveHooksRefusedAndHardenedFF(t *testing.T) {
 	start := git(t, dir, "rev-parse", "main")
 	s := ticket.Open(dir)
 
-	res, err := Run(Options{Repo: dir, Store: s, IDs: []string{"TKT-001"}})
+	res, err := Run(&Options{Repo: dir, Store: s, IDs: []string{"TKT-001"}})
 	if !errors.Is(err, ErrSensitive) {
 		t.Fatalf("esperava ErrSensitive: %v", err)
 	}
@@ -485,13 +485,12 @@ func TestSensitiveHooksRefusedAndHardenedFF(t *testing.T) {
 	}
 
 	// dry-run só reporta
-	res, err = Run(Options{Repo: dir, Store: s, IDs: []string{"TKT-001"}, DryRun: true})
+	res, err = Run(&Options{Repo: dir, Store: s, IDs: []string{"TKT-001"}, DryRun: true})
 	if err != nil || len(res.Sensitive) != 1 {
 		t.Fatalf("dry-run: %v %+v", err, res)
 	}
 
-	res, err = Run(Options{Repo: dir, Store: s, IDs: []string{"TKT-001"}, AllowSensitive: true})
-	if err != nil {
+	if _, err = Run(&Options{Repo: dir, Store: s, IDs: []string{"TKT-001"}, AllowSensitive: true}); err != nil {
 		t.Fatal(err)
 	}
 	if git(t, dir, "rev-parse", "main") == start {
@@ -508,7 +507,7 @@ func TestLastWinsDoesNotRunTrackedPostCheckout(t *testing.T) {
 	addTicket(t, dir, nil, map[string]string{"shared.txt": "one\n"})
 	addTicket(t, dir, nil, map[string]string{"shared.txt": "two\n"})
 	_ = os.Remove(marker) // checkouts do setup dispararam o hook
-	res, err := Run(Options{Repo: dir, Store: ticket.Open(dir), IDs: []string{"TKT-001", "TKT-002"}, Strategy: StrategyLastWins, AllowSensitive: true})
+	res, err := Run(&Options{Repo: dir, Store: ticket.Open(dir), IDs: []string{"TKT-001", "TKT-002"}, Strategy: StrategyLastWins, AllowSensitive: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -524,7 +523,7 @@ func TestSensitiveToolbeltConfigRefused(t *testing.T) {
 	dir := newRepo(t)
 	addTicketForce(t, dir, nil, map[string]string{".toolbelt/config.yaml": "agent_cmd: evil\n"}, []string{".toolbelt/config.yaml"})
 	start := git(t, dir, "rev-parse", "main")
-	_, err := Run(Options{Repo: dir, Store: ticket.Open(dir), IDs: []string{"TKT-001"}})
+	_, err := Run(&Options{Repo: dir, Store: ticket.Open(dir), IDs: []string{"TKT-001"}})
 	if !errors.Is(err, ErrSensitive) {
 		t.Fatalf("esperava ErrSensitive: %v", err)
 	}
@@ -537,7 +536,7 @@ func TestSensitiveCustomHooksPathAndWorkflows(t *testing.T) {
 	dir := newRepo(t)
 	git(t, dir, "config", "core.hooksPath", "tools/hooks")
 	addTicket(t, dir, nil, map[string]string{"tools/hooks/pre-commit": "x\n", ".github/workflows/ci.yml": "y\n", "sub/.gitattributes": "* filter=x\n"})
-	res, _ := Run(Options{Repo: dir, Store: ticket.Open(dir), IDs: []string{"TKT-001"}, DryRun: true})
+	res, _ := Run(&Options{Repo: dir, Store: ticket.Open(dir), IDs: []string{"TKT-001"}, DryRun: true})
 	if res == nil || len(res.Sensitive) != 3 {
 		t.Fatalf("sensitive: %+v", res)
 	}

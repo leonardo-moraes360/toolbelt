@@ -36,13 +36,9 @@ func routerTestRepo(t *testing.T) string {
 	return dir
 }
 
-func TestRouterWatchdogCLI(t *testing.T) {
-	if testing.Short() {
-		t.Skip()
-	}
-	bin := buildTB(t)
-	dir := routerTestRepo(t)
-	must := func(args ...string) string {
+func routerMust(t *testing.T, bin, dir string) func(args ...string) string {
+	t.Helper()
+	return func(args ...string) string {
 		t.Helper()
 		out, err := runTB(t, bin, dir, args...)
 		if err != nil {
@@ -50,11 +46,10 @@ func TestRouterWatchdogCLI(t *testing.T) {
 		}
 		return out
 	}
-	must("ticket", "create", "--title", "base")
-	must("ticket", "create", "--title", "filho", "--dep", "TKT-001")
-	must("ticket", "create", "--title", "livre")
+}
 
-	// sem estado: status/alerts vazios, kill recusado
+func assertRouterWatchdogEmpty(t *testing.T, bin, dir string, must func(args ...string) string) {
+	t.Helper()
 	if out := must("router", "status"); !strings.Contains(out, "Nenhum router") {
 		t.Fatalf("status vazio: %s", out)
 	}
@@ -64,8 +59,10 @@ func TestRouterWatchdogCLI(t *testing.T) {
 	if out, err := runTB(t, bin, dir, "watchdog", "kill", "w1", "--reason", "x"); err == nil || !strings.Contains(out, "nenhum router") {
 		t.Fatalf("kill sem router deveria falhar: %v %s", err, out)
 	}
+}
 
-	// config efetiva
+func assertRouterConfigAndDryRun(t *testing.T, bin, dir string, must func(args ...string) string) {
+	t.Helper()
 	var rc map[string]any
 	if err := json.Unmarshal([]byte(must("router", "config", "--json")), &rc); err != nil || rc["max_workers"] != float64(3) || rc["strategy"] != "dependency" {
 		t.Fatalf("config: %v %v", err, rc)
@@ -73,8 +70,6 @@ func TestRouterWatchdogCLI(t *testing.T) {
 	if out := must("router", "config"); !strings.Contains(out, "max_workers: 3") || !strings.Contains(out, "subscription_ttl: 30m") {
 		t.Fatalf("config texto: %s", out)
 	}
-
-	// dry-run não executa nada
 	out := must("router", "run", "--dry-run", "--workers", "2")
 	if !strings.Contains(out, "Rodada 1") || !strings.Contains(out, "Rodada 2") || !strings.Contains(out, "TKT-002") {
 		t.Fatalf("dry-run: %s", out)
@@ -86,13 +81,13 @@ func TestRouterWatchdogCLI(t *testing.T) {
 	if out := must("ticket", "show", "TKT-001"); !strings.Contains(out, "pending") {
 		t.Fatalf("dry-run não deveria alterar tickets: %s", out)
 	}
-
-	// sem agent_cmd: erro claro
 	if out, err := runTB(t, bin, dir, "router", "run", "--allow-unsandboxed"); err == nil || !strings.Contains(out, "agent_cmd") {
 		t.Fatalf("sem agent-cmd deveria falhar: %v %s", err, out)
 	}
+}
 
-	// execução real
+func assertRouterWatchdogRun(t *testing.T, bin, dir string, must func(args ...string) string) {
+	t.Helper()
 	var sum map[string]any
 	raw := must("router", "run", "--workers", "2", "--allow-unsandboxed", "--json",
 		"--agent-cmd", `sh -c 'echo feito-$TB_TICKET_ID > saida.txt'`)
@@ -106,11 +101,10 @@ func TestRouterWatchdogCLI(t *testing.T) {
 	if err := json.Unmarshal([]byte(must("ticket", "show", "TKT-002", "--json")), &tk); err != nil {
 		t.Fatal(err)
 	}
-	res := tk["result"].(map[string]any)
-	if tk["status"] != "done" || res["head_commit"] == "" || res["branch"] != "tb-workspace/TKT-002" {
+	res, ok := tk["result"].(map[string]any)
+	if !ok || tk["status"] != "done" || res["head_commit"] == "" || res["branch"] != "tb-workspace/TKT-002" {
 		t.Fatalf("TKT-002: %v", tk)
 	}
-
 	var st map[string]any
 	if err := json.Unmarshal([]byte(must("router", "status", "--json")), &st); err != nil || st["status"] != "stopped" || st["stale"] != false {
 		t.Fatalf("status: %v %v", err, st)
@@ -121,8 +115,10 @@ func TestRouterWatchdogCLI(t *testing.T) {
 	if out, err := runTB(t, bin, dir, "watchdog", "status", "--worker", "w9"); err == nil {
 		t.Fatalf("worker inexistente deveria falhar: %s", out)
 	}
+}
 
-	// falha: alerta de crash visível pelo CLI
+func assertRouterWatchdogCrash(t *testing.T, bin, dir string, must func(args ...string) string) {
+	t.Helper()
 	must("ticket", "create", "--title", "quebra")
 	out, err := runTB(t, bin, dir, "router", "run", "--workers", "1", "--allow-unsandboxed", "--agent-cmd", "sh -c 'exit 7'")
 	if err == nil || !strings.Contains(out, "TKT-004") {
@@ -138,6 +134,22 @@ func TestRouterWatchdogCLI(t *testing.T) {
 	if out := must("watchdog", "alerts", "--since", "1h", "--limit", "1"); !strings.Contains(out, "worker_crash") {
 		t.Fatalf("alerts texto: %s", out)
 	}
+}
+
+func TestRouterWatchdogCLI(t *testing.T) {
+	if testing.Short() {
+		t.Skip()
+	}
+	bin := buildTB(t)
+	dir := routerTestRepo(t)
+	must := routerMust(t, bin, dir)
+	must("ticket", "create", "--title", "base")
+	must("ticket", "create", "--title", "filho", "--dep", "TKT-001")
+	must("ticket", "create", "--title", "livre")
+	assertRouterWatchdogEmpty(t, bin, dir, must)
+	assertRouterConfigAndDryRun(t, bin, dir, must)
+	assertRouterWatchdogRun(t, bin, dir, must)
+	assertRouterWatchdogCrash(t, bin, dir, must)
 }
 
 func TestRouterRunStalledExitsNonZero(t *testing.T) {

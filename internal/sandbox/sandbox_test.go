@@ -159,7 +159,7 @@ func TestSandboxEnvAndCancelKillsProcessGroup(t *testing.T) {
 		t.Fatalf("esperava Canceled: %+v", res)
 	}
 	if time.Since(start) > 10*time.Second {
-		t.Fatal("cancelamento não matou o grupo de processos")
+		t.Fatal("cancelamento não matou o grupo de procs")
 	}
 }
 

@@ -39,7 +39,7 @@ func mergeRepo(t *testing.T) string {
 func mergeTicket(t *testing.T, dir, file, content string) {
 	t.Helper()
 	s := ticket.Open(dir)
-	tk, err := s.Create(ticket.Ticket{Title: "t"})
+	tk, err := s.Create(&ticket.Ticket{Title: "t"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -62,16 +62,8 @@ func mergeTicket(t *testing.T, dir, file, content string) {
 	}
 }
 
-func TestMergeCLI(t *testing.T) {
-	if testing.Short() {
-		t.Skip()
-	}
-	bin := buildTB(t)
-	dir := mergeRepo(t)
-	mergeTicket(t, dir, "x.txt", "um\n")
-	mergeTicket(t, dir, "x.txt", "dois\n")
-	start := mergeGit(t, dir, "rev-parse", "main")
-
+func assertMergeCLIConflict(t *testing.T, bin, dir, start string) {
+	t.Helper()
 	if out, err := runTB(t, bin, dir, "merge", "--strategy", "semantic", "1"); err == nil || !strings.Contains(out, "não implementado") {
 		t.Fatalf("semantic: %v %s", err, out)
 	}
@@ -86,6 +78,10 @@ func TestMergeCLI(t *testing.T) {
 	if err != nil || !strings.Contains(out, "last_wins") {
 		t.Fatalf("dry-run: %v %s", err, out)
 	}
+}
+
+func assertMergeCLIApply(t *testing.T, bin, dir string) {
+	t.Helper()
 	jout, err := runTB(t, bin, dir, "merge", "--strategy", "last_wins", "--json", "tkt-1", "2")
 	if err != nil {
 		t.Fatalf("%v %s", err, jout)
@@ -103,4 +99,17 @@ func TestMergeCLI(t *testing.T) {
 	if out, err := runTB(t, bin, dir, "merge", "1"); err == nil || !strings.Contains(out, "--force") {
 		t.Fatalf("já mergeado: %v %s", err, out)
 	}
+}
+
+func TestMergeCLI(t *testing.T) {
+	if testing.Short() {
+		t.Skip()
+	}
+	bin := buildTB(t)
+	dir := mergeRepo(t)
+	mergeTicket(t, dir, "x.txt", "um\n")
+	mergeTicket(t, dir, "x.txt", "dois\n")
+	start := mergeGit(t, dir, "rev-parse", "main")
+	assertMergeCLIConflict(t, bin, dir, start)
+	assertMergeCLIApply(t, bin, dir)
 }
