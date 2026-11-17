@@ -433,6 +433,46 @@ func BenchmarkStackVsSequential(b *testing.B) {
 	})
 }
 
+func TestPrepareRejectsOptionInjection(t *testing.T) {
+	dir := gitRepo(t)
+	runGit(t, dir, "commit", "--allow-empty", "-m", "two")
+	outDir := t.TempDir()
+	injected := filepath.Join(outDir, "pwned")
+	_, err := Prepare(&Options{
+		RepoDir: dir,
+		Base:    "--output=" + injected,
+		Head:    "HEAD",
+		Ops:     []Op{OpGuard},
+	})
+	if err == nil {
+		t.Fatal("injeção em base deveria falhar")
+	}
+	if _, statErr := os.Stat(injected); statErr == nil {
+		t.Fatal("não deveria criar arquivo alvo")
+	}
+	if _, statErr := os.Stat(injected + "..HEAD"); statErr == nil {
+		t.Fatal("não deveria criar arquivo via --output")
+	}
+}
+
+func TestPrepareRejectsMissingApprovedSHA(t *testing.T) {
+	dir := gitRepo(t)
+	runGit(t, dir, "commit", "--allow-empty", "-m", "two")
+	_, err := Prepare(&Options{
+		RepoDir:     dir,
+		Base:        "HEAD~1",
+		Head:        "HEAD",
+		Ops:         []Op{OpGuard},
+		ApprovedSHA: "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+	})
+	if err == nil {
+		t.Fatal("approved-sha inexistente deveria falhar")
+	}
+	if !strings.Contains(err.Error(), "inexistente") {
+		t.Fatalf("erro claro esperado: %v", err)
+	}
+}
+
 func TestPreparePinsHeadSHAOnce(t *testing.T) {
 	dir := gitRepo(t)
 	writeFile(t, filepath.Join(dir, "a.go"), "package a\n")

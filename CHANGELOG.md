@@ -69,6 +69,11 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
   estrito e por `--warn-only`); remove o exemplo invocável com `--strict`
 
 ### Corrigido
+- Refs de `--base`/`--head`/`--approved-sha` (CLI e MCP em guard/drift/review/verify/stack)
+  rejeitam valores que começam com `-`, resolvem via
+  `git rev-parse --verify --end-of-options <ref>^{commit}` e usam o SHA daí em
+  diante; chamadas `git` passam `--end-of-options` onde aplicável. SHA de 40 hex
+  inexistente agora falha com erro claro (`ref inexistente ou inválida`)
 - `tb review` / `tb drift` / `tb stack`: `--approved-sha` compara
   `approved_base..approved` vs `head_base..head` (não a mesma `--base` nos dois
   lados); default das bases via `git merge-base`; nova flag `--approved-base`;
