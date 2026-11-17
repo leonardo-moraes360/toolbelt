@@ -95,21 +95,23 @@ import { numeroBr } from './format.ts';
 		if n.Type == NodeFunction && n.Title == "numeroBr" {
 			foundFn = true
 		}
-		if n.Type == NodePackage && strings.Contains(n.Title, "./privacy") {
-			foundImport = true
-		}
 		if strings.Contains(n.Path, "format.test.ts") {
 			foundTest = true
+		}
+	}
+	for _, e := range idx.Edges {
+		if e.Type == EdgeImports && strings.Contains(e.TargetID, "privacy.ts") {
+			foundImport = true
 		}
 	}
 	if !foundFn {
 		t.Fatal("expected numeroBr function node")
 	}
 	if !foundImport {
-		t.Fatal("expected privacy import edge/node")
+		t.Fatal("expected privacy import resolved to file")
 	}
-	if foundTest {
-		t.Fatal("test files should be skipped")
+	if !foundTest {
+		t.Fatal("test files should be indexed")
 	}
 
 	s := NewStore(filepath.Join(t.TempDir(), "graph.json"))

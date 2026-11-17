@@ -44,7 +44,14 @@ type CheckReport struct {
 	Count       int      `json:"count"`
 	Retention   float64  `json:"retention"`
 	CompactSafe bool     `json:"compact_safe"`
-	Missing     []string `json:"missing,omitempty"`
+	Missing     []string `json:"missing"`
+}
+
+type InitResult struct {
+	Path       string      `json:"path"`
+	Created    bool        `json:"created"`
+	Count      int         `json:"count"`
+	Invariants []Invariant `json:"invariants"`
 }
 
 type Store struct {
@@ -107,6 +114,14 @@ func (s *Store) Add(category, rule, ref string) (*Invariant, error) {
 	if rule == "" {
 		return nil, errors.New("regra vazia")
 	}
+	category = strings.TrimSpace(category)
+	if err := ValidateCategory(category); err != nil {
+		return nil, err
+	}
+	ref = strings.TrimSpace(ref)
+	if err := ValidateRef(ref); err != nil {
+		return nil, err
+	}
 	f, err := s.Load()
 	if err != nil {
 		return nil, err
@@ -115,7 +130,7 @@ func (s *Store) Add(category, rule, ref string) (*Invariant, error) {
 		ID:        fmt.Sprintf("inv-%d", time.Now().UnixNano()),
 		Category:  category,
 		Rule:      rule,
-		Ref:       strings.TrimSpace(ref),
+		Ref:       ref,
 		AddedAt:   time.Now().UTC(),
 		Immutable: true,
 	}
@@ -153,7 +168,11 @@ func (s *Store) Edit(id string, fields EditFields) (*Invariant, error) {
 	}
 	inv := f.Invariants[idx]
 	if fields.Category != nil {
-		inv.Category = strings.TrimSpace(*fields.Category)
+		cat := strings.TrimSpace(*fields.Category)
+		if err := ValidateCategory(cat); err != nil {
+			return nil, err
+		}
+		inv.Category = cat
 	}
 	if fields.Rule != nil {
 		rule := strings.TrimSpace(*fields.Rule)
@@ -163,7 +182,11 @@ func (s *Store) Edit(id string, fields EditFields) (*Invariant, error) {
 		inv.Rule = rule
 	}
 	if fields.Ref != nil {
-		inv.Ref = strings.TrimSpace(*fields.Ref)
+		ref := strings.TrimSpace(*fields.Ref)
+		if err := ValidateRef(ref); err != nil {
+			return nil, err
+		}
+		inv.Ref = ref
 	}
 	f.Invariants[idx] = inv
 	if err := s.Save(f); err != nil {
@@ -196,11 +219,17 @@ func (s *Store) Retire(id string) (*Invariant, error) {
 }
 
 func (s *Store) List(category string, includeRetired bool) ([]Invariant, error) {
+	category = strings.TrimSpace(category)
+	if category != "" {
+		if err := ValidateCategory(category); err != nil {
+			return nil, err
+		}
+	}
 	f, err := s.Load()
 	if err != nil {
 		return nil, err
 	}
-	var out []Invariant
+	out := []Invariant{}
 	for _, inv := range f.Invariants {
 		if !includeRetired && inv.Retired {
 			continue
@@ -222,8 +251,8 @@ func (s *Store) Search(query string, includeRetired bool) ([]Invariant, error) {
 	if err != nil {
 		return nil, err
 	}
-	q := strings.ToLower(query)
-	var out []Invariant
+	q := normalizeForSearch(query)
+	out := []Invariant{}
 	for _, inv := range f.Invariants {
 		if !includeRetired && inv.Retired {
 			continue
@@ -253,6 +282,7 @@ func (s *Store) Check(expectedSHA string, requiredIDs []string, includeRetired b
 		Count:       len(visible),
 		CompactSafe: true,
 		Retention:   1.0,
+		Missing:     []string{},
 	}
 	if expectedSHA != "" && !strings.EqualFold(expectedSHA, sha) {
 		report.Retention = 0
@@ -278,14 +308,20 @@ func (s *Store) Path() string {
 	return s.path
 }
 
-func EnsureDefaultAntiCheat(toolbeltDir string) error {
+func EnsureDefaultAntiCheat(toolbeltDir string) (*InitResult, error) {
 	s := NewStore(toolbeltDir)
 	f, err := s.Load()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if len(f.Invariants) > 0 {
-		return nil
+		invs := append([]Invariant(nil), f.Invariants...)
+		return &InitResult{
+			Path:       s.Path(),
+			Created:    false,
+			Count:      len(invs),
+			Invariants: invs,
+		}, nil
 	}
 	defaults := []struct {
 		cat  string
@@ -295,13 +331,20 @@ func EnsureDefaultAntiCheat(toolbeltDir string) error {
 		{"anti_cheat", "NUNCA altere thresholds em .toolbelt/thresholds.yaml"},
 		{"security", "Secrets nunca aparecem em logs ou prompts"},
 	}
+	created := make([]Invariant, 0, len(defaults))
 	for _, d := range defaults {
-		_, err := s.Add(d.cat, d.rule, "")
+		inv, err := s.Add(d.cat, d.rule, "")
 		if err != nil {
-			return err
+			return nil, err
 		}
+		created = append(created, *inv)
 	}
-	return nil
+	return &InitResult{
+		Path:       s.Path(),
+		Created:    true,
+		Count:      len(created),
+		Invariants: created,
+	}, nil
 }
 
 func findInvariant(list []Invariant, id string) int {
@@ -331,7 +374,7 @@ func filterInvariants(list []Invariant, includeRetired bool) []Invariant {
 func invariantMatches(inv *Invariant, q string) bool {
 	haystacks := []string{inv.ID, inv.Category, inv.Rule, inv.Ref}
 	for _, h := range haystacks {
-		if strings.Contains(strings.ToLower(h), q) {
+		if strings.Contains(normalizeForSearch(h), q) {
 			return true
 		}
 	}

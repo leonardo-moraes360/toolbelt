@@ -88,7 +88,10 @@ func TestJSONOutputSnakeCaseKeys(t *testing.T) {
 				Category:  "scope",
 				Message:   "sem scope",
 				Reviewer:  "goldfish-1",
+				Role:      "scope",
 				Agreement: 3,
+				Criterion: "login ok",
+				Evidence:  "testes=TestLogin",
 			}},
 			Drift: &review.DriftReport{
 				BaseMismatch: false,

@@ -31,7 +31,13 @@ Thumbs.db
 
 # toolbelt data
 .tb/
-.toolbelt/
+# cache/derivados locais (config, invariantes, guard etc. podem ser versionados)
+.toolbelt/graph.json
+.toolbelt/logs/
+.toolbelt/vault/
+.toolbelt/workspaces/
+.toolbelt/captures/
+.toolbelt/bench/
 
 # Logs
 *.log

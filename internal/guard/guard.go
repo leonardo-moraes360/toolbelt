@@ -6,12 +6,13 @@ import (
 	"go/parser"
 	"go/token"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/leonardo-moraes360/toolbelt/internal/git"
 )
 
 type ViolationType string
@@ -139,6 +140,7 @@ func (c *Checker) CheckDiff(baseRef, headRef, nameStatus string) (*CheckResult, 
 		BaseRef:      baseRef,
 		HeadRef:      headRef,
 		RulesChecked: len(c.protectedPaths),
+		Violations:   []Violation{},
 	}
 	for _, cf := range parseDiff(diff) {
 		if cf.deleted && isTestFile(cf.path) {
@@ -174,9 +176,7 @@ type changed struct {
 }
 
 func (c *Checker) gitDiff(base, head string) (string, error) {
-	cmd := exec.Command("git", "diff", "--name-status", base+".."+head) //nolint:gosec // refs validados pelo operador
-	cmd.Dir = c.repoDir
-	out, err := cmd.Output()
+	out, err := git.Output(c.repoDir, "diff", "--name-status", base+".."+head)
 	return string(out), err
 }
 
