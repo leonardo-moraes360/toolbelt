@@ -1,6 +1,7 @@
 package bus
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -113,12 +114,28 @@ func Open(root string) (*Store, error) {
 		return nil, err
 	}
 	q := url.Values{}
+	q.Add("_pragma", "busy_timeout(5000)") // antes do WAL: a troca de modo também espera o lock
 	q.Add("_pragma", "journal_mode(WAL)")
-	q.Add("_pragma", "busy_timeout(5000)")
 	q.Add("_pragma", "foreign_keys(1)")
 	q.Add("_pragma", "synchronous(NORMAL)")
 	q.Set("_txlock", "immediate")
-	db, err := sql.Open("sqlite", "file:"+path+"?"+q.Encode())
+	dsn := "file:" + path + "?" + q.Encode()
+	// A troca para WAL num banco novo pode devolver SQLITE_BUSY sem esperar
+	// (o SQLite evita deadlock). Reabre com backoff curto até openTimeout.
+	deadline := time.Now().Add(openTimeout)
+	for attempt := 1; ; attempt++ {
+		s, err := openOnce(dsn, root, dir)
+		if err == nil || !isBusy(err) || time.Now().After(deadline) {
+			return s, err
+		}
+		time.Sleep(time.Duration(attempt*10) * time.Millisecond)
+	}
+}
+
+const openTimeout = 5 * time.Second
+
+func openOnce(dsn, root, dir string) (*Store, error) {
+	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, err
 	}
@@ -131,6 +148,11 @@ func Open(root string) (*Store, error) {
 	return s, nil
 }
 
+func isBusy(err error) bool {
+	msg := err.Error()
+	return strings.Contains(msg, "SQLITE_BUSY") || strings.Contains(msg, "database is locked")
+}
+
 // Close fecha o store.
 func (s *Store) Close() error { return s.db.Close() }
 
@@ -141,24 +163,26 @@ func (s *Store) Root() string { return s.root }
 func (s *Store) SetClock(now func() time.Time) { s.now = now }
 
 func (s *Store) migrate() error {
-	var v int
-	if err := s.db.QueryRow(`PRAGMA user_version`).Scan(&v); err != nil {
-		return fmt.Errorf("lendo versão do schema: %w", err)
-	}
-	switch v {
-	case SchemaVersion:
-		return nil
-	case 0:
-		return s.tx(func(tx *sql.Tx) error {
+	// Lê a versão dentro da transação IMMEDIATE: dois processos abrindo um
+	// store novo ao mesmo tempo serializam aqui e só um cria o schema.
+	return s.tx(func(tx *sql.Tx) error {
+		var v int
+		if err := tx.QueryRow(`PRAGMA user_version`).Scan(&v); err != nil {
+			return fmt.Errorf("lendo versão do schema: %w", err)
+		}
+		switch v {
+		case SchemaVersion:
+			return nil
+		case 0:
 			if _, err := tx.Exec(schema); err != nil {
 				return fmt.Errorf("criando schema: %w", err)
 			}
 			_, err := tx.Exec(fmt.Sprintf(`PRAGMA user_version = %d`, SchemaVersion))
 			return err
-		})
-	default:
-		return fmt.Errorf("schema do barramento v%d desconhecido (este tb suporta v%d)", v, SchemaVersion)
-	}
+		default:
+			return fmt.Errorf("schema do barramento v%d desconhecido (este tb suporta v%d)", v, SchemaVersion)
+		}
+	})
 }
 
 func (s *Store) tx(fn func(tx *sql.Tx) error) error {
@@ -233,10 +257,17 @@ func (s *Store) CreateChannel(name, owner string, ttl, inviteTTL time.Duration) 
 	return ch, inv, err
 }
 
-// CreateInvite emite um convite de uso único com papel fixado.
-func (s *Store) CreateInvite(channel string, role Role, ttl time.Duration) (Invite, error) {
+// CreateInvite emite um convite de uso único com papel fixado. name, se não
+// vazio, vincula o convite a esse agente; se ele já estiver no canal, o join
+// com este convite substitui a sessão perdida (recuperação feita pelo humano).
+func (s *Store) CreateInvite(channel string, role Role, name string, ttl time.Duration) (Invite, error) {
 	if _, err := ParseRole(string(role)); err != nil {
 		return Invite{}, err
+	}
+	if name != "" {
+		if err := ValidName("nome de agente", name); err != nil {
+			return Invite{}, err
+		}
 	}
 	if ttl < 0 {
 		return Invite{}, errors.New("ttl não pode ser negativo")
@@ -248,7 +279,7 @@ func (s *Store) CreateInvite(channel string, role Role, ttl time.Duration) (Invi
 			return err
 		}
 		var err error
-		inv, err = insertInvite(tx, channel, role, "", now, ttl)
+		inv, err = insertInvite(tx, channel, role, name, now, ttl)
 		return err
 	})
 	return inv, err
@@ -366,12 +397,18 @@ func (s *Store) Join(channel, code string, card *AgentCard, wantRole Role) (Sess
 		if _, err := activeChannel(tx, channel, now); err != nil {
 			return err
 		}
-		role, err := consumeInvite(tx, channel, code, card.Name, wantRole, now)
+		role, rejoin, err := consumeInvite(tx, channel, code, card.Name, wantRole, now)
 		if err != nil {
 			return err
 		}
-		if _, err := tx.Exec(`INSERT INTO agents(channel, name, role, card, token_hash, joined_at) VALUES (?, ?, ?, ?, ?, ?)`,
-			channel, card.Name, string(role), string(cardJSON), hashSecret(token), now); err != nil {
+		if rejoin {
+			_, err = tx.Exec(`UPDATE agents SET role = ?, card = ?, token_hash = ? WHERE channel = ? AND name = ?`,
+				string(role), string(cardJSON), hashSecret(token), channel, card.Name)
+		} else {
+			_, err = tx.Exec(`INSERT INTO agents(channel, name, role, card, token_hash, joined_at) VALUES (?, ?, ?, ?, ?, ?)`,
+				channel, card.Name, string(role), string(cardJSON), hashSecret(token), now)
+		}
+		if err != nil {
 			return err
 		}
 		sess = Session{
@@ -387,37 +424,57 @@ func (s *Store) Join(channel, code string, card *AgentCard, wantRole Role) (Sess
 }
 
 // consumeInvite valida o convite, marca como usado e retorna o papel fixado.
-func consumeInvite(tx *sql.Tx, channel, code, name string, wantRole Role, now int64) (Role, error) {
+// rejoin indica convite vinculado a um agente que já está no canal.
+// Convite válido com nome ou papel errado devolve o mesmo erro genérico.
+func consumeInvite(tx *sql.Tx, channel, code, name string, wantRole Role, now int64) (role Role, rejoin bool, err error) {
 	hash := hashSecret(normalizeInvite(code))
-	var role string
+	var r string
 	var bound sql.NullString
 	var exp int64
 	var used sql.NullInt64
-	err := tx.QueryRow(`SELECT role, bound_name, expires_at, used_at FROM invites WHERE code_hash = ? AND channel = ?`,
-		hash, channel).Scan(&role, &bound, &exp, &used)
-	if errors.Is(err, sql.ErrNoRows) || (err == nil && (used.Valid || now >= exp)) {
-		return "", ErrInvalidInvite
+	err = tx.QueryRow(`SELECT role, bound_name, expires_at, used_at FROM invites WHERE code_hash = ? AND channel = ?`,
+		hash, channel).Scan(&r, &bound, &exp, &used)
+	switch {
+	case errors.Is(err, sql.ErrNoRows), err == nil && (used.Valid || now >= exp):
+		return "", false, ErrInvalidInvite
+	case err != nil:
+		return "", false, err
+	case bound.Valid && bound.String != name, wantRole != "" && Role(r) != wantRole:
+		return "", false, ErrInvalidInvite
 	}
-	if err != nil {
-		return "", err
-	}
-	if bound.Valid && bound.String != name {
-		return "", fmt.Errorf("este convite é do agente %q", bound.String)
-	}
-	if wantRole != "" && Role(role) != wantRole {
-		return "", fmt.Errorf("o convite fixa o papel %q (pedido: %q)", role, wantRole)
+	if !bound.Valid {
+		if err := checkNameFree(tx, channel, name, now); err != nil {
+			return "", false, err
+		}
 	}
 	var n int
 	if err := tx.QueryRow(`SELECT COUNT(*) FROM agents WHERE channel = ? AND name = ?`, channel, name).Scan(&n); err != nil {
-		return "", err
+		return "", false, err
 	}
-	if n > 0 {
-		return "", fmt.Errorf("agente %q já está no canal %q", name, channel)
+	if n > 0 && !bound.Valid {
+		return "", false, fmt.Errorf("agente %q já está no canal %q", name, channel)
 	}
 	if _, err := tx.Exec(`UPDATE invites SET used_at = ?, used_by = ? WHERE code_hash = ?`, now, name, hash); err != nil {
-		return "", err
+		return "", false, err
 	}
-	return Role(role), nil
+	return Role(r), n > 0, nil
+}
+
+// checkNameFree recusa, para convite não vinculado, o nome do dono do canal e
+// nomes reservados por convite vinculado ainda aberto.
+func checkNameFree(tx *sql.Tx, channel, name string, now int64) error {
+	var n int
+	err := tx.QueryRow(`SELECT
+		(SELECT COUNT(*) FROM channels WHERE name = ? AND owner = ?) +
+		(SELECT COUNT(*) FROM invites WHERE channel = ? AND bound_name = ? AND used_at IS NULL AND expires_at > ?)`,
+		channel, name, channel, name, now).Scan(&n)
+	if err != nil {
+		return err
+	}
+	if n > 0 {
+		return fmt.Errorf("nome %q reservado neste canal", name)
+	}
+	return nil
 }
 
 // Auth valida o token de sessão e devolve o membro.
@@ -636,8 +693,13 @@ func sanitizePayload(raw json.RawMessage) ([]byte, error) {
 		return nil, fmt.Errorf("payload excede %d bytes: envie referências (path, SHA, ticket), não conteúdo", MaxPayloadBytes)
 	}
 	var obj map[string]any
-	if err := json.Unmarshal(raw, &obj); err != nil {
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.UseNumber() // preserva inteiros grandes (IDs, números de PR)
+	if err := dec.Decode(&obj); err != nil {
 		return nil, fmt.Errorf("payload precisa ser um objeto JSON: %w", err)
+	}
+	if dec.More() {
+		return nil, errors.New("payload precisa ser um único objeto JSON")
 	}
 	if obj == nil {
 		obj = map[string]any{}

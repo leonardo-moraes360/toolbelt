@@ -1628,6 +1628,7 @@ Local bus for agents from different vendors (Claude Code, Codex, Grok, ...) to e
 ```bash
 tb bus channel create feature-x --owner claude-main --ttl 2h
 tb bus invite feature-x --role worker
+tb bus invite feature-x --role supervisor --name claude-main
 tb bus join feature-x --invite K7Q2-9XMD --name grok-1 --vendor xai --role worker
 tb bus send --channel feature-x --as claude-main --to role:worker --type task.assign --thread TKT-001 --payload '{"ticket":"TKT-001"}'
 tb bus recv --channel feature-x --as grok-1 --wait 20s
@@ -1641,7 +1642,7 @@ tb bus channel show feature-x
 | Command | Who | Purpose |
 |---|---|---|
 | `channel create <channel> --owner N` | human | creates the channel (`--ttl`, no expiry by default) and the owner invite (role `supervisor`) |
-| `invite <channel> --role R` | human | single-use invite with a pinned role (`--ttl`, default `10m`) |
+| `invite <channel> --role R` | human | single-use invite with a pinned role (`--ttl`, default `10m`); `--name` binds it to an agent and, if that agent is already in the channel, recovers its lost session (new token) |
 | `join <channel> --invite C` | agent | joins with an Agent Card (`--name`, `--vendor`, `--model`, `--tier`, `--wake`, `--session`, `--capability` or `--card card.json`); stores the session under `.toolbelt/bus/sessions/` (`0600`) |
 | `send` | agent | `--to agent:\|role:\|topic:`, `--type`, `--thread`, `--causation`, `--idempotency-key`, `--ttl`, `--payload` (JSON or `@file`) |
 | `recv` | agent | reads and advances the cursor; `--wait` (max 25s), `--limit`, `--peek`, `--since` |

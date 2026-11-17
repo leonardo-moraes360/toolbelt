@@ -11,6 +11,7 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 - Barramento B0/B1 (ADR-013): spec `bus/0.1` em `docs/bus-protocolo.md` (envelope JSON-RPC, Agent Card, convite) e `tb bus channel create|list|show`, `invite`, `join`, `send`, `recv`, `claim`, `complete`, `log` sobre `.toolbelt/bus/bus.db` (SQLite WAL via `modernc.org/sqlite`, sem CGO; diretório `0700`, banco e sessões `0600`)
 - Barramento: convite de uso único com papel fixado (só SHA-256 no store), `from` definido pelo broker, dedupe por `idempotency_key`, TTL de mensagem e canal, cursor por agente com `--peek`/`--since`, long-poll até 25s, dono único por thread, payload ≤ 64 KiB com redação de segredos
 - MCP: `tb_bus_join`, `tb_bus_send`, `tb_bus_recv`, `tb_bus_claim`, `tb_bus_complete` (identidade presa à conexão; criar canal/convite não é exposto)
+- Barramento: `tb bus invite --name` vincula convite a um agente e recupera sessão perdida (token rotacionado); nome do dono e nomes com convite vinculado aberto ficam reservados
 - `tb init`: `.toolbelt/bus/` entra em `.git/info/exclude`
 
 ## [0.0.4] - 2026-11-17

@@ -174,6 +174,7 @@ var busInviteCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		roleFlag, _ := cmd.Flags().GetString("role")
 		ttl, _ := cmd.Flags().GetDuration("ttl")
+		name, _ := cmd.Flags().GetString("name")
 		role, err := bus.ParseRole(roleFlag)
 		if err != nil {
 			return err
@@ -183,7 +184,7 @@ var busInviteCmd = &cobra.Command{
 			return err
 		}
 		defer s.Close()
-		inv, err := s.CreateInvite(args[0], role, ttl)
+		inv, err := s.CreateInvite(args[0], role, name, ttl)
 		if err != nil {
 			return err
 		}
@@ -430,6 +431,7 @@ func init() {
 
 	busInviteCmd.Flags().String("role", "worker", "papel fixado: router|supervisor|worker|reviewer")
 	busInviteCmd.Flags().Duration("ttl", bus.DefaultInviteTTL, "duração do convite")
+	busInviteCmd.Flags().String("name", "", "vincula o convite a um agente; se ele já estiver no canal, substitui a sessão perdida")
 
 	jf := busJoinCmd.Flags()
 	jf.String("invite", "", "código do convite (ex.: K7Q2-9XMD)")

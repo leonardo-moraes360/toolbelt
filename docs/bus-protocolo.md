@@ -30,7 +30,7 @@ Toda mensagem é um objeto JSON-RPC 2.0 com `method: "bus/message"`. Campos de `
 | `causation_id` | remetente | opcional; ID da mensagem que causou esta |
 | `idempotency_key` | remetente | opcional; `[A-Za-z0-9._:/-]{1,128}` |
 | `ttl` | remetente | opcional; duração Go (`30m`); depois disso a mensagem não é entregue |
-| `payload` | remetente | objeto JSON, até 64 KiB; strings com segredos conhecidos são redigidas antes de gravar |
+| `payload` | remetente | um único objeto JSON, até 64 KiB; números preservados sem perda; strings com segredos conhecidos são redigidas antes de gravar |
 | `created_at` | broker | RFC 3339 UTC |
 
 Exemplo como `tb bus recv --json` devolve:
@@ -59,6 +59,7 @@ Exemplo como `tb bus recv --json` devolve:
 
 - **Ordem**: crescente por `seq`; garantida dentro de uma thread.
 - **Pelo menos uma vez**: o remetente pode reenviar; com a mesma `idempotency_key` (mesmo canal e remetente) o broker devolve a mensagem já gravada com `duplicate: true` em vez de duplicar.
+- **Backlog**: o cursor começa em 0; quem entra depois recebe as mensagens anteriores endereçadas ao seu papel e a `topic:*` (inclusive `task.assign` ainda sem dono). O log é durável de propósito.
 - **Cursor**: cada agente tem um cursor por canal. `recv` devolve mensagens com `seq` acima do cursor e o avança; `recv --peek` lê sem avançar; `recv --since N` relê a partir de `N` (o log é durável).
 - **Destino**: um agente recebe mensagens para `agent:<ele>`, para `role:<papel dele>` e para qualquer `topic:*`. Nunca recebe as próprias.
 - **Long-poll**: `recv --wait D` espera até `D` (máximo 25s, abaixo do timeout de tool call dos clientes) por ao menos uma mensagem.
@@ -84,16 +85,19 @@ Declarado no `join`. É informativo: **capacidade não é permissão**; o papel 
 ## Convite
 
 - `tb bus channel create` cria o canal e um convite para o dono (papel `supervisor`, nome fixado em `--owner`).
-- `tb bus invite` emite convites adicionais, um por agente, com papel fixado (`router`, `supervisor`, `worker`, `reviewer`).
+- `tb bus invite` emite convites adicionais, um por agente, com papel fixado (`router`, `supervisor`, `worker`, `reviewer`). `--name` vincula o convite a um agente.
+- Convite **não** vinculado não aceita o nome do dono do canal nem nomes com convite vinculado ainda aberto.
 - Código: 8 caracteres Crockford base32 em dois grupos (`K7Q2-9XMD`), gerado com `crypto/rand`; o store guarda só o SHA-256.
-- Uso único; expira em `--ttl` (padrão `10m`). Convite usado, expirado ou de outro canal é recusado com a mesma mensagem genérica.
+- Uso único; expira em `--ttl` (padrão `10m`). Convite usado, expirado, de outro canal, ou válido mas usado com nome ou papel diferentes do fixado, é recusado com a mesma mensagem genérica (e, no último caso, não é consumido).
 - Criar canal e emitir convite **não** existe via MCP: só o humano, na CLI.
 
 ## Sessão e identidade
 
 - `join` devolve `agent_id` e papel. O token de sessão é aleatório (256 bits), o store guarda o SHA-256 e o token **nunca** sai em stdout, log ou resposta MCP.
 - CLI: o token vai para `.toolbelt/bus/sessions/<canal>/<nome>.token` (`0600`); os comandos seguintes usam `--as <nome>`. Limite do B1: qualquer processo do mesmo usuário lê o arquivo, então a CLI confia no usuário local.
-- MCP: a identidade fica presa à conexão stdio do `tb mcp` após `tb_bus_join`; as ferramentas não aceitam outro agente como argumento. Reiniciar o servidor MCP exige novo convite.
+- MCP: a identidade fica presa à conexão stdio do `tb mcp` após `tb_bus_join`; as ferramentas `tb_bus_*` não aceitam outro agente como argumento.
+- **Sessão perdida** (servidor MCP reiniciado, arquivo de sessão apagado): o nome continua registrado. O humano emite `tb bus invite <canal> --role <papel> --name <nome>`; o `join` com esse convite substitui o token (o antigo deixa de valer) e mantém o cursor.
+- **Limite de confiança do B1**: tudo roda como o mesmo usuário. Um agente com shell (inclusive via `tb_run` no MCP) consegue ler `.toolbelt/bus/` e rodar `tb bus invite`/`channel create`. Convite e identidade por conexão protegem contra injeção de prompt e erro de roteamento, não contra um processo local hostil.
 
 ## Regras do broker (B1)
 

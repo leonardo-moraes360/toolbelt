@@ -48,7 +48,7 @@ func setup(t *testing.T) (s *Store, c *clock, owner, worker Member) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	inv, err := s.CreateInvite("feature-x", RoleWorker, 0)
+	inv, err := s.CreateInvite("feature-x", RoleWorker, "", 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -124,7 +124,7 @@ func TestInviteSingleUseExpiryAndBinding(t *testing.T) {
 	if _, err := s.Join("ch", "ZZZZ-ZZZZ", &AgentCard{Name: "x"}, ""); !errors.Is(err, ErrInvalidInvite) {
 		t.Fatalf("código inexistente: %v", err)
 	}
-	inv, _ := s.CreateInvite("ch", RoleWorker, time.Minute)
+	inv, _ := s.CreateInvite("ch", RoleWorker, "", time.Minute)
 	c.add(2 * time.Minute)
 	if _, err := s.Join("ch", inv.Code, &AgentCard{Name: "late"}, ""); !errors.Is(err, ErrInvalidInvite) {
 		t.Fatalf("convite expirado: %v", err)
@@ -132,7 +132,7 @@ func TestInviteSingleUseExpiryAndBinding(t *testing.T) {
 	if _, _, err := s.CreateChannel("other", "o", 0, 0); err != nil {
 		t.Fatal(err)
 	}
-	inv2, _ := s.CreateInvite("ch", RoleWorker, 0)
+	inv2, _ := s.CreateInvite("ch", RoleWorker, "", 0)
 	if _, err := s.Join("other", inv2.Code, &AgentCard{Name: "x"}, ""); !errors.Is(err, ErrInvalidInvite) {
 		t.Fatalf("convite de outro canal: %v", err)
 	}
@@ -274,7 +274,7 @@ func must(t *testing.T, err error) {
 
 func TestClaimComplete(t *testing.T) {
 	s, _, owner, worker := setup(t)
-	inv, _ := s.CreateInvite("feature-x", RoleWorker, 0)
+	inv, _ := s.CreateInvite("feature-x", RoleWorker, "", 0)
 	other, err := s.Join("feature-x", inv.Code, &AgentCard{Name: "codex-1"}, "")
 	must(t, err)
 	_, err = s.Complete(worker, "TKT-001", nil)
@@ -345,7 +345,7 @@ func TestConcurrentProcessesShareStore(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	inv2, _ := s1.CreateInvite("ch", RoleWorker, 0)
+	inv2, _ := s1.CreateInvite("ch", RoleWorker, "", 0)
 	s2, err := Open(root)
 	if err != nil {
 		t.Fatal(err)
@@ -416,5 +416,96 @@ func TestULIDAndInviteCodeFormat(t *testing.T) {
 	code, _ := newInviteCode()
 	if len(code) != 9 || code[4] != '-' || normalizeInvite(strings.ToLower(code)) != strings.ReplaceAll(code, "-", "") {
 		t.Fatalf("código: %s", code)
+	}
+}
+
+func TestOwnerNameReservedForUnboundInvites(t *testing.T) {
+	s, _ := openTest(t)
+	_, ownerInv, err := s.CreateChannel("c", "boss", 0, 0)
+	must(t, err)
+	inv, _ := s.CreateInvite("c", RoleWorker, "", 0)
+	_, err = s.Join("c", inv.Code, &AgentCard{Name: "boss"}, "")
+	wantErr(t, err, "reservado", "worker tomando o nome do dono")
+	reserved, _ := s.CreateInvite("c", RoleReviewer, "rev", 0)
+	_, err = s.Join("c", inv.Code, &AgentCard{Name: "rev"}, "")
+	wantErr(t, err, "reservado", "nome com convite vinculado aberto")
+	_, err = s.Join("c", ownerInv.Code, &AgentCard{Name: "boss"}, "")
+	must(t, err)
+	_, err = s.Join("c", reserved.Code, &AgentCard{Name: "rev"}, "")
+	must(t, err)
+}
+
+func TestBoundInviteRejoinRotatesToken(t *testing.T) {
+	s, _ := openTest(t)
+	_, ownerInv, _ := s.CreateChannel("c", "boss", 0, 0)
+	old, err := s.Join("c", ownerInv.Code, &AgentCard{Name: "boss"}, "")
+	must(t, err)
+	_, err = s.Send(old.Member, &SendInput{To: "topic:x", Type: TypeQuery})
+	must(t, err)
+	re, _ := s.CreateInvite("c", RoleSupervisor, "boss", 0)
+	fresh, err := s.Join("c", re.Code, &AgentCard{Name: "boss", Vendor: "anthropic"}, "")
+	must(t, err)
+	if _, err := s.Auth("c", "boss", old.Token); !errors.Is(err, ErrUnauthorized) {
+		t.Fatalf("token antigo deveria ser invalidado: %v", err)
+	}
+	if m, err := s.Auth("c", "boss", fresh.Token); err != nil || m.Role != RoleSupervisor {
+		t.Fatalf("token novo: %+v %v", m, err)
+	}
+}
+
+func TestValidInviteWrongNameOrRoleIsGeneric(t *testing.T) {
+	s, _ := openTest(t)
+	_, ownerInv, _ := s.CreateChannel("c", "boss", 0, 0)
+	if _, err := s.Join("c", ownerInv.Code, &AgentCard{Name: "x"}, ""); !errors.Is(err, ErrInvalidInvite) {
+		t.Fatalf("nome errado: %v", err)
+	}
+	if _, err := s.Join("c", ownerInv.Code, &AgentCard{Name: "boss"}, RoleWorker); !errors.Is(err, ErrInvalidInvite) {
+		t.Fatalf("papel errado: %v", err)
+	}
+	if _, err := s.Join("c", ownerInv.Code, &AgentCard{Name: "boss"}, ""); err != nil {
+		t.Fatalf("convite não deveria ter sido consumido pelas tentativas: %v", err)
+	}
+}
+
+func TestPayloadKeepsLargeIntegers(t *testing.T) {
+	s, _, owner, _ := setup(t)
+	r := send(t, s, owner, &SendInput{To: "topic:x", Type: TypeQuery,
+		Payload: json.RawMessage(`{"id":9007199254740993,"big":12345678901234567890,"f":1.5}`)})
+	for _, want := range []string{"9007199254740993", "12345678901234567890", "1.5"} {
+		if !strings.Contains(string(r.Message.Payload), want) {
+			t.Fatalf("número alterado: %s (quer %s)", r.Message.Payload, want)
+		}
+	}
+	if _, err := s.Send(owner, &SendInput{To: "topic:x", Type: TypeQuery, Payload: json.RawMessage(`{"a":1}{"b":2}`)}); err == nil {
+		t.Fatal("dois objetos concatenados deveriam falhar")
+	}
+}
+
+func TestConcurrentOpenOfFreshStore(t *testing.T) {
+	for round := 0; round < 5; round++ {
+		root := t.TempDir()
+		var wg sync.WaitGroup
+		errs := make(chan error, 8)
+		for i := 0; i < 8; i++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				s, err := Open(root)
+				if err != nil {
+					errs <- err
+					return
+				}
+				_, err = s.Channels()
+				_ = s.Close()
+				if err != nil {
+					errs <- err
+				}
+			}()
+		}
+		wg.Wait()
+		close(errs)
+		for err := range errs {
+			t.Fatalf("open concorrente: %v", err)
+		}
 	}
 }

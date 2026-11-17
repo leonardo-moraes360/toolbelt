@@ -30,7 +30,7 @@ Every message is a JSON-RPC 2.0 object with `method: "bus/message"`. `params` fi
 | `causation_id` | sender | optional; ID of the message that caused this one |
 | `idempotency_key` | sender | optional; `[A-Za-z0-9._:/-]{1,128}` |
 | `ttl` | sender | optional; Go duration (`30m`); after it the message is not delivered |
-| `payload` | sender | JSON object, up to 64 KiB; strings with known secrets are redacted before being stored |
+| `payload` | sender | a single JSON object, up to 64 KiB; numbers kept without loss; strings with known secrets are redacted before being stored |
 | `created_at` | broker | RFC 3339 UTC |
 
 Example as returned by `tb bus recv --json`:
@@ -59,6 +59,7 @@ Example as returned by `tb bus recv --json`:
 
 - **Order**: increasing `seq`; guaranteed within a thread.
 - **At least once**: the sender may resend; with the same `idempotency_key` (same channel and sender) the broker returns the already stored message with `duplicate: true` instead of duplicating it.
+- **Backlog**: the cursor starts at 0; a late joiner receives earlier messages addressed to its role and to `topic:*` (including `task.assign`s that still have no owner). The log is durable on purpose.
 - **Cursor**: each agent has one cursor per channel. `recv` returns messages with `seq` above the cursor and advances it; `recv --peek` reads without advancing; `recv --since N` re-reads from `N` (the log is durable).
 - **Addressing**: an agent receives messages for `agent:<itself>`, for `role:<its role>` and for any `topic:*`. It never receives its own.
 - **Long-poll**: `recv --wait D` waits up to `D` (at most 25s, below clients' tool-call timeout) for at least one message.
@@ -84,16 +85,19 @@ Declared on `join`. It is informational: **capability is not permission**; the r
 ## Invite
 
 - `tb bus channel create` creates the channel and an invite for the owner (role `supervisor`, name pinned by `--owner`).
-- `tb bus invite` issues more invites, one per agent, with a pinned role (`router`, `supervisor`, `worker`, `reviewer`).
+- `tb bus invite` issues more invites, one per agent, with a pinned role (`router`, `supervisor`, `worker`, `reviewer`). `--name` binds the invite to an agent.
+- An **unbound** invite does not accept the channel owner's name nor names that still have an open bound invite.
 - Code: 8 Crockford base32 characters in two groups (`K7Q2-9XMD`), generated with `crypto/rand`; the store keeps only its SHA-256.
-- Single use; expires after `--ttl` (default `10m`). A used, expired or other-channel invite is refused with the same generic message.
+- Single use; expires after `--ttl` (default `10m`). A used, expired or other-channel invite, or a valid one used with a name or role other than the pinned ones, is refused with the same generic message (and, in the last case, is not consumed).
 - Creating channels and issuing invites does **not** exist through MCP: only the human, on the CLI.
 
 ## Session and identity
 
 - `join` returns `agent_id` and role. The session token is random (256 bits), the store keeps its SHA-256 and the token **never** appears on stdout, in logs or in MCP responses.
 - CLI: the token goes to `.toolbelt/bus/sessions/<channel>/<name>.token` (`0600`); later commands use `--as <name>`. B1 limitation: any process of the same user can read the file, so the CLI trusts the local user.
-- MCP: after `tb_bus_join` the identity is bound to the `tb mcp` stdio connection; the tools do not accept another agent as an argument. Restarting the MCP server requires a new invite.
+- MCP: after `tb_bus_join` the identity is bound to the `tb mcp` stdio connection; the `tb_bus_*` tools do not accept another agent as an argument.
+- **Lost session** (MCP server restarted, session file deleted): the name stays registered. The human issues `tb bus invite <channel> --role <role> --name <name>`; a `join` with that invite replaces the token (the old one stops working) and keeps the cursor.
+- **B1 trust boundary**: everything runs as the same user. An agent with a shell (including through `tb_run` in MCP) can read `.toolbelt/bus/` and run `tb bus invite`/`channel create`. Invites and per-connection identity protect against prompt injection and misrouting, not against a hostile local process.
 
 ## Broker rules (B1)
 

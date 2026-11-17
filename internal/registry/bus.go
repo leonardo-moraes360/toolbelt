@@ -29,12 +29,14 @@ type busSession struct {
 var busState = struct {
 	mu       sync.Mutex
 	sessions map[string]busSession // por canal
-}{sessions: map[string]busSession{}}
+	joining  map[string]bool       // join em andamento (evita dois joins concorrentes)
+}{sessions: map[string]busSession{}, joining: map[string]bool{}}
 
 // ResetBusSessions limpa as sessões MCP (testes).
 func ResetBusSessions() {
 	busState.mu.Lock()
 	busState.sessions = map[string]busSession{}
+	busState.joining = map[string]bool{}
 	busState.mu.Unlock()
 }
 
@@ -224,10 +226,17 @@ func handleBusJoin(_ context.Context, args map[string]any) (any, error) {
 	}
 	busState.mu.Lock()
 	_, already := busState.sessions[channel]
-	busState.mu.Unlock()
-	if already {
+	if already || busState.joining[channel] {
+		busState.mu.Unlock()
 		return nil, fmt.Errorf("esta conexão MCP já está no canal %q", channel)
 	}
+	busState.joining[channel] = true
+	busState.mu.Unlock()
+	defer func() {
+		busState.mu.Lock()
+		delete(busState.joining, channel)
+		busState.mu.Unlock()
+	}()
 	s, err := bus.Open(root)
 	if err != nil {
 		return nil, err

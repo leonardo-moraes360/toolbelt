@@ -1669,6 +1669,7 @@ Barramento local para agentes de vendors diferentes (Claude Code, Codex, Grok, .
 ```bash
 tb bus channel create feature-x --owner claude-main --ttl 2h
 tb bus invite feature-x --role worker
+tb bus invite feature-x --role supervisor --name claude-main
 tb bus join feature-x --invite K7Q2-9XMD --name grok-1 --vendor xai --role worker
 tb bus send --channel feature-x --as claude-main --to role:worker --type task.assign --thread TKT-001 --payload '{"ticket":"TKT-001"}'
 tb bus recv --channel feature-x --as grok-1 --wait 20s
@@ -1682,7 +1683,7 @@ tb bus channel show feature-x
 | Comando | Quem | Função |
 |---|---|---|
 | `channel create <canal> --owner N` | humano | cria canal (`--ttl`, padrão sem expiração) e convite do dono (papel `supervisor`) |
-| `invite <canal> --role R` | humano | convite de uso único com papel fixado (`--ttl`, padrão `10m`) |
+| `invite <canal> --role R` | humano | convite de uso único com papel fixado (`--ttl`, padrão `10m`); `--name` vincula a um agente e, se ele já estiver no canal, recupera a sessão perdida (token novo) |
 | `join <canal> --invite C` | agente | entra com Agent Card (`--name`, `--vendor`, `--model`, `--tier`, `--wake`, `--session`, `--capability` ou `--card card.json`); grava a sessão em `.toolbelt/bus/sessions/` (`0600`) |
 | `send` | agente | `--to agent:\|role:\|topic:`, `--type`, `--thread`, `--causation`, `--idempotency-key`, `--ttl`, `--payload` (JSON ou `@arquivo`) |
 | `recv` | agente | lê e avança o cursor; `--wait` (máx. 25s), `--limit`, `--peek`, `--since` |

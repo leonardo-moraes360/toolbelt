@@ -61,7 +61,7 @@ func busChannel(t *testing.T) (root, ownerCode, workerCode string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	workerInv, err := s.CreateInvite("fx", bus.RoleWorker, 0)
+	workerInv, err := s.CreateInvite("fx", bus.RoleWorker, "", 0)
 	if err != nil {
 		t.Fatal(err)
 	}
