@@ -7,6 +7,8 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Não Lançado]
 
+## [0.0.4] - 2026-11-17
+
 ### Adicionado
 - Fase 3: `tb ticket` (`create`/`list`/`show`/`cancel`/`retry`; tickets YAML em `.toolbelt/tickets/`, `--from rd.md`, dependências com detecção de ciclo) e `tb board` (`list`/`watch`/`pause`/`resume`/`drain`; estratégias `fifo`/`priority`/`dependency`)
 - Fase 3: `tb router run|status|config` — scheduler em primeiro plano com workers em worktrees próprias (`tb-workspace/<ticket>`), sandbox fail-closed (`--allow-unsandboxed` opt-in), entrega direta (subscriptions com TTL) e seção `router:` em `.toolbelt/config.yaml`; substitui o stub
@@ -23,8 +25,13 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 ### Corrigido
 - Sandbox Landlock: `/dev/null`, `/dev/zero`, `/dev/full` passam a ser graváveis (e `/dev/random`/`/dev/urandom` legíveis) por regras por arquivo; antes `/dev` era só leitura e `echo hi > /dev/null`, `git` e shells falhavam (`cannot create /dev/null: Permission denied`; também na v0.0.3). `/dev` como um todo segue somente leitura; ttys (`/dev/tty`, `/dev/ptmx`, `/dev/pts`) ficam de fora de propósito. `IOCTL_DEV` só é tratado na ABI ≥ 5 (antes era aplicado a partir da ABI 4)
 
+- Arquivos de estado (tickets/board, locks, `alerts.jsonl`) criados com modo 0600 (antes 0644); `tb merge` resolve o caminho absoluto do `git` uma vez em vez de buscar no `PATH` a cada chamada
+- Testes de `internal/review` fixam a branch inicial (`git init -b master`); antes falhavam com `init.defaultBranch=main`
+
 ### Documentação
 - `docs/cli.md`, README, arquitetura e ADR-009 atualizados para a Fase 3 (sem `router start/stop`, `router.yaml`, `watchdog scale`; merge via `tb merge TKT-001 TKT-002`)
+- ADR-013 (proposta): barramento local multi-vendor (`tb bus`)
+- Dogfooding: o repositório usa o próprio `tb` (`.toolbelt/`, invariantes, `.mcp.json`, `CLAUDE.md`) e registra atritos em `docs/campo/dogfood.md` (PT + EN)
 
 ## [0.0.3] - 2026-11-17
 
