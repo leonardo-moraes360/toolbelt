@@ -1018,7 +1018,7 @@ func initGitRepo(t *testing.T, repo string) func(args ...string) {
 			t.Fatalf("git %v: %v (%s)", args, err, out)
 		}
 	}
-	run("init")
+	run("init", "-b", "master")
 	run("config", "user.email", "t@example.com")
 	run("config", "user.name", "t")
 	return run
