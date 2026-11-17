@@ -257,6 +257,41 @@ func TestDirectoryTrailingSlashProtectsChildren(t *testing.T) {
 	}
 }
 
+func TestCheckRejectsOptionInjection(t *testing.T) {
+	dir := setupRepo(t)
+	if err := os.WriteFile(filepath.Join(dir, "a.go"), []byte("package a\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	commitAll(t, dir, "init")
+	commitAll(t, dir, "empty")
+
+	outDir := t.TempDir()
+	injected := filepath.Join(outDir, "pwned")
+	_, err := NewChecker(dir).Check("--output="+injected, "HEAD")
+	if err == nil {
+		t.Fatal("ref com '-' deveria ser rejeitada")
+	}
+	if _, statErr := os.Stat(injected); statErr == nil {
+		t.Fatal("injeção não deveria criar o arquivo alvo")
+	}
+	if _, statErr := os.Stat(injected + "..HEAD"); statErr == nil {
+		t.Fatal("injeção não deveria criar arquivo via --output=<path>..<head>")
+	}
+}
+
+func TestCheckRejectsMissingSHA(t *testing.T) {
+	dir := setupRepo(t)
+	commitAll(t, dir, "init")
+	fake := "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+	_, err := NewChecker(dir).Check(fake, "HEAD")
+	if err == nil {
+		t.Fatal("SHA inexistente deveria falhar")
+	}
+	if !strings.Contains(err.Error(), "inexistente") {
+		t.Fatalf("erro claro esperado: %v", err)
+	}
+}
+
 func TestIsProtectedDirectoryPrefix(t *testing.T) {
 	c := &Checker{protectedPaths: []protectedEntry{
 		{pattern: "secrets/"},

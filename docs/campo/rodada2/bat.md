@@ -1,3 +1,5 @@
+🇧🇷 Português | [🇺🇸 English](../../en/campo/rodada2/bat.md)
+
 # Estudo de campo rodada 2: sharkdp/bat
 
 Grupo: **without existing AI-agent instrumentation**. Clone local em `/tmp/target/bat`. Nenhuma interação com o upstream. `tb` buildado deste repo em `main` (`make build` → `toolbelt a46c295`, com as 12 correções mergeadas).

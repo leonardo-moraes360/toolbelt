@@ -1,3 +1,5 @@
+🇧🇷 Português | [🇺🇸 English](../en/campo/ollama.md)
+
 # Estudo de campo: ollama/ollama
 
 Estudo realizado em 2026-11-15 com `tb` buildado deste repo (`make build` → `toolbelt c8aae04`). Clone local em `/tmp/target/ollama` (shallow). **Nenhuma interação** com o upstream (sem push, issue, PR ou comentário).

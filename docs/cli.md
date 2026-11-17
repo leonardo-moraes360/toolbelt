@@ -1,3 +1,5 @@
+🇧🇷 Português | [🇺🇸 English](en/cli.md)
+
 # Árvore de Comandos do `tb`
 
 Este documento descreve a CLI do toolbelt: comandos **implementados** (espelham `tb --help`) e seções **planejadas** (Fase 3+, marcadas explicitamente). Em caso de divergência, a CLI Cobra é a fonte da verdade.
@@ -620,13 +622,13 @@ operações de verificação/revisão com contexto compartilhado.
 tb stack <op> [<op>...] [flags]
 
 Flags:
-  --base <ref>           Ref base compartilhada (default: HEAD~1)
-  --head <ref>           Ref head compartilhada (default: HEAD)
+  --base <ref>           Ref base compartilhada (default: HEAD~1; validada/resolvida)
+  --head <ref>           Ref head compartilhada (default: HEAD; validada/resolvida)
   --fail-fast            Cancela as demais etapas via context na primeira falha
   --jobs <n>             Limite de concorrência (default: nº de CPUs, máx. 32; 1 = serial)
   --ticket <path>        Ticket/rd.md (review/drift/verify; default: rd.md)
-  --approved-sha <sha>   SHA aprovado; patch-id verbatim (review/drift)
-  --approved-base <ref>  Base do range aprovado (default: merge-base(approved, base))
+  --approved-sha <sha>   SHA aprovado; patch-id verbatim (review/drift; validado/resolvido)
+  --approved-base <ref>  Base do range aprovado (default: merge-base(approved, base); validada/resolvida)
   --require-approved-sha Falha se --approved-sha estiver ausente (ou `review.require_approved_sha`)
   --warn-only            guard: exit 0 mesmo com SeverityError
   --test-cmd <cmd>       verify: testes visíveis
@@ -672,13 +674,15 @@ Analisa o diff entre commits em busca de paths protegidos e padrões anti-trapa�
 tb guard check [base..head] [flags]
 
 Flags:
-  --base <ref>   Ref base (default: HEAD~1)
-  --head <ref>   Ref head (default: HEAD)
+  --base <ref>   Ref base (default: HEAD~1; validada/resolvida para SHA)
+  --head <ref>   Ref head (default: HEAD; validada/resolvida para SHA)
   --warn-only    Exit 0 mesmo com SeverityError (opt-out do default CI-safe)
   --strict       Deprecated: falha em SeverityError já é o default; use --warn-only para opt-out
   --json         Saída em JSON (flag global)
 ```
 
+Refs que começam com `-` ou SHA inexistente saem com erro claro (sem chamar
+`git` de forma que interprete a ref como opção).
 Por default, exit ≠ 0 quando há `SeverityError` (comportamento estrito).
 `--strict` é **deprecated** (alias sem efeito: o default já falha em
 `SeverityError`); prefira omitir a flag ou usar `--warn-only` para opt-out.
@@ -814,9 +818,16 @@ O diff usa **three-dot** (`git diff base...head` ≡
 `git diff $(git merge-base base head) head`), o mesmo critério de PRs no GitHub:
 após merge/squash na base, só entram arquivos do branch — não o que veio da main.
 
+`--base` / `base_commit` do ticket (ex.: `HEAD^`, tags, SHA curto) e
+`--head` / `--approved-sha` (CLI e MCP) são validados (rejeitam refs que
+começam com `-`) e resolvidos com
+`git rev-parse --verify --end-of-options <ref>^{commit}` antes de qualquer
+`git diff`/`range-diff` — evita injeção de opções do git, SHA inexistente
+opaco e falso `base_mismatch` por comparar a string da ref com o SHA
+declarado. O SHA resolvido é o que segue no restante do fluxo.
+
 `--base` explícito na CLI/MCP **sempre** prevalece sobre `base_commit` do ticket.
 Sem `--base`, o default `HEAD~1` cede a `base_commit` quando o ticket declara um.
-Refs (`HEAD^`, tags, SHA curto) são resolvidas com `git rev-parse`.
 `base_mismatch` é `true` quando o `base_commit` declarado no ticket (ou a base
 efetiva, se o ticket não declara) **não** é ancestral do head
 (`git merge-base --is-ancestor`) — assim `--base main` em PR divergente não

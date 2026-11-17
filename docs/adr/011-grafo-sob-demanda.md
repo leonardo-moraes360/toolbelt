@@ -1,3 +1,5 @@
+🇧🇷 Português | [🇺🇸 English](../en/adr/011-grafo-sob-demanda.md)
+
 # ADR-011: Grafo de Código Sob Demanda com A/B
 
 ## Status

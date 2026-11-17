@@ -1,3 +1,5 @@
+🇧🇷 Português | [🇺🇸 English](../../en/campo/rodada2/cobra.md)
+
 # Estudo de campo (rodada 2): spf13/cobra
 
 Grupo: **sem instrumentação de agente de IA**. Trabalho apenas em clone local (`/tmp/target/cobra`). Nenhuma interação com o upstream (sem push, issue, PR ou comentário).

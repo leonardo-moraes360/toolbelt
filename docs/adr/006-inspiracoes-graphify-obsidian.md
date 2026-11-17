@@ -1,3 +1,5 @@
+🇧🇷 Português | [🇺🇸 English](../en/adr/006-inspiracoes-graphify-obsidian.md)
+
 # ADR-006: Inspirações — Graphify e Obsidian
 
 ## Status

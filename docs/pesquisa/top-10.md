@@ -1,3 +1,5 @@
+🇧🇷 Português | [🇺🇸 English](../en/pesquisa/top-10.md)
+
 # Top 10 Leituras para Começar
 
 > Lista ordenada das 10 fontes primárias mais importantes para entender o contexto e as decisões de design do toolbelt.

@@ -1,3 +1,5 @@
+🇧🇷 Português | [🇺🇸 English](../en/campo/sentry-python.md)
+
 # Campo: getsentry/sentry-python
 
 Estudo de campo do `tb` (build local `make build`, versão com ldflags `c8aae04`) usando o fluxo de agente num clone local de `https://github.com/getsentry/sentry-python`. Sem push, issues, PRs ou comentários no upstream. Evidências em `/tmp/tb-campo-evidence/` nesta VM.

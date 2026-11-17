@@ -1,3 +1,5 @@
+🇧🇷 Português | [🇺🇸 English](en/arquitetura.md)
+
 # Arquitetura do toolbelt (`tb`)
 
 ## Visão Geral

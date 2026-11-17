@@ -1,3 +1,5 @@
+🇧🇷 Português | [🇺🇸 English](../../en/campo/rodada2/PROMPT.md)
+
 Field study ROUND 2 for toolbelt (`tb`), the Go CLI + MCP server in THIS repo. Round 1 (docs/campo/{SLUG}.md and docs/campo/SINTESE.md) found 12 problems, and all 12 fixes are now merged in main. Goal of round 2: re-run the same kind of real usage on ONE public third-party repository, {REPO} (https://github.com/{REPO}), group: {GROUP}, to (a) confirm or refute that each of the 12 fixes works in practice, and (b) find what is still wrong or new.
 
 Rules:

@@ -1,3 +1,5 @@
+🇧🇷 Português | [🇺🇸 English](../en/decisions/012-cli-framework-cobra.md)
+
 # ADR-012: Framework CLI - Cobra
 
 ## Status

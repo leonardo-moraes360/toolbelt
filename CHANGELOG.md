@@ -12,6 +12,11 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
   default = nº de CPUs (máx. 32); `--jobs 1` força serial; MCP `tb_stack` aceita `jobs`
 - Release: SBOM (syft via `sboms:` no GoReleaser), assinatura keyless cosign do `checksums.txt` (OIDC GitHub) e atestação de proveniência SLSA (`actions/attest-build-provenance`)
 - CI: job `govulncheck` em todo push/PR
+- Espelho completo da documentação em inglês (`README.en.md`, `*.en.md` na raiz,
+  `docs/en/**`) com seletores de idioma; PT permanece a fonte de verdade
+  (`docs/en/TRANSLATION.md`, `docs/TRANSLATION.md`)
+- Teste `TestDocsEnglishMirrorComplete` exige par em `docs/en/` para cada `.md` em
+  `docs/`; `TestDocsCLIExamplesMatchCobra` também valida `docs/en/cli.md`
 - `tb sandbox run --allow-unsandboxed`: opt-in explícito para executar sem isolamento Landlock
 - Teste de integração que tenta escrever fora do workdir (pula se o kernel não tiver Landlock)
 - Grafo TS/JS: fingerprint no `graph.json` e detecção de índice desatualizado;
@@ -74,6 +79,11 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
   estrito e por `--warn-only`); remove o exemplo invocável com `--strict`
 
 ### Corrigido
+- Refs de `--base`/`--head`/`--approved-sha` (CLI e MCP em guard/drift/review/verify/stack)
+  rejeitam valores que começam com `-`, resolvem via
+  `git rev-parse --verify --end-of-options <ref>^{commit}` e usam o SHA daí em
+  diante; chamadas `git` passam `--end-of-options` onde aplicável. SHA de 40 hex
+  inexistente agora falha com erro claro (`ref inexistente ou inválida`)
 - `tb review` / `tb drift` / `tb stack`: `--approved-sha` compara
   `approved_base..approved` vs `head_base..head` (não a mesma `--base` nos dois
   lados); default das bases via `git merge-base`; nova flag `--approved-base`;

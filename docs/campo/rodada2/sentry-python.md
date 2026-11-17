@@ -1,3 +1,5 @@
+🇧🇷 Português | [🇺🇸 English](../../en/campo/rodada2/sentry-python.md)
+
 # Campo rodada 2: getsentry/sentry-python
 
 Estudo de campo ROUND 2 do `tb` (build local `make build`, ldflags `a46c295`) num clone local de `https://github.com/getsentry/sentry-python`. Grupo: **com instrumentação AI existente**. Sem push, issues, PRs ou comentários no upstream. Evidências em `/tmp/tb-campo2-evidence/` nesta VM.

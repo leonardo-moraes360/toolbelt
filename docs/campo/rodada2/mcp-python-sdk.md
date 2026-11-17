@@ -1,3 +1,5 @@
+🇧🇷 Português | [🇺🇸 English](../../en/campo/rodada2/mcp-python-sdk.md)
+
 # Estudo de campo rodada 2: modelcontextprotocol/python-sdk
 
 Estudo realizado em 2026-11-16 com `tb` buildado de `main` atual (`make build` → `toolbelt a46c295`). Alvo só em clone local (`/tmp/python-sdk` e cópia `/tmp/target`); sem push, issue, PR ou comentário no upstream.

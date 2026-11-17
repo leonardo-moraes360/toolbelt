@@ -14,6 +14,7 @@ import (
 
 	"github.com/leonardo-moraes360/toolbelt/internal/config"
 	"github.com/leonardo-moraes360/toolbelt/internal/git"
+	"github.com/leonardo-moraes360/toolbelt/internal/gitref"
 	"github.com/leonardo-moraes360/toolbelt/internal/graph"
 	"github.com/leonardo-moraes360/toolbelt/internal/guard"
 	"github.com/leonardo-moraes360/toolbelt/internal/mem"
@@ -378,7 +379,7 @@ func Prepare(ctx context.Context, opts *Options) (*Shared, error) {
 	if err != nil {
 		return nil, err
 	}
-	base, head, err := pinStackRefs(repo, opts.Base, opts.Head, opts.Ticket)
+	base, head, err := resolveStackRefs(repo, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -418,23 +419,28 @@ func resolveRepoDir(repo string) (string, error) {
 	return os.Getwd()
 }
 
-func pinStackRefs(repo, base, head, ticket string) (baseSHA, headSHA string, err error) {
+func resolveStackRefs(repo string, opts *Options) (base, head string, err error) {
+	base = opts.Base
 	if base == "" {
 		base = "HEAD~1"
 	}
+	head = opts.Head
 	if head == "" {
 		head = "HEAD"
 	}
-	base = resolveEffectiveBase(repo, base, ticket)
-	baseSHA, err = resolveGitSHA(repo, base)
+	base = resolveEffectiveBase(repo, base, opts.Ticket)
+	base, head, err = gitref.ResolvePair(repo, base, head)
 	if err != nil {
-		return "", "", fmt.Errorf("base: %w", err)
+		return "", "", err
 	}
-	headSHA, err = resolveGitSHA(repo, head)
-	if err != nil {
-		return "", "", fmt.Errorf("head: %w", err)
+	if opts.ApprovedSHA != "" {
+		approved, resolveErr := gitref.Resolve(repo, opts.ApprovedSHA)
+		if resolveErr != nil {
+			return "", "", fmt.Errorf("approved-sha: %w", resolveErr)
+		}
+		opts.ApprovedSHA = approved
 	}
-	return baseSHA, headSHA, nil
+	return base, head, nil
 }
 
 func defaultLoaders() *Loaders {
@@ -448,7 +454,7 @@ func defaultLoaders() *Loaders {
 }
 
 func gitUnifiedDiff(repo, base, head string) (string, error) {
-	out, err := git.Output(repo, "diff", base+"..."+head)
+	out, err := git.Output(repo, "diff", "--end-of-options", base+"..."+head)
 	if err != nil {
 		return "", err
 	}
@@ -456,7 +462,7 @@ func gitUnifiedDiff(repo, base, head string) (string, error) {
 }
 
 func gitNameStatus(repo, base, head string) (string, error) {
-	out, err := git.Output(repo, "diff", "--name-status", base+"..."+head)
+	out, err := git.Output(repo, "diff", "--name-status", "--end-of-options", base+"..."+head)
 	if err != nil {
 		return "", err
 	}
@@ -464,7 +470,7 @@ func gitNameStatus(repo, base, head string) (string, error) {
 }
 
 func gitChangedFiles(repo, base, head string) ([]string, error) {
-	out, err := git.Output(repo, "diff", "--name-only", base+"..."+head)
+	out, err := git.Output(repo, "diff", "--name-only", "--end-of-options", base+"..."+head)
 	if err != nil {
 		return nil, err
 	}
@@ -688,14 +694,6 @@ func driftOK(drift *review.DriftReport) bool {
 
 func pinnedApprovalMismatch(p *review.PinnedApproval) bool {
 	return p.Diverged()
-}
-
-func resolveGitSHA(repo, ref string) (string, error) {
-	out, err := git.Output(repo, "rev-parse", "--verify", ref)
-	if err != nil {
-		return "", err
-	}
-	return strings.TrimSpace(string(out)), nil
 }
 
 func hasStrictError(violations []guard.Violation) bool {

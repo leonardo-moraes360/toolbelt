@@ -1,3 +1,5 @@
+🇧🇷 Português | [🇺🇸 English](../../en/campo/rodada2/crush.md)
+
 # Campo rodada 2: charmbracelet/crush
 
 Estudo de campo ROUND 2 do `tb` (toolbelt @ `a46c295`) no repositório third-party **charmbracelet/crush**, grupo **with existing AI-agent instrumentation**. Clone local apenas (`/tmp/target/crush`). Sem push, issues, PRs ou interação com o upstream.

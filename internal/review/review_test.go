@@ -1208,6 +1208,56 @@ func TestCheckPinnedApprovalIdenticalContentDifferentCommit(t *testing.T) {
 	}
 }
 
+func TestRunRejectsOptionInjection(t *testing.T) {
+	repo := t.TempDir()
+	run := initGitRepo(t, repo)
+	if err := os.WriteFile(filepath.Join(repo, "a.go"), []byte("package a\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	run("add", ".")
+	run("commit", "-m", "base")
+	run("commit", "--allow-empty", "-m", "head")
+
+	outDir := t.TempDir()
+	injected := filepath.Join(outDir, "pwned")
+	cfg := DefaultConfig(repo)
+	cfg.BaseRef = "--output=" + injected
+	cfg.HeadRef = "HEAD"
+	cfg.TicketPath = filepath.Join(repo, "missing.md")
+	cfg.Reviewers = 1
+	cfg.Standards = []string{"scope"}
+	_, err := Run(&cfg)
+	if err == nil {
+		t.Fatal("injeção em --base deveria falhar")
+	}
+	if _, statErr := os.Stat(injected); statErr == nil {
+		t.Fatal("não deveria criar arquivo alvo")
+	}
+	if _, statErr := os.Stat(injected + "..HEAD"); statErr == nil {
+		t.Fatal("não deveria criar arquivo via --output=<path>..<head>")
+	}
+}
+
+func TestCheckPinnedApprovalRejectsMissingSHA(t *testing.T) {
+	repo := t.TempDir()
+	run := initGitRepo(t, repo)
+	if err := os.WriteFile(filepath.Join(repo, "a.go"), []byte("package a\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	run("add", ".")
+	run("commit", "-m", "base")
+	base := gitRevParse(t, repo, "HEAD")
+	run("commit", "--allow-empty", "-m", "head")
+	fake := "cccccccccccccccccccccccccccccccccccccccc"
+	_, err := CheckPinnedApproval(repo, base, "", fake, "HEAD")
+	if err == nil {
+		t.Fatal("approved-sha inexistente deveria falhar")
+	}
+	if !strings.Contains(err.Error(), "inexistente") {
+		t.Fatalf("erro claro esperado: %v", err)
+	}
+}
+
 func TestCheckPinnedApprovalCleanRebaseMatch(t *testing.T) {
 	repo := t.TempDir()
 	run := initGitRepo(t, repo)

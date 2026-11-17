@@ -1,3 +1,5 @@
+🇧🇷 Português | [🇺🇸 English](../../en/campo/rodada2/click.md)
+
 # Estudo de campo (rodada 2): pallets/click
 
 Grupo: **without existing AI-agent instrumentation**.  

@@ -1,3 +1,5 @@
+🇧🇷 Português | [🇺🇸 English](../en/campo/typer.md)
+
 # Estudo de campo: fastapi/typer
 
 Grupo: sem instrumentação de agente de IA para contribuição no próprio repositório.  
