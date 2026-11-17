@@ -99,7 +99,7 @@ func handledAccessFS(abi int) uint64 {
 	if abi >= 3 {
 		mask |= landlockAccessFSTruncate
 	}
-	if abi >= 4 {
+	if abi >= 5 { // LANDLOCK_ACCESS_FS_IOCTL_DEV chegou na ABI 5 (ABI 4 é rede)
 		mask |= landlockAccessFSIoctlDev
 	}
 	return mask
@@ -158,7 +158,52 @@ func addSystemReadRules(ruleset, abi int) error {
 	for _, p := range roPaths {
 		_ = addRuleOptional(ruleset, p, true, abi)
 	}
+	addDeviceRules(ruleset, abi)
 	return nil
+}
+
+// deviceRule descreve um nó de /dev liberado para escrita. O /dev como um todo
+// continua somente leitura; só estes nós ganham escrita (git, shells e
+// agentes precisam de /dev/null etc.). Opcionais: ausentes são ignorados.
+//
+// Terminais (/dev/tty, /dev/ptmx, /dev/pts/*) ficam de fora de propósito:
+// escrita em /dev/pts permitiria injetar sequências de escape nos outros
+// terminais do usuário, e ioctl em tty habilita injeção via TIOCSTI onde
+// legacy_tiocsti está ativo.
+type deviceRule struct {
+	path     string
+	readOnly bool // random/urandom: leitura basta
+}
+
+var deviceRules = []deviceRule{
+	{path: "/dev/null"},
+	{path: "/dev/zero"},
+	{path: "/dev/full"},
+	{path: "/dev/random", readOnly: true},
+	{path: "/dev/urandom", readOnly: true},
+}
+
+func addDeviceRules(ruleset, abi int) {
+	for _, d := range deviceRules {
+		if _, err := os.Stat(d.path); err != nil {
+			continue
+		}
+		_ = addRuleMask(ruleset, d.path, deviceFileMask(d.readOnly, abi))
+	}
+}
+
+// deviceFileMask devolve só direitos válidos para arquivo (não-diretório):
+// o kernel responde EINVAL se uma regra de arquivo incluir direitos de
+// diretório. TRUNCATE exige ABI>=3. Nunca inclui IOCTL_DEV (sem ttys).
+func deviceFileMask(readOnly bool, abi int) uint64 {
+	mask := uint64(landlockAccessFSReadFile)
+	if !readOnly {
+		mask |= landlockAccessFSWriteFile
+		if abi >= 3 {
+			mask |= landlockAccessFSTruncate
+		}
+	}
+	return mask
 }
 
 func addTmpWriteRule(ruleset int, workDir string, abi int) error {
@@ -206,7 +251,24 @@ func addRule(ruleset int, path string, readOnly bool, abi int) error {
 	}
 	defer syscall.Close(parent)
 
-	mask := accessMask(readOnly, abi)
+	return addRuleMask2(ruleset, abs, parent, accessMask(readOnly, abi))
+}
+
+// addRuleMask adiciona uma regra path-beneath com a máscara exata dada.
+func addRuleMask(ruleset int, path string, mask uint64) error {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return err
+	}
+	parent, err := syscall.Open(abs, oPath|syscall.O_CLOEXEC, 0)
+	if err != nil {
+		return fmt.Errorf("open %s: %w", abs, err)
+	}
+	defer syscall.Close(parent)
+	return addRuleMask2(ruleset, abs, parent, mask)
+}
+
+func addRuleMask2(ruleset int, abs string, parent int, mask uint64) error {
 	pba := pathBeneathAttr{allowedAccess: mask, parentFd: int32(parent)} //nolint:gosec // descritor fd do kernel
 	_, _, errno := syscall.Syscall6(sysLandlockAddRule, uintptr(ruleset), landlockRulePathBeneath, uintptr(unsafe.Pointer(&pba)), 0, 0, 0)
 	if errno != 0 {
@@ -217,7 +279,7 @@ func addRule(ruleset int, path string, readOnly bool, abi int) error {
 
 func accessMask(readOnly bool, abi int) uint64 {
 	mask := uint64(landlockAccessFSReadFile | landlockAccessFSReadDir | landlockAccessFSExecute)
-	if abi >= 4 {
+	if abi >= 5 {
 		mask |= landlockAccessFSIoctlDev
 	}
 	if readOnly {
