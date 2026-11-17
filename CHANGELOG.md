@@ -8,6 +8,8 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 ## [Não Lançado]
 
 ### Adicionado
+- Release: SBOM (syft via `sboms:` no GoReleaser), assinatura keyless cosign do `checksums.txt` (OIDC GitHub) e atestação de proveniência SLSA (`actions/attest-build-provenance`)
+- CI: job `govulncheck` em todo push/PR
 - `tb sandbox run --allow-unsandboxed`: opt-in explícito para executar sem isolamento Landlock
 - Teste de integração que tenta escrever fora do workdir (pula se o kernel não tiver Landlock)
 - Grafo TS/JS: fingerprint no `graph.json` e detecção de índice desatualizado;
@@ -27,6 +29,9 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
   `created`/`count`/`invariants`
 
 ### Mudanças
+- Instalação por binário no README exige `cosign verify-blob` + `sha256sum -c` (remove `curl | tar` e a menção ao Homebrew sem tap)
+- Go atualizado para `1.27.4` (`go.mod`, workflows CI/Release); golangci-lint no CI passa a v2.15.0 (compatível com Go 1.27)
+- `docs/release.md` documenta SBOM, assinatura, atestação e validação local com `--skip=sign`
 - `tb review` / `tb drift` / `tb stack`: `--approved-sha` passa a usar
   `git patch-id --verbatim` (sensível a whitespace); JSON sempre expõe
   `pinned_approval.checked` (`false` quando a checagem não rodou);
