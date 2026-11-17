@@ -39,7 +39,7 @@ func mergeRepo(t *testing.T) string {
 func mergeTicket(t *testing.T, dir, file, content string) {
 	t.Helper()
 	s := ticket.Open(dir)
-	tk, err := s.Create(ticket.Ticket{Title: "t"})
+	tk, err := s.Create(&ticket.Ticket{Title: "t"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,6 +72,16 @@ func TestMergeCLI(t *testing.T) {
 	mergeTicket(t, dir, "x.txt", "dois\n")
 	start := mergeGit(t, dir, "rev-parse", "main")
 
+	mergeCLIRejections(t, bin, dir, start)
+	mergeCLIApplyLastWins(t, bin, dir)
+	if out, err := runTB(t, bin, dir, "merge", "1"); err == nil || !strings.Contains(out, "--force") {
+		t.Fatalf("já mergeado: %v %s", err, out)
+	}
+}
+
+// mergeCLIRejections: estratégia inválida e conflito com fail não movem refs.
+func mergeCLIRejections(t *testing.T, bin, dir, start string) {
+	t.Helper()
 	if out, err := runTB(t, bin, dir, "merge", "--strategy", "semantic", "1"); err == nil || !strings.Contains(out, "não implementado") {
 		t.Fatalf("semantic: %v %s", err, out)
 	}
@@ -82,7 +92,12 @@ func TestMergeCLI(t *testing.T) {
 	if mergeGit(t, dir, "rev-parse", "main") != start {
 		t.Fatal("ref mudou")
 	}
-	out, err = runTB(t, bin, dir, "merge", "--dry-run", "--strategy", "last_wins", "1", "2")
+}
+
+// mergeCLIApplyLastWins: dry-run e aplicação real com last_wins.
+func mergeCLIApplyLastWins(t *testing.T, bin, dir string) {
+	t.Helper()
+	out, err := runTB(t, bin, dir, "merge", "--dry-run", "--strategy", "last_wins", "1", "2")
 	if err != nil || !strings.Contains(out, "last_wins") {
 		t.Fatalf("dry-run: %v %s", err, out)
 	}
@@ -99,8 +114,5 @@ func TestMergeCLI(t *testing.T) {
 	}
 	if b, _ := os.ReadFile(filepath.Join(dir, "x.txt")); string(b) != "dois\n" {
 		t.Fatalf("x.txt = %q", b)
-	}
-	if out, err := runTB(t, bin, dir, "merge", "1"); err == nil || !strings.Contains(out, "--force") {
-		t.Fatalf("já mergeado: %v %s", err, out)
 	}
 }

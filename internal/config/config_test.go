@@ -266,7 +266,7 @@ func TestLocalOverridesGlobal(t *testing.T) {
 	}
 }
 
-func TestRouterConfigDefaultsAndOverride(t *testing.T) {
+func TestRouterConfigDefaults(t *testing.T) {
 	r := DefaultConfig().Router
 	if r.MaxWorkers != 3 || r.Strategy != "dependency" || !r.DirectDelivery.Enabled ||
 		r.DirectDelivery.SubscriptionTTL != "30m" || r.DirectDelivery.MaxSubscriptionsPerWorker != 5 ||
@@ -276,7 +276,9 @@ func TestRouterConfigDefaultsAndOverride(t *testing.T) {
 	if err := r.Validate(); err != nil {
 		t.Fatal(err)
 	}
+}
 
+func TestRouterConfigOverride(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	yml := "router:\n  max_workers: 5\n  agent_cmd: [\"sh\", \"-c\", \"true\"]\n  direct_delivery:\n    enabled: false\n  retry:\n    max_attempts: 4\n"
 	if err := os.WriteFile(path, []byte(yml), 0o600); err != nil {

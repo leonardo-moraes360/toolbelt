@@ -89,7 +89,7 @@ func gitOut(dir string, args ...string) (string, error) {
 
 // execute roda o agente de um ticket (goroutine do worker). Não toca no
 // estado do router; devolve tudo por workerDone.
-func (r *Router) execute(ctx context.Context, s *slot, worker string, t ticket.Ticket, base string) workerDone {
+func (r *Router) execute(ctx context.Context, s *slot, worker string, t *ticket.Ticket, base string) workerDone {
 	ev := workerDone{slot: s, id: t.ID, base: base, branch: "tb-workspace/" + t.ID, exit: -1}
 	logRel := filepath.Join(".toolbelt", "router", "logs", t.ID+".log")
 	ev.log = filepath.ToSlash(logRel)
@@ -133,7 +133,7 @@ func (r *Router) execute(ctx context.Context, s *slot, worker string, t ticket.T
 	if res != nil {
 		r.appendLog(ev.log, worker, t.ID, res.Output)
 		ev.exit = res.ExitCode
-		ev.cancelled = res.Canceled
+		ev.canceled = res.Canceled
 		ev.timedOut = res.TimedOut
 	}
 	// Descendentes que escaparam do grupo (setsid/setpgid) já foram mortos pelo
@@ -149,9 +149,9 @@ func (r *Router) execute(ctx context.Context, s *slot, worker string, t ticket.T
 		ev.err = err
 		return ev
 	}
-	// Não marcamos cancelled só porque ctx foi cancelado depois: se o agente já
+	// Não marcamos canceled só porque ctx foi cancelado depois: se o agente já
 	// terminou com 0 antes do cancelamento, o trabalho é válido (finding 4).
-	if ev.exit != 0 || ev.cancelled || ev.timedOut {
+	if ev.exit != 0 || ev.canceled || ev.timedOut {
 		return ev
 	}
 	head, err := r.commitWorkspace(ws.Path, t)
@@ -184,7 +184,7 @@ func (r *Router) appendLog(rel, worker, id, output string) {
 
 // createWorkspace cria o worktree do ticket em base, limpando resíduos de
 // tentativas anteriores. Serializado: git worktree add disputa locks de refs.
-func (r *Router) createWorkspace(t ticket.Ticket, base string) (*workspace.Workspace, error) {
+func (r *Router) createWorkspace(t *ticket.Ticket, base string) (*workspace.Workspace, error) {
 	wsCreateMu.Lock()
 	defer wsCreateMu.Unlock()
 	// Janela de spawn: o git (e o que ele dispara) pode deixar daemons destacados
@@ -248,67 +248,88 @@ type trustedGit struct {
 // aponta de volta para <ws>/.git. O common-dir vem de `git rev-parse` com cwd
 // na raiz (nunca no worktree).
 func verifyWorkspace(root, ws string) (*trustedGit, error) {
-	bad := func(format string, a ...any) error {
-		return fmt.Errorf("%w: "+format, append([]any{errWorkspaceIntegrity}, a...)...)
+	dotgit := filepath.Join(ws, ".git")
+	gitDir, err := readGitdirPointer(ws, dotgit)
+	if err != nil {
+		return nil, err
 	}
+	realGitDir, err := checkRegisteredWorktree(root, dotgit, gitDir)
+	if err != nil {
+		return nil, err
+	}
+	return &trustedGit{root: root, gitDir: realGitDir, ws: ws}, nil
+}
+
+// integrityErr embrulha errWorkspaceIntegrity com a mensagem formatada.
+func integrityErr(format string, a ...any) error {
+	return fmt.Errorf("%w: "+format, append([]any{errWorkspaceIntegrity}, a...)...)
+}
+
+// readGitdirPointer valida que <ws>/.git é um arquivo regular pequeno no
+// formato "gitdir: <path>" e devolve o caminho (absoluto e limpo).
+func readGitdirPointer(ws, dotgit string) (string, error) {
 	fi, err := os.Lstat(ws)
 	if err != nil || !fi.IsDir() {
-		return nil, bad("worktree %s ausente ou não é diretório", ws)
+		return "", integrityErr("worktree %s ausente ou não é diretório", ws)
 	}
-	dotgit := filepath.Join(ws, ".git")
 	fi, err = os.Lstat(dotgit)
 	if err != nil {
-		return nil, bad("%s ilegível: %v", dotgit, err)
+		return "", integrityErr("%s ilegível: %v", dotgit, err)
 	}
 	if !fi.Mode().IsRegular() {
-		return nil, bad("%s foi substituído por %s (esperado arquivo regular gitdir:); commit recusado", dotgit, fi.Mode().Type())
+		return "", integrityErr("%s foi substituído por %s (esperado arquivo regular gitdir:); commit recusado", dotgit, fi.Mode().Type())
 	}
 	if fi.Size() > 4096 {
-		return nil, bad("%s grande demais", dotgit)
+		return "", integrityErr("%s grande demais", dotgit)
 	}
 	data, err := os.ReadFile(dotgit) //nolint:gosec // caminho do worktree do próprio ticket
 	if err != nil {
-		return nil, bad("%s: %v", dotgit, err)
+		return "", integrityErr("%s: %v", dotgit, err)
 	}
 	line := strings.TrimSpace(string(data))
 	if !strings.HasPrefix(line, "gitdir:") || strings.ContainsAny(line, "\n\r") {
-		return nil, bad("%s com conteúdo inesperado", dotgit)
+		return "", integrityErr("%s com conteúdo inesperado", dotgit)
 	}
 	gitDir := strings.TrimSpace(strings.TrimPrefix(line, "gitdir:"))
 	if !filepath.IsAbs(gitDir) {
 		gitDir = filepath.Join(ws, gitDir)
 	}
-	gitDir = filepath.Clean(gitDir)
+	return filepath.Clean(gitDir), nil
+}
 
+// checkRegisteredWorktree confirma que gitDir está registrado em
+// <git-common-dir>/worktrees e aponta de volta para dotgit; devolve o gitDir
+// real (symlinks resolvidos).
+func checkRegisteredWorktree(root, dotgit, gitDir string) (string, error) {
 	out, err := gitOut(root, "rev-parse", "--git-common-dir")
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 	if !filepath.IsAbs(out) {
 		out = filepath.Join(root, out)
 	}
 	common, err := filepath.EvalSymlinks(out)
 	if err != nil {
-		return nil, bad("git-common-dir: %v", err)
+		return "", integrityErr("git-common-dir: %v", err)
 	}
 	realGitDir, err := filepath.EvalSymlinks(gitDir)
 	if err != nil {
-		return nil, bad("gitdir %s: %v", gitDir, err)
+		return "", integrityErr("gitdir %s: %v", gitDir, err)
 	}
 	if filepath.Dir(realGitDir) != filepath.Join(common, "worktrees") {
-		return nil, bad("gitdir %s não está em %s/worktrees", realGitDir, common)
+		return "", integrityErr("gitdir %s não está em %s/worktrees", realGitDir, common)
 	}
 	// o registro do git (fora do worktree) deve apontar de volta para <ws>/.git
 	back, err := os.ReadFile(filepath.Join(realGitDir, "gitdir")) //nolint:gosec // dentro do .git do repositório
 	if err != nil {
-		return nil, bad("registro do worktree ilegível: %v", err)
+		return "", integrityErr("registro do worktree ilegível: %v", err)
 	}
 	backReal, err1 := filepath.EvalSymlinks(strings.TrimSpace(string(back)))
 	wantReal, err2 := filepath.EvalSymlinks(dotgit)
 	if err1 != nil || err2 != nil || backReal != wantReal {
-		return nil, bad("registro do worktree em %s não corresponde a %s", realGitDir, dotgit)
+		return "", integrityErr("registro do worktree em %s não corresponde a %s", realGitDir, dotgit)
 	}
-	return &trustedGit{root: root, gitDir: realGitDir, ws: ws}, nil
+	return realGitDir, nil
 }
 
 // run executa git com --git-dir/--work-tree explícitos, cwd na raiz (nunca no
@@ -351,7 +372,7 @@ func cleanGitEnv(env []string) []string {
 // commitWorkspace comita mudanças do worktree e devolve o HEAD resultante.
 // A identidade vem de identityArgs (lida da raiz com a config normal; fallback tb).
 // Antes de qualquer git, verifica a integridade do worktree (finding 1).
-func (r *Router) commitWorkspace(dir string, t ticket.Ticket) (string, error) {
+func (r *Router) commitWorkspace(dir string, t *ticket.Ticket) (string, error) {
 	g, err := verifyWorkspace(r.opts.Root, dir)
 	if err != nil {
 		return "", err

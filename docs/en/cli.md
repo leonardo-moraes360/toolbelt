@@ -1289,7 +1289,7 @@ tb ticket retry TKT-002
 | `list` | `--status a,b`, `--deps <id>` | Lists tickets; `--deps` shows only those depending on the ID |
 | `show <id>` | — | Details: status, priority, deps, mandate, acceptance, result, merge |
 | `cancel <id>` | — | Cancels a `pending`/`running` ticket |
-| `retry <id>` | — | Moves a `failed`/`cancelled` ticket back to `pending` |
+| `retry <id>` | — | Moves a `failed`/`canceled` ticket back to `pending` |
 
 `--from` reads an `rd.md` / ticket file (the same format used by `tb review`
 and `tb drift`: `## Scope`, `## Forbidden` and an acceptance checklist). `tb`
@@ -1311,9 +1311,9 @@ tb ticket list
 
 | From | To |
 |------|----|
-| `pending` | `running`, `cancelled` |
-| `running` | `done`, `failed`, `pending` (retry), `cancelled` |
-| `failed` / `cancelled` | `pending` (`tb ticket retry`) |
+| `pending` | `running`, `canceled` |
+| `running` | `done`, `failed`, `pending` (retry), `canceled` |
+| `failed` / `canceled` | `pending` (`tb ticket retry`) |
 | `done` | terminal |
 
 **Ticket format:**
@@ -1322,7 +1322,7 @@ tb ticket list
 # .toolbelt/tickets/TKT-001.yaml
 id: TKT-001
 title: Criar modelo User
-status: done            # pending | running | done | failed | cancelled
+status: done            # pending | running | done | failed | canceled
 priority: 0             # higher first
 mandate:
     scope: [src/models/**]
@@ -1369,7 +1369,7 @@ tb board drain
 
 | Subcommand | Flags | Description |
 |------------|-------|-------------|
-| `list` | `--status a,b`, `--worker <id>`, `--strategy fifo\|priority\|dependency` | Sections RUNNING / READY / BLOCKED / DONE / FAILED / CANCELLED |
+| `list` | `--status a,b`, `--worker <id>`, `--strategy fifo\|priority\|dependency` | Sections RUNNING / READY / BLOCKED / DONE / FAILED / CANCELED |
 | `watch` | `--interval <dur>` (default 2s), `--status`, `--worker`, `--strategy` | Reprints the board until Ctrl+C |
 | `pause` | — | No new assignments; running work continues |
 | `resume` | — | Clears `pause` and `drain` |
@@ -1396,7 +1396,7 @@ tb board list
 #
 # DONE (0)
 # FAILED (0)
-# CANCELLED (0)
+# CANCELED (0)
 ```
 
 ---
@@ -1442,7 +1442,7 @@ tb router config
 - **Unreadable board:** a transiently invalid ticket YAML does not take the router down: it emits `board_unreadable` (warn), keeps the workers and retries on the next tick; after 30 consecutive failing ticks the router stops with `stalled` (non-zero exit).
 - **Cancel then retry:** a ticket is only assigned again after the slot still holding it finishes killing the previous agent.
 - **Agent output:** exit 0 that leaves background child processes counts as success; the process group is killed after the exit. Kept/logged output is capped to the last 1 MiB; logs use mode 0600. Exit 0 wins over a late stuck/kill verdict.
-- **`stalled` summary:** if `pending` tickets remain blocked by `failed`/`cancelled` dependencies (the `unschedulable` list), the summary reason is `stalled` and `tb router run` exits non-zero.
+- **`stalled` summary:** if `pending` tickets remain blocked by `failed`/`canceled` dependencies (the `unschedulable` list), the summary reason is `stalled` and `tb router run` exits non-zero.
 
 **Direct delivery:** when a ticket finishes `done`, each `pending` ticket that
 depends on it receives a *subscription* to that worker (TTL
@@ -1520,12 +1520,12 @@ tb watchdog kill w1 --reason "travado em loop"
 | Alert | Severity | Condition | Action |
 |-------|----------|-----------|--------|
 | `worker_slow` | warn | elapsed ≥ `slow_threshold` × timeout (once) | `none` |
-| `worker_stuck` | critical | elapsed ≥ ticket timeout; the worker is cancelled | `retry` (attempts left) or `escalate` |
+| `worker_stuck` | critical | elapsed ≥ ticket timeout; the worker is canceled | `retry` (attempts left) or `escalate` |
 | `worker_crash` | error (critical on escalate) | agent exits with code ≠ 0 | `retry` or `escalate` |
 | `worker_killed` | warn | `tb watchdog kill` | `retry` or `escalate` |
 | `queue_growing` | warn | ready > 2 × workers (once per transition) | `none` (suggestion only) |
 | `global_timeout` | critical | `router.timeouts.global` reached; router exits | `stop` |
-| `ticket_cancelled` | warn | ticket cancelled (`tb ticket cancel`) while running; the watchdog kills the agent, the result is discarded and the ticket stays cancelled | `none` |
+| `ticket_canceled` | warn | ticket canceled (`tb ticket cancel`) while running; the watchdog kills the agent, the result is discarded and the ticket stays canceled | `none` |
 | `multi_dep_base` | warn | ticket with ≥ 2 dependencies not all merged is based on `HEAD`; run `tb merge` on the dependencies first | `none` |
 | `agent_escaped` | error | an agent descendant escaped the process group (`setsid`/`setpgid`); it was killed and the owning ticket (by `TB_TICKET_ID`; unattributable ⇒ all running ones) fails without retry or git (Linux) | `escalate` |
 | `orphan_killed` | warn | a non-agent orphan was killed without failing any ticket (daemon born during worktree creation without `TB_TICKET_ID`, or an orphan with no agent running) | `none` |

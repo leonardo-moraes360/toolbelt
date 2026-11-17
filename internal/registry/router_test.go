@@ -31,6 +31,13 @@ func TestRouterToolsReadPersistedState(t *testing.T) {
 		t.Fatalf("esperava status none: %s", text)
 	}
 
+	writeRouterFixture(t, dir)
+	checkRouterTools(t, dir)
+}
+
+// writeRouterFixture grava state.json e alerts.jsonl sintéticos em dir.
+func writeRouterFixture(t *testing.T, dir string) {
+	t.Helper()
 	rdir := filepath.Join(dir, ".toolbelt", "router")
 	if err := os.MkdirAll(rdir, 0o755); err != nil {
 		t.Fatal(err)
@@ -46,8 +53,12 @@ func TestRouterToolsReadPersistedState(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(rdir, "alerts.jsonl"), []byte(alerts), 0o644); err != nil {
 		t.Fatal(err)
 	}
+}
 
-	_, text = callTool(t, "tb_router_status", map[string]any{"cwd": dir})
+// checkRouterTools confere o que as tools leem do estado persistido.
+func checkRouterTools(t *testing.T, dir string) {
+	t.Helper()
+	_, text := callTool(t, "tb_router_status", map[string]any{"cwd": dir})
 	var st map[string]any
 	if err := json.Unmarshal([]byte(text), &st); err != nil || st["stale"] != true || st["strategy"] != "fifo" {
 		t.Fatalf("status: %s", text)
@@ -62,7 +73,7 @@ func TestRouterToolsReadPersistedState(t *testing.T) {
 	if err := json.Unmarshal([]byte(text), &some); err != nil || len(some) != 1 || some[0]["action"] != "retry" {
 		t.Fatalf("alerts filtrados: %s", text)
 	}
-	res, _ = callTool(t, "tb_watchdog_alerts", map[string]any{"cwd": dir, "since": "xyz"})
+	res, _ := callTool(t, "tb_watchdog_alerts", map[string]any{"cwd": dir, "since": "xyz"})
 	if !res.IsError {
 		t.Fatal("since inválido deveria ser erro")
 	}

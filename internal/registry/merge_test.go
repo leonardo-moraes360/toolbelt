@@ -34,7 +34,7 @@ func TestTbMergeDryRunUnlessApply(t *testing.T) {
 	mergeToolGit(t, dir, "commit", "-q", "-m", "base")
 
 	s := ticket.Open(dir)
-	tk, err := s.Create(ticket.Ticket{Title: "t"})
+	tk, err := s.Create(&ticket.Ticket{Title: "t"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -87,7 +87,7 @@ func TestTbMergeConflictReturnsReport(t *testing.T) {
 
 	s := ticket.Open(dir)
 	for i, content := range []string{"one\n", "two\n"} {
-		tk, err := s.Create(ticket.Ticket{Title: "t"})
+		tk, err := s.Create(&ticket.Ticket{Title: "t"})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -139,7 +139,7 @@ func TestTbMergeSensitiveRefusedUnlessAllowed(t *testing.T) {
 	mergeToolGit(t, dir, "commit", "-q", "-m", "base")
 	base := mergeToolGit(t, dir, "rev-parse", "main")
 	s := ticket.Open(dir)
-	tk, _ := s.Create(ticket.Ticket{Title: "t"})
+	tk, _ := s.Create(&ticket.Ticket{Title: "t"})
 	mergeToolGit(t, dir, "checkout", "-q", "-b", "w/1", base)
 	os.MkdirAll(filepath.Join(dir, ".githooks"), 0o755)
 	os.WriteFile(filepath.Join(dir, ".githooks", "post-merge"), []byte("#!/bin/sh\n"), 0o755)

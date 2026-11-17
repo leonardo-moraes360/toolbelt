@@ -168,7 +168,7 @@ func DefaultRouterConfig() RouterConfig {
 }
 
 // Validate checa os valores do router (strategy, durações, limites).
-func (r RouterConfig) Validate() error {
+func (r *RouterConfig) Validate() error {
 	if r.MaxWorkers < 1 {
 		return fmt.Errorf("router.max_workers deve ser >= 1 (atual %d)", r.MaxWorkers)
 	}

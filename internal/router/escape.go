@@ -18,7 +18,7 @@ type pendingAlert struct {
 	kind, severity, worker, ticket, msg, action string
 }
 
-func (r *Router) emit(p pendingAlert) {
+func (r *Router) emit(p *pendingAlert) {
 	r.alert(p.kind, p.severity, p.worker, p.ticket, p.msg, p.action)
 }
 
@@ -129,7 +129,8 @@ func describeID(id string) string {
 // sweepTick varre órfãos escapados durante a execução (watchdog, goroutine
 // principal) e emite os alertas na hora.
 func (r *Router) sweepTick() {
-	for _, p := range r.collectEscapes() {
-		r.emit(p)
+	alerts := r.collectEscapes()
+	for i := range alerts {
+		r.emit(&alerts[i])
 	}
 }

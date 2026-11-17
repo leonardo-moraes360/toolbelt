@@ -14,7 +14,7 @@ import (
 	"github.com/leonardo-moraes360/toolbelt/internal/ticket"
 )
 
-func startRun(r *Router, ctx context.Context) chan *Summary {
+func startRun(ctx context.Context, r *Router) chan *Summary {
 	ch := make(chan *Summary, 1)
 	go func() { s, _ := r.Run(ctx); ch <- s }()
 	return ch
@@ -43,7 +43,7 @@ func TestWorkspaceGitReplacedByAgentIsNeverExecuted(t *testing.T) {
 	hook := filepath.Join(tmp, "hook.sh")
 	script := fmt.Sprintf(`printf '#!/bin/sh\ntouch %s\n' > %s; chmod +x %s; rm -rf .git; git init -q .; git config core.fsmonitor %s; echo x > f.txt`, marker, hook, hook, hook)
 	r := newRouter(t, root, func(o *Options) { o.Config = cfg; o.AgentCmd = sh(script) })
-	runWithTimeout(t, r, context.Background())
+	runWithTimeout(context.Background(), t, r)
 	if _, err := os.Stat(marker); err == nil {
 		t.Fatal("hook fsmonitor do agente foi executado pelo router")
 	}
@@ -66,28 +66,28 @@ func TestWorkspaceGitSymlinkIsRefused(t *testing.T) {
 	other := t.TempDir()
 	script := fmt.Sprintf(`rm -rf .git; ln -s %s .git; echo x > f.txt`, other)
 	r := newRouter(t, root, func(o *Options) { o.AgentCmd = sh(script) })
-	runWithTimeout(t, r, context.Background())
+	runWithTimeout(context.Background(), t, r)
 	if get(t, st, tk.ID).Status != ticket.StatusFailed {
 		t.Fatalf("esperava failed: %+v", get(t, st, tk.ID))
 	}
 }
 
 // Finding 2: cancel durante a execução + shutdown não ressuscita o ticket.
-func TestCancelledWhileRunningStaysCancelledOnShutdown(t *testing.T) {
+func TestCanceledWhileRunningStaysCanceledOnShutdown(t *testing.T) {
 	root := newRepo(t)
 	st := ticket.Open(root)
 	tk := mk(t, st, "longo")
 	ctx, cancel := context.WithCancel(context.Background())
 	// tick enorme: o watchdog não age; só o shutdown encontra o ticket cancelado
 	r := newRouter(t, root, func(o *Options) { o.AgentCmd = sh("sleep 30"); o.Tick = time.Hour })
-	ch := startRun(r, ctx)
+	ch := startRun(ctx, r)
 	waitFor(t, "running", func() bool { return get(t, st, tk.ID).Status == ticket.StatusRunning })
 	if _, err := st.Cancel(tk.ID); err != nil {
 		t.Fatal(err)
 	}
 	cancel()
 	sum := waitSummary(t, ch, 20*time.Second)
-	if got := get(t, st, tk.ID); got.Status != ticket.StatusCancelled {
+	if got := get(t, st, tk.ID); got.Status != ticket.StatusCanceled {
 		t.Fatalf("ressuscitou: %+v", got)
 	}
 	if len(sum.Requeued) != 0 {
@@ -100,16 +100,16 @@ func TestCancelWhileRunningKillsAgentPromptly(t *testing.T) {
 	st := ticket.Open(root)
 	tk := mk(t, st, "longo")
 	r := newRouter(t, root, func(o *Options) { o.AgentCmd = sh("sleep 30") })
-	ch := startRun(r, context.Background())
+	ch := startRun(context.Background(), r)
 	waitFor(t, "running", func() bool { return get(t, st, tk.ID).Status == ticket.StatusRunning })
 	if _, err := st.Cancel(tk.ID); err != nil {
 		t.Fatal(err)
 	}
 	sum := waitSummary(t, ch, 15*time.Second) // sleep 30 só termina cedo se o agente for morto
-	if got := get(t, st, tk.ID); got.Status != ticket.StatusCancelled {
-		t.Fatalf("esperava cancelled: %+v", got)
+	if got := get(t, st, tk.ID); got.Status != ticket.StatusCanceled {
+		t.Fatalf("esperava canceled: %+v", got)
 	}
-	if countKind(alertKinds(t, root), AlertTicketCancelled) != 1 || len(sum.Failed)+len(sum.Retried)+len(sum.Done) != 0 {
+	if countKind(alertKinds(t, root), AlertTicketCanceled) != 1 || len(sum.Failed)+len(sum.Retried)+len(sum.Done) != 0 {
 		t.Fatalf("alertas=%v summary=%+v", alertKinds(t, root), sum)
 	}
 }
@@ -133,7 +133,7 @@ func TestLateReasonDoesNotDiscardFinishedWork(t *testing.T) {
 			}
 			s := r.slots[0]
 			*s = slot{id: "w1", ticket: tk.ID, started: clock.Now(), timeout: time.Minute, attempts: 1, reason: reason, cancel: func() {}}
-			r.complete(workerDone{slot: s, id: tk.ID, exit: 0, head: "abc123"})
+			r.complete(&workerDone{slot: s, id: tk.ID, exit: 0, head: "abc123"})
 			if got := get(t, st, tk.ID); got.Status != ticket.StatusDone || got.Result.HeadCommit != "abc123" {
 				t.Fatalf("trabalho bom descartado: %+v", got)
 			}
@@ -152,7 +152,7 @@ func TestLateReasonDoesNotDiscardFinishedWork(t *testing.T) {
 	})
 	s := r.slots[0]
 	*s = slot{id: "w1", ticket: tk.ID, timeout: time.Minute, attempts: 1, reason: reasonStuck, cancel: func() {}}
-	r.complete(workerDone{slot: s, id: tk.ID, exit: -1, cancelled: true})
+	r.complete(&workerDone{slot: s, id: tk.ID, exit: -1, canceled: true})
 	if got := get(t, st, tk.ID); got.Status != ticket.StatusPending || !strings.Contains(got.Result.Error, "timeout") {
 		t.Fatalf("stuck real deveria virar retry: %+v", got)
 	}
@@ -165,7 +165,7 @@ func TestSecondRunFailsWhileFirstActive(t *testing.T) {
 	tk := mk(t, st, "longo")
 	r1 := newRouter(t, root, func(o *Options) { o.AgentCmd = sh("sleep 30") })
 	ctx, cancel := context.WithCancel(context.Background())
-	ch := startRun(r1, ctx)
+	ch := startRun(ctx, r1)
 	waitFor(t, "running", func() bool { return get(t, st, tk.ID).Status == ticket.StatusRunning })
 	r2 := newRouter(t, root, nil)
 	_, err := r2.Run(context.Background())
@@ -200,7 +200,7 @@ func TestMultiDepBaseAlert(t *testing.T) {
 	b := mk(t, st, "b")
 	c := mk(t, st, "c", a.ID, b.ID)
 	r := newRouter(t, root, nil)
-	runWithTimeout(t, r, context.Background())
+	runWithTimeout(context.Background(), t, r)
 	if get(t, st, c.ID).Status != ticket.StatusDone {
 		t.Fatal("c deveria concluir")
 	}
@@ -231,7 +231,7 @@ func TestMultiDepBaseNoAlertWhenMerged(t *testing.T) {
 	}
 	mk(t, st, "c", a.ID, b.ID)
 	r := newRouter(t, root, nil)
-	runWithTimeout(t, r, context.Background())
+	runWithTimeout(context.Background(), t, r)
 	if n := countKind(alertKinds(t, root), AlertMultiDepBase); n != 0 {
 		t.Fatalf("não deveria alertar com deps mergeadas: %d", n)
 	}
@@ -243,7 +243,7 @@ func TestAgentLogIs0600(t *testing.T) {
 	st := ticket.Open(root)
 	tk := mk(t, st, "log")
 	r := newRouter(t, root, nil)
-	runWithTimeout(t, r, context.Background())
+	runWithTimeout(context.Background(), t, r)
 	got := get(t, st, tk.ID)
 	fi, err := os.Stat(filepath.Join(root, got.Result.Log))
 	if err != nil {

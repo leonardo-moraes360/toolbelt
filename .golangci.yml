@@ -47,6 +47,15 @@ linters:
       locale: US
       ignore-rules:
         - comando
+        - argumentos
+        - progresso
+        - dependente
+        - momento
+        - processos
+        - informativo
+        - autor
+        - calcular
+        - comandos
     nestif:
       min-complexity: 5
     revive:

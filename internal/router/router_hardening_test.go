@@ -42,7 +42,7 @@ echo '* filter=x' > sub/.gitattributes
 echo data > sub/file.txt
 echo y > f.txt`, marker)
 	r := newRouter(t, root, func(o *Options) { o.Config = cfg; o.AgentCmd = sh(script) })
-	runWithTimeout(t, r, context.Background())
+	runWithTimeout(context.Background(), t, r)
 	if _, err := os.Stat(marker); err == nil {
 		t.Fatal("filtro clean do submódulo do agente foi executado pelo router")
 	}
@@ -60,7 +60,7 @@ func TestNestedGitFileOrDirAnywhereIsRefused(t *testing.T) {
 	st := ticket.Open(root)
 	tk := mk(t, st, "aninhado")
 	r := newRouter(t, root, func(o *Options) { o.AgentCmd = sh("mkdir -p a/b/c && echo 'gitdir: /x' > a/b/c/.git; echo y > f.txt") })
-	runWithTimeout(t, r, context.Background())
+	runWithTimeout(context.Background(), t, r)
 	if got := get(t, st, tk.ID); got.Status != ticket.StatusFailed || !strings.Contains(got.Result.Error, "aninhado") {
 		t.Fatalf("%+v %+v", got, got.Result)
 	}
@@ -73,7 +73,7 @@ func TestStagedGitmodulesIsRefused(t *testing.T) {
 	r := newRouter(t, root, func(o *Options) {
 		o.AgentCmd = sh(`printf '[submodule "a"]\n\tpath = a\n\turl = /nope\n' > .gitmodules`)
 	})
-	runWithTimeout(t, r, context.Background())
+	runWithTimeout(context.Background(), t, r)
 	got := get(t, st, tk.ID)
 	if got.Status != ticket.StatusFailed || got.Attempts != 1 || !strings.Contains(got.Result.Error, "gitlink ou .gitmodules") || got.Result.HeadCommit != "" {
 		t.Fatalf("%+v %+v", got, got.Result)
@@ -96,7 +96,7 @@ func TestStagedGitlinkIsRefused(t *testing.T) {
 		t.Fatal(err)
 	}
 	r := newRouter(t, root, nil)
-	_, err := r.commitWorkspace(ws, ticket.Ticket{ID: "TKT-001", Title: "x"})
+	_, err := r.commitWorkspace(ws, &ticket.Ticket{ID: "TKT-001", Title: "x"})
 	if err == nil || !strings.Contains(err.Error(), "gitlink ou .gitmodules") {
 		t.Fatalf("esperava recusa: %v", err)
 	}
@@ -117,7 +117,7 @@ func TestSetsidGrandchildIsKilledAndTicketFailsWithoutCommit(t *testing.T) {
 i=0; while [ ! -s pidfile ] && [ $i -lt 500 ]; do sleep 0.01; i=$((i+1)); done
 echo x > f.txt`
 	r := newRouter(t, root, func(o *Options) { o.Config = cfg; o.AgentCmd = sh(script) })
-	runWithTimeout(t, r, context.Background())
+	runWithTimeout(context.Background(), t, r)
 	data, err := os.ReadFile(filepath.Join(root, ".toolbelt", "workspaces", tk.ID, "pidfile"))
 	if err != nil {
 		t.Fatal(err)
@@ -151,7 +151,7 @@ func TestBackgroundChildInSameGroupStillSucceeds(t *testing.T) {
 	st := ticket.Open(root)
 	tk := mk(t, st, "bg")
 	r := newRouter(t, root, func(o *Options) { o.AgentCmd = sh("sleep 30 & echo ok > f.txt") })
-	runWithTimeout(t, r, context.Background())
+	runWithTimeout(context.Background(), t, r)
 	if got := get(t, st, tk.ID); got.Status != ticket.StatusDone || got.Result.HeadCommit == "" {
 		t.Fatalf("%+v %+v", got, got.Result)
 	}
@@ -179,7 +179,7 @@ func TestStaleKillRequestBeforeRunIsCleared(t *testing.T) {
 		o.Workers = 1
 		o.AgentCmd = sh("sleep 0.3; echo ok > f.txt")
 	})
-	runWithTimeout(t, r, context.Background())
+	runWithTimeout(context.Background(), t, r)
 	if got := get(t, st, tk.ID); got.Status != ticket.StatusDone {
 		t.Fatalf("kill obsoleto matou o worker: %+v %+v", got, got.Result)
 	}
@@ -194,7 +194,7 @@ func TestKillRequestOlderThanRunIsIgnoredDuringRun(t *testing.T) {
 		o.Workers = 1
 		o.AgentCmd = sh("sleep 0.5; echo ok > f.txt")
 	})
-	ch := startRun(r, context.Background())
+	ch := startRun(context.Background(), r)
 	waitFor(t, "running", func() bool { return get(t, st, tk.ID).Status == ticket.StatusRunning })
 	if _, err := RequestKill(root, "w1", "velho", time.Now().Add(-time.Hour)); err != nil {
 		t.Fatal(err)
@@ -246,7 +246,7 @@ func TestTransientInvalidTicketKeepsWorkersRunning(t *testing.T) {
 		o.AgentCmd = sh(fmt.Sprintf("while [ ! -e %s ]; do sleep 0.02; done; echo ok > f.txt", flag))
 	})
 	r.maxBoardFail = 100000
-	ch := startRun(r, context.Background())
+	ch := startRun(context.Background(), r)
 	waitFor(t, "running", func() bool { return get(t, st, tk.ID).Status == ticket.StatusRunning })
 	bad := filepath.Join(st.Dir(), "TKT-099.yaml")
 	if err := os.WriteFile(bad, []byte("id: [oops\n"), 0o644); err != nil {
@@ -330,7 +330,7 @@ func TestNestedRepoCleanFilterNeverRunsOnRouterGit(t *testing.T) {
 		t.Fatal(err)
 	}
 	r := newRouter(t, root, nil)
-	if _, err := r.commitWorkspace(ws, ticket.Ticket{ID: "TKT-001", Title: "x"}); err == nil {
+	if _, err := r.commitWorkspace(ws, &ticket.Ticket{ID: "TKT-001", Title: "x"}); err == nil {
 		t.Fatal("esperava recusa por .git aninhado")
 	}
 	if _, err := os.Stat(marker); err == nil {

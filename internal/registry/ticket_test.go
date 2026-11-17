@@ -9,13 +9,12 @@ import (
 	"github.com/leonardo-moraes360/toolbelt/internal/ticket"
 )
 
-func callTool(t *testing.T, name string, args map[string]any) (ToolResult, string) {
+func callTool(t *testing.T, name string, args map[string]any) (result ToolResult, text string) {
 	t.Helper()
 	res, err := Default().Call(context.Background(), name, args)
 	if err != nil {
 		t.Fatalf("%s: %v", name, err)
 	}
-	text := ""
 	if len(res.Content) > 0 {
 		text = res.Content[0].Text
 	}
@@ -36,7 +35,6 @@ func TestTicketToolsRegistered(t *testing.T) {
 
 func TestTicketToolsFlow(t *testing.T) {
 	dir := t.TempDir()
-	cwd := map[string]any{"cwd": dir}
 	with := func(m map[string]any) map[string]any {
 		m["cwd"] = dir
 		return m
@@ -62,8 +60,18 @@ func TestTicketToolsFlow(t *testing.T) {
 	if res.IsError {
 		t.Fatal(text)
 	}
+	checkTicketReads(t, dir)
+}
 
-	_, text = callTool(t, "tb_ticket_list", cwd)
+// checkTicketReads confere list/show/board e o controle do board.
+func checkTicketReads(t *testing.T, dir string) {
+	t.Helper()
+	cwd := map[string]any{"cwd": dir}
+	with := func(m map[string]any) map[string]any {
+		m["cwd"] = dir
+		return m
+	}
+	_, text := callTool(t, "tb_ticket_list", cwd)
 	var list []ticket.Ticket
 	if err := json.Unmarshal([]byte(text), &list); err != nil || len(list) != 2 {
 		t.Fatalf("list: %v %s", err, text)
@@ -84,7 +92,7 @@ func TestTicketToolsFlow(t *testing.T) {
 	if err := json.Unmarshal([]byte(text), &c); err != nil || !c.Paused {
 		t.Fatalf("pause: %v %s", err, text)
 	}
-	res, _ = callTool(t, "tb_board", with(map[string]any{"action": "bogus"}))
+	res, _ := callTool(t, "tb_board", with(map[string]any{"action": "bogus"}))
 	if !res.IsError {
 		t.Fatal("action inválida deveria falhar")
 	}

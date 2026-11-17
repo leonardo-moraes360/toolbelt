@@ -61,7 +61,7 @@ alterar refs, a menos que use --allow-sensitive (dry-run apenas reporta).`,
 		if err != nil {
 			return err
 		}
-		res, err := merge.Run(merge.Options{
+		res, err := merge.Run(&merge.Options{
 			Repo: cwd, Store: store, IDs: args, Strategy: strategy,
 			DryRun: dry, Output: output, Into: into, Force: force, AllowSensitive: allowSens,
 		})

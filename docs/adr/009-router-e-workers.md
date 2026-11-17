@@ -257,14 +257,14 @@ Implementado (ver [cli.md](../cli.md)): `tb ticket` (tickets YAML em
 execução dentro do sandbox fail-closed), entrega direta (subscription com TTL e
 limite por worker; base no commit da dependência), `tb watchdog` (alertas
 `worker_slow`, `worker_stuck`, `worker_crash`, `worker_killed`, `queue_growing`,
-`global_timeout`, `ticket_cancelled`, `multi_dep_base`, `agent_escaped`, `board_unreadable`; roda no loop do router, sem auto-scaling) e `tb merge`
+`global_timeout`, `ticket_canceled`, `multi_dep_base`, `agent_escaped`, `board_unreadable`; roda no loop do router, sem auto-scaling) e `tb merge`
 (estratégias `fail` e `last_wins`, atômico via compare-and-swap).
 
 Endurecimento do router: instância única por repositório (lock exclusivo
 `.toolbelt/router/lock`), verificação de integridade do worktree antes do commit
 (git com fsmonitor/hooks desabilitados, `--no-verify`; violação ⇒ `failed` sem
 retry), saída do agente limitada a 1 MiB, resumo `stalled` (exit ≠ 0) quando
-tickets `pending` ficam bloqueados por dependências `failed`/`cancelled`, e base
+tickets `pending` ficam bloqueados por dependências `failed`/`canceled`, e base
 no `head_commit` da dependência única independentemente da entrega direta
 (≥ 2 dependências: `HEAD` + alerta `multi_dep_base`).
 

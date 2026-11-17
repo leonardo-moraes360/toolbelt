@@ -257,14 +257,14 @@ Implemented (see [cli.md](../cli.md)): `tb ticket` (YAML tickets under
 inside the fail-closed sandbox), direct delivery (subscription with TTL and a
 per-worker limit; base on the dependency's commit), `tb watchdog` (alerts
 `worker_slow`, `worker_stuck`, `worker_crash`, `worker_killed`, `queue_growing`,
-`global_timeout`, `ticket_cancelled`, `multi_dep_base`, `agent_escaped`, `board_unreadable`; runs in the router loop, no auto-scaling) and `tb merge`
+`global_timeout`, `ticket_canceled`, `multi_dep_base`, `agent_escaped`, `board_unreadable`; runs in the router loop, no auto-scaling) and `tb merge`
 (`fail` and `last_wins` strategies, atomic via compare-and-swap).
 
 Router hardening: single instance per repository (exclusive lock
 `.toolbelt/router/lock`), worktree integrity check before committing (git with
 fsmonitor/hooks disabled, `--no-verify`; violation ⇒ `failed` without retry),
 agent output capped at 1 MiB, a `stalled` summary (non-zero exit) when `pending`
-tickets stay blocked by `failed`/`cancelled` dependencies, and a base on the
+tickets stay blocked by `failed`/`canceled` dependencies, and a base on the
 single dependency's `head_commit` regardless of direct delivery (≥ 2
 dependencies: `HEAD` + `multi_dep_base` alert).
 

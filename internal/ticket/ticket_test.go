@@ -32,7 +32,7 @@ func mk(t *testing.T, s *Store, title string, mod func(*Ticket)) Ticket {
 	if mod != nil {
 		mod(&tk)
 	}
-	out, err := s.Create(tk)
+	out, err := s.Create(&tk)
 	if err != nil {
 		t.Fatalf("create %q: %v", title, err)
 	}
@@ -87,7 +87,7 @@ func TestCreateValidation(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			_, err := s.Create(c.tk)
+			_, err := s.Create(&c.tk)
 			if err == nil || !strings.Contains(err.Error(), c.want) {
 				t.Fatalf("err = %v, want contains %q", err, c.want)
 			}
@@ -101,10 +101,10 @@ func TestCreateValidation(t *testing.T) {
 
 func TestTransitions(t *testing.T) {
 	ok := [][2]Status{
-		{StatusPending, StatusRunning}, {StatusPending, StatusCancelled},
+		{StatusPending, StatusRunning}, {StatusPending, StatusCanceled},
 		{StatusRunning, StatusDone}, {StatusRunning, StatusFailed},
-		{StatusRunning, StatusPending}, {StatusRunning, StatusCancelled},
-		{StatusFailed, StatusPending}, {StatusCancelled, StatusPending},
+		{StatusRunning, StatusPending}, {StatusRunning, StatusCanceled},
+		{StatusFailed, StatusPending}, {StatusCanceled, StatusPending},
 	}
 	for _, p := range ok {
 		if !CanTransition(p[0], p[1]) {
@@ -114,7 +114,7 @@ func TestTransitions(t *testing.T) {
 	bad := [][2]Status{
 		{StatusPending, StatusDone}, {StatusPending, StatusFailed},
 		{StatusDone, StatusPending}, {StatusDone, StatusFailed},
-		{StatusFailed, StatusRunning}, {StatusCancelled, StatusRunning},
+		{StatusFailed, StatusRunning}, {StatusCanceled, StatusRunning},
 	}
 	for _, p := range bad {
 		if CanTransition(p[0], p[1]) {
@@ -140,7 +140,7 @@ func TestTransitions(t *testing.T) {
 		t.Fatal("retry em pending deveria falhar")
 	}
 	c, err := s.Cancel(a.ID)
-	if err != nil || c.Status != StatusCancelled {
+	if err != nil || c.Status != StatusCanceled {
 		t.Fatalf("cancel: %v %v", c.Status, err)
 	}
 	if _, err := s.Retry(a.ID); err != nil {
@@ -215,7 +215,7 @@ func TestConcurrentCreateUniqueIDs(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			tk, err := s.Create(Ticket{Title: "x"})
+			tk, err := s.Create(&Ticket{Title: "x"})
 			if err != nil {
 				t.Error(err)
 				return
@@ -299,10 +299,10 @@ func TestBoardBlockedByFailedDep(t *testing.T) {
 	s := newStore(t)
 	a := mk(t, s, "a", nil)
 	mk(t, s, "b", func(x *Ticket) { x.Dependencies = []string{a.ID} })
-	_, _ = s.Transition(a.ID, StatusCancelled)
+	_, _ = s.Transition(a.ID, StatusCanceled)
 	bd, _ := LoadBoard(s)
 	bl := bd.Blocked()
-	if len(bl) != 1 || bl[0].Reasons[0] != "TKT-001: cancelled" {
+	if len(bl) != 1 || bl[0].Reasons[0] != "TKT-001: canceled" {
 		t.Fatalf("blocked = %+v", bl)
 	}
 }

@@ -169,7 +169,7 @@ var watchdogKillCmd = &cobra.Command{
 func init() {
 	watchdogStatusCmd.Flags().String("worker", "", "filtra por worker (w1, w2, ...)")
 	watchdogAlertsCmd.Flags().String("since", "", "só alertas recentes: duração (10m, 2h) ou RFC3339")
-	watchdogAlertsCmd.Flags().String("kind", "", "worker_slow|worker_stuck|worker_crash|worker_killed|queue_growing|global_timeout|ticket_cancelled|multi_dep_base|agent_escaped|orphan_killed|board_unreadable")
+	watchdogAlertsCmd.Flags().String("kind", "", "worker_slow|worker_stuck|worker_crash|worker_killed|queue_growing|global_timeout|ticket_canceled|multi_dep_base|agent_escaped|orphan_killed|board_unreadable")
 	watchdogAlertsCmd.Flags().Int("limit", 0, "só os N mais recentes (0 = todos)")
 	watchdogKillCmd.Flags().String("reason", "", "motivo (registrado no alerta e no ticket)")
 	_ = watchdogKillCmd.MarkFlagRequired("reason")

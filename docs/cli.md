@@ -1329,7 +1329,7 @@ tb ticket retry TKT-002
 | `list` | `--status a,b`, `--deps <id>` | Lista tickets; `--deps` mostra só os que dependem do ID |
 | `show <id>` | — | Detalhes: status, prioridade, deps, mandato, aceite, resultado, merge |
 | `cancel <id>` | — | Cancela ticket `pending`/`running` |
-| `retry <id>` | — | Recoloca ticket `failed`/`cancelled` em `pending` |
+| `retry <id>` | — | Recoloca ticket `failed`/`canceled` em `pending` |
 
 `--from` lê um `rd.md` / arquivo de ticket (o mesmo formato de `tb review` e
 `tb drift`: `## Scope`, `## Forbidden` e checklist de aceite). O `tb` não gera
@@ -1351,9 +1351,9 @@ tb ticket list
 
 | De | Para |
 |----|------|
-| `pending` | `running`, `cancelled` |
-| `running` | `done`, `failed`, `pending` (re-tentativa), `cancelled` |
-| `failed` / `cancelled` | `pending` (`tb ticket retry`) |
+| `pending` | `running`, `canceled` |
+| `running` | `done`, `failed`, `pending` (re-tentativa), `canceled` |
+| `failed` / `canceled` | `pending` (`tb ticket retry`) |
 | `done` | terminal |
 
 **Formato do ticket:**
@@ -1362,7 +1362,7 @@ tb ticket list
 # .toolbelt/tickets/TKT-001.yaml
 id: TKT-001
 title: Criar modelo User
-status: done            # pending | running | done | failed | cancelled
+status: done            # pending | running | done | failed | canceled
 priority: 0             # maior primeiro
 mandate:
     scope: [src/models/**]
@@ -1409,7 +1409,7 @@ tb board drain
 
 | Subcomando | Flags | Descrição |
 |------------|-------|-----------|
-| `list` | `--status a,b`, `--worker <id>`, `--strategy fifo\|priority\|dependency` | Seções RUNNING / READY / BLOCKED / DONE / FAILED / CANCELLED |
+| `list` | `--status a,b`, `--worker <id>`, `--strategy fifo\|priority\|dependency` | Seções RUNNING / READY / BLOCKED / DONE / FAILED / CANCELED |
 | `watch` | `--interval <dur>` (padrão 2s), `--status`, `--worker`, `--strategy` | Reimprime o board até Ctrl+C |
 | `pause` | — | Nenhuma nova atribuição; o que roda continua |
 | `resume` | — | Limpa `pause` e `drain` |
@@ -1436,7 +1436,7 @@ tb board list
 #
 # DONE (0)
 # FAILED (0)
-# CANCELLED (0)
+# CANCELED (0)
 ```
 
 ---
@@ -1481,7 +1481,7 @@ tb router config
 - **Board ilegível:** um YAML de ticket transitoriamente inválido não derruba o router: emite `board_unreadable` (warn), mantém os workers e tenta de novo no próximo tick; após 30 ticks consecutivos falhando o router encerra com `stalled` (exit ≠ 0).
 - **Cancelar e reenviar:** um ticket só é atribuído de novo depois que o slot que ainda o segura terminar de encerrar o agente anterior.
 - **Saída do agente:** exit 0 que deixa processos filhos em background conta como sucesso; o grupo de processos é morto após a saída. A saída mantida/logada é limitada aos últimos 1 MiB; logs com permissão 0600. Exit 0 prevalece sobre um veredito tardio de stuck/kill.
-- **Resumo `stalled`:** se restam tickets `pending` bloqueados por dependências `failed`/`cancelled` (lista `unschedulable`), o motivo do resumo é `stalled` e `tb router run` sai com código ≠ 0.
+- **Resumo `stalled`:** se restam tickets `pending` bloqueados por dependências `failed`/`canceled` (lista `unschedulable`), o motivo do resumo é `stalled` e `tb router run` sai com código ≠ 0.
 
 **Entrega direta (direct delivery):** quando um ticket termina `done`, cada
 ticket `pending` que depende dele recebe uma *subscription* para aquele worker
@@ -1564,7 +1564,7 @@ tb watchdog kill w1 --reason "travado em loop"
 | `worker_killed` | warn | `tb watchdog kill` | `retry` ou `escalate` |
 | `queue_growing` | warn | prontos > 2 × workers (uma vez por transição) | `none` (apenas sugere) |
 | `global_timeout` | critical | `router.timeouts.global` atingido; router encerra | `stop` |
-| `ticket_cancelled` | warn | ticket cancelado (`tb ticket cancel`) enquanto roda; o watchdog mata o agente, o resultado é descartado e o ticket permanece cancelado | `none` |
+| `ticket_canceled` | warn | ticket cancelado (`tb ticket cancel`) enquanto roda; o watchdog mata o agente, o resultado é descartado e o ticket permanece cancelado | `none` |
 | `multi_dep_base` | warn | ticket com ≥ 2 dependências nem todas mergeadas é baseado em `HEAD`; rode `tb merge` nas dependências antes | `none` |
 | `agent_escaped` | error | descendente do agente escapou do grupo de processos (`setsid`/`setpgid`); foi morto e o ticket dono (por `TB_TICKET_ID`; não atribuível ⇒ todos os rodando) falha sem retry nem git (Linux) | `escalate` |
 | `orphan_killed` | warn | órfão não-agente encerrado sem falhar ticket (daemon nascido na criação do worktree sem `TB_TICKET_ID`, ou órfão sem nenhum agente rodando) | `none` |

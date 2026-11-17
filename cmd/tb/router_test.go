@@ -36,65 +36,93 @@ func routerTestRepo(t *testing.T) string {
 	return dir
 }
 
+// routerCLI agrupa o ambiente de um teste de CLI do router.
+type routerCLI struct {
+	t   *testing.T
+	bin string
+	dir string
+}
+
+func (c *routerCLI) must(args ...string) string {
+	c.t.Helper()
+	out, err := runTB(c.t, c.bin, c.dir, args...)
+	if err != nil {
+		c.t.Fatalf("tb %v: %v\n%s", args, err, out)
+	}
+	return out
+}
+
+func (c *routerCLI) run(args ...string) (string, error) {
+	c.t.Helper()
+	return runTB(c.t, c.bin, c.dir, args...)
+}
+
 func TestRouterWatchdogCLI(t *testing.T) {
 	if testing.Short() {
 		t.Skip()
 	}
-	bin := buildTB(t)
-	dir := routerTestRepo(t)
-	must := func(args ...string) string {
-		t.Helper()
-		out, err := runTB(t, bin, dir, args...)
-		if err != nil {
-			t.Fatalf("tb %v: %v\n%s", args, err, out)
-		}
-		return out
-	}
-	must("ticket", "create", "--title", "base")
-	must("ticket", "create", "--title", "filho", "--dep", "TKT-001")
-	must("ticket", "create", "--title", "livre")
+	c := &routerCLI{t: t, bin: buildTB(t), dir: routerTestRepo(t)}
+	c.must("ticket", "create", "--title", "base")
+	c.must("ticket", "create", "--title", "filho", "--dep", "TKT-001")
+	c.must("ticket", "create", "--title", "livre")
 
-	// sem estado: status/alerts vazios, kill recusado
-	if out := must("router", "status"); !strings.Contains(out, "Nenhum router") {
+	c.checkEmptyState()
+	c.checkConfig()
+	c.checkDryRun()
+	c.checkRealRun()
+	c.checkCrashAlerts()
+}
+
+// checkEmptyState: sem estado, status/alerts vazios e kill recusado.
+func (c *routerCLI) checkEmptyState() {
+	t := c.t
+	if out := c.must("router", "status"); !strings.Contains(out, "Nenhum router") {
 		t.Fatalf("status vazio: %s", out)
 	}
-	if out := must("watchdog", "alerts"); !strings.Contains(out, "Nenhum alerta") {
+	if out := c.must("watchdog", "alerts"); !strings.Contains(out, "Nenhum alerta") {
 		t.Fatalf("alerts vazio: %s", out)
 	}
-	if out, err := runTB(t, bin, dir, "watchdog", "kill", "w1", "--reason", "x"); err == nil || !strings.Contains(out, "nenhum router") {
+	if out, err := c.run("watchdog", "kill", "w1", "--reason", "x"); err == nil || !strings.Contains(out, "nenhum router") {
 		t.Fatalf("kill sem router deveria falhar: %v %s", err, out)
 	}
+}
 
-	// config efetiva
+// checkConfig: config efetiva em JSON e texto.
+func (c *routerCLI) checkConfig() {
+	t := c.t
 	var rc map[string]any
-	if err := json.Unmarshal([]byte(must("router", "config", "--json")), &rc); err != nil || rc["max_workers"] != float64(3) || rc["strategy"] != "dependency" {
+	if err := json.Unmarshal([]byte(c.must("router", "config", "--json")), &rc); err != nil || rc["max_workers"] != float64(3) || rc["strategy"] != "dependency" {
 		t.Fatalf("config: %v %v", err, rc)
 	}
-	if out := must("router", "config"); !strings.Contains(out, "max_workers: 3") || !strings.Contains(out, "subscription_ttl: 30m") {
+	if out := c.must("router", "config"); !strings.Contains(out, "max_workers: 3") || !strings.Contains(out, "subscription_ttl: 30m") {
 		t.Fatalf("config texto: %s", out)
 	}
+}
 
-	// dry-run não executa nada
-	out := must("router", "run", "--dry-run", "--workers", "2")
+// checkDryRun: dry-run não executa nada; sem agent_cmd o erro é claro.
+func (c *routerCLI) checkDryRun() {
+	t := c.t
+	out := c.must("router", "run", "--dry-run", "--workers", "2")
 	if !strings.Contains(out, "Rodada 1") || !strings.Contains(out, "Rodada 2") || !strings.Contains(out, "TKT-002") {
 		t.Fatalf("dry-run: %s", out)
 	}
 	var plan map[string]any
-	if err := json.Unmarshal([]byte(must("router", "run", "--dry-run", "--json")), &plan); err != nil || len(plan["rounds"].([]any)) != 2 {
+	if err := json.Unmarshal([]byte(c.must("router", "run", "--dry-run", "--json")), &plan); err != nil || len(plan["rounds"].([]any)) != 2 {
 		t.Fatalf("dry-run json: %v %v", err, plan)
 	}
-	if out := must("ticket", "show", "TKT-001"); !strings.Contains(out, "pending") {
+	if out := c.must("ticket", "show", "TKT-001"); !strings.Contains(out, "pending") {
 		t.Fatalf("dry-run não deveria alterar tickets: %s", out)
 	}
-
-	// sem agent_cmd: erro claro
-	if out, err := runTB(t, bin, dir, "router", "run", "--allow-unsandboxed"); err == nil || !strings.Contains(out, "agent_cmd") {
+	if out, err := c.run("router", "run", "--allow-unsandboxed"); err == nil || !strings.Contains(out, "agent_cmd") {
 		t.Fatalf("sem agent-cmd deveria falhar: %v %s", err, out)
 	}
+}
 
-	// execução real
+// checkRealRun: execução real, ticket concluído e status do router/watchdog.
+func (c *routerCLI) checkRealRun() {
+	t := c.t
 	var sum map[string]any
-	raw := must("router", "run", "--workers", "2", "--allow-unsandboxed", "--json",
+	raw := c.must("router", "run", "--workers", "2", "--allow-unsandboxed", "--json",
 		"--agent-cmd", `sh -c 'echo feito-$TB_TICKET_ID > saida.txt'`)
 	if err := json.Unmarshal([]byte(raw), &sum); err != nil {
 		t.Fatalf("summary json: %v\n%s", err, raw)
@@ -103,7 +131,7 @@ func TestRouterWatchdogCLI(t *testing.T) {
 		t.Fatalf("summary: %v", sum)
 	}
 	var tk map[string]any
-	if err := json.Unmarshal([]byte(must("ticket", "show", "TKT-002", "--json")), &tk); err != nil {
+	if err := json.Unmarshal([]byte(c.must("ticket", "show", "TKT-002", "--json")), &tk); err != nil {
 		t.Fatal(err)
 	}
 	res := tk["result"].(map[string]any)
@@ -112,30 +140,33 @@ func TestRouterWatchdogCLI(t *testing.T) {
 	}
 
 	var st map[string]any
-	if err := json.Unmarshal([]byte(must("router", "status", "--json")), &st); err != nil || st["status"] != "stopped" || st["stale"] != false {
+	if err := json.Unmarshal([]byte(c.must("router", "status", "--json")), &st); err != nil || st["status"] != "stopped" || st["stale"] != false {
 		t.Fatalf("status: %v %v", err, st)
 	}
-	if out := must("watchdog", "status", "--worker", "w1"); !strings.Contains(out, "w1") || strings.Contains(out, "w2") {
+	if out := c.must("watchdog", "status", "--worker", "w1"); !strings.Contains(out, "w1") || strings.Contains(out, "w2") {
 		t.Fatalf("watchdog status: %s", out)
 	}
-	if out, err := runTB(t, bin, dir, "watchdog", "status", "--worker", "w9"); err == nil {
+	if out, err := c.run("watchdog", "status", "--worker", "w9"); err == nil {
 		t.Fatalf("worker inexistente deveria falhar: %s", out)
 	}
+}
 
-	// falha: alerta de crash visível pelo CLI
-	must("ticket", "create", "--title", "quebra")
-	out, err := runTB(t, bin, dir, "router", "run", "--workers", "1", "--allow-unsandboxed", "--agent-cmd", "sh -c 'exit 7'")
+// checkCrashAlerts: falha do agente gera alerta de crash visível pelo CLI.
+func (c *routerCLI) checkCrashAlerts() {
+	t := c.t
+	c.must("ticket", "create", "--title", "quebra")
+	out, err := c.run("router", "run", "--workers", "1", "--allow-unsandboxed", "--agent-cmd", "sh -c 'exit 7'")
 	if err == nil || !strings.Contains(out, "TKT-004") {
 		t.Fatalf("falha deveria dar exit != 0: %v %s", err, out)
 	}
 	var alerts []map[string]any
-	if err := json.Unmarshal([]byte(must("watchdog", "alerts", "--kind", "worker_crash", "--json")), &alerts); err != nil || len(alerts) != 2 {
+	if err := json.Unmarshal([]byte(c.must("watchdog", "alerts", "--kind", "worker_crash", "--json")), &alerts); err != nil || len(alerts) != 2 {
 		t.Fatalf("alerts: %v %v", err, alerts)
 	}
 	if alerts[0]["action"] != "retry" || alerts[1]["action"] != "escalate" || alerts[1]["ticket"] != "TKT-004" {
 		t.Fatalf("alerts: %v", alerts)
 	}
-	if out := must("watchdog", "alerts", "--since", "1h", "--limit", "1"); !strings.Contains(out, "worker_crash") {
+	if out := c.must("watchdog", "alerts", "--since", "1h", "--limit", "1"); !strings.Contains(out, "worker_crash") {
 		t.Fatalf("alerts texto: %s", out)
 	}
 }

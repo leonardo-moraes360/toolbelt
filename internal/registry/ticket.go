@@ -27,7 +27,7 @@ func registerTicketTools() {
 		InputSchema: &InputSchema{
 			Type: "object",
 			Properties: map[string]Property{
-				"status": {Type: "string", Description: "Filtro por status, separado por vírgula (pending,running,done,failed,cancelled)"},
+				"status": {Type: "string", Description: "Filtro por status, separado por vírgula (pending,running,done,failed,canceled)"},
 				"deps":   {Type: "string", Description: "Só tickets que dependem deste ID"},
 				"cwd":    cwdProp,
 			},
@@ -128,12 +128,12 @@ func handleTicketCreate(_ context.Context, args map[string]any) (any, error) {
 	t.Acceptance.Criteria = StringSliceArg(args, "accept", nil)
 	t.Acceptance.Timeout = StringArg(args, "timeout")
 	if BoolArg(args, "dry_run", false) {
-		if err := s.CheckNew(t); err != nil {
+		if err := s.CheckNew(&t); err != nil {
 			return nil, err
 		}
 		return t, nil
 	}
-	return s.Create(t)
+	return s.Create(&t)
 }
 
 func handleBoard(_ context.Context, args map[string]any) (any, error) {

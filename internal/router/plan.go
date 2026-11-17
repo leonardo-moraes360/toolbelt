@@ -49,110 +49,135 @@ func BuildPlan(b *ticket.Board, workers int, strategy ticket.Strategy, direct bo
 		Rounds: []PlanRound{}, Unschedulable: []PlanUnschedulable{},
 		Note: "estimativa com duração igual por ticket; a ordem real depende de quando cada worker termina",
 	}
-	status := map[string]ticket.Status{}
-	byID := map[string]ticket.Ticket{}
+	pl := &planner{b: b, workers: workers, strategy: strategy, direct: direct, maxSubs: maxSubs,
+		status: map[string]ticket.Status{}, byID: map[string]*ticket.Ticket{}}
 	pending := 0
-	for _, t := range b.Tickets {
-		status[t.ID] = t.Status
-		byID[t.ID] = t
+	for i := range b.Tickets {
+		t := &b.Tickets[i]
+		pl.status[t.ID] = t.Status
+		pl.byID[t.ID] = t
 		if t.Status == ticket.StatusPending {
 			pending++
 		}
 	}
 	lastWorker := map[string]string{} // ticket concluído na rodada anterior -> worker
-	ready := func() []ticket.Ticket {
-		var out []ticket.Ticket
-		for _, t := range b.Tickets {
-			if status[t.ID] != ticket.StatusPending {
-				continue
-			}
-			ok := true
-			for _, d := range t.Dependencies {
-				if status[d] != ticket.StatusDone {
-					ok = false
-					break
-				}
-			}
-			if ok {
-				out = append(out, t)
-			}
-		}
-		ticket.SortTickets(out, strategy, b.Tickets)
-		return out
-	}
 	for round := 1; round <= pending+1; round++ {
-		cands := ready()
+		cands := pl.ready()
 		if len(cands) == 0 {
 			break
 		}
-		taken := map[string]bool{}
-		var assigns []PlanAssignment
-		ranThisRound := map[string]string{}
-		for i := 1; i <= workers; i++ {
-			w := fmt.Sprintf("w%d", i)
-			var pick *ticket.Ticket
-			via := ViaBoard
-			if direct {
-				held := 0
-				for _, t := range cands {
-					if taken[t.ID] || held >= maxSubs {
-						continue
-					}
-					for _, d := range t.Dependencies {
-						if lastWorker[d] == w {
-							tt := t
-							pick, via = &tt, ViaDirect
-							break
-						}
-					}
-					if pick != nil {
-						break
-					}
-				}
-			}
-			if pick == nil {
-				for _, t := range cands {
-					if !taken[t.ID] {
-						tt := t
-						pick = &tt
-						break
-					}
-				}
-			}
-			if pick == nil {
-				continue
-			}
-			taken[pick.ID] = true
-			base := "HEAD"
-			if len(pick.Dependencies) == 1 {
-				base = pick.Dependencies[0]
-			}
-			assigns = append(assigns, PlanAssignment{Worker: w, Ticket: pick.ID, Title: pick.Title, Via: via, Base: base})
-			ranThisRound[pick.ID] = w
-		}
+		assigns, ranThisRound := pl.assignRound(cands, lastWorker)
 		for id := range ranThisRound {
-			status[id] = ticket.StatusDone
+			pl.status[id] = ticket.StatusDone
 		}
 		lastWorker = ranThisRound
 		p.Rounds = append(p.Rounds, PlanRound{Round: round, Assignments: assigns})
 	}
-	for _, t := range b.Tickets {
-		if status[t.ID] != ticket.StatusPending {
+	p.Unschedulable = append(p.Unschedulable, pl.unschedulable()...)
+	return p
+}
+
+// planner guarda o estado simulado de BuildPlan.
+type planner struct {
+	b        *ticket.Board
+	workers  int
+	strategy ticket.Strategy
+	direct   bool
+	maxSubs  int
+	status   map[string]ticket.Status
+	byID     map[string]*ticket.Ticket
+}
+
+// ready devolve os pending cujas dependências já estão done, ordenados.
+func (pl *planner) ready() []ticket.Ticket {
+	var out []ticket.Ticket
+	for i := range pl.b.Tickets {
+		t := &pl.b.Tickets[i]
+		if pl.status[t.ID] != ticket.StatusPending {
+			continue
+		}
+		ok := true
+		for _, d := range t.Dependencies {
+			if pl.status[d] != ticket.StatusDone {
+				ok = false
+				break
+			}
+		}
+		if ok {
+			out = append(out, *t)
+		}
+	}
+	ticket.SortTickets(out, pl.strategy, pl.b.Tickets)
+	return out
+}
+
+// assignRound atribui um ticket por worker; devolve as atribuições e ticket -> worker.
+func (pl *planner) assignRound(cands []ticket.Ticket, lastWorker map[string]string) (assigns []PlanAssignment, ranThisRound map[string]string) {
+	taken := map[string]bool{}
+	ranThisRound = map[string]string{}
+	for i := 1; i <= pl.workers; i++ {
+		w := fmt.Sprintf("w%d", i)
+		pick, via := pl.pickFor(w, cands, taken, lastWorker)
+		if pick == nil {
+			continue
+		}
+		taken[pick.ID] = true
+		base := "HEAD"
+		if len(pick.Dependencies) == 1 {
+			base = pick.Dependencies[0]
+		}
+		assigns = append(assigns, PlanAssignment{Worker: w, Ticket: pick.ID, Title: pick.Title, Via: via, Base: base})
+		ranThisRound[pick.ID] = w
+	}
+	return assigns, ranThisRound
+}
+
+// pickFor escolhe o ticket do worker w: com entrega direta, um dependente do
+// que w acabou de concluir; senão o primeiro candidato livre.
+func (pl *planner) pickFor(w string, cands []ticket.Ticket, taken map[string]bool, lastWorker map[string]string) (pick *ticket.Ticket, via string) {
+	if pl.direct {
+		for i := range cands {
+			t := &cands[i]
+			if taken[t.ID] || pl.maxSubs <= 0 {
+				continue
+			}
+			for _, d := range t.Dependencies {
+				if lastWorker[d] == w {
+					return t, ViaDirect
+				}
+			}
+		}
+	}
+	for i := range cands {
+		if !taken[cands[i].ID] {
+			return &cands[i], ViaBoard
+		}
+	}
+	return nil, ViaBoard
+}
+
+// unschedulable lista os pending que nunca ficaram prontos, com os motivos.
+func (pl *planner) unschedulable() []PlanUnschedulable {
+	var out []PlanUnschedulable
+	for i := range pl.b.Tickets {
+		t := &pl.b.Tickets[i]
+		if pl.status[t.ID] != ticket.StatusPending {
 			continue
 		}
 		var reasons []string
 		for _, d := range t.Dependencies {
-			if status[d] != ticket.StatusDone {
-				if dep, ok := byID[d]; ok {
-					reasons = append(reasons, fmt.Sprintf("%s: %s", d, dep.Status))
-				} else {
-					reasons = append(reasons, d+": inexistente")
-				}
+			if pl.status[d] == ticket.StatusDone {
+				continue
+			}
+			if dep, ok := pl.byID[d]; ok {
+				reasons = append(reasons, fmt.Sprintf("%s: %s", d, dep.Status))
+			} else {
+				reasons = append(reasons, d+": inexistente")
 			}
 		}
-		p.Unschedulable = append(p.Unschedulable, PlanUnschedulable{Ticket: t.ID, Reasons: reasons})
+		out = append(out, PlanUnschedulable{Ticket: t.ID, Reasons: reasons})
 	}
-	return p
+	return out
 }
 
 // Plan monta o plano a partir do board atual deste router.

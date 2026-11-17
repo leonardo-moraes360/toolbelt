@@ -14,15 +14,15 @@ import (
 type Status string
 
 const (
-	StatusPending   Status = "pending"
-	StatusRunning   Status = "running"
-	StatusDone      Status = "done"
-	StatusFailed    Status = "failed"
-	StatusCancelled Status = "cancelled"
+	StatusPending  Status = "pending"
+	StatusRunning  Status = "running"
+	StatusDone     Status = "done"
+	StatusFailed   Status = "failed"
+	StatusCanceled Status = "canceled"
 )
 
 // AllStatuses lista os status válidos em ordem de exibição.
-var AllStatuses = []Status{StatusPending, StatusRunning, StatusDone, StatusFailed, StatusCancelled}
+var AllStatuses = []Status{StatusPending, StatusRunning, StatusDone, StatusFailed, StatusCanceled}
 
 // Valid informa se s é um status conhecido.
 func (s Status) Valid() bool {
@@ -38,17 +38,17 @@ func (s Status) Valid() bool {
 func ParseStatus(s string) (Status, error) {
 	st := Status(strings.ToLower(strings.TrimSpace(s)))
 	if !st.Valid() {
-		return "", fmt.Errorf("status inválido %q (use pending, running, done, failed ou cancelled)", s)
+		return "", fmt.Errorf("status inválido %q (use pending, running, done, failed ou canceled)", s)
 	}
 	return st, nil
 }
 
 var transitions = map[Status][]Status{
-	StatusPending:   {StatusRunning, StatusCancelled},
-	StatusRunning:   {StatusDone, StatusFailed, StatusPending, StatusCancelled},
-	StatusFailed:    {StatusPending},
-	StatusCancelled: {StatusPending},
-	StatusDone:      {},
+	StatusPending:  {StatusRunning, StatusCanceled},
+	StatusRunning:  {StatusDone, StatusFailed, StatusPending, StatusCanceled},
+	StatusFailed:   {StatusPending},
+	StatusCanceled: {StatusPending},
+	StatusDone:     {},
 }
 
 // CanTransition informa se from -> to é permitido.
@@ -130,7 +130,7 @@ type Ticket struct {
 }
 
 // TimeoutDuration devolve o timeout do ticket (0 quando não definido).
-func (t Ticket) TimeoutDuration() time.Duration {
+func (t *Ticket) TimeoutDuration() time.Duration {
 	if t.Acceptance.Timeout == "" {
 		return 0
 	}
@@ -170,7 +170,7 @@ func idNumber(id string) int {
 }
 
 // Validate checa campos de um ticket (sem consultar dependências).
-func (t Ticket) Validate() error {
+func (t *Ticket) Validate() error {
 	if strings.TrimSpace(t.Title) == "" {
 		return fmt.Errorf("título do ticket é obrigatório")
 	}

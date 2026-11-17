@@ -43,7 +43,7 @@ func handleMerge(_ context.Context, args map[string]any) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	res, err := merge.Run(merge.Options{
+	res, err := merge.Run(&merge.Options{
 		Repo:           cwd,
 		Store:          ticket.Open(ticket.FindRoot(cwd)),
 		IDs:            ids,
