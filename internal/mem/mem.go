@@ -162,7 +162,7 @@ func (s *Store) Get(id string) (*Invariant, error) {
 }
 
 func (s *Store) Edit(id string, fields EditFields, opts MutateOpts) (*Invariant, error) {
-	if fields.Category == nil && fields.Rule == nil && fields.Ref == nil {
+	if !editFieldsProvided(fields) {
 		return nil, errors.New("nenhum campo para editar (--category/--rule/--ref)")
 	}
 	f, err := s.Load()
@@ -178,42 +178,15 @@ func (s *Store) Edit(id string, fields EditFields, opts MutateOpts) (*Invariant,
 		return nil, err
 	}
 	inv := old
-	if fields.Category != nil {
-		cat := strings.TrimSpace(*fields.Category)
-		if err := ValidateCategory(cat); err != nil {
-			return nil, err
-		}
-		inv.Category = cat
-	}
-	if fields.Rule != nil {
-		rule := strings.TrimSpace(*fields.Rule)
-		if rule == "" {
-			return nil, errors.New("regra vazia")
-		}
-		inv.Rule = rule
-	}
-	if fields.Ref != nil {
-		ref := strings.TrimSpace(*fields.Ref)
-		if err := ValidateRef(ref); err != nil {
-			return nil, err
-		}
-		inv.Ref = ref
+	if err := applyEditFields(&inv, fields); err != nil {
+		return nil, err
 	}
 	f.Invariants[idx] = inv
 	if err := s.Save(f); err != nil {
 		return nil, err
 	}
-	if isProtected(&old) {
-		oldCopy := old
-		if err := s.appendHistory(&HistoryEntry{
-			Action:   "edit",
-			ID:       id,
-			Who:      opts.Who,
-			Reason:   strings.TrimSpace(opts.Reason),
-			OldValue: &oldCopy,
-		}); err != nil {
-			return nil, err
-		}
+	if err := s.recordProtectedMutation(&old, "edit", id, opts); err != nil {
+		return nil, err
 	}
 	return &inv, nil
 }
@@ -242,17 +215,8 @@ func (s *Store) Retire(id string, opts MutateOpts) (*Invariant, error) {
 	if err := s.Save(f); err != nil {
 		return nil, err
 	}
-	if isProtected(&old) {
-		oldCopy := old
-		if err := s.appendHistory(&HistoryEntry{
-			Action:   "retire",
-			ID:       id,
-			Who:      opts.Who,
-			Reason:   strings.TrimSpace(opts.Reason),
-			OldValue: &oldCopy,
-		}); err != nil {
-			return nil, err
-		}
+	if err := s.recordProtectedMutation(&old, "retire", id, opts); err != nil {
+		return nil, err
 	}
 	return &inv, nil
 }
@@ -379,6 +343,49 @@ func EnsureDefaultAntiCheat(toolbeltDir string) (*InitResult, error) {
 
 func isProtected(inv *Invariant) bool {
 	return inv.Immutable || inv.Category == "anti_cheat"
+}
+
+func editFieldsProvided(fields EditFields) bool {
+	return fields.Category != nil || fields.Rule != nil || fields.Ref != nil
+}
+
+func applyEditFields(inv *Invariant, fields EditFields) error {
+	if fields.Category != nil {
+		cat := strings.TrimSpace(*fields.Category)
+		if err := ValidateCategory(cat); err != nil {
+			return err
+		}
+		inv.Category = cat
+	}
+	if fields.Rule != nil {
+		rule := strings.TrimSpace(*fields.Rule)
+		if rule == "" {
+			return errors.New("regra vazia")
+		}
+		inv.Rule = rule
+	}
+	if fields.Ref != nil {
+		ref := strings.TrimSpace(*fields.Ref)
+		if err := ValidateRef(ref); err != nil {
+			return err
+		}
+		inv.Ref = ref
+	}
+	return nil
+}
+
+func (s *Store) recordProtectedMutation(old *Invariant, action, id string, opts MutateOpts) error {
+	if !isProtected(old) {
+		return nil
+	}
+	oldCopy := *old
+	return s.appendHistory(&HistoryEntry{
+		Action:   action,
+		ID:       id,
+		Who:      opts.Who,
+		Reason:   strings.TrimSpace(opts.Reason),
+		OldValue: &oldCopy,
+	})
 }
 
 func requireForce(inv *Invariant, opts MutateOpts, action string) error {
