@@ -177,6 +177,20 @@ func TestImmutableRequiresForceAndReason(t *testing.T) {
 	}
 }
 
+func TestAddRejectsInvalidCategoryAndRef(t *testing.T) {
+	dir := t.TempDir()
+	s := NewStore(dir)
+	if _, err := s.Add("bogus", "regra", "", false); err == nil {
+		t.Fatal("categoria inválida deveria falhar")
+	}
+	if _, err := s.Add("security", "regra", "docs/readme.md", false); err == nil {
+		t.Fatal("ref inválido deveria falhar")
+	}
+	if _, err := s.Add("security", "regra", "docs/adr/0005.md", false); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestAntiCheatRequiresForce(t *testing.T) {
 	dir := t.TempDir()
 	s := NewStore(dir)
@@ -200,7 +214,7 @@ func TestAddDefaultMutable(t *testing.T) {
 	if inv.Immutable {
 		t.Fatal("nova invariante deve nascer mutável por default")
 	}
-	flagged, err := s.Add("security", "fixada", "", true)
+	flagged, err := s.Add("security", "protegida", "", true)
 	if err != nil || !flagged.Immutable {
 		t.Fatalf("com immutable=true deveria marcar: %+v err=%v", flagged, err)
 	}
@@ -279,5 +293,33 @@ func TestRedactSecrets(t *testing.T) {
 	inv := RedactInvariant(&src)
 	if strings.Contains(inv.Rule, "ghp_AAAA") {
 		t.Fatalf("RedactInvariant: %q", inv.Rule)
+	}
+}
+
+func TestSearchAccentInsensitive(t *testing.T) {
+	dir := t.TempDir()
+	s := NewStore(dir)
+	if _, err := s.Add("mandate", "Não altere autenticação", "", false); err != nil {
+		t.Fatal(err)
+	}
+	hits, err := s.Search("autenticacao", false)
+	if err != nil || len(hits) != 1 {
+		t.Fatalf("search sem acento: %v %+v", err, hits)
+	}
+	hits, err = s.Search("NAO", false)
+	if err != nil || len(hits) != 1 {
+		t.Fatalf("search case+acento: %v %+v", err, hits)
+	}
+}
+
+func TestEnsureDefaultAntiCheatReportsCreated(t *testing.T) {
+	dir := t.TempDir()
+	first, err := EnsureDefaultAntiCheat(dir)
+	if err != nil || !first.Created || first.Count != 3 {
+		t.Fatalf("first: %+v err=%v", first, err)
+	}
+	second, err := EnsureDefaultAntiCheat(dir)
+	if err != nil || second.Created || second.Count != 3 {
+		t.Fatalf("second: %+v err=%v", second, err)
 	}
 }

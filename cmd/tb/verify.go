@@ -69,7 +69,11 @@ func runTestsVerify(cmd *cobra.Command) error {
 		if fileCfg.Verify.LintCmd != "" {
 			cfg.LintCmd = fileCfg.Verify.LintCmd
 		}
+		cfg.EnvAllow = append(cfg.EnvAllow, fileCfg.Env.Allow...)
+		cfg.EnvPass = append(cfg.EnvPass, fileCfg.Env.Pass...)
 	}
+	cfg.EnvAllow = append(cfg.EnvAllow, envAllow...)
+	cfg.EnvPass = append(cfg.EnvPass, envPass...)
 	if v, _ := cmd.Flags().GetString("base"); v != "" {
 		cfg.BaseRef = v
 	}
@@ -92,9 +96,29 @@ func runTestsVerify(cmd *cobra.Command) error {
 	cfg.Timeout = timeout
 	res, err := verify.Run(context.Background(), &cfg)
 	if err != nil {
+		if verify.IsMissingCommand(err) {
+			return emitMissingCommand(cmd, res, err)
+		}
 		return err
 	}
 	return emitVerifyResult(cmd, res.Verdict, res)
+}
+
+func emitMissingCommand(cmd *cobra.Command, res *verify.Result, err error) error {
+	if res == nil {
+		res = &verify.Result{Verdict: verify.VerdictFail, Error: err.Error()}
+	} else if res.Error == "" {
+		res.Error = err.Error()
+	}
+	outPath, _ := cmd.Flags().GetString("output")
+	if werr := writeVerifyPayload(outPath, res); werr != nil {
+		return werr
+	}
+	if !jsonOutput {
+		fmt.Fprintf(os.Stderr, "Error: %s\n", res.Error)
+	}
+	os.Exit(127)
+	return nil
 }
 
 func runVisualVerify(cmd *cobra.Command) error {
@@ -160,13 +184,23 @@ func printTestsSummary(payload any) {
 		return
 	}
 	fmt.Printf("Veredicto: %s (iterações: %d)\n", res.Verdict, res.Iterations)
+	if res.HeadSHA != "" {
+		fmt.Printf("Head: %s\n", res.HeadSHA)
+	}
+	if res.WorkDir != "" {
+		fmt.Printf("Workdir: %s\n", res.WorkDir)
+	}
 	if res.BuildRan {
 		fmt.Printf("Build: %v\n", res.BuildPassed)
 	}
 	if res.LintRan {
 		fmt.Printf("Lint: %v\n", res.LintPassed)
 	}
-	fmt.Printf("Visível: %v  Oculto: %v (disponível: %v)\n", res.VisiblePassed, res.HiddenPassed, res.HiddenAvailable)
+	hidden := "n/a"
+	if res.HiddenPassed != nil {
+		hidden = fmt.Sprintf("%v", *res.HiddenPassed)
+	}
+	fmt.Printf("Visível: %v  Oculto: %s (disponível: %v)\n", res.VisiblePassed, hidden, res.HiddenAvailable)
 }
 
 func printVisualReport(rep *verify.VisualReport) {

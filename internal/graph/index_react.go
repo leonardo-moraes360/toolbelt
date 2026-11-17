@@ -7,7 +7,7 @@ import (
 )
 
 var (
-	reReactFuncComp = mustRE(`(?m)(?:export\s+)?(?:default\s+)?function\s+([A-Z][A-Za-z0-9_]*)\s*\(`)
+	reReactFuncComp = mustRE(`(?m)(?:export\s+)?(?:default\s+)?function\s+([A-Z][A-Za-z0-9_]*)\s*(?:<[^(){]*?>)?\s*\(`)
 	reReactConstFC  = mustRE(`(?m)(?:export\s+)?(?:const|let)\s+([A-Z][A-Za-z0-9_]*)\s*=\s*(?:React\.)?(?:memo|forwardRef)\s*\(`)
 	reReactConstJSX = mustRE(`(?m)(?:export\s+)?(?:const|let)\s+([A-Z][A-Za-z0-9_]*)\s*=\s*(?:async\s*)?(?:\([^)]*\)|[A-Za-z_$][\w$]*)\s*(?::\s*[^=]+)?=>`)
 	reReactTypedFC  = mustRE(`(?m)(?:export\s+)?(?:const|let)\s+([A-Z][A-Za-z0-9_]*)\s*:\s*(?:React\.)?FC\b`)
@@ -25,10 +25,7 @@ func (ReactIndexer) Category() string { return CategoryFramework }
 
 func (ReactIndexer) Match(path string) bool {
 	ext := strings.ToLower(filepath.Ext(path))
-	if ext != ".tsx" && ext != ".jsx" {
-		return false
-	}
-	return !skipIndexedTestFile(path)
+	return ext == ".tsx" || ext == ".jsx"
 }
 
 func (ReactIndexer) IndexFile(root, rel string) ([]Node, []Edge, error) {

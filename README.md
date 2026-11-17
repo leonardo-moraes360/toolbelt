@@ -72,6 +72,10 @@
 
 Veja a documentação completa em [docs/arquitetura.md](docs/arquitetura.md).
 
+## 🌐 Site
+
+Landing pública: [https://leonardo-moraes360.github.io/toolbelt/](https://leonardo-moraes360.github.io/toolbelt/) (fonte em [`site/`](site/); guia em [`docs/site.md`](docs/site.md)).
+
 ## 📚 Documentação
 
 | Documento | Descrição |
@@ -79,6 +83,7 @@ Veja a documentação completa em [docs/arquitetura.md](docs/arquitetura.md).
 | [docs/arquitetura.md](docs/arquitetura.md) | Arquitetura detalhada com diagramas Mermaid |
 | [docs/cli.md](docs/cli.md) | Árvore de comandos do `tb` (implementado + planejado) |
 | [docs/benchmark.md](docs/benchmark.md) | KPIs e metodologia de avaliação |
+| [docs/site.md](docs/site.md) | Landing page e deploy no GitHub Pages |
 | [docs/adr/](docs/adr/) | Registros de Decisão Arquitetural (ADRs) |
 | [docs/pesquisa/](docs/pesquisa/) | Fontes primárias, top 10 e achados da pesquisa (2026-11) |
 | [docs/campo/SINTESE.md](docs/campo/SINTESE.md) | Estudo de campo em 20 repos + ranking de melhorias |
@@ -125,6 +130,12 @@ make build
 
 ## 📖 Uso Rápido
 
+O `tb` é **100% local**: **não fala com o GitHub**. `review` / `drift` /
+`verify --ticket` / `stack` leem um `rd.md` (ou `--ticket`) no disco. Para
+partir de uma issue/PR, exporte o texto com `gh issue view` / `gh pr view` e
+monte o arquivo (scope, forbidden, acceptance) — detalhes em
+[docs/cli.md](docs/cli.md#local-first-sem-github).
+
 ```bash
 # Inicializa configuração local (detecta toolchain → test/build/lint_cmd)
 tb init
@@ -159,6 +170,11 @@ tb bench compare --before results-v1.jsonl --after results-v2.jsonl
 # Comparação A/B entre configs/feature flags
 tb bench compare --config-a bench/ab/graph-off.yaml \
                  --config-b bench/ab/graph-on.yaml --fake
+
+# Drift/review contra ticket local (não há fetch de issue/PR)
+tb drift --ticket rd.md
+tb review --ticket rd.md
+tb guard check HEAD~1..HEAD
 ```
 
 ## 🗺️ Roadmap / Status
@@ -190,6 +206,7 @@ tb bench compare --config-a bench/ab/graph-off.yaml \
 - [x] Docs CLI alinhados aos comandos/flags reais (`docs/cli.md` / README)
 - [x] MCP com paridade do loop de campo (`mem` / `verify` / `review` / `drift` / `guard`)
 - [x] `tb stack` — empilha verify/review/drift/guard com diff/índice/memória compartilhados (+ MCP `tb_stack`)
+- [x] Landing page em [`site/`](site/) + GitHub Pages ([docs/site.md](docs/site.md) · [site ao vivo](https://leonardo-moraes360.github.io/toolbelt/))
 - [ ] Hierarquia de agentes / A2A / `tb md` (posterior)
 
 ### Entrada para a próxima fase (estudo de campo)
@@ -247,12 +264,12 @@ Este projeto está na **Fase 2**: CLI funcional com verify/guard/mem/graph/revie
 | `tb bench report` | ✅ | Gera relatório Markdown |
 | `tb bench compare` | ✅ | Compara dois benchmarks |
 | `tb sandbox` | ✅ | Worktrees + Landlock (Linux) |
-| `tb guard` | ✅ | Check anti-trapaça em diff |
+| `tb guard` | ✅ | Check anti-trapaça em diff (default estrito / exit ≠ 0 em `SeverityError`; `--warn-only` opt-out; `--strict` deprecated) |
 | `tb verify` | ✅ | Rulers `tests` + `visual` (`tb verify run`; suíte oculta via `--hidden-test-cmd` / `verify.hidden_test_cmd` sem exigir `tests/hidden/`; manifesto; `verify.build_cmd` / `verify.lint_cmd` opcionais; fail-fast se o comando não existe/não é executável; `protected_paths` custom do `guard.yaml` não abortam o loop — exceção de Scope via `--ticket`) |
 | `tb mem` | ✅ | Invariantes (`add`/`list`/`show`/`edit`/`retire`/`search`/`check`/`init`; `--ref` ADR; soft-retire + `--all`) |
-| `tb graph` | ✅ | Grafo sob demanda multi-linguagem + frameworks + docs (ADR-011) |
-| `tb review` | ✅ | Revisão fresh-context contra ticket/rd.md; `--approved-sha` |
-| `tb drift` | ✅ | Drift de escopo / commit base / patch pinado |
+| `tb graph` | ✅ | Grafo sob demanda multi-linguagem + frameworks + docs (ADR-011); `javascript` cobre TypeScript (`ts`/`tsx`) |
+| `tb review` | ✅ | Revisão fresh-context contra ticket/`rd.md` local (sem GitHub); `--approved-sha` |
+| `tb drift` | ✅ | Drift de escopo / commit base / patch pinado contra `rd.md` (não é vault vs código) |
 | `tb stack` | ✅ | Empilha verify/review/drift/guard com contexto compartilhado (JSON agregado; MCP `tb_stack`) |
 | `tb workspace` | ✅ | Workspaces isolados via git worktree |
 | `tb router` | 🚧 | Stub (não implementado) |

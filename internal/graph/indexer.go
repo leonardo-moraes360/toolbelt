@@ -163,6 +163,7 @@ func BuildFromRootOpts(root string, opts *BuildOptions) (*Index, error) {
 		idx.Nodes = append(idx.Nodes, n)
 	}
 	idx.Edges = edges
+	stampIndexFingerprint(idx, abs, opts)
 	return idx, nil
 }
 
@@ -254,8 +255,12 @@ func buildFileImports(edges []Edge) map[string][]string {
 		if e.Type != EdgeImports {
 			continue
 		}
-		pkg := strings.TrimPrefix(e.TargetID, "pkg:")
-		m[e.SourceID] = append(m[e.SourceID], pkg)
+		switch {
+		case strings.HasPrefix(e.TargetID, "pkg:"):
+			m[e.SourceID] = append(m[e.SourceID], strings.TrimPrefix(e.TargetID, "pkg:"))
+		case strings.HasPrefix(e.TargetID, "file:"):
+			m[e.SourceID] = append(m[e.SourceID], strings.TrimPrefix(e.TargetID, "file:"))
+		}
 	}
 	return m
 }
@@ -266,7 +271,7 @@ func resolveSymTarget(
 	importsOf map[string][]string,
 	e Edge,
 ) (target string, confidence float64, ok bool) {
-	name := strings.TrimPrefix(e.TargetID, "sym:")
+	name, moduleHint := splitSymTarget(strings.TrimPrefix(e.TargetID, "sym:"))
 	cands := byTitle[strings.ToLower(name)]
 	if len(cands) == 0 {
 		if _, exists := nodes["file:"+name]; exists {
@@ -275,9 +280,16 @@ func resolveSymTarget(
 		return "", 0, false
 	}
 	if e.Type == EdgeCalls {
-		return resolveCallSym(nodes, importsOf, e.SourceID, cands, e.Confidence)
+		return resolveCallSym(nodes, importsOf, e.SourceID, cands, e.Confidence, moduleHint)
 	}
 	return cands[0], e.Confidence, true
+}
+
+func splitSymTarget(raw string) (name, module string) {
+	if i := strings.IndexByte(raw, '@'); i >= 0 {
+		return raw[:i], raw[i+1:]
+	}
+	return raw, ""
 }
 
 func resolveCallSym(
@@ -286,6 +298,7 @@ func resolveCallSym(
 	sourceID string,
 	cands []string,
 	conf float64,
+	moduleHint string,
 ) (target string, confidence float64, ok bool) {
 	funcs := functionCandidates(nodes, cands)
 	if len(funcs) == 0 {
@@ -294,7 +307,13 @@ func resolveCallSym(
 	src := nodes[sourceID]
 	fileID := sourceFileID(sourceID, &src)
 	imported := importsOf[fileID]
+	if moduleHint != "" {
+		imported = append([]string{moduleHint}, imported...)
+	}
 	matched := filterCallCandidates(nodes, funcs, &src, imported)
+	if moduleHint != "" {
+		matched = filterByModuleHint(nodes, matched, moduleHint)
+	}
 	if len(matched) != 1 {
 		return "", 0, false
 	}
@@ -302,6 +321,26 @@ func resolveCallSym(
 		conf = SoftResolveConfidence
 	}
 	return matched[0], conf, true
+}
+
+func filterByModuleHint(nodes map[string]Node, ids []string, moduleHint string) []string {
+	hint := stripJSImportExt(filepath.ToSlash(moduleHint))
+	var out []string
+	for _, id := range ids {
+		n := nodes[id]
+		if n.Path == "" {
+			continue
+		}
+		path := filepath.ToSlash(n.Path)
+		base := stripJSImportExt(strings.TrimSuffix(path, filepath.Ext(path)))
+		if path == moduleHint || base == hint || strings.HasPrefix(base, hint+"/") {
+			out = append(out, id)
+		}
+	}
+	if len(out) > 0 {
+		return out
+	}
+	return ids
 }
 
 func functionCandidates(nodes map[string]Node, cands []string) []string {
@@ -362,11 +401,28 @@ func importCovers(imported []string, srcPath string, n *Node) bool {
 		if strings.HasPrefix(qual, imp+".") {
 			return true
 		}
+		if fileImportCovers(imp, n) {
+			return true
+		}
 		if relativeImportCovers(imp, srcPath, n) {
 			return true
 		}
 	}
 	return false
+}
+
+func fileImportCovers(imp string, n *Node) bool {
+	if n.Path == "" {
+		return false
+	}
+	path := filepath.ToSlash(n.Path)
+	impSlash := filepath.ToSlash(imp)
+	if path == impSlash {
+		return true
+	}
+	base := stripJSImportExt(strings.TrimSuffix(path, filepath.Ext(path)))
+	hint := stripJSImportExt(impSlash)
+	return base == hint || strings.HasPrefix(base, hint+"/")
 }
 
 func callSymbolQual(n *Node) string {

@@ -7,9 +7,12 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
+	"syscall"
 	"time"
 
+	"github.com/leonardo-moraes360/toolbelt/internal/execenv"
 	"github.com/leonardo-moraes360/toolbelt/internal/guard"
 	"github.com/leonardo-moraes360/toolbelt/internal/log"
 	"github.com/leonardo-moraes360/toolbelt/internal/review"
@@ -41,6 +44,8 @@ type Config struct {
 	Scope          []string
 	TicketPath     string
 	NameStatusDiff string
+	EnvAllow       []string
+	EnvPass        []string
 }
 
 type Result struct {
@@ -52,9 +57,30 @@ type Result struct {
 	LintRan         bool               `json:"lint_ran"`
 	LintPassed      bool               `json:"lint_passed"`
 	VisiblePassed   bool               `json:"visible_passed"`
-	HiddenPassed    bool               `json:"hidden_passed"`
+	HiddenPassed    *bool              `json:"hidden_passed"`
 	HiddenAvailable bool               `json:"hidden_available"`
+	HeadSHA         string             `json:"head_sha,omitempty"`
+	WorkDir         string             `json:"workdir,omitempty"`
 	Metrics         map[string]string  `json:"metrics,omitempty"`
+	Error           string             `json:"error,omitempty"`
+}
+
+type MissingCommandError struct {
+	Command   string
+	ConfigKey string
+}
+
+func (e *MissingCommandError) Error() string {
+	return fmt.Sprintf(errMissingCmdFmt, e.Command, e.ConfigKey)
+}
+
+func (e *MissingCommandError) ExitCode() int {
+	return 127
+}
+
+func IsMissingCommand(err error) bool {
+	var e *MissingCommandError
+	return errors.As(err, &e)
 }
 
 func DefaultConfig(repo string) Config {
@@ -73,7 +99,14 @@ func Run(ctx context.Context, cfg *Config) (*Result, error) {
 	if cfg.MaxIterations == 0 {
 		cfg.MaxIterations = 3
 	}
-	res := &Result{Verdict: VerdictFail}
+	res := &Result{Verdict: VerdictFail, WorkDir: cfg.RepoDir}
+
+	headSHA, err := gitRevParse(cfg.RepoDir, cfg.HeadRef)
+	if err != nil {
+		return nil, fmt.Errorf("resolver --head %q: %w", cfg.HeadRef, err)
+	}
+	res.HeadSHA = headSHA
+
 	abort, err := applyGuard(cfg, res)
 	if err != nil {
 		return nil, err
@@ -82,12 +115,36 @@ func Run(ctx context.Context, cfg *Config) (*Result, error) {
 		return res, nil
 	}
 
-	res.HiddenAvailable = resolveHiddenAvailable(cfg)
+	hw, err := attachHeadWorkDir(cfg.RepoDir, headSHA)
+	if err != nil {
+		return nil, err
+	}
+	defer hw.Cleanup()
+	res.WorkDir = hw.WorkDir
+	res.HeadSHA = hw.HeadSHA
+	if hw.Temporary {
+		var stop context.CancelFunc
+		ctx, stop = signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
+		defer stop()
+	}
+	if hw.DirtyWarn {
+		log.Warn("worktree sujo com head igual ao HEAD; build/lint/test podem incluir mudanças não commitadas",
+			"workdir", hw.WorkDir, "head_sha", hw.HeadSHA)
+	}
 
-	for i := 1; i <= cfg.MaxIterations; i++ {
+	execCfg := *cfg
+	execCfg.RepoDir = hw.WorkDir
+	res.HiddenAvailable = resolveHiddenAvailable(&execCfg)
+
+	for i := 1; i <= execCfg.MaxIterations; i++ {
 		res.Iterations = i
-		passed, iterErr := runVerifyIteration(ctx, cfg, res)
+		passed, iterErr := runVerifyIteration(ctx, &execCfg, res)
 		if iterErr != nil {
+			if IsMissingCommand(iterErr) {
+				res.Verdict = VerdictFail
+				res.Error = iterErr.Error()
+				return res, iterErr
+			}
 			return nil, iterErr
 		}
 		if passed {
@@ -175,18 +232,20 @@ func runVerifyIteration(ctx context.Context, cfg *Config, res *Result) (bool, er
 		log.Info("iteração de verify falhou", "n", res.Iterations, "step", "build_or_lint")
 		return false, nil
 	}
-	visibleOK, err := runConfiguredCmd(ctx, cfg.RepoDir, cfg.VisibleTest, cfg.Timeout, "verify.test_cmd")
+	visibleOK, err := runConfiguredCmd(ctx, cfg, cfg.VisibleTest, "verify.test_cmd")
 	if err != nil {
 		return false, err
 	}
 	res.VisiblePassed = visibleOK
 	hiddenOK := true
 	if res.HiddenAvailable {
-		hiddenOK, err = runConfiguredCmd(ctx, cfg.RepoDir, cfg.HiddenTest, cfg.Timeout, "verify.hidden_test_cmd")
+		hiddenOK, err = runConfiguredCmd(ctx, cfg, cfg.HiddenTest, "verify.hidden_test_cmd")
 		if err != nil {
 			return false, err
 		}
-		res.HiddenPassed = hiddenOK
+		res.HiddenPassed = boolPtr(hiddenOK)
+	} else {
+		res.HiddenPassed = nil
 	}
 	if visibleOK && hiddenOK {
 		return true, nil
@@ -198,7 +257,7 @@ func runVerifyIteration(ctx context.Context, cfg *Config, res *Result) (bool, er
 func runBuildAndLint(ctx context.Context, cfg *Config, res *Result) (bool, error) {
 	if cfg.BuildCmd != "" {
 		res.BuildRan = true
-		ok, err := runConfiguredCmd(ctx, cfg.RepoDir, cfg.BuildCmd, cfg.Timeout, "verify.build_cmd")
+		ok, err := runConfiguredCmd(ctx, cfg, cfg.BuildCmd, "verify.build_cmd")
 		if err != nil {
 			return false, err
 		}
@@ -209,7 +268,7 @@ func runBuildAndLint(ctx context.Context, cfg *Config, res *Result) (bool, error
 	}
 	if cfg.LintCmd != "" {
 		res.LintRan = true
-		ok, err := runConfiguredCmd(ctx, cfg.RepoDir, cfg.LintCmd, cfg.Timeout, "verify.lint_cmd")
+		ok, err := runConfiguredCmd(ctx, cfg, cfg.LintCmd, "verify.lint_cmd")
 		if err != nil {
 			return false, err
 		}
@@ -221,17 +280,18 @@ func runBuildAndLint(ctx context.Context, cfg *Config, res *Result) (bool, error
 	return true, nil
 }
 
-func runConfiguredCmd(ctx context.Context, dir, command string, timeout time.Duration, configKey string) (bool, error) {
-	ctx, cancel := context.WithTimeout(ctx, timeout)
+func runConfiguredCmd(ctx context.Context, cfg *Config, command, configKey string) (bool, error) {
+	ctx, cancel := context.WithTimeout(ctx, cfg.Timeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "sh", "-c", command) //nolint:gosec // ruler configurado pelo operador
-	cmd.Dir = dir
+	cmd.Dir = cfg.RepoDir
+	cmd.Env = execenv.Environ(execenv.Options{Allow: cfg.EnvAllow, Pass: cfg.EnvPass})
 	out, err := cmd.CombinedOutput()
 	if err == nil {
 		return true, nil
 	}
 	if isCommandMissing(err) {
-		return false, fmt.Errorf(errMissingCmdFmt, command, configKey)
+		return false, &MissingCommandError{Command: command, ConfigKey: configKey}
 	}
 	log.Debug("teste falhou", "output", string(out), "error", err)
 	return false, nil
@@ -259,4 +319,8 @@ func (r *Result) JSON() ([]byte, error) {
 func LoadHiddenSuite(repo string) bool {
 	_, err := os.Stat(filepath.Join(repo, "tests", "hidden"))
 	return err == nil
+}
+
+func boolPtr(v bool) *bool {
+	return &v
 }

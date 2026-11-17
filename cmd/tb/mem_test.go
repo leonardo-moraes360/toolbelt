@@ -151,6 +151,72 @@ func TestMemRetireExcludedFromListCLI(t *testing.T) {
 	}
 }
 
+func TestMemAddRejectsInvalidCategoryAndRefCLI(t *testing.T) {
+	if testing.Short() {
+		t.Skip()
+	}
+	tbBin := buildTB(t)
+	dir := memFixtureDir(t)
+
+	out, err := runMem(tbBin, dir, "add", "--category", "bogus", "regra")
+	if err == nil {
+		t.Fatalf("categoria inválida deveria falhar\n%s", out)
+	}
+	if !strings.Contains(string(out), "anti_cheat") || !strings.Contains(string(out), "mandate") {
+		t.Fatalf("sem lista de categorias: %s", out)
+	}
+
+	out, err = runMem(tbBin, dir, "add", "--ref", "docs/readme.md", "regra")
+	if err == nil {
+		t.Fatalf("ref inválido deveria falhar\n%s", out)
+	}
+	if !strings.Contains(string(out), "docs/adr/") {
+		t.Fatalf("sem exemplos de ref: %s", out)
+	}
+}
+
+func TestMemInitReportsCreatedCLI(t *testing.T) {
+	if testing.Short() {
+		t.Skip()
+	}
+	tbBin := buildTB(t)
+	dir := memFixtureDir(t)
+	out, err := runMem(tbBin, dir, "init")
+	if err != nil {
+		t.Fatalf("init: %v\n%s", err, out)
+	}
+	text := string(out)
+	if !strings.Contains(text, "criadas") || !strings.Contains(text, "invariants.yaml") {
+		t.Fatalf("init silencioso: %s", text)
+	}
+	if !strings.Contains(text, "anti_cheat") {
+		t.Fatalf("sem invariantes listadas: %s", text)
+	}
+	out, err = runMem(tbBin, dir, "init")
+	if err != nil {
+		t.Fatalf("init 2: %v\n%s", err, out)
+	}
+	if !strings.Contains(string(out), "já existiam") {
+		t.Fatalf("segunda chamada: %s", out)
+	}
+}
+
+func TestMemSearchAccentInsensitiveCLI(t *testing.T) {
+	if testing.Short() {
+		t.Skip()
+	}
+	tbBin := buildTB(t)
+	dir := memFixtureDir(t)
+	id := memAddJSON(t, tbBin, dir, "--category", "mandate", "--json", "Não altere autenticação")
+	out, err := runMem(tbBin, dir, "search", "autenticacao")
+	if err != nil {
+		t.Fatalf("search: %v\n%s", err, out)
+	}
+	if !strings.Contains(string(out), id) {
+		t.Fatalf("search sem acento miss: %s", out)
+	}
+}
+
 func memFixtureDir(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()

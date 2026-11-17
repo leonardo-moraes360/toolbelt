@@ -7,7 +7,96 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Não Lançado]
 
+### Adicionado
+- Grafo TS/JS: fingerprint no `graph.json` e detecção de índice desatualizado;
+  com `graph.index_on_change: true` (default) `search`/`callers`/`deps`/`impact`/`stats`
+  reindexam automaticamente; com `false`, avisam na saída e expõem `stale: true` no JSON
+- Resolução de `tsconfig.json`/`jsconfig.json` (`extends`, `baseUrl`, `paths`) no indexador JS/TS
+- Landing page estática em `site/` (HTML/CSS/JS, tema Synthwave, PT/EN) publicada via
+  GitHub Pages (`https://leonardo-moraes360.github.io/toolbelt/`)
+- Workflow `.github/workflows/pages.yml` (configure/upload/deploy-pages; sem `enablement`)
+- Guia `docs/site.md` (preview local e como habilitar Pages em Settings)
+- Flag global `tb --version` (mesma saída textual de `tb version`)
+- `tb init` grava padrões de cache/derivados em `.git/info/exclude` (grafo, logs,
+  vault, workspaces, captures, bench) sem tocar no `.gitignore` do projeto;
+  invariantes/config permanecem versionáveis (recomendação documentada em
+  `docs/cli.md`)
+- `tb mem init` reporta caminho e invariantes criadas (ou já existentes); JSON com
+  `created`/`count`/`invariants`
+
+### Mudanças
+- **Breaking (JSON grafo):** consultas MCP/CLI (`search`/`callers`/`deps`/`impact`) passam a
+  emitir `{"stale": bool, "nodes": [...]}` em vez de um array nu; `stats`/`index` incluem `stale`
+- Indexador JS/TS indexa `*.test.*`, `*.spec.*`, `__tests__` e `e2e` (antes eram omitidos);
+  `impact`/`callers` passam a listar testes que importam o símbolo
+- Saídas JSON usam listas vazias `[]` (nunca `null`) para `violations`, `out_of_scope`,
+  `forbidden_hit`, `missing` e resultados vazios de `tb mem list|search`
+- `tb init --json` e `tb mem init --json` emitem payload do que foi criado/detectado
+  (path, cmds detectados / invariantes)
+- `hidden_passed` é `null` quando não há suíte oculta (`hidden_available: false`)
+- `duration_ms` / `total_duration_ms` no `tb stack` passam a float com fração sub-ms
+- Erros de preparação/operação do `tb stack` ficam em `steps[].error` dentro do JSON
+  (incluindo op desconhecida); não só no stderr
+- MCP: `all` em `tb_mem_list` / `tb_mem_search` / `tb_mem_check` tipado como boolean
+  (default `false`); handlers ainda aceitam strings legadas `"true"`/`"false"`
+- `tb stack` sem operação: erro curto listando ops válidas (`verify`, `review`,
+  `drift`, `guard`), sem dump de `Usage` (alinhado ao padrão de erros de domínio)
+- Help/`docs/cli.md` de `tb stack` deixam explícito que empilha operações de
+  verificação e **não** é stack de branches (Graphite/git-stack)
+- `tb mem add|edit|list`: rejeitam `--category` inválida e `--ref` fora de
+  ADR/decisions, com lista dos valores válidos no erro
+- `tb mem search`: busca case- e accent-insensitive (Unicode NFD)
+- Docs: `tb drift` deixa de ser descrito como “vault vs código”; o relatório real é
+  escopo / forbidden / commit base (+ `pinned_approval` opcional)
+- Docs: deixa explícito que o `tb` **não fala com o GitHub** (100% local) e precisa
+  de um `rd.md`/ticket no disco; exemplos de como gerar a partir de issue/PR via `gh`
+- Docs: linguagem `graph.languages: javascript` cobre TypeScript (`ts`/`tsx`); não há
+  linguagem `typescript` separada
+- Docs: anota a depreciação de `tb guard check --strict` (substituído pelo default
+  estrito e por `--warn-only`); remove o exemplo invocável com `--strict`
+
+### Corrigido
+- `tb review` (goldfish): detecta só `TODO`/`FIXME`/`XXX`/`HACK` como palavra
+  inteira em maiúsculas em comentários (ignora “todo” em português)
+- `tb review` acceptance: cada achado liga `criterion` + `evidence` do diff;
+  considera testes adicionados (`Test*` em Go; `test`/`it`/`describe` em JS/TS)
+- `tb review` invariants: aplica regras de mandate (ex. proibir `console.log`,
+  sem comentários) às linhas adicionadas do diff
+- `tb review`: saída texto usa `papel=<role>` (e `papéis_acordo` se >1) no lugar
+  de `acordo=N/M`; JSON inclui `role` (e `criterion`/`evidence` no aceite)
+- Funções genéricas TS (`function foo<T>(…)`) voltam a aparecer no índice
+- Imports relativos estilo NodeNext (`.js`→`.ts`/`.tsx`, sem extensão, `index`) deixam de
+  ficar como `pkg:./…` e resolvem para `file:…`
+- Aliases de import (`import { a as b }`) e namespaces (`import * as ns`, `ns.fn()`) alimentam
+  arestas `calls` resolvíveis
+- Erros de git em `tb guard` / `tb review` / `tb drift` / `tb verify` deixam de
+  aparecer só como `exit status 128/129`: incluem stderr do git, a ref ausente e
+  dica `git fetch origin <ref>` (helper central `internal/git`)
+- `--approved-sha` igual à base não despeja mais o usage do `git range-diff`;
+  mensagem clara sobre intervalo `base..approved` vazio
+- `tb verify run` com comando inexistente (`test_cmd` / `build_cmd` / `lint_cmd` /
+  `hidden_test_cmd`) sai com código **127**; com `--json` emite o envelope
+  `verify.Result` (inclui `error`) em vez de sair sem JSON
+- `tb drift` / `tb review` / `tb stack`: diff de arquivos passa a usar three-dot
+  (`base...head` / merge-base), evitando falsos `out_of_scope` após merge da main
+  ou squash de outro PR na base
+- `tb drift`: `--base` explícito na CLI/MCP não é mais sobrescrito por
+  `base_commit` do ticket; `base_mismatch` usa `git merge-base --is-ancestor`
+  no `base_commit` declarado (ou na base efetiva se ausente), em vez de
+  igualdade de string com `--base`; JSON inclui `actual_base` e `merge_base`
+- `tb verify run --base/--head`: quando o head resolve para um SHA diferente do
+  `HEAD` do worktree, build/lint/test/hidden rodam num `git worktree add --detach`
+  temporário (removido ao final, inclusive em erro/sinal); o JSON expõe `head_sha`
+  e `workdir`. Se `head == HEAD` com worktree sujo, emite aviso. O mesmo vale para
+  `tb stack verify` via contexto compartilhado.
+
 ### Segurança
+- Processos filhos de `tb verify` / `tb stack` (verify) e MCP `tb_run` /
+  `tb_verify_run` / `tb_stack` passam a receber ambiente filtrado por allowlist
+  (PATH, HOME, LANG, TMPDIR, GOPATH/GOCACHE, NODE/npm/pnpm, etc.). Segredos
+  (`*TOKEN*`/`*SECRET*`/`*KEY*`/`*PASSWORD*`) nunca passam sem opt-in explícito
+  (`--pass-env` / `env.pass` / arg MCP `pass_env`). Extensão via `--env` /
+  `env.allow` / arg MCP `env`.
 - `tb mem`: invariantes `immutable` ou categoria `anti_cheat` exigem `--force` + `--reason` em `edit`/`retire`; histórico append-only em `.toolbelt/invariants_history.jsonl`
 - `tb mem add`: novas invariantes nascem **mutáveis**; use `--immutable` (MCP: `immutable`) para proteger; `mem init` continua criando defaults imutáveis
 - `tb mem check`: falha **fechado** (arquivo ilegível/corrompido, SHA divergente, IDs ausentes, regra não avaliável → exit ≠ 0); não auto-inicializa defaults

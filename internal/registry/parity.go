@@ -104,7 +104,7 @@ func registerMemQueryTools() {
 			Type: "object",
 			Properties: map[string]Property{
 				"category": {Type: "string", Description: "Filtrar categoria"},
-				"all":      {Type: "string", Description: "true para incluir aposentadas", Default: "false"},
+				"all":      {Type: "boolean", Description: "true para incluir aposentadas", Default: false},
 				"cwd":      {Type: "string", Description: "Diretório do repositório"},
 			},
 		},
@@ -130,7 +130,7 @@ func registerMemQueryTools() {
 			Type: "object",
 			Properties: map[string]Property{
 				"query": {Type: "string", Description: "Texto a buscar em id/categoria/regra/ref"},
-				"all":   {Type: "string", Description: "true para incluir aposentadas", Default: "false"},
+				"all":   {Type: "boolean", Description: "true para incluir aposentadas", Default: false},
 				"cwd":   {Type: "string", Description: "Diretório do repositório"},
 			},
 			Required: []string{"query"},
@@ -144,7 +144,7 @@ func registerMemQueryTools() {
 			Type: "object",
 			Properties: map[string]Property{
 				"expect_sha": {Type: "string", Description: "SHA256 esperado"},
-				"all":        {Type: "string", Description: "true para incluir aposentadas", Default: "false"},
+				"all":        {Type: "boolean", Description: "true para incluir aposentadas", Default: false},
 				"cwd":        {Type: "string", Description: "Diretório do repositório"},
 			},
 		},
@@ -170,6 +170,16 @@ func registerVerifyTools() {
 				"manifest":         {Type: "string", Description: "Manifesto visual"},
 				"threshold":        {Type: "number", Description: "Threshold visual", Default: 0.95},
 				"skip_unavailable": {Type: "boolean", Description: "Skip gracioso se ruler indisponível", Default: true},
+				"env": {
+					Type:        "array",
+					Description: "Chaves extras na allowlist de ambiente",
+					Items:       &Property{Type: "string"},
+				},
+				"pass_env": {
+					Type:        "array",
+					Description: "Opt-in explícito para segredos (*TOKEN*/SECRET/KEY/PASSWORD)",
+					Items:       &Property{Type: "string"},
+				},
 			},
 		},
 		Handler: handleVerifyRun,
@@ -264,6 +274,16 @@ func registerStackTools() {
 					Description: "review: papéis scope/quality/acceptance",
 					Items:       &Property{Type: "string"},
 				},
+				"env": {
+					Type:        "array",
+					Description: "Chaves extras na allowlist de ambiente (verify)",
+					Items:       &Property{Type: "string"},
+				},
+				"pass_env": {
+					Type:        "array",
+					Description: "Opt-in explícito para segredos no verify",
+					Items:       &Property{Type: "string"},
+				},
 			},
 			Required: []string{"ops"},
 		},
@@ -314,7 +334,7 @@ func handleMemList(_ context.Context, args map[string]any) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	list, err := s.List(StringArg(args, "category"), boolArgTrue(args, "all"))
+	list, err := s.List(StringArg(args, "category"), BoolArg(args, "all", false))
 	if err != nil {
 		return nil, err
 	}
@@ -381,7 +401,7 @@ func handleMemSearch(_ context.Context, args map[string]any) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	list, err := s.Search(StringArg(args, "query"), boolArgTrue(args, "all"))
+	list, err := s.Search(StringArg(args, "query"), BoolArg(args, "all", false))
 	if err != nil {
 		return nil, err
 	}
@@ -394,7 +414,7 @@ func handleMemCheck(_ context.Context, args map[string]any) (any, error) {
 		return nil, err
 	}
 	sha := StringArg(args, "expect_sha")
-	all := boolArgTrue(args, "all")
+	all := BoolArg(args, "all", false)
 	return memCheckReport(s, sha, all)
 }
 
@@ -408,11 +428,6 @@ func memCheckReport(s *mem.Store, sha string, includeRetired bool) (*mem.CheckRe
 		ids = append(ids, inv.ID)
 	}
 	return s.Check(sha, ids, includeRetired)
-}
-
-func boolArgTrue(args map[string]any, key string) bool {
-	v := strings.ToLower(strings.TrimSpace(StringArg(args, key)))
-	return v == "true" || v == "1" || v == "yes"
 }
 
 func stringArgPresent(args map[string]any, key string) (string, bool) {
@@ -432,10 +447,11 @@ func handleMemInit(_ context.Context, args map[string]any) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := mem.EnsureDefaultAntiCheat(dir); err != nil {
+	result, err := mem.EnsureDefaultAntiCheat(dir)
+	if err != nil {
 		return nil, err
 	}
-	return map[string]any{"ok": true, "path": filepath.Join(dir, mem.DefaultInvariantsFile)}, nil
+	return result, nil
 }
 
 func handleVerifyRun(ctx context.Context, args map[string]any) (any, error) {
@@ -476,6 +492,8 @@ func runVerifyTests(ctx context.Context, cwd string, args map[string]any) (any, 
 		return nil, fmt.Errorf("timeout inválido: %w", err)
 	}
 	cfg.Timeout = timeout
+	cfg.EnvAllow = append(cfg.EnvAllow, StringSliceArg(args, "env", nil)...)
+	cfg.EnvPass = append(cfg.EnvPass, StringSliceArg(args, "pass_env", nil)...)
 	return verify.Run(ctx, &cfg)
 }
 
@@ -496,6 +514,8 @@ func applyVerifyFileConfig(cfg *verify.Config) {
 	if fileCfg.Verify.LintCmd != "" {
 		cfg.LintCmd = fileCfg.Verify.LintCmd
 	}
+	cfg.EnvAllow = append(cfg.EnvAllow, fileCfg.Env.Allow...)
+	cfg.EnvPass = append(cfg.EnvPass, fileCfg.Env.Pass...)
 }
 
 func runVerifyVisual(ctx context.Context, cwd string, args map[string]any) (any, error) {
@@ -544,6 +564,7 @@ func driftConfigFromArgs(args map[string]any) (*review.Config, error) {
 		ticketPath = filepath.Join(cwd, ticketPath)
 	}
 	base := StringArg(args, "base")
+	baseSet := base != ""
 	if base == "" {
 		base = "HEAD~1"
 	}
@@ -555,11 +576,12 @@ func driftConfigFromArgs(args map[string]any) (*review.Config, error) {
 	if err != nil && !os.IsNotExist(err) {
 		return nil, err
 	}
-	if ticket != nil && ticket.BaseCommit != "" && base == "HEAD~1" {
+	if !baseSet && ticket != nil && ticket.BaseCommit != "" {
 		base = ticket.BaseCommit
 	}
 	cfg := review.DefaultConfig(cwd)
 	cfg.BaseRef = base
+	cfg.BaseExplicit = baseSet
 	cfg.HeadRef = head
 	cfg.ApprovedSHA = StringArg(args, "approved_sha")
 	cfg.TicketPath = ticketPath
@@ -587,6 +609,7 @@ func reviewConfigFromArgs(args map[string]any) (*review.Config, error) {
 	cfg := review.DefaultConfig(cwd)
 	if v := StringArg(args, "base"); v != "" {
 		cfg.BaseRef = v
+		cfg.BaseExplicit = true
 	}
 	if v := StringArg(args, "head"); v != "" {
 		cfg.HeadRef = v
@@ -719,6 +742,8 @@ func handleStack(ctx context.Context, args map[string]any) (any, error) {
 		Timeout:       timeout,
 		Reviewers:     IntArg(args, "reviewers", 0),
 		Standards:     StringSliceArg(args, "standards", nil),
+		EnvAllow:      StringSliceArg(args, "env", nil),
+		EnvPass:       StringSliceArg(args, "pass_env", nil),
 	}
 	return stack.Run(ctx, opts)
 }
