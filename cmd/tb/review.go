@@ -8,6 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/leonardo-moraes360/toolbelt/internal/config"
 	"github.com/leonardo-moraes360/toolbelt/internal/review"
 )
 
@@ -29,7 +30,8 @@ Também reporta drift de escopo e commit base.`,
 func init() {
 	reviewCmd.Flags().String("base", "HEAD~1", "commit/ref base")
 	reviewCmd.Flags().String("head", "HEAD", "commit/ref head")
-	reviewCmd.Flags().String("approved-sha", "", "SHA aprovado; compara patch-id estável com o head")
+	reviewCmd.Flags().String("approved-sha", "", "SHA aprovado; compara patch-id verbatim (sensível a whitespace) com o head")
+	reviewCmd.Flags().Bool("require-approved-sha", false, "falha se --approved-sha estiver ausente (ou review.require_approved_sha)")
 	reviewCmd.Flags().String("ticket", "rd.md", "caminho do ticket/rd.md")
 	reviewCmd.Flags().Int("reviewers", 3, "máximo de goldfish distintos (não clona o mesmo)")
 	reviewCmd.Flags().String("standards", "scope,quality,acceptance", "papéis: scope,quality,acceptance (aliases: invariants,completeness)")
@@ -64,6 +66,7 @@ func reviewConfigFromFlags(cmd *cobra.Command, args []string) (*review.Config, e
 	cfg.BaseExplicit = cmd.Flags().Changed("base")
 	cfg.HeadRef, _ = cmd.Flags().GetString("head")
 	cfg.ApprovedSHA, _ = cmd.Flags().GetString("approved-sha")
+	cfg.RequireApprovedSHA = requireApprovedSHAFrom(cmd)
 	cfg.TicketPath, _ = cmd.Flags().GetString("ticket")
 	cfg.Reviewers, _ = cmd.Flags().GetInt("reviewers")
 	stds, _ := cmd.Flags().GetString("standards")
@@ -108,7 +111,7 @@ func reviewBlockingError(rep *review.Report) error {
 }
 
 func pinnedApprovalMismatch(p *review.PinnedApproval) bool {
-	return p != nil && !p.Match
+	return p.Diverged()
 }
 
 func printReviewReport(rep *review.Report) {
@@ -146,11 +149,18 @@ func printPinnedApproval(p *review.PinnedApproval) {
 		return
 	}
 	fmt.Println("PINNED APPROVAL:")
+	fmt.Printf("  checked: %v\n", p.Checked)
+	if !p.Checked {
+		fmt.Println()
+		return
+	}
 	fmt.Printf("  approved_sha: %s\n", p.ApprovedSHA)
 	fmt.Printf("  patch_id: %s\n", p.PatchID)
 	fmt.Printf("  head_patch_id: %s\n", p.HeadPatchID)
-	fmt.Printf("  match: %v\n", p.Match)
-	if !p.Match && p.RangeDiffSummary != "" {
+	if p.Match != nil {
+		fmt.Printf("  match: %v\n", *p.Match)
+	}
+	if p.Diverged() && p.RangeDiffSummary != "" {
 		fmt.Println("  range-diff:")
 		for _, line := range strings.Split(p.RangeDiffSummary, "\n") {
 			fmt.Printf("    %s\n", line)
@@ -189,4 +199,15 @@ func splitCSV(s string) []string {
 		}
 	}
 	return out
+}
+
+func requireApprovedSHAFrom(cmd *cobra.Command) bool {
+	if v, _ := cmd.Flags().GetBool("require-approved-sha"); v {
+		return true
+	}
+	fileCfg, err := config.Load()
+	if err != nil {
+		return false
+	}
+	return fileCfg.Review.RequireApprovedSHA
 }

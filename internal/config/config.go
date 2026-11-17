@@ -42,6 +42,9 @@ type Config struct {
 	// Verify configura a verificação adversarial.
 	Verify VerifyConfig `yaml:"verify"`
 
+	// Review configura review/drift (approved-sha).
+	Review ReviewConfig `yaml:"review"`
+
 	// Env configura a allowlist de variáveis passadas a filhos (sh -c).
 	Env EnvConfig `yaml:"env"`
 }
@@ -101,6 +104,11 @@ type VerifyConfig struct {
 	HiddenTestCmd string `yaml:"hidden_test_cmd"`
 	BuildCmd      string `yaml:"build_cmd,omitempty"`
 	LintCmd       string `yaml:"lint_cmd,omitempty"`
+}
+
+// ReviewConfig configura tb review / tb drift.
+type ReviewConfig struct {
+	RequireApprovedSHA bool `yaml:"require_approved_sha"`
 }
 
 // EnvConfig controla quais variáveis de ambiente chegam aos filhos (sh -c).

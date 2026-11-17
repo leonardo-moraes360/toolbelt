@@ -433,6 +433,47 @@ func BenchmarkStackVsSequential(b *testing.B) {
 	})
 }
 
+func TestPreparePinsHeadSHAOnce(t *testing.T) {
+	dir := gitRepo(t)
+	writeFile(t, filepath.Join(dir, "a.go"), "package a\n")
+	runGit(t, dir, "add", "-A")
+	runGit(t, dir, "commit", "-m", "base")
+	writeFile(t, filepath.Join(dir, "a.go"), "package a\nfunc X() {}\n")
+	runGit(t, dir, "add", "-A")
+	runGit(t, dir, "commit", "-m", "head")
+	wantHead := revParse(t, dir, "HEAD")
+	wantBase := revParse(t, dir, "HEAD~1")
+
+	shared, err := Prepare(&Options{RepoDir: dir, Base: "HEAD~1", Head: "HEAD"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if shared.Head != wantHead {
+		t.Fatalf("Head pinado=%q want %q", shared.Head, wantHead)
+	}
+	if shared.Base != wantBase {
+		t.Fatalf("Base pinado=%q want %q", shared.Base, wantBase)
+	}
+
+	writeFile(t, filepath.Join(dir, "a.go"), "package a\nfunc Y() {}\n")
+	runGit(t, dir, "add", "-A")
+	runGit(t, dir, "commit", "-m", "moved-head")
+	if shared.Head == revParse(t, dir, "HEAD") {
+		t.Fatal("Prepare não deve acompanhar HEAD após o pin")
+	}
+}
+
+func revParse(t *testing.T, dir, ref string) string {
+	t.Helper()
+	cmd := exec.Command("git", "rev-parse", "--verify", ref)
+	cmd.Dir = dir
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("rev-parse %s: %v", ref, err)
+	}
+	return strings.TrimSpace(string(out))
+}
+
 func gitRepo(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
