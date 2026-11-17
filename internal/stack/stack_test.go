@@ -10,8 +10,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/leonardo-moraes360/toolbelt/internal/config"
 	"github.com/leonardo-moraes360/toolbelt/internal/graph"
 	"github.com/leonardo-moraes360/toolbelt/internal/mem"
+	"github.com/leonardo-moraes360/toolbelt/internal/verify"
 )
 
 func TestParseOpUnknown(t *testing.T) {
@@ -238,6 +240,138 @@ func TestRunUnknownOp(t *testing.T) {
 	})
 	if err == nil || !strings.Contains(err.Error(), "operação desconhecida") {
 		t.Fatalf("err=%v", err)
+	}
+}
+
+func TestStackVerifyRespectsNoBuildWhenTestCmdOverridden(t *testing.T) {
+	dir := gitRepo(t)
+	writeFile(t, filepath.Join(dir, "a.txt"), "a\n")
+	runGit(t, dir, "add", "-A")
+	runGit(t, dir, "commit", "-m", "base")
+	writeFile(t, filepath.Join(dir, "a.txt"), "b\n")
+	runGit(t, dir, "add", "-A")
+	runGit(t, dir, "commit", "-m", "head")
+
+	cfgDir := filepath.Join(dir, ".toolbelt")
+	if err := os.MkdirAll(cfgDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	buildLog := filepath.Join(dir, "stack-build.log")
+	cfgPath := filepath.Join(cfgDir, "config.yaml")
+	writeFile(t, cfgPath, "verify:\n  test_cmd: \"false\"\n  build_cmd: \"echo BUILD >> "+buildLog+"\"\n  lint_cmd: \"echo LINT >> "+buildLog+"\"\n")
+	config.SetFile(cfgPath)
+	t.Cleanup(func() { config.SetFile("") })
+
+	res, err := Run(context.Background(), &Options{
+		RepoDir: dir,
+		Base:    "HEAD~1",
+		Head:    "HEAD",
+		Ops:     []Op{OpVerify},
+		TestCmd: "true",
+		NoBuild: true,
+		NoLint:  true,
+		MaxIter: 1,
+		Timeout: 30 * time.Second,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.OK || len(res.Steps) != 1 {
+		t.Fatalf("res=%+v", res)
+	}
+	vr, ok := res.Steps[0].Result.(*verify.Result)
+	if !ok {
+		t.Fatalf("result type %T", res.Steps[0].Result)
+	}
+	if vr.BuildRan || vr.LintRan {
+		t.Fatalf("stack must honor --no-build/--no-lint with --test-cmd override: build_ran=%v lint_ran=%v", vr.BuildRan, vr.LintRan)
+	}
+	if _, err := os.Stat(buildLog); !os.IsNotExist(err) {
+		t.Fatal("build/lint must not run when skipped")
+	}
+}
+
+func TestStackVerifyBuildCmdOverride(t *testing.T) {
+	dir := gitRepo(t)
+	writeFile(t, filepath.Join(dir, "a.txt"), "a\n")
+	runGit(t, dir, "add", "-A")
+	runGit(t, dir, "commit", "-m", "base")
+	writeFile(t, filepath.Join(dir, "a.txt"), "b\n")
+	runGit(t, dir, "add", "-A")
+	runGit(t, dir, "commit", "-m", "head")
+
+	marker := filepath.Join(dir, "custom-build.flag")
+	res, err := Run(context.Background(), &Options{
+		RepoDir:     dir,
+		Base:        "HEAD~1",
+		Head:        "HEAD",
+		Ops:         []Op{OpVerify},
+		TestCmd:     "test -f " + marker,
+		BuildCmd:    "touch " + marker,
+		BuildCmdSet: true,
+		NoLint:      true,
+		MaxIter:     1,
+		Timeout:     30 * time.Second,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.OK {
+		t.Fatalf("esperava ok: %+v", res)
+	}
+	vr := res.Steps[0].Result.(*verify.Result)
+	if !vr.BuildRan || !vr.BuildPassed {
+		t.Fatalf("custom build-cmd must run: %+v", vr)
+	}
+}
+
+func TestStackVerifyDryRunAndReason(t *testing.T) {
+	dir := gitRepo(t)
+	writeFile(t, filepath.Join(dir, "a.txt"), "a\n")
+	runGit(t, dir, "add", "-A")
+	runGit(t, dir, "commit", "-m", "base")
+	writeFile(t, filepath.Join(dir, "a.txt"), "b\n")
+	runGit(t, dir, "add", "-A")
+	runGit(t, dir, "commit", "-m", "head")
+
+	res, err := Run(context.Background(), &Options{
+		RepoDir: dir,
+		Base:    "HEAD~1",
+		Head:    "HEAD",
+		Ops:     []Op{OpVerify},
+		TestCmd: "false",
+		MaxIter: 1,
+		Timeout: 30 * time.Second,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.OK {
+		t.Fatal("esperava falha")
+	}
+	if res.Steps[0].Reason == "" || res.Steps[0].Error == "" {
+		t.Fatalf("step deve expor reason/error: %+v", res.Steps[0])
+	}
+
+	dry, err := Run(context.Background(), &Options{
+		RepoDir: dir,
+		Base:    "HEAD~1",
+		Head:    "HEAD",
+		Ops:     []Op{OpVerify},
+		TestCmd: "touch should-not-run",
+		DryRun:  true,
+		MaxIter: 1,
+		Timeout: 30 * time.Second,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !dry.OK {
+		t.Fatalf("dry-run verify deve ser ok/SKIPPED: %+v", dry)
+	}
+	vr := dry.Steps[0].Result.(*verify.Result)
+	if !vr.DryRun || vr.Plan == nil || vr.Plan.Commands["test"] == "" {
+		t.Fatalf("dry-run plan ausente: %+v", vr)
 	}
 }
 
