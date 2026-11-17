@@ -84,6 +84,7 @@ Common fields:
 ```yaml
 adapter: exec            # exec | harness
 wake_on: [task.assign, query, reply, urgent, task.result]
+wake_topics: true       # false: messages to topic:* never wake
 coalesce:
   debounce: 3s
   max_delay: 30s
@@ -98,7 +99,7 @@ sandbox:
   write: []              # extra absolute paths, read-write
 ```
 
-In the sandbox the child can always read the system directories, write its workdir and read its own executable's directory (resolved on `PATH`, following symlinks). With the `harness` adapter it can also read the directory of the `tb` used by `mcp.json` and **only** `<private>/sessions/<channel>/<name>/` (its own token and `mcp.json`): other agents' tokens, wake files and harness state are out of reach. Anything else it needs (e.g. `~/.claude`, the Node runtime) goes into `sandbox.read`/`sandbox.write`.
+In the sandbox the child can always read the system directories (including the target of the `/etc/resolv.conf` symlink, for DNS), write its workdir and read its own executable's directory (resolved on `PATH`, following symlinks). With the `harness` adapter it can also read the directory of the `tb` used by `mcp.json` and **only** `<private>/sessions/<channel>/<name>/` (its own token and `mcp.json`): other agents' tokens, wake files and harness state are out of reach. Anything else it needs (e.g. `~/.claude`, the Node runtime) goes into `sandbox.read`/`sandbox.write`.
 
 The Agent Card keeps `wake` as a string; the only change is accepting the new value `exec`. Paths, session and keys live in the wake file, not in the card, because the card is visible to the whole channel.
 

@@ -176,7 +176,7 @@ func (h *Harness) audit(ev *Event) {
 
 // pending devolve as mensagens que acordam com seq em (from, to].
 func (h *Harness) pending(from, to int64) ([]bus.Message, error) {
-	return h.store.Pending(h.member, from, to, h.cfg.WakeOn, 500)
+	return h.store.Pending(h.member, from, to, h.cfg.WakeOn, h.cfg.topics(), 500)
 }
 
 // session devolve a sessão a retomar: a do estado, salvo se o humano mudou

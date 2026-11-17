@@ -998,7 +998,8 @@ const pendingWhere = ` WHERE channel = ? AND seq > ? AND sender <> ?
 // Pending lista, sem avançar o cursor e sem transação de escrita, as
 // mensagens endereçadas a m com seq em (after, upto] (upto ≤ 0 = sem teto),
 // filtradas por tipo no SQL (mensagens de outros tipos não ocupam o limite).
-func (s *Store) Pending(m Member, after, upto int64, types []Type, limit int) ([]Message, error) {
+// topics=false ignora mensagens para topic:*.
+func (s *Store) Pending(m Member, after, upto int64, types []Type, topics bool, limit int) ([]Message, error) {
 	if len(types) == 0 {
 		return []Message{}, nil
 	}
@@ -1010,6 +1011,9 @@ func (s *Store) Pending(m Member, after, upto int64, types []Type, limit int) ([
 	args := []any{m.Channel, after, m.ID(), m.ID(), "role:" + string(m.Role), s.nowNS()}
 	for _, t := range types {
 		args = append(args, string(t))
+	}
+	if !topics {
+		q += ` AND recipient NOT LIKE 'topic:%'`
 	}
 	if upto > 0 {
 		q += ` AND seq <= ?`

@@ -209,6 +209,7 @@ func resultSummary(output string, exit int) string {
 		Subtype string `json:"subtype"`
 		IsError bool   `json:"is_error"`
 		Turns   int    `json:"num_turns"`
+		Result  string `json:"result"`
 	}
 	sc := bufio.NewScanner(strings.NewReader(output))
 	sc.Buffer(make([]byte, 0, 64<<10), 4<<20)
@@ -224,7 +225,13 @@ func resultSummary(output string, exit int) string {
 	if !found {
 		return fmt.Sprintf("sem evento result (exit %d): %s", exit, plainTail(output, 1024))
 	}
-	return fmt.Sprintf("result subtype=%s is_error=%t turns=%d", res.Subtype, res.IsError, res.Turns)
+	summary := fmt.Sprintf("result subtype=%s is_error=%t turns=%d", res.Subtype, res.IsError, res.Turns)
+	if res.IsError && res.Turns <= 1 {
+		// Erro antes de o modelo trabalhar (auth, rede, cota): o texto é a
+		// mensagem do CLI, não conteúdo de mensagem.
+		summary += ": " + truncate(res.Result, 300)
+	}
+	return summary
 }
 
 // lastSessionID extrai o último session_id do stream-json.
@@ -245,6 +252,13 @@ func lastSessionID(output string) string {
 		}
 	}
 	return id
+}
+
+func truncate(s string, n int) string {
+	if len(s) > n {
+		return s[:n]
+	}
+	return s
 }
 
 // plainTail devolve o final das linhas que não são eventos JSON (mensagens de

@@ -22,6 +22,7 @@ var DefaultWakeOn = []bus.Type{bus.TypeTaskAssign, bus.TypeQuery, bus.TypeReply,
 type Config struct {
 	Adapter     string        `yaml:"adapter"`
 	WakeOn      []bus.Type    `yaml:"wake_on"`
+	WakeTopics  *bool         `yaml:"wake_topics"` // nil = true; false: topic:* nunca acorda
 	Coalesce    Coalesce      `yaml:"coalesce"`
 	Budget      Budget        `yaml:"budget"`
 	RewakeAfter time.Duration `yaml:"rewake_after"`
@@ -144,6 +145,8 @@ func (c *Config) applyDefaults() {
 		}
 	}
 }
+
+func (c *Config) topics() bool { return c.WakeTopics == nil || *c.WakeTopics }
 
 // Adapters suportados.
 const (

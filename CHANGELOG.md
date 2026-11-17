@@ -16,7 +16,11 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 - `tb mcp --bus-as <canal>/<nome> [--bus-root] [--bus-state]`: liga a conexão MCP a uma sessão CLI do bus
 - Barramento: sessões, arquivos de wake e estado do harness saem do repositório para `$XDG_STATE_HOME/toolbelt/bus/<hash>/` (`TB_BUS_STATE_DIR` sobrepõe); o agente acordado lê só o próprio token
 - Sandbox: `Config.Stdin` (entrada padrão do filho, inclusive via trampolim Landlock)
+- `tb bus run`: `wake_topics: false` ignora `topic:*`; o claude acordado usa `--strict-mcp-config` e temp próprio
 - `tb init`: `.toolbelt/bus/` entra em `.git/info/exclude`
+
+### Corrigido
+- Sandbox Landlock: libera leitura do diretório alvo do symlink de `/etc/resolv.conf` (ex.: `/run/systemd/resolve`); antes, filhos com rede não resolviam DNS
 
 ## [0.0.4] - 2026-11-17
 

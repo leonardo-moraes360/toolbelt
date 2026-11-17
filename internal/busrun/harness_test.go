@@ -517,3 +517,22 @@ func mustInvite(t *testing.T, e *env) string {
 	}
 	return inv.Code
 }
+
+func TestWakeTopicsFalseIgnoresTopics(t *testing.T) {
+	e := newEnv(t)
+	e.writeConfig(t, fastCfg+"wake_topics: false\n")
+	if _, err := e.store.Send(e.owner, &bus.SendInput{To: "topic:board", Type: bus.TypeQuery}); err != nil {
+		t.Fatal(err)
+	}
+	f := &fakeAdapter{}
+	h := e.open(t, f)
+	runFor(t, h, 250*time.Millisecond)
+	if len(f.got()) != 0 {
+		t.Fatalf("topic acordou: %+v", f.got())
+	}
+	e.send(t, bus.TypeQuery, "")
+	runFor(t, h, 250*time.Millisecond)
+	if got := f.got(); len(got) != 1 || got[0].Count != 1 {
+		t.Fatalf("mensagem direta: %+v", got)
+	}
+}
