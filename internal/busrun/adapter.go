@@ -82,11 +82,11 @@ func sandboxPaths(cfg *Config, bins, extraRead, extraWrite []string) []sandbox.P
 
 // childSpec descreve uma execução do filho.
 type childSpec struct {
-	argv      []string
-	stdin     []byte
-	env       []string
-	workdir   string
-	extraBins []string // binários além de argv[0] que o filho executa (tb mcp)
+	argv       []string
+	stdin      []byte
+	env        []string
+	workdir    string
+	extraBins  []string // binários além de argv[0] que o filho executa (tb mcp)
 	extraRead  []string // diretórios extras somente leitura
 	extraWrite []string // diretórios extras com escrita
 }
