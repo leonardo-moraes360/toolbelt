@@ -50,7 +50,13 @@ type Harness struct {
 	lastArrival time.Time
 	retryAfter  time.Time
 	budgetLog   bool
+	expiredLog  bool      // channel_expired já auditado nesta expiração
+	expiredAt   time.Time // última checagem que achou o canal expirado
 }
+
+// expiredRecheck: com canal expirado e store parado, o harness recheca só a
+// cada intervalo (extend muda data_version e acorda a checagem na hora).
+const expiredRecheck = 5 * time.Second
 
 // Open valida config, sessão, sandbox e lock. Chame Close ao terminar.
 func Open(opts *Options) (*Harness, error) {
@@ -267,11 +273,46 @@ func (h *Harness) step(ctx context.Context, once bool) (bool, error) {
 	if !once && !h.ready(msgs, now) {
 		return false, nil
 	}
+	if open, err := h.channelOpen(now); err != nil || !open {
+		if err == nil && once {
+			err = fmt.Errorf("canal %q expirou: use tb bus channel extend", h.member.Channel)
+		}
+		return false, err
+	}
 	return h.wake(ctx, "messages", msgs, now)
+}
+
+// channelOpen: canal expirado não acorda ninguém (o agente não conseguiria
+// responder). Audita uma vez por expiração e segue esperando: um
+// `tb bus channel extend` reabre o canal sem reiniciar o harness.
+func (h *Harness) channelOpen(now time.Time) (bool, error) {
+	_, err := h.store.ActiveChannel(h.member.Channel)
+	if errors.Is(err, bus.ErrChannelExpired) {
+		h.expiredAt = now
+		if !h.expiredLog {
+			h.expiredLog = true
+			h.audit(&Event{Event: "channel_expired", Detail: err.Error()})
+			log.Warn("harness do bus: canal expirado, despertares suspensos até tb bus channel extend", "channel", h.member.Channel)
+		}
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	h.expiredAt = time.Time{}
+	if h.expiredLog {
+		h.expiredLog = false
+		h.audit(&Event{Event: "channel_reopened"})
+		log.Info("harness do bus: canal reaberto", "channel", h.member.Channel)
+	}
+	return true, nil
 }
 
 // idle: nada mudou no store e não há despertar pendente, rewake ou retry.
 func (h *Harness) idle(version int64, now time.Time) bool {
+	if version == h.lastVersion && !h.expiredAt.IsZero() && now.Sub(h.expiredAt) < expiredRecheck {
+		return true
+	}
 	retryDue := !h.retryAfter.IsZero() && !now.Before(h.retryAfter)
 	return version == h.lastVersion && h.lastVersion != 0 && h.firstSeen.IsZero() && !h.rewakeDue(now) && !retryDue
 }
@@ -297,6 +338,9 @@ func (h *Harness) rewakeDue(now time.Time) bool {
 func (h *Harness) maybeRewake(ctx context.Context, cursor int64, now time.Time) (bool, error) {
 	if cursor >= h.st.NotifiedSeq || !h.rewakeDue(now) || now.Before(h.retryAfter) {
 		return false, nil
+	}
+	if open, err := h.channelOpen(now); err != nil || !open {
+		return false, err
 	}
 	if h.st.Rewaked {
 		h.st.Unread = true

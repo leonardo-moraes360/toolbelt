@@ -39,6 +39,7 @@ Thumbs.db
 .toolbelt/captures/
 .toolbelt/bench/
 .toolbelt/router/
+.toolbelt/bus/
 .toolbelt/tickets/.lock
 .toolbelt/tickets/.tmp-*
 

@@ -536,3 +536,48 @@ func TestWakeTopicsFalseIgnoresTopics(t *testing.T) {
 		t.Fatalf("mensagem direta: %+v", got)
 	}
 }
+
+func TestExpiredChannelSuspendsWakesUntilExtend(t *testing.T) {
+	e := newEnv(t)
+	e.writeConfig(t, fastCfg)
+	e.send(t, bus.TypeQuery, "")
+	if _, err := e.store.ExtendChannel("ch", time.Nanosecond); err != nil {
+		t.Fatal(err)
+	}
+	f := &fakeAdapter{}
+	h := e.open(t, f)
+	runFor(t, h, 300*time.Millisecond)
+	if len(f.got()) != 0 {
+		t.Fatalf("acordou com canal expirado: %+v", f.got())
+	}
+	if a := readAudit(t, e); strings.Count(a, `"channel_expired"`) != 1 {
+		t.Fatalf("channel_expired deve ser auditado uma vez: %s", a)
+	}
+	if _, err := e.store.ExtendChannel("ch", 0); err != nil {
+		t.Fatal(err)
+	}
+	runFor(t, h, 300*time.Millisecond)
+	if got := f.got(); len(got) != 1 || got[0].Count != 1 {
+		t.Fatalf("após extend: %+v", got)
+	}
+	if a := readAudit(t, e); !strings.Contains(a, `"channel_reopened"`) {
+		t.Fatalf("channel_reopened ausente: %s", a)
+	}
+}
+
+func TestOnceOnExpiredChannelFails(t *testing.T) {
+	e := newEnv(t)
+	e.writeConfig(t, fastCfg)
+	e.send(t, bus.TypeQuery, "")
+	if _, err := e.store.ExtendChannel("ch", time.Nanosecond); err != nil {
+		t.Fatal(err)
+	}
+	f := &fakeAdapter{}
+	err := e.open(t, f).Run(context.Background(), true)
+	if err == nil || !strings.Contains(err.Error(), "channel extend") {
+		t.Fatalf("--once com canal expirado: %v", err)
+	}
+	if len(f.got()) != 0 {
+		t.Fatalf("acordou: %+v", f.got())
+	}
+}

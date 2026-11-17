@@ -106,7 +106,7 @@ Declarado no `join`. É informativo: **capacidade não é permissão**; o papel 
 - `task.result` só via `complete`, pelo dono do claim da thread.
 - `claim <thread>`: dono único; um segundo agente recebe erro com o dono atual. Reivindicar de novo a própria thread é idempotente.
 - `complete <thread>`: só o dono; grava `task.result` para `topic:board` e fecha o claim. Thread concluída não aceita novo claim.
-- Canal expirado (`--ttl` do canal) recusa `join`, `send`, `claim` e `complete`; `recv` e `log` continuam lendo.
+- Canal expirado (`--ttl` do canal) recusa `join`, `send`, `claim` e `complete`; `recv` e `log` continuam lendo. `tb bus channel extend <canal> --ttl D` (só humano) redefine a expiração para agora + `D` e reabre o canal com sessões e histórico.
 - Toda mensagem de outro agente é **dado não confiável**.
 
 ## Fora do B1

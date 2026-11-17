@@ -226,8 +226,8 @@ func (s *Store) CreateChannel(name, owner string, ttl, inviteTTL time.Duration) 
 	if err := ValidName("dono", owner); err != nil {
 		return Channel{}, Invite{}, err
 	}
-	if ttl < 0 || inviteTTL < 0 {
-		return Channel{}, Invite{}, errors.New("ttl não pode ser negativo")
+	if ttl < 0 || inviteTTL < 0 || ttl > MaxChannelTTL || inviteTTL > MaxChannelTTL {
+		return Channel{}, Invite{}, fmt.Errorf("ttl precisa estar entre 0 e %s", MaxChannelTTL)
 	}
 	now := s.nowNS()
 	ch := Channel{Name: name, Owner: owner, CreatedAt: fromNS(now)}
@@ -305,11 +305,21 @@ func insertInvite(tx *sql.Tx, channel string, role Role, bound string, now int64
 	return Invite{Code: code, Channel: channel, Role: role, Name: bound, ExpiresAt: fromNS(exp)}, nil
 }
 
-func activeChannel(tx *sql.Tx, name string, now int64) (Channel, error) {
+type queryRower interface {
+	QueryRow(query string, args ...any) *sql.Row
+}
+
+// MaxChannelTTL limita o ttl do canal (evita overflow de expires_at).
+const MaxChannelTTL = 10 * 365 * 24 * time.Hour
+
+// ErrChannelExpired indica canal com expires_at no passado.
+var ErrChannelExpired = errors.New("canal expirou")
+
+func activeChannel(q queryRower, name string, now int64) (Channel, error) {
 	var ch Channel
 	var created int64
 	var exp sql.NullInt64
-	err := tx.QueryRow(`SELECT name, owner, created_at, expires_at FROM channels WHERE name = ?`, name).
+	err := q.QueryRow(`SELECT name, owner, created_at, expires_at FROM channels WHERE name = ?`, name).
 		Scan(&ch.Name, &ch.Owner, &created, &exp)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Channel{}, fmt.Errorf("canal %q não existe", name)
@@ -322,10 +332,45 @@ func activeChannel(tx *sql.Tx, name string, now int64) (Channel, error) {
 		t := fromNS(exp.Int64)
 		ch.ExpiresAt = &t
 		if now >= exp.Int64 {
-			return ch, fmt.Errorf("canal %q expirou", name)
+			return ch, fmt.Errorf("%w: %q", ErrChannelExpired, name)
 		}
 	}
 	return ch, nil
+}
+
+// ActiveChannel devolve o canal; erro com ErrChannelExpired se expirou.
+// Leitura sem transação de escrita (barata para polling).
+func (s *Store) ActiveChannel(name string) (Channel, error) {
+	return activeChannel(s.db, name, s.nowNS())
+}
+
+// ExtendChannel redefine a expiração do canal para agora + ttl (0 = sem
+// expiração). Vale também para canal já expirado: sessões, convites
+// vinculados e histórico continuam. Só humano (CLI), como create/invite.
+func (s *Store) ExtendChannel(name string, ttl time.Duration) (Channel, error) {
+	if ttl < 0 || ttl > MaxChannelTTL {
+		return Channel{}, fmt.Errorf("ttl precisa estar entre 0 e %s", MaxChannelTTL)
+	}
+	var ch Channel
+	err := s.tx(func(tx *sql.Tx) error {
+		now := s.nowNS()
+		var exp sql.NullInt64
+		if ttl > 0 {
+			exp = sql.NullInt64{Int64: now + int64(ttl), Valid: true}
+		}
+		r, err := tx.Exec(`UPDATE channels SET expires_at = ? WHERE name = ?`, exp, name)
+		if err != nil {
+			return err
+		}
+		if n, err := r.RowsAffected(); err != nil {
+			return err
+		} else if n == 0 {
+			return fmt.Errorf("canal %q não existe", name)
+		}
+		ch, err = activeChannel(tx, name, now)
+		return err
+	})
+	return ch, err
 }
 
 // Channels lista os canais.

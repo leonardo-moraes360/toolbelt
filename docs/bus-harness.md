@@ -167,7 +167,7 @@ Outros vendors entram como novos presets do mesmo adapter quando tiverem modo he
 
 ## Auditoria
 
-`<privado>/run/<canal>/<nome>.jsonl` (`0600`), uma linha por evento: `wake_start`, `wake_ok`, `wake_attempt_failed`, `wake_failed`, `wake_unread`, `wake_budget_exceeded`, `session_reset`, `error`. Config inválida não gera evento: `tb bus run` falha ao abrir. Cada linha tem `seq`s envolvidos, duração e código de saída; nunca payload, token ou valor de `pass_env`.
+`<privado>/run/<canal>/<nome>.jsonl` (`0600`), uma linha por evento: `wake_start`, `wake_ok`, `wake_attempt_failed`, `wake_failed`, `wake_unread`, `wake_budget_exceeded`, `session_reset`, `channel_expired`, `channel_reopened`, `error`. Com o canal expirado o harness não acorda ninguém (o agente não conseguiria responder): registra `channel_expired` uma vez (na primeira mensagem que acordaria) e segue esperando, rechecando a cada 5s; com `--once`, sai com erro; `tb bus channel extend` reabre o canal sem reiniciar o harness (`channel_reopened`). Config inválida não gera evento: `tb bus run` falha ao abrir. Cada linha tem `seq`s envolvidos, duração e código de saída; nunca payload, token ou valor de `pass_env`.
 
 ## Fora deste corte
 

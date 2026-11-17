@@ -177,6 +177,36 @@ var busChannelShowCmd = &cobra.Command{
 	},
 }
 
+var busChannelExtendCmd = &cobra.Command{
+	Use:   "extend <canal>",
+	Short: "Redefine a expiração do canal para agora + --ttl (reabre canal expirado)",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		ttl, _ := cmd.Flags().GetDuration("ttl")
+		if !cmd.Flags().Changed("ttl") {
+			return errors.New("--ttl é obrigatório (0 = sem expiração)")
+		}
+		s, err := openBusStore()
+		if err != nil {
+			return err
+		}
+		defer s.Close()
+		ch, err := s.ExtendChannel(args[0], ttl)
+		if err != nil {
+			return err
+		}
+		if jsonOutput {
+			return printBusJSON(ch)
+		}
+		exp := "sem expiração"
+		if ch.ExpiresAt != nil {
+			exp = "expira " + ch.ExpiresAt.Local().Format("2006-01-02T15:04:05Z07:00")
+		}
+		fmt.Printf("canal: %s  %s\n", ch.Name, exp)
+		return nil
+	},
+}
+
 var busInviteCmd = &cobra.Command{
 	Use:   "invite <canal>",
 	Short: "Emite convite de uso único com papel fixado (só humano)",
@@ -437,7 +467,8 @@ func init() {
 	busChannelCreateCmd.Flags().String("owner", "", "nome do agente dono (recebe convite supervisor)")
 	busChannelCreateCmd.Flags().Duration("ttl", 0, "duração do canal (0 = sem expiração)")
 	busChannelCreateCmd.Flags().Duration("invite-ttl", bus.DefaultInviteTTL, "duração do convite do dono")
-	busChannelCmd.AddCommand(busChannelCreateCmd, busChannelListCmd, busChannelShowCmd)
+	busChannelExtendCmd.Flags().Duration("ttl", 0, "nova duração a partir de agora (0 = sem expiração)")
+	busChannelCmd.AddCommand(busChannelCreateCmd, busChannelListCmd, busChannelShowCmd, busChannelExtendCmd)
 
 	busInviteCmd.Flags().String("role", "worker", "papel fixado: router|supervisor|worker|reviewer")
 	busInviteCmd.Flags().Duration("ttl", bus.DefaultInviteTTL, "duração do convite")

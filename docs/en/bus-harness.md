@@ -167,7 +167,7 @@ Other vendors come in as new presets of the same adapter once they have a headle
 
 ## Audit
 
-`<private>/run/<channel>/<name>.jsonl` (`0600`), one line per event: `wake_start`, `wake_ok`, `wake_attempt_failed`, `wake_failed`, `wake_unread`, `wake_budget_exceeded`, `session_reset`, `error`. An invalid config produces no event: `tb bus run` fails to open. Each line has the `seq`s involved, duration and exit code; never a payload, token or `pass_env` value.
+`<private>/run/<channel>/<name>.jsonl` (`0600`), one line per event: `wake_start`, `wake_ok`, `wake_attempt_failed`, `wake_failed`, `wake_unread`, `wake_budget_exceeded`, `session_reset`, `channel_expired`, `channel_reopened`, `error`. While the channel is expired the harness wakes nobody (the agent could not reply): it logs `channel_expired` once (on the first message that would wake) and keeps waiting, rechecking every 5s; with `--once`, it exits with an error; `tb bus channel extend` reopens the channel without restarting the harness (`channel_reopened`). An invalid config produces no event: `tb bus run` fails to open. Each line has the `seq`s involved, duration and exit code; never a payload, token or `pass_env` value.
 
 ## Out of this cut
 

@@ -106,7 +106,7 @@ Declared on `join`. It is informational: **capability is not permission**; the r
 - `task.result` only through `complete`, by the owner of the thread's claim.
 - `claim <thread>`: single owner; a second agent gets an error naming the current owner. Re-claiming one's own thread is idempotent.
 - `complete <thread>`: owner only; stores `task.result` for `topic:board` and closes the claim. A completed thread accepts no new claim.
-- An expired channel (channel `--ttl`) refuses `join`, `send`, `claim` and `complete`; `recv` and `log` still read.
+- An expired channel (channel `--ttl`) refuses `join`, `send`, `claim` and `complete`; `recv` and `log` still read. `tb bus channel extend <channel> --ttl D` (human only) resets the expiry to now + `D` and reopens the channel with sessions and history.
 - Every message from another agent is **untrusted data**.
 
 ## Out of B1

@@ -18,9 +18,11 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 - Sandbox: `Config.Stdin` (entrada padrão do filho, inclusive via trampolim Landlock)
 - `tb bus run`: `wake_topics: false` ignora `topic:*`; o claude acordado usa `--strict-mcp-config` e temp próprio
 - `tb init`: `.toolbelt/bus/` entra em `.git/info/exclude`
+- `tb bus channel extend <canal> --ttl D`: redefine a expiração do canal (`0` = sem expiração) e reabre canal expirado mantendo sessões e histórico
 
 ### Corrigido
 - Sandbox Landlock: libera leitura do diretório alvo do symlink de `/etc/resolv.conf` (ex.: `/run/systemd/resolve`); antes, filhos com rede não resolviam DNS
+- `tb bus run`: com o canal expirado, suspende despertares e audita `channel_expired` uma vez (antes seguia calado); retoma ao `extend` (`channel_reopened`)
 
 ## [0.0.4] - 2026-11-17
 

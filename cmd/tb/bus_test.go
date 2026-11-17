@@ -177,3 +177,30 @@ func TestBusCLIToMCPEndToEnd(t *testing.T) {
 		t.Fatalf("log: %+v", envs)
 	}
 }
+
+func TestBusChannelExtendCLI(t *testing.T) {
+	tbBin := buildTB(t)
+	dir := t.TempDir()
+	busCLISetup(t, tbBin, dir)
+	var ch struct {
+		Name      string     `json:"name"`
+		ExpiresAt *time.Time `json:"expires_at"`
+	}
+	unmarshalOut(t, runBus(t, tbBin, dir, "channel", "extend", "fx", "--ttl", "1h"), &ch)
+	if ch.Name != "fx" || ch.ExpiresAt == nil || time.Until(*ch.ExpiresAt) < 50*time.Minute {
+		t.Fatalf("extend 1h: %+v", ch)
+	}
+	ch.ExpiresAt = nil
+	unmarshalOut(t, runBus(t, tbBin, dir, "channel", "extend", "fx", "--ttl", "0"), &ch)
+	if ch.Name != "fx" {
+		t.Fatalf("extend 0: %+v", ch)
+	}
+	if ch.ExpiresAt != nil {
+		t.Fatalf("extend 0 deveria remover expiração: %+v", ch)
+	}
+	cmd := exec.Command(tbBin, "bus", "channel", "extend", "fx")
+	cmd.Dir = dir
+	if out, err := cmd.CombinedOutput(); err == nil || !strings.Contains(string(out), "--ttl é obrigatório") {
+		t.Fatalf("sem --ttl: %v %s", err, out)
+	}
+}

@@ -1637,6 +1637,7 @@ tb bus complete TKT-001 --channel feature-x --as grok-1 --result '{"verdict":"PA
 tb bus log feature-x --thread TKT-001
 tb bus channel list
 tb bus channel show feature-x
+tb bus channel extend feature-x --ttl 2h
 tb bus run --channel feature-x --as marin --check
 tb bus run --channel feature-x --as marin
 tb bus run --channel feature-x --as claude-code --once
@@ -1645,6 +1646,7 @@ tb bus run --channel feature-x --as claude-code --once
 | Command | Who | Purpose |
 |---|---|---|
 | `channel create <channel> --owner N` | human | creates the channel (`--ttl`, no expiry by default) and the owner invite (role `supervisor`) |
+| `channel extend <channel> --ttl D` | human | resets the expiry to now + `D` (`0` = no expiry); reopens an expired channel keeping sessions and history |
 | `invite <channel> --role R` | human | single-use invite with a pinned role (`--ttl`, default `10m`); `--name` binds it to an agent and, if that agent is already in the channel, recovers its lost session (new token) |
 | `join <channel> --invite C` | agent | joins with an Agent Card (`--name`, `--vendor`, `--model`, `--tier`, `--wake`, `--session`, `--capability` or `--card card.json`); stores the session in the bus private directory, outside the repository (`$XDG_STATE_HOME/toolbelt/bus/`, `0600`) |
 | `send` | agent | `--to agent:\|role:\|topic:`, `--type`, `--thread`, `--causation`, `--idempotency-key`, `--ttl`, `--payload` (JSON or `@file`) |

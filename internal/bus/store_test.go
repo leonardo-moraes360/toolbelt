@@ -220,6 +220,23 @@ func TestSendRules(t *testing.T) {
 	if _, err := s.Send(owner, &SendInput{To: "topic:x", Type: TypeQuery}); err == nil || !strings.Contains(err.Error(), "expirou") {
 		t.Fatalf("canal expirado: %v", err)
 	}
+	if _, err := s.ActiveChannel("feature-x"); !errors.Is(err, ErrChannelExpired) {
+		t.Fatalf("ActiveChannel expirado: %v", err)
+	}
+	ch, err := s.ExtendChannel("feature-x", time.Hour)
+	if err != nil || ch.ExpiresAt == nil || !ch.ExpiresAt.After(c.now()) {
+		t.Fatalf("extend: %+v %v", ch, err)
+	}
+	send(t, s, owner, &SendInput{To: "topic:x", Type: TypeQuery}) // reaberto, sessões intactas
+	if ch, err := s.ExtendChannel("feature-x", 0); err != nil || ch.ExpiresAt != nil {
+		t.Fatalf("extend sem expiração: %+v %v", ch, err)
+	}
+	if _, err := s.ExtendChannel("nada", time.Hour); err == nil || !strings.Contains(err.Error(), "não existe") {
+		t.Fatalf("extend canal inexistente: %v", err)
+	}
+	if _, err := s.ExtendChannel("feature-x", -time.Second); err == nil {
+		t.Fatal("extend ttl negativo aceito")
+	}
 }
 
 func TestIdempotencyAndTTL(t *testing.T) {
