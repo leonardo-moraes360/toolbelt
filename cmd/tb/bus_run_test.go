@@ -18,7 +18,7 @@ func assertFirstWakeArgv(t *testing.T, dir string) {
 		t.Fatal(err)
 	}
 	log := string(argv)
-	for _, want := range []string{`"-p"`, `"--output-format","stream-json"`, `"--permission-mode","default"`, "mcp__toolbelt__tb_bus_recv"} {
+	for _, want := range []string{`"-p"`, `"--output-format","stream-json"`, `"--strict-mcp-config"`, `"--permission-mode","default"`, "mcp__toolbelt__tb_bus_recv"} {
 		if !strings.Contains(log, want) {
 			t.Errorf("argv sem %s: %s", want, log)
 		}

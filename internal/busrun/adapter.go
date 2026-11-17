@@ -40,7 +40,18 @@ func childEnv(cfg *Config, p *Packet, extra ...string) []string {
 		"TB_BUS_LAST_SEQ="+strconv.FormatInt(p.LastSeq, 10),
 		"TB_BUS_ATTEMPT="+strconv.Itoa(p.Attempt),
 	)
-	return append(env, extra...)
+	env = append(env, extra...)
+	// Último valor vence (ex.: TMPDIR do agente sobre o herdado).
+	seen := map[string]bool{}
+	out := make([]string, 0, len(env))
+	for i := len(env) - 1; i >= 0; i-- {
+		k, _, _ := strings.Cut(env[i], "=")
+		if !seen[k] {
+			seen[k] = true
+			out = append(out, env[i])
+		}
+	}
+	return out
 }
 
 // binDirs devolve o diretório do binário e, se for symlink, o do alvo real
@@ -53,7 +64,7 @@ func binDirs(bin string) []string {
 	return dirs
 }
 
-func sandboxPaths(cfg *Config, bins, extraRead []string) []sandbox.PathAccess {
+func sandboxPaths(cfg *Config, bins, extraRead, extraWrite []string) []sandbox.PathAccess {
 	var out []sandbox.PathAccess
 	for _, b := range bins {
 		for _, d := range binDirs(b) {
@@ -63,7 +74,7 @@ func sandboxPaths(cfg *Config, bins, extraRead []string) []sandbox.PathAccess {
 	for _, p := range append(append([]string{}, extraRead...), cfg.Sandbox.Read...) {
 		out = append(out, sandbox.PathAccess{Path: p, ReadOnly: true})
 	}
-	for _, p := range cfg.Sandbox.Write {
+	for _, p := range append(append([]string{}, extraWrite...), cfg.Sandbox.Write...) {
 		out = append(out, sandbox.PathAccess{Path: p})
 	}
 	return out
@@ -76,7 +87,8 @@ type childSpec struct {
 	env       []string
 	workdir   string
 	extraBins []string // binários além de argv[0] que o filho executa (tb mcp)
-	extraRead []string // diretórios extras somente leitura
+	extraRead  []string // diretórios extras somente leitura
+	extraWrite []string // diretórios extras com escrita
 }
 
 // runChild resolve argv[0] no PATH (o sandbox precisa do caminho real para
@@ -91,7 +103,7 @@ func runChild(ctx context.Context, h *Harness, c *childSpec) (Outcome, error) {
 	}
 	cfg := sandbox.Config{
 		WorkDir:          c.workdir,
-		AllowedPaths:     sandboxPaths(h.cfg, append([]string{bin}, c.extraBins...), c.extraRead),
+		AllowedPaths:     sandboxPaths(h.cfg, append([]string{bin}, c.extraBins...), c.extraRead, c.extraWrite),
 		Timeout:          h.cfg.Timeout,
 		AllowUnsandboxed: h.opts.AllowUnsandboxed,
 		Env:              c.env,
@@ -143,7 +155,7 @@ func (a claudeAdapter) argv(p *Packet, session, mcpConfig string) []string {
 		argv = append(argv, "--resume", session)
 	}
 	argv = append(argv, "--output-format", "stream-json", "--verbose",
-		"--mcp-config", mcpConfig,
+		"--mcp-config", mcpConfig, "--strict-mcp-config",
 		"--permission-mode", hc.PermissionMode,
 		"--allowedTools", strings.Join(hc.AllowedTools, ","))
 	if hc.Model != "" {
@@ -161,9 +173,16 @@ func (a claudeAdapter) Wake(ctx context.Context, p *Packet, st *State) (Outcome,
 	if workdir == "" {
 		workdir = a.h.root
 	}
+	// Temp próprio do agente acordado: o TMPDIR herdado pode estar fora do que
+	// o sandbox libera, e o claude recusa temp que não consegue ler.
+	tmp := a.h.base + ".tmp"
+	if err := os.MkdirAll(tmp, 0o700); err != nil {
+		return Outcome{}, err
+	}
+	env := childEnv(a.h.cfg, p, "TMPDIR="+tmp, "CLAUDE_CODE_TMPDIR="+tmp)
 	spec := func(session string) *childSpec {
-		return &childSpec{argv: a.argv(p, session, mcpConfig), env: childEnv(a.h.cfg, p), workdir: workdir,
-			extraBins: []string{tbBin}, extraRead: []string{a.h.agentDir}}
+		return &childSpec{argv: a.argv(p, session, mcpConfig), env: env, workdir: workdir,
+			extraBins: []string{tbBin}, extraRead: []string{a.h.agentDir}, extraWrite: []string{tmp}}
 	}
 	session := a.h.session()
 	out, err := runChild(ctx, a.h, spec(session))
@@ -203,7 +222,7 @@ func resultSummary(output string, exit int) string {
 		}
 	}
 	if !found {
-		return fmt.Sprintf("sem evento result (exit %d)", exit)
+		return fmt.Sprintf("sem evento result (exit %d): %s", exit, plainTail(output, 1024))
 	}
 	return fmt.Sprintf("result subtype=%s is_error=%t turns=%d", res.Subtype, res.IsError, res.Turns)
 }
@@ -226,6 +245,24 @@ func lastSessionID(output string) string {
 		}
 	}
 	return id
+}
+
+// plainTail devolve o final das linhas que não são eventos JSON (mensagens de
+// erro do CLI). Eventos do stream, que podem trazer payloads, ficam de fora.
+func plainTail(output string, limit int) string {
+	var keep []string
+	for _, line := range strings.Split(output, "\n") {
+		t := strings.TrimSpace(line)
+		if t == "" || (strings.HasPrefix(t, "{") && json.Valid([]byte(t))) {
+			continue
+		}
+		keep = append(keep, t)
+	}
+	out := strings.Join(keep, " | ")
+	if len(out) > limit {
+		out = out[len(out)-limit:]
+	}
+	return out
 }
 
 // mcpConfigFile é o .mcp.json gerado para o agente acordado.
