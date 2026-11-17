@@ -9,7 +9,7 @@
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg" alt="License"></a>
   <a href="https://go.dev/"><img src="https://img.shields.io/badge/Go-1.22+-00ADD8?logo=go&logoColor=white" alt="Go Version"></a>
-  <a href="docs/en/arquitetura.md"><img src="https://img.shields.io/badge/Status-Phase%202-green" alt="Status"></a>
+  <a href="docs/en/arquitetura.md"><img src="https://img.shields.io/badge/Status-Phase%203%20in%20progress-yellow" alt="Status"></a>
   <a href="https://github.com/leonardo-moraes360/toolbelt/actions"><img src="https://github.com/leonardo-moraes360/toolbelt/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="https://modelcontextprotocol.io/"><img src="https://img.shields.io/badge/Protocol-MCP-purple" alt="MCP"></a>
   <a href="docs/en/identidade-visual.md"><img src="https://img.shields.io/badge/Theme-Synthwave-ff278c" alt="Theme"></a>
@@ -185,6 +185,15 @@ tb bench compare --config-a bench/ab/graph-off.yaml \
 tb drift --ticket rd.md
 tb review --ticket rd.md
 tb guard check HEAD~1..HEAD
+
+# Phase 3: tickets -> router/workers -> merge (all local)
+tb ticket create --title "Criar modelo User" --scope "src/models/**"
+tb ticket create --title "JWT signing" --dep TKT-001
+tb router run --agent-cmd "meu-agente --task-file $TB_TICKET_FILE"
+tb board list
+tb watchdog alerts
+tb merge --dry-run TKT-001 TKT-002
+tb merge TKT-001 TKT-002
 ```
 
 ## 🗺️ Roadmap / Status
@@ -222,12 +231,12 @@ tb guard check HEAD~1..HEAD
 ### Input for the next phase (field study)
 - Field study of `tb` across 20 public repositories (reports in [`docs/en/campo/`](docs/en/campo/) + improvement synthesis in [`docs/en/campo/SINTESE.md`](docs/en/campo/SINTESE.md)), as prioritized input for upcoming product PRs.
 
-### Phase 3
-- [ ] Router/Workers for scalable task delegation
-- [ ] Direct delivery — follow-ups go straight to the owning worker
-- [ ] `tb ticket` / `tb board` — work ticket management
-- [ ] `tb router` / `tb watchdog` — delegation control and health
-- [ ] `tb merge` — aggregation of worker results
+### Phase 3 (in progress)
+- [x] Router/Workers for scalable task delegation (`tb router run`, foreground, workers in isolated worktrees, fail-closed sandbox)
+- [x] Direct delivery — follow-ups go straight to the owning worker
+- [x] `tb ticket` / `tb board` — work ticket management
+- [x] `tb router` / `tb watchdog` — delegation control and health
+- [x] `tb merge` — aggregation of worker results (`fail` | `last_wins`)
 - [ ] Optional vector index
 - [ ] Graphify integration (or reimplementation)
 - [ ] Elephant-Goldfish Model integration (or reimplementation)
@@ -261,7 +270,7 @@ See the ADRs for details:
 
 ## 📊 Project Status
 
-This project is in **Phase 2**: functional CLI with verify/guard/mem/graph/review/drift/MCP and a benchmark harness. The full architecture is documented in [docs/en/arquitetura.md](docs/en/arquitetura.md).
+This project is in **Phase 3 (in progress)**: besides verify/guard/mem/graph/review/drift/MCP and a benchmark harness, it now has tickets, board, router/workers, watchdog and merge (scaling gains not yet measured — see [ADR-009](docs/en/adr/009-router-e-workers.md)). The full architecture is documented in [docs/en/arquitetura.md](docs/en/arquitetura.md).
 
 ### Implemented Commands
 
@@ -282,5 +291,9 @@ This project is in **Phase 2**: functional CLI with verify/guard/mem/graph/revie
 | `tb drift` | ✅ | Scope / base commit / pinned patch drift against `rd.md` (not vault vs code) |
 | `tb stack` | ✅ | Stacks verify/review/drift/guard with shared context (aggregated JSON; MCP `tb_stack`) |
 | `tb workspace` | ✅ | Isolated workspaces via git worktree |
-| `tb router` | 🚧 | Stub (not implemented) |
+| `tb ticket` | ✅ | Work tickets in `.toolbelt/tickets/` (`create`/`list`/`show`/`cancel`/`retry`; MCP `tb_ticket_*`) |
+| `tb board` | ✅ | RUNNING/READY/BLOCKED/DONE/FAILED board; `pause`/`resume`/`drain`/`watch` (MCP `tb_board`) |
+| `tb router` | ✅ | Foreground scheduler (`run`/`status`/`config`) with direct delivery; fail-closed sandbox (`--allow-unsandboxed`) |
+| `tb watchdog` | ✅ | Worker alerts and control (`status`/`alerts`/`kill`); runs inside the router loop |
+| `tb merge` | ✅ | Atomically merges `done` tickets; `fail` (default) or `last_wins` (MCP `tb_merge`) |
 | `tb mcp` | ✅ | Stateless MCP server (stdio); mem/verify/review/drift/guard/stack + graph tools (incl. `tb_graph_impact`; typed schemas) |

@@ -34,3 +34,13 @@ Signature/Rekor **not** verified (no `cosign`); `gh attestation verify` unavaila
 | 10 | `tb verify run --json` | excerpt with the `--- FAIL` lines | `reason` truncated from the start (`[no test files]`, `ok …`); failures in later packages vanish in the `…` | medium |
 | 11 | `tb init` + `TestDocsEnglishMirrorComplete` | `--write-agents`/bootstrap does not break the suite | creating `docs/campo/*.md` without a pair in `docs/en/` breaks `go test` — the PT/EN docs invariant is caught by the test, not by `tb guard` | info |
 | 12 | `tb verify run --dry-run` | — | ok: `verdict: SKIPPED` + plan | info |
+
+## 2026-11-17 — Phase 3 (ticket/board/router/watchdog/merge)
+
+| # | Command | Expected | Got | Sev. |
+|---|---------|----------|-----|------|
+| 4 | `go test ./...` | — | **fixed**: `initGitRepo` pins `-b master` | — |
+| 13 | `tb stack … --ticket rd.md` | analyze uncommitted changes (working tree) | only compares `--base..--head` (commits); needed a throwaway commit in a detached worktree to run the stack before committing | medium |
+| 14 | `tb stack drift review` | — | ok: caught `internal/review/review_test.go` outside the rd.md Scope | info |
+| 15 | `tb guard` (via stack) | environment-conditional `t.Skip` (Landlock/git missing) distinguishable from cheating skips | 24 `test_skip` warnings for legitimate environment skips; noise | low |
+| 16 | `tb sandbox run -- sh -c 'echo > /dev/null'` | writing to `/dev/null` allowed | `Permission denied` (also in v0.0.3): git/shells break inside the sandbox — fixed in this phase | high |

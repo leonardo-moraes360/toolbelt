@@ -265,3 +265,55 @@ func TestLocalOverridesGlobal(t *testing.T) {
 		t.Errorf("Local should override global, got timeout = %q", cfg.Defaults.Timeout)
 	}
 }
+
+func TestRouterConfigDefaults(t *testing.T) {
+	r := DefaultConfig().Router
+	if r.MaxWorkers != 3 || r.Strategy != "dependency" || !r.DirectDelivery.Enabled ||
+		r.DirectDelivery.SubscriptionTTL != "30m" || r.DirectDelivery.MaxSubscriptionsPerWorker != 5 ||
+		r.Timeouts.PerTicket != "10m" || r.Timeouts.Global != "1h" || r.Retry.MaxAttempts != 2 || r.SlowThreshold != 0.8 {
+		t.Fatalf("defaults do router inesperados: %+v", r)
+	}
+	if err := r.Validate(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRouterConfigOverride(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	yml := "router:\n  max_workers: 5\n  agent_cmd: [\"sh\", \"-c\", \"true\"]\n  direct_delivery:\n    enabled: false\n  retry:\n    max_attempts: 4\n"
+	if err := os.WriteFile(path, []byte(yml), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := LoadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := cfg.Router
+	if got.MaxWorkers != 5 || got.DirectDelivery.Enabled || got.Retry.MaxAttempts != 4 || len(got.AgentCmd) != 3 {
+		t.Fatalf("override: %+v", got)
+	}
+	// campos não mencionados mantêm o padrão
+	if got.DirectDelivery.SubscriptionTTL != "30m" || got.Timeouts.PerTicket != "10m" || got.Strategy != "dependency" {
+		t.Fatalf("padrões perdidos: %+v", got)
+	}
+}
+
+func TestRouterConfigValidate(t *testing.T) {
+	bad := []func(*RouterConfig){
+		func(r *RouterConfig) { r.MaxWorkers = 0 },
+		func(r *RouterConfig) { r.Strategy = "xyz" },
+		func(r *RouterConfig) { r.Timeouts.PerTicket = "abc" },
+		func(r *RouterConfig) { r.Timeouts.Global = "0s" },
+		func(r *RouterConfig) { r.DirectDelivery.SubscriptionTTL = "" },
+		func(r *RouterConfig) { r.DirectDelivery.MaxSubscriptionsPerWorker = 0 },
+		func(r *RouterConfig) { r.Retry.MaxAttempts = 0 },
+		func(r *RouterConfig) { r.SlowThreshold = 1.5 },
+	}
+	for i, mut := range bad {
+		r := DefaultRouterConfig()
+		mut(&r)
+		if err := r.Validate(); err == nil {
+			t.Errorf("caso %d: esperava erro de validação", i)
+		}
+	}
+}

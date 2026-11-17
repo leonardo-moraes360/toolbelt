@@ -38,6 +38,9 @@ Thumbs.db
 .toolbelt/workspaces/
 .toolbelt/captures/
 .toolbelt/bench/
+.toolbelt/router/
+.toolbelt/tickets/.lock
+.toolbelt/tickets/.tmp-*
 
 # Logs
 *.log

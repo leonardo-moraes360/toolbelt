@@ -767,7 +767,7 @@ graph TB
 | **Ticket** | Atomic unit of work with scope, permissions, and acceptance criteria |
 | **Mandate** | Defines which files the worker may read/write and which are forbidden |
 | **Board** | Coordination queue with support for prioritization and dependencies |
-| **Watchdog** | Independent monitor that detects stuck workers and scales on demand |
+| **Watchdog** | Monitor that detects slow/stuck workers and emits alerts (`worker_slow`, `worker_stuck`, `queue_growing`…); runs inside the router loop and does not scale workers automatically |
 | **Merge** | Aggregator that resolves conflicts between workers and applies changes atomically |
 
 **Execution flow**:
@@ -844,18 +844,26 @@ Benefits of direct delivery:
 **Implementation via `tb router` and `tb ticket`**:
 
 ```bash
-# Criar tickets a partir de tarefa
-tb ticket create --from "Implementar autenticação completa"
+# Create tickets (--title or --from rd.md; dependencies via --dep)
+tb ticket create --title "Criar modelo User" --scope "src/models/**"
+tb ticket create --title "JWT signing" --dep TKT-001
 
-# Ver board de tickets (inclui subscriptions)
+# Run the router (foreground; Ctrl-C returns running -> pending)
+tb router run --agent-cmd "meu-agente --task-file $TB_TICKET_FILE"
+
+# View the ticket board
 tb board list --status pending,running
 
-# Monitorar workers (mostra subscriptions ativas)
+# Monitor workers (active subscriptions, alert counts)
 tb watchdog status
 
-# Forçar merge de resultados
-tb merge --tickets TKT-001,TKT-002
+# Merge results (strategies: fail | last_wins)
+tb merge TKT-001 TKT-002
 ```
+
+The router is a **foreground** scheduler (`tb router run`; there is no
+`start`/`stop` daemon); the watchdog runs inside the same loop and persists
+state and alerts under `.toolbelt/router/`. Details in [cli.md](cli.md).
 
 See [ADR-009](adr/009-router-e-workers.md) for design details.
 

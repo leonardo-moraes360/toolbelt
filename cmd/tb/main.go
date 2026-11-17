@@ -86,7 +86,10 @@ func init() {
 	rootCmd.AddCommand(reviewCmd)
 	rootCmd.AddCommand(driftCmd)
 	rootCmd.AddCommand(stackCmd)
+	rootCmd.AddCommand(ticketCmd)
+	rootCmd.AddCommand(boardCmd)
 	rootCmd.AddCommand(routerCmd)
+	rootCmd.AddCommand(watchdogCmd)
 	rootCmd.AddCommand(mcpCmd)
 }
 
@@ -274,13 +277,4 @@ func buildInitJSON(dir string, detected config.DetectedCmd, docs *config.AgentDo
 func init() {
 	initCmd.Flags().Bool("global", false, "inicializa configuração global")
 	initCmd.Flags().Bool("write-agents", false, "semeia AGENTS.md mínimo se ausente (nunca sobrescreve)")
-}
-
-var routerCmd = &cobra.Command{
-	Use:   "router",
-	Short: "Roteamento multi-agente (não implementado)",
-	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("⚠️  Command router ainda não implementado")
-		fmt.Println("   Será implementado na Fase 5")
-	},
 }

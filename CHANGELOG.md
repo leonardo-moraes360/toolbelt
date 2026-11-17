@@ -7,6 +7,25 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Não Lançado]
 
+### Adicionado
+- Fase 3: `tb ticket` (`create`/`list`/`show`/`cancel`/`retry`; tickets YAML em `.toolbelt/tickets/`, `--from rd.md`, dependências com detecção de ciclo) e `tb board` (`list`/`watch`/`pause`/`resume`/`drain`; estratégias `fifo`/`priority`/`dependency`)
+- Fase 3: `tb router run|status|config` — scheduler em primeiro plano com workers em worktrees próprias (`tb-workspace/<ticket>`), sandbox fail-closed (`--allow-unsandboxed` opt-in), entrega direta (subscriptions com TTL) e seção `router:` em `.toolbelt/config.yaml`; substitui o stub
+- Fase 3: `tb watchdog status|alerts|kill` — alertas `worker_slow`, `worker_stuck`, `worker_crash`, `worker_killed`, `queue_growing` e `global_timeout` em `.toolbelt/router/alerts.jsonl`
+- Fase 3: `tb merge` — integra tickets `done` de forma atômica; estratégias `fail` (padrão) e `last_wins`; `prompt`/`semantic` não implementadas
+- MCP: `tb_ticket_list`, `tb_ticket_show`, `tb_ticket_create`, `tb_board`, `tb_router_status`, `tb_watchdog_alerts`, `tb_merge` (dry-run por padrão)
+- Router: alertas `ticket_canceled` (ticket cancelado enquanto roda; agente morto, resultado descartado) e `multi_dep_base` (≥ 2 dependências sem merge ⇒ base em `HEAD`); ticket de dependência única parte do `head_commit` dela
+- Router: resumo `stalled` + lista `unschedulable` (tickets `pending` bloqueados por dependências `failed`/`canceled`) e `tb router run` sai com código ≠ 0
+- Router: um único `tb router run` por repositório (lock exclusivo `.toolbelt/router/lock`); verificação de integridade do worktree e git endurecido (fsmonitor/hooks off, `--no-verify`); saída do agente limitada a 1 MiB, logs 0600; exit 0 prevalece sobre veredito tardio de stuck/kill
+- `tb merge` `last_wins`: commits de integração sem gpgsign/hooks, `--continue` com falha aborta sem alterar refs, sobreposição com `--no-renames`; MCP `tb_merge` devolve o relatório de conflito com `ok:false`
+- `tb merge`: todo git endurecido (hooks/fsmonitor/diff externo off) e gate de caminhos sensíveis (hooks, `.toolbelt/**`, workflows, `.gitmodules`, gitlinks, `.gitattributes`, paths do guard) recusado sem `--allow-sensitive` (MCP `allow_sensitive`); JSON com `sensitive`
+- Sandbox: `Config.Env` e `ProcessGroup` (mata o grupo de processos ao cancelar/expirar) para uso do router
+
+### Corrigido
+- Sandbox Landlock: `/dev/null`, `/dev/zero`, `/dev/full` passam a ser graváveis (e `/dev/random`/`/dev/urandom` legíveis) por regras por arquivo; antes `/dev` era só leitura e `echo hi > /dev/null`, `git` e shells falhavam (`cannot create /dev/null: Permission denied`; também na v0.0.3). `/dev` como um todo segue somente leitura; ttys (`/dev/tty`, `/dev/ptmx`, `/dev/pts`) ficam de fora de propósito. `IOCTL_DEV` só é tratado na ABI ≥ 5 (antes era aplicado a partir da ABI 4)
+
+### Documentação
+- `docs/cli.md`, README, arquitetura e ADR-009 atualizados para a Fase 3 (sem `router start/stop`, `router.yaml`, `watchdog scale`; merge via `tb merge TKT-001 TKT-002`)
+
 ## [0.0.3] - 2026-11-17
 
 ### Adicionado
