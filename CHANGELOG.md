@@ -12,6 +12,11 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 - JSON de verify e de cada etapa do stack expõem `reason`/`error` no ESCALATE/FAIL (não só DEBUG no stderr)
 - Release: SBOM (syft via `sboms:` no GoReleaser), assinatura keyless cosign do `checksums.txt` (OIDC GitHub) e atestação de proveniência SLSA (`actions/attest-build-provenance`)
 - CI: job `govulncheck` em todo push/PR
+- Espelho completo da documentação em inglês (`README.en.md`, `*.en.md` na raiz,
+  `docs/en/**`) com seletores de idioma; PT permanece a fonte de verdade
+  (`docs/en/TRANSLATION.md`, `docs/TRANSLATION.md`)
+- Teste `TestDocsEnglishMirrorComplete` exige par em `docs/en/` para cada `.md` em
+  `docs/`; `TestDocsCLIExamplesMatchCobra` também valida `docs/en/cli.md`
 - `tb sandbox run --allow-unsandboxed`: opt-in explícito para executar sem isolamento Landlock
 - Teste de integração que tenta escrever fora do workdir (pula se o kernel não tiver Landlock)
 - Grafo TS/JS: fingerprint no `graph.json` e detecção de índice desatualizado;
@@ -74,6 +79,10 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 - Stack/verify respeitam overrides de comando: `--test-cmd` + `--no-build`/`--no-lint` (ou `--build-cmd`/`--lint-cmd` vazios) pulam o `build_cmd`/`lint_cmd` do config
 - `tests/hidden/` sem toolchain aplicável deixa de forçar `go test` (marca `hidden_available: false`); detecta Go/Python/JS quando há suíte
 - Build/lint bem-sucedidos são cacheados na mesma execução; falha determinística de build/lint não entra no retry de `--max-iter`
+- `tb review` / `tb drift` / `tb stack` (e MCP `tb_review` / `tb_drift` / `tb_stack`):
+  ticket inexistente ou ilegível (`--ticket` / `ticket`) passa a falhar com exit ≠ 0
+  e mensagem clara citando o caminho procurado (`ticket não encontrado: …` /
+  `ticket ilegível (…): …`), em vez de seguir com exit 0
 - Refs de `--base`/`--head`/`--approved-sha` (CLI e MCP em guard/drift/review/verify/stack)
   rejeitam valores que começam com `-`, resolvem via
   `git rev-parse --verify --end-of-options <ref>^{commit}` e usam o SHA daí em

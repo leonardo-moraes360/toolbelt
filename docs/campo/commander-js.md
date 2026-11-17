@@ -1,3 +1,5 @@
+🇧🇷 Português | [🇺🇸 English](../en/campo/commander-js.md)
+
 # Estudo de campo: commander.js
 
 Grupo: **sem instrumentação de agente de IA** (além de política humana).  

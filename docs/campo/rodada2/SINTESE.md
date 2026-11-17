@@ -1,3 +1,5 @@
+🇧🇷 Português | [🇺🇸 English](../../en/campo/rodada2/SINTESE.md)
+
 # Síntese do estudo de campo do `tb` — rodada 2 (20 repositórios)
 
 > Data: 2026-11-16 · Branch: `campo2/sintese` · Binário típico dos agentes: `toolbelt@a46c295`  

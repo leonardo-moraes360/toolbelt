@@ -1,3 +1,5 @@
+🇧🇷 Português | [🇺🇸 English](../en/campo/mcp-python-sdk.md)
+
 # Estudo de campo: modelcontextprotocol/python-sdk
 
 Estudo realizado em 2026-11-15 com `tb` buildado localmente deste repositório (`make build` → `toolbelt c8aae04`). O alvo foi usado só em clone local (`/tmp/target` e cópia `/tmp/python-sdk`); não houve push, issue, PR nem comentário no upstream.

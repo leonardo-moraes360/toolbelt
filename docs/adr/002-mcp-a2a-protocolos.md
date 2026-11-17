@@ -1,3 +1,5 @@
+🇧🇷 Português | [🇺🇸 English](../en/adr/002-mcp-a2a-protocolos.md)
+
 # ADR-002: MCP + A2A como Protocolos de Comunicação
 
 ## Status

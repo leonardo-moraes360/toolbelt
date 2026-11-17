@@ -1440,6 +1440,68 @@ func TestRangeDiffAllEqual(t *testing.T) {
 	}
 }
 
+func TestRunMissingTicketErrors(t *testing.T) {
+	repo := t.TempDir()
+	run := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = repo
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v (%s)", args, err, out)
+		}
+	}
+	run("init")
+	run("config", "user.email", "t@example.com")
+	run("config", "user.name", "t")
+	if err := os.WriteFile(filepath.Join(repo, "a.go"), []byte("package a\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	run("add", ".")
+	run("commit", "-m", "base")
+	if err := os.WriteFile(filepath.Join(repo, "a.go"), []byte("package a\n\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	run("add", ".")
+	run("commit", "-m", "head")
+
+	missing := filepath.Join(repo, "missing-ticket.md")
+	cfg := DefaultConfig(repo)
+	cfg.TicketPath = missing
+	cfg.BaseRef = "HEAD~1"
+	cfg.HeadRef = "HEAD"
+	cfg.Reviewers = 1
+	cfg.Standards = []string{"scope"}
+	_, err := Run(&cfg)
+	if err == nil {
+		t.Fatal("ticket ausente deveria falhar")
+	}
+	if !strings.Contains(err.Error(), "ticket não encontrado") {
+		t.Fatalf("mensagem deveria citar ticket não encontrado: %v", err)
+	}
+	if !strings.Contains(err.Error(), missing) {
+		t.Fatalf("mensagem deveria citar o caminho procurado %q: %v", missing, err)
+	}
+}
+
+func TestLoadTicketUnreadable(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "rd.md")
+	if err := os.WriteFile(path, []byte("---\nscope:\n  - a.go\n---\n"), 0o000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(path, 0o600) })
+	_, err := LoadTicket(path)
+	if err == nil {
+		t.Fatal("ticket ilegível deveria falhar")
+	}
+	if !strings.Contains(err.Error(), "ticket ilegível") {
+		t.Fatalf("mensagem deveria citar ticket ilegível: %v", err)
+	}
+	if !strings.Contains(err.Error(), path) {
+		t.Fatalf("mensagem deveria citar o caminho %q: %v", path, err)
+	}
+}
+
 func TestCheckPinnedApprovalWhitespaceSensitive(t *testing.T) {
 	repo := t.TempDir()
 	run := initGitRepo(t, repo)

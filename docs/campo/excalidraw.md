@@ -1,3 +1,5 @@
+🇧🇷 Português | [🇺🇸 English](../en/campo/excalidraw.md)
+
 # Estudo de campo: excalidraw/excalidraw
 
 Estudo realizado em 2026-11-15 com `tb` compilado de `toolbelt@c8aae04` (`make build` → `./bin/tb`). Clone local em `/tmp/target/excalidraw` (shallow). **Nenhuma** interação com o remoto do Excalidraw (sem push, issue, PR ou comentário). Evidências brutas em `/tmp/campo-evidence/` na VM do agente.

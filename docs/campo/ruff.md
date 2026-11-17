@@ -1,3 +1,5 @@
+🇧🇷 Português | [🇺🇸 English](../en/campo/ruff.md)
+
 # Estudo de campo: `tb` em astral-sh/ruff
 
 Data: 2026-11-15. Clone local em `/tmp/target/ruff` (shallow). Nenhuma interação com o remoto do alvo. Alterações de código ficaram só no clone local; neste repositório toolbelt só este arquivo.

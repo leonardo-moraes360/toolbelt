@@ -1,3 +1,5 @@
+🇧🇷 Português | [🇺🇸 English](../../en/campo/rodada2/gin.md)
+
 # Estudo de campo rodada 2: gin-gonic/gin
 
 Estudo do grupo **without existing AI-agent instrumentation**, usando `tb` (toolbelt @ `a46c295`) de ponta a ponta num clone local de [gin-gonic/gin](https://github.com/gin-gonic/gin). Nenhum push, issue, PR ou comentário foi feito no repositório alvo.

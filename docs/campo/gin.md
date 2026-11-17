@@ -1,3 +1,5 @@
+🇧🇷 Português | [🇺🇸 English](../en/campo/gin.md)
+
 # Estudo de campo: gin-gonic/gin
 
 Estudo do grupo **sem instrumentação de agente de IA**, usando `tb` (toolbelt @ `c8aae04`) de ponta a ponta num clone local de [gin-gonic/gin](https://github.com/gin-gonic/gin). Nenhum push, issue, PR ou comentário foi feito no repositório alvo.
