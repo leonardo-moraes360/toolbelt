@@ -76,6 +76,27 @@ func TestVerifyConfigLoad(t *testing.T) {
 	}
 }
 
+func TestEnvConfigLoad(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.yaml")
+	cfg := DefaultConfig()
+	cfg.Env.Allow = []string{"CUSTOM_OK", "APP_ENV"}
+	cfg.Env.Pass = []string{"GITHUB_TOKEN"}
+	if err := Save(cfg, configPath); err != nil {
+		t.Fatalf("Save failed: %v", err)
+	}
+	loaded := DefaultConfig()
+	if err := loadFromFile(configPath, loaded); err != nil {
+		t.Fatalf("loadFromFile failed: %v", err)
+	}
+	if len(loaded.Env.Allow) != 2 || loaded.Env.Allow[0] != "CUSTOM_OK" {
+		t.Errorf("env.allow = %#v", loaded.Env.Allow)
+	}
+	if len(loaded.Env.Pass) != 1 || loaded.Env.Pass[0] != "GITHUB_TOKEN" {
+		t.Errorf("env.pass = %#v", loaded.Env.Pass)
+	}
+}
+
 func TestGraphConfigRoundTrip(t *testing.T) {
 	tmpDir := t.TempDir()
 	configPath := filepath.Join(tmpDir, "config.yaml")
