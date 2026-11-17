@@ -77,6 +77,13 @@ type Options struct {
 	WarnOnly           bool
 	TestCmd            string
 	HiddenTestCmd      string
+	BuildCmd           string
+	LintCmd            string
+	BuildCmdSet        bool
+	LintCmdSet         bool
+	NoBuild            bool
+	NoLint             bool
+	DryRun             bool
 	MaxIter            int
 	Timeout            time.Duration
 	Reviewers          int
@@ -119,6 +126,7 @@ type StepResult struct {
 	OK         bool    `json:"ok"`
 	ExitCode   int     `json:"exit_code"`
 	DurationMs float64 `json:"duration_ms"`
+	Reason     string  `json:"reason,omitempty"`
 	Error      string  `json:"error,omitempty"`
 	Result     any     `json:"result"`
 }
@@ -142,6 +150,7 @@ func failedStep(op Op, err error) StepResult {
 		Op:       string(op),
 		OK:       false,
 		ExitCode: 1,
+		Reason:   msg,
 		Error:    msg,
 	}
 }
@@ -250,6 +259,7 @@ func timedOp(ctx context.Context, op Op, opts *Options, shared *Shared) StepResu
 		step = failedStep(op, runErr)
 	}
 	step.DurationMs = durationMillis(time.Since(stepStart))
+	annotateStepReason(&step)
 	return step
 }
 
@@ -516,10 +526,20 @@ func runOp(ctx context.Context, op Op, opts *Options, shared *Shared) (StepResul
 }
 
 func runVerify(ctx context.Context, opts *Options, shared *Shared) (StepResult, error) {
+	cfg := buildVerifyConfig(opts, shared)
+	res, err := verify.Run(ctx, &cfg)
+	if err != nil {
+		return StepResult{}, err
+	}
+	return verifyStepResult(res), nil
+}
+
+func buildVerifyConfig(opts *Options, shared *Shared) verify.Config {
 	cfg := verify.DefaultConfig(shared.RepoDir)
 	cfg.BaseRef = shared.Base
 	cfg.HeadRef = shared.Head
 	cfg.NameStatusDiff = shared.NameStatus
+	cfg.DryRun = opts.DryRun
 	if shared.FileConfig != nil {
 		if shared.FileConfig.Verify.TestCmd != "" {
 			cfg.VisibleTest = shared.FileConfig.Verify.TestCmd
@@ -540,6 +560,7 @@ func runVerify(ctx context.Context, opts *Options, shared *Shared) (StepResult, 
 	if opts.HiddenTestCmd != "" {
 		cfg.HiddenTest = opts.HiddenTestCmd
 	}
+	verify.ApplyCmdOverrides(&cfg, opts.BuildCmd, opts.BuildCmdSet, opts.NoBuild, opts.LintCmd, opts.LintCmdSet, opts.NoLint)
 	if opts.MaxIter > 0 {
 		cfg.MaxIterations = opts.MaxIter
 	}
@@ -555,16 +576,39 @@ func runVerify(ctx context.Context, opts *Options, shared *Shared) (StepResult, 
 		cfg.EnvAllow = append(cfg.EnvAllow, shared.FileConfig.Env.Allow...)
 		cfg.EnvPass = append(cfg.EnvPass, shared.FileConfig.Env.Pass...)
 	}
-	res, err := verify.Run(ctx, &cfg)
-	if err != nil {
-		return StepResult{}, err
-	}
+	return cfg
+}
+
+func verifyStepResult(res *verify.Result) StepResult {
 	ok := res.Verdict == verify.VerdictPass || res.Verdict == verify.VerdictSkipped
 	exit := 0
 	if !ok {
 		exit = 1
 	}
-	return StepResult{Op: string(OpVerify), OK: ok, ExitCode: exit, Result: res}, nil
+	step := StepResult{Op: string(OpVerify), OK: ok, ExitCode: exit, Result: res}
+	if res.Reason != "" {
+		step.Reason = res.Reason
+		step.Error = res.Error
+	}
+	return step
+}
+
+func annotateStepReason(step *StepResult) {
+	if step == nil || step.Reason != "" {
+		return
+	}
+	switch res := step.Result.(type) {
+	case *verify.Result:
+		if res != nil && res.Reason != "" {
+			step.Reason = res.Reason
+			step.Error = res.Error
+		}
+	case map[string]any:
+		if errMsg, ok := res["error"].(string); ok && errMsg != "" {
+			step.Reason = errMsg
+			step.Error = errMsg
+		}
+	}
 }
 
 func runReview(ctx context.Context, opts *Options, shared *Shared) (StepResult, error) {

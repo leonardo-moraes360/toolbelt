@@ -249,14 +249,14 @@ func TestHiddenDefaultGoCmdWhenDirExists(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !res.HiddenAvailable {
-		t.Fatal("expected hidden suite when tests/hidden/ exists")
+	if res.HiddenAvailable {
+		t.Fatal("non-Go tests/hidden/ without applicable toolchain must be N/A")
 	}
-	if res.HiddenPassed == nil || *res.HiddenPassed {
-		t.Fatal("default go hidden cmd should fail on empty/non-Go suite")
+	if res.HiddenPassed != nil {
+		t.Fatalf("hidden_passed should be null when suite is N/A, got %v", *res.HiddenPassed)
 	}
-	if res.Verdict == VerdictPass {
-		t.Fatal("expected non-pass with default go hidden on empty dir")
+	if res.Verdict != VerdictPass {
+		t.Fatalf("veredicto %s want PASS when hidden suite is N/A", res.Verdict)
 	}
 }
 
@@ -466,14 +466,14 @@ func TestHiddenTestCmdDefaultFailsNonGoSuite(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !res.HiddenAvailable {
-		t.Fatal("expected hidden suite available")
+	if res.HiddenAvailable {
+		t.Fatal("non-Go hidden dir must be marked not applicable")
 	}
-	if res.HiddenPassed == nil || *res.HiddenPassed {
-		t.Fatal("default go hidden cmd should fail on non-Go suite")
+	if res.HiddenPassed != nil {
+		t.Fatalf("hidden_passed should be null when suite is N/A, got %v", *res.HiddenPassed)
 	}
-	if res.Verdict == VerdictPass {
-		t.Fatal("expected non-pass without custom hidden_test_cmd")
+	if res.Verdict != VerdictPass {
+		t.Fatalf("veredicto %s want PASS", res.Verdict)
 	}
 }
 
@@ -742,6 +742,248 @@ func TestRunRetriesGenuineFailure(t *testing.T) {
 	if res.Verdict != VerdictEscalate {
 		t.Fatalf("verdict=%s want ESCALATE", res.Verdict)
 	}
+	if res.Reason == "" || res.Error == "" {
+		t.Fatalf("ESCALATE must expose reason/error in JSON, got reason=%q error=%q", res.Reason, res.Error)
+	}
+}
+
+func TestHiddenSuiteNotApplicableWithoutToolchain(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "tests", "hidden"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	_ = os.WriteFile(filepath.Join(dir, "tests", "hidden", "readme.md"), []byte("# no suite\n"), 0o644)
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "a@b.c")
+	runGit(t, dir, "config", "user.name", "t")
+	runGit(t, dir, "add", "-A")
+	runGit(t, dir, "commit", "-m", "c")
+
+	cfg := DefaultConfig(dir)
+	cfg.BaseRef = "HEAD"
+	cfg.HeadRef = "HEAD"
+	cfg.Timeout = 30 * time.Second
+	cfg.MaxIterations = 1
+	cfg.VisibleTest = "true"
+
+	res, err := Run(context.Background(), &cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.HiddenAvailable {
+		t.Fatal("tests/hidden/ without applicable toolchain must be N/A")
+	}
+	if res.Verdict != VerdictPass {
+		t.Fatalf("verdict=%s want PASS", res.Verdict)
+	}
+}
+
+func TestHiddenSuiteDetectsGoToolchain(t *testing.T) {
+	dir := t.TempDir()
+	_ = os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module example.com/x\ngo 1.22\n"), 0o644)
+	_ = os.WriteFile(filepath.Join(dir, "x.go"), []byte("package x\n"), 0o644)
+	if err := os.MkdirAll(filepath.Join(dir, "tests", "hidden"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	_ = os.WriteFile(filepath.Join(dir, "tests", "hidden", "hidden_test.go"), []byte("package hidden\nimport \"testing\"\nfunc TestHidden(t *testing.T) {}\n"), 0o644)
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "a@b.c")
+	runGit(t, dir, "config", "user.name", "t")
+	runGit(t, dir, "add", "-A")
+	runGit(t, dir, "commit", "-m", "c")
+
+	cfg := DefaultConfig(dir)
+	cfg.BaseRef = "HEAD"
+	cfg.HeadRef = "HEAD"
+	cfg.Timeout = time.Minute
+	cfg.MaxIterations = 1
+	cfg.VisibleTest = "true"
+
+	res, err := Run(context.Background(), &cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.HiddenAvailable {
+		t.Fatal("Go hidden suite with go.mod must be available")
+	}
+	if res.HiddenPassed == nil || !*res.HiddenPassed || res.Verdict != VerdictPass {
+		t.Fatalf("hidden_passed=%v verdict=%s", res.HiddenPassed, res.Verdict)
+	}
+}
+
+func TestEscalateReasonInJSON(t *testing.T) {
+	dir := t.TempDir()
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "a@b.c")
+	runGit(t, dir, "config", "user.name", "t")
+	runGit(t, dir, "commit", "--allow-empty", "-m", "c")
+
+	cfg := DefaultConfig(dir)
+	cfg.BaseRef = "HEAD"
+	cfg.HeadRef = "HEAD"
+	cfg.Timeout = 30 * time.Second
+	cfg.MaxIterations = 1
+	cfg.VisibleTest = "echo boom-visible >&2; false"
+
+	res, err := Run(context.Background(), &cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Verdict != VerdictEscalate {
+		t.Fatalf("verdict=%s", res.Verdict)
+	}
+	raw, err := res.JSON()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), `"reason"`) {
+		t.Fatalf("JSON missing reason: %s", raw)
+	}
+	if !strings.Contains(res.Reason, "verify.test_cmd") {
+		t.Fatalf("reason=%q", res.Reason)
+	}
+	if res.Error == "" {
+		t.Fatal("error field must be set")
+	}
+}
+
+func TestBuildLintCachedAcrossIterations(t *testing.T) {
+	dir := t.TempDir()
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "a@b.c")
+	runGit(t, dir, "config", "user.name", "t")
+	runGit(t, dir, "commit", "--allow-empty", "-m", "c")
+
+	buildLog := filepath.Join(dir, "build.count")
+	lintLog := filepath.Join(dir, "lint.count")
+	cfg := DefaultConfig(dir)
+	cfg.BaseRef = "HEAD"
+	cfg.HeadRef = "HEAD"
+	cfg.Timeout = 30 * time.Second
+	cfg.MaxIterations = 3
+	cfg.BuildCmd = "echo x >> " + buildLog
+	cfg.LintCmd = "echo y >> " + lintLog
+	cfg.VisibleTest = "false"
+
+	res, err := Run(context.Background(), &cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Verdict != VerdictEscalate || res.Iterations != 3 {
+		t.Fatalf("verdict=%s iterations=%d", res.Verdict, res.Iterations)
+	}
+	buildN := countLines(t, buildLog)
+	lintN := countLines(t, lintLog)
+	if buildN != 1 {
+		t.Fatalf("build ran %d times, want 1 (cache)", buildN)
+	}
+	if lintN != 1 {
+		t.Fatalf("lint ran %d times, want 1 (cache)", lintN)
+	}
+}
+
+func TestDeterministicBuildFailureNoRetry(t *testing.T) {
+	dir := t.TempDir()
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "a@b.c")
+	runGit(t, dir, "config", "user.name", "t")
+	runGit(t, dir, "commit", "--allow-empty", "-m", "c")
+
+	buildLog := filepath.Join(dir, "buildfail.count")
+	cfg := DefaultConfig(dir)
+	cfg.BaseRef = "HEAD"
+	cfg.HeadRef = "HEAD"
+	cfg.Timeout = 30 * time.Second
+	cfg.MaxIterations = 3
+	cfg.BuildCmd = "echo fail >> " + buildLog + "; false"
+	cfg.VisibleTest = "true"
+
+	res, err := Run(context.Background(), &cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Iterations != 1 {
+		t.Fatalf("deterministic build failure must not retry, iterations=%d", res.Iterations)
+	}
+	if res.Verdict != VerdictEscalate {
+		t.Fatalf("verdict=%s", res.Verdict)
+	}
+	if countLines(t, buildLog) != 1 {
+		t.Fatalf("build should run once, got %d", countLines(t, buildLog))
+	}
+	if !strings.Contains(res.Reason, "verify.build_cmd") {
+		t.Fatalf("reason=%q", res.Reason)
+	}
+}
+
+func TestDryRunPlanNoExecute(t *testing.T) {
+	dir := t.TempDir()
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "a@b.c")
+	runGit(t, dir, "config", "user.name", "t")
+	runGit(t, dir, "commit", "--allow-empty", "-m", "c")
+
+	marker := filepath.Join(dir, "executed.flag")
+	cfg := DefaultConfig(dir)
+	cfg.BaseRef = "HEAD"
+	cfg.HeadRef = "HEAD"
+	cfg.Timeout = 30 * time.Second
+	cfg.MaxIterations = 1
+	cfg.BuildCmd = "touch " + marker
+	cfg.LintCmd = "touch " + marker
+	cfg.VisibleTest = "touch " + marker
+	cfg.DryRun = true
+
+	res, err := Run(context.Background(), &cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.DryRun || res.Plan == nil {
+		t.Fatalf("dry_run=%v plan=%v", res.DryRun, res.Plan)
+	}
+	if res.Plan.Dir != dir {
+		t.Fatalf("plan.dir=%q want %q", res.Plan.Dir, dir)
+	}
+	if res.Plan.Commands["build"] != cfg.BuildCmd || res.Plan.Commands["test"] != cfg.VisibleTest {
+		t.Fatalf("plan commands=%v", res.Plan.Commands)
+	}
+	if _, err := os.Stat(marker); !os.IsNotExist(err) {
+		t.Fatal("dry-run must not execute commands")
+	}
+	if res.Verdict != VerdictSkipped {
+		t.Fatalf("verdict=%s want SKIPPED", res.Verdict)
+	}
+}
+
+func TestApplyCmdOverridesNoBuildNoLint(t *testing.T) {
+	cfg := DefaultConfig(t.TempDir())
+	cfg.BuildCmd = "go build ./..."
+	cfg.LintCmd = "golangci-lint run"
+	ApplyCmdOverrides(&cfg, "", false, true, "", false, true)
+	if cfg.BuildCmd != "" || cfg.LintCmd != "" {
+		t.Fatalf("no-build/no-lint must clear cmds, got build=%q lint=%q", cfg.BuildCmd, cfg.LintCmd)
+	}
+	cfg.BuildCmd = "keep"
+	cfg.LintCmd = "keep"
+	ApplyCmdOverrides(&cfg, "make build", true, false, "", true, false)
+	if cfg.BuildCmd != "make build" || cfg.LintCmd != "" {
+		t.Fatalf("explicit overrides failed: build=%q lint=%q", cfg.BuildCmd, cfg.LintCmd)
+	}
+}
+
+func countLines(t *testing.T, path string) int {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	n := 0
+	for _, line := range strings.Split(string(data), "\n") {
+		if strings.TrimSpace(line) != "" {
+			n++
+		}
+	}
+	return n
 }
 
 func TestRunRejectsOptionInjection(t *testing.T) {

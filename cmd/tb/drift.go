@@ -60,7 +60,7 @@ func driftConfigFromFlags(cmd *cobra.Command, args []string) (*review.Config, er
 	baseSet := cmd.Flags().Changed("base")
 
 	ticket, err := review.LoadTicket(ticketPath)
-	if err != nil && !os.IsNotExist(err) {
+	if err != nil {
 		return nil, err
 	}
 	if !baseSet && ticket != nil && ticket.BaseCommit != "" {

@@ -164,6 +164,11 @@ func registerVerifyTools() {
 				"head":             {Type: "string", Description: "Ref head"},
 				"test_cmd":         {Type: "string", Description: "Linha de testes visíveis"},
 				"hidden_test_cmd":  {Type: "string", Description: "Linha de testes ocultos"},
+				"build_cmd":        {Type: "string", Description: "Comando de build (vazio para pular)"},
+				"lint_cmd":         {Type: "string", Description: "Comando de lint (vazio para pular)"},
+				"no_build":         {Type: "boolean", Description: "Pula build_cmd", Default: false},
+				"no_lint":          {Type: "boolean", Description: "Pula lint_cmd", Default: false},
+				"dry_run":          {Type: "boolean", Description: "Mostra o plano sem executar", Default: false},
 				"max_iter":         {Type: "integer", Description: "Máximo de iterações", Default: 0},
 				"timeout":          {Type: "string", Description: "Timeout", Default: "10m"},
 				"ruler":            {Type: "string", Description: "tests|visual", Default: "tests"},
@@ -273,6 +278,11 @@ func registerStackTools() {
 				"warn_only":            {Type: "boolean", Description: "guard: não marca falha em SeverityError", Default: false},
 				"test_cmd":             {Type: "string", Description: "verify: testes visíveis"},
 				"hidden_test_cmd":      {Type: "string", Description: "verify: testes ocultos"},
+				"build_cmd":            {Type: "string", Description: "verify: comando de build (vazio para pular)"},
+				"lint_cmd":             {Type: "string", Description: "verify: comando de lint (vazio para pular)"},
+				"no_build":             {Type: "boolean", Description: "verify: pula build_cmd", Default: false},
+				"no_lint":              {Type: "boolean", Description: "verify: pula lint_cmd", Default: false},
+				"dry_run":              {Type: "boolean", Description: "verify: mostra o plano sem executar", Default: false},
 				"max_iter":             {Type: "integer", Description: "verify: máximo de iterações", Default: 0},
 				"timeout":              {Type: "string", Description: "verify: timeout", Default: "10m"},
 				"reviewers":            {Type: "integer", Description: "review: máximo de goldfish", Default: 0},
@@ -487,6 +497,16 @@ func runVerifyTests(ctx context.Context, cwd string, args map[string]any) (any, 
 	if v := StringArg(args, "hidden_test_cmd"); v != "" {
 		cfg.HiddenTest = v
 	}
+	verify.ApplyCmdOverrides(
+		&cfg,
+		StringArg(args, "build_cmd"),
+		HasArg(args, "build_cmd"),
+		BoolArg(args, "no_build", false),
+		StringArg(args, "lint_cmd"),
+		HasArg(args, "lint_cmd"),
+		BoolArg(args, "no_lint", false),
+	)
+	cfg.DryRun = BoolArg(args, "dry_run", false)
 	if n := IntArg(args, "max_iter", 0); n > 0 {
 		cfg.MaxIterations = n
 	}
@@ -580,7 +600,7 @@ func driftConfigFromArgs(args map[string]any) (*review.Config, error) {
 		head = "HEAD"
 	}
 	ticket, err := review.LoadTicket(ticketPath)
-	if err != nil && !os.IsNotExist(err) {
+	if err != nil {
 		return nil, err
 	}
 	if !baseSet && ticket != nil && ticket.BaseCommit != "" {
@@ -763,6 +783,13 @@ func handleStack(ctx context.Context, args map[string]any) (any, error) {
 		WarnOnly:           BoolArg(args, "warn_only", false),
 		TestCmd:            StringArg(args, "test_cmd"),
 		HiddenTestCmd:      StringArg(args, "hidden_test_cmd"),
+		BuildCmd:           StringArg(args, "build_cmd"),
+		LintCmd:            StringArg(args, "lint_cmd"),
+		BuildCmdSet:        HasArg(args, "build_cmd"),
+		LintCmdSet:         HasArg(args, "lint_cmd"),
+		NoBuild:            BoolArg(args, "no_build", false),
+		NoLint:             BoolArg(args, "no_lint", false),
+		DryRun:             BoolArg(args, "dry_run", false),
 		MaxIter:            IntArg(args, "max_iter", 0),
 		Timeout:            timeout,
 		Reviewers:          IntArg(args, "reviewers", 0),
