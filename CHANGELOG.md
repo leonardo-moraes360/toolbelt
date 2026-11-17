@@ -7,6 +7,8 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Não Lançado]
 
+## [0.0.3] - 2026-11-17
+
 ### Adicionado
 - `tb verify run` / `tb stack`: flags `--build-cmd`, `--lint-cmd`, `--no-build`, `--no-lint` e `--dry-run` (plano com `dir`/`commands` sem executar); MCP `tb_verify_run` / `tb_stack` com os mesmos campos
 - JSON de verify e de cada etapa do stack expõem `reason`/`error` no ESCALATE/FAIL (não só DEBUG no stderr)
@@ -14,6 +16,7 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
   default = nº de CPUs (máx. 32); `--jobs 1` força serial; MCP `tb_stack` aceita `jobs`
 - Release: SBOM (syft via `sboms:` no GoReleaser), assinatura keyless cosign do `checksums.txt` (OIDC GitHub) e atestação de proveniência SLSA (`actions/attest-build-provenance`)
 - CI: job `govulncheck` em todo push/PR
+- CI: Dependabot semanal (segunda) para módulos Go e GitHub Actions, com updates agrupados
 - Espelho completo da documentação em inglês (`README.en.md`, `*.en.md` na raiz,
   `docs/en/**`) com seletores de idioma; PT permanece a fonte de verdade
   (`docs/en/TRANSLATION.md`, `docs/TRANSLATION.md`)
@@ -38,6 +41,7 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
   `created`/`count`/`invariants`
 
 ### Mudanças
+- Dependências: `cobra` v1.10.2, `pflag` v1.0.9, `golang.org/x/text` v0.44.0, `golang.org/x/sync` v0.25.0; Actions do CI/Release/Pages atualizadas
 - `tb stack`: etapas `guard`/`drift`/`review` rodam em paralelo (errgroup); `verify` permanece
   isolado; JSON preserva a ordem pedida; `--fail-fast` cancela as demais via context;
   `Prepare` paraleliza git/IO independentes
