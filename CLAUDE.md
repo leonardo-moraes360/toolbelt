@@ -5,7 +5,7 @@ Este repositório usa o próprio `tb` (dogfooding). Leia também [AGENTS.md](AGE
 ## Setup
 
 ```bash
-# tb em ~/go/bin = binário de release verificado (hoje v0.0.3, sha256 + cert do bundle).
+# tb em ~/go/bin = binário de release verificado (hoje v0.0.4, sha256 + cert do bundle).
 # `make install` sobrescreve com o build local — use ./bin/tb (make build) para testar mudanças.
 tb mem check            # invariantes íntegras (fail-closed)
 TB_GRAPH=on tb graph index

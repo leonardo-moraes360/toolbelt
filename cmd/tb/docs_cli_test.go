@@ -167,17 +167,17 @@ func assertDocsGuardStrictDeprecated(t *testing.T, cli, changelog string) {
 		t.Fatal("CHANGELOG sem seção ## [Não Lançado]")
 	}
 	// A nota pode estar em [Não Lançado] ou, depois do corte de uma release,
-	// na seção da última versão publicada.
-	recent := naoLancado + "\n" + changelogLatestRelease(changelog)
+	// em qualquer seção de versão publicada.
+	recent := naoLancado + "\n" + changelogReleased(changelog)
 	deprec := strings.Contains(strings.ToLower(recent), "deprecat") ||
 		strings.Contains(strings.ToLower(recent), "deprecia")
 	if !strings.Contains(recent, "--strict") || !deprec {
-		t.Error("CHANGELOG ([Não Lançado] ou última versão) deve anotar a depreciação de guard --strict")
+		t.Error("CHANGELOG ([Não Lançado] ou versão publicada) deve anotar a depreciação de guard --strict")
 	}
 }
 
-// changelogLatestRelease devolve a primeira seção de versão depois de [Não Lançado].
-func changelogLatestRelease(doc string) string {
+// changelogReleased devolve tudo depois de [Não Lançado] (seções de versões publicadas).
+func changelogReleased(doc string) string {
 	start := strings.Index(doc, "## [Não Lançado]")
 	if start < 0 {
 		return ""
@@ -187,11 +187,7 @@ func changelogLatestRelease(doc string) string {
 	if next < 0 {
 		return ""
 	}
-	rest = rest[next+1:]
-	if end := strings.Index(rest[len("## ["):], "\n## ["); end >= 0 {
-		rest = rest[:len("## [")+end]
-	}
-	return rest
+	return rest[next+1:]
 }
 
 var reGuardStrictExample = regexp.MustCompile(`(?m)^[[:space:]]*tb[[:space:]]+guard[[:space:]]+check\b[^#\n]*--strict\b`)
