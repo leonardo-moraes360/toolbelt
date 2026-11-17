@@ -7,6 +7,9 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Não Lançado]
 
+### Adicionado
+- ADR-014 (proposed) e spec da Fase A: reimplementação nativa do Elephant-Goldfish Model como `tb egm` (goldfish LLM isolados em sandbox com HOME descartável, fallback determinístico, loop com convergência persistida, árbitro fresco para contestação)
+
 ## [0.0.4] - 2026-11-17
 
 ### Adicionado

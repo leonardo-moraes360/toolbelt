@@ -132,6 +132,8 @@ cons:
 
 **Pending decision**: Experiment with EGM integration. If it works well, keep it. If there is significant friction (latency, incompatibilities), reimplement the critical skills (`review`, `review-loop`, `drift-report`).
 
+> **Update (2026-11-17):** native reimplementation (Option B) proposed in [ADR-014](014-egm-nativo.md).
+
 ### Number of Reviewers
 
 - How many goldfish per review?

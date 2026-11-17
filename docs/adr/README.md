@@ -31,6 +31,7 @@ Cada ADR segue o formato:
 | [010](010-invariantes-fora-compactacao.md) | Invariantes fixados fora da compactação | proposed |
 | [011](011-grafo-sob-demanda.md) | Grafo de código sob demanda com A/B | proposed |
 | [013](013-barramento-multi-vendor.md) | Barramento local multi-vendor de agentes (`tb bus`) | proposed |
+| [014](014-egm-nativo.md) | Reimplementação nativa do Elephant-Goldfish Model (`tb egm`) | proposed |
 
 ## Como Propor um ADR
 

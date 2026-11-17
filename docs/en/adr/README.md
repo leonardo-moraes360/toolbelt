@@ -31,6 +31,7 @@ Each ADR follows this format:
 | [010](010-invariantes-fora-compactacao.md) | Invariants pinned outside compaction | proposed |
 | [011](011-grafo-sob-demanda.md) | On-demand code graph with A/B | proposed |
 | [013](013-barramento-multi-vendor.md) | Local multi-vendor agent bus (`tb bus`) | proposed |
+| [014](014-egm-nativo.md) | Native reimplementation of the Elephant-Goldfish Model (`tb egm`) | proposed |
 
 ## How to Propose an ADR
 
