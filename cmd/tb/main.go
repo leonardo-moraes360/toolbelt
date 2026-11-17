@@ -86,6 +86,8 @@ func init() {
 	rootCmd.AddCommand(reviewCmd)
 	rootCmd.AddCommand(driftCmd)
 	rootCmd.AddCommand(stackCmd)
+	rootCmd.AddCommand(ticketCmd)
+	rootCmd.AddCommand(boardCmd)
 	rootCmd.AddCommand(routerCmd)
 	rootCmd.AddCommand(mcpCmd)
 }
