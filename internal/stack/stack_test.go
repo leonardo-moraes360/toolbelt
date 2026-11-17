@@ -488,11 +488,11 @@ func writeFileB(b *testing.B, path, content string) {
 func TestStackMissingTicketFails(t *testing.T) {
 	dir := gitRepo(t)
 	writeFile(t, filepath.Join(dir, "a.go"), "package a\n")
-	git(t, dir, "add", "-A")
-	git(t, dir, "commit", "-m", "base")
+	runGit(t, dir, "add", "-A")
+	runGit(t, dir, "commit", "-m", "base")
 	writeFile(t, filepath.Join(dir, "a.go"), "package a\nfunc X() {}\n")
-	git(t, dir, "add", "-A")
-	git(t, dir, "commit", "-m", "head")
+	runGit(t, dir, "add", "-A")
+	runGit(t, dir, "commit", "-m", "head")
 
 	missing := filepath.Join(dir, "no-such-ticket.md")
 	res, err := Run(context.Background(), &Options{
@@ -515,12 +515,11 @@ func TestStackMissingTicketFails(t *testing.T) {
 		if step.OK {
 			t.Fatalf("step %s deveria falhar: %+v", step.Op, step)
 		}
-		raw, _ := json.Marshal(step.Result)
-		if !strings.Contains(string(raw), "ticket não encontrado") {
-			t.Fatalf("step %s deveria citar ticket não encontrado: %s", step.Op, raw)
+		if !strings.Contains(step.Error, "ticket não encontrado") {
+			t.Fatalf("step %s deveria citar ticket não encontrado: %+v", step.Op, step)
 		}
-		if !strings.Contains(string(raw), missing) {
-			t.Fatalf("step %s deveria citar o caminho %q: %s", step.Op, missing, raw)
+		if !strings.Contains(step.Error, missing) {
+			t.Fatalf("step %s deveria citar o caminho %q: %+v", step.Op, missing, step)
 		}
 	}
 }
