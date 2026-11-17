@@ -7,6 +7,10 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Não Lançado]
 
+### Adicionado
+- `tb graph explain <nó>` e `tb graph path <origem> <destino>` (MCP `tb_graph_explain`, `tb_graph_path`): vizinhança de um nó com proveniência e menor caminho entre dois nós, reimplementando as consultas do Graphify sem LLM; arestas `calls` &lt; 0.6 e alvos sem nó no índice ficam de fora
+- ADR-014: Graphify — reimplementar, não integrar (fecha a questão aberta do ADR-006; docs de arquitetura deixam de citar tree-sitter como implementado)
+
 ## [0.0.4] - 2026-11-17
 
 ### Adicionado
