@@ -1069,7 +1069,7 @@ func TestCheckPinnedApprovalMatch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if pinned == nil || !pinned.Match {
+	if pinned == nil || !pinned.Checked || pinned.Match == nil || !*pinned.Match {
 		t.Fatalf("head igual ao approved deveria match; got %#v", pinned)
 	}
 	if pinned.ApprovedSHA != approved || pinned.PatchID == "" || pinned.PatchID != pinned.HeadPatchID {
@@ -1095,7 +1095,7 @@ func TestCheckPinnedApprovalMismatch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if pinned == nil || pinned.Match {
+	if pinned == nil || !pinned.Diverged() {
 		t.Fatalf("head divergente deveria mismatch; got %#v", pinned)
 	}
 	if pinned.PatchID == pinned.HeadPatchID {
@@ -1161,10 +1161,10 @@ func TestRunPinnedApprovalInReportJSON(t *testing.T) {
 	if rep.PinnedApproval == nil {
 		t.Fatal("expected pinned_approval no report")
 	}
-	if rep.PinnedApproval.Match {
+	if !rep.PinnedApproval.Diverged() {
 		t.Fatal("expected mismatch")
 	}
-	if rep.Drift == nil || rep.Drift.PinnedApproval == nil || rep.Drift.PinnedApproval.Match {
+	if rep.Drift == nil || rep.Drift.PinnedApproval == nil || !rep.Drift.PinnedApproval.Diverged() {
 		t.Fatalf("drift deve espelhar pinned_approval; drift=%#v", rep.Drift)
 	}
 	if rep.PinnedApproval.ApprovedSHA != approved {
@@ -1203,7 +1203,7 @@ func TestCheckPinnedApprovalIdenticalContentDifferentCommit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if pinned == nil || !pinned.Match {
+	if pinned == nil || pinned.Match == nil || !*pinned.Match {
 		t.Fatalf("mesmo patch em commits distintos deve match; got %#v", pinned)
 	}
 }
@@ -1242,7 +1242,7 @@ func TestCheckPinnedApprovalCleanRebaseMatch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if pinned == nil || !pinned.Match {
+	if pinned == nil || pinned.Match == nil || !*pinned.Match {
 		t.Fatalf("rebase limpo deve match; got %#v", pinned)
 	}
 	if pinned.ApprovedBase != m1 {
@@ -1294,7 +1294,7 @@ func TestCheckPinnedApprovalRebasePatchChangeDiverges(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if pinned == nil || pinned.Match {
+	if pinned == nil || !pinned.Diverged() {
 		t.Fatalf("rebase com patch alterado deve divergir; got %#v", pinned)
 	}
 	if pinned.RangeDiffSummary == "" {
@@ -1314,7 +1314,7 @@ func TestCheckPinnedApprovalAmendMatch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if pinned == nil || !pinned.Match {
+	if pinned == nil || pinned.Match == nil || !*pinned.Match {
 		t.Fatalf("amend com mesmo patch deve match; got %#v", pinned)
 	}
 }
@@ -1331,7 +1331,7 @@ func TestCheckPinnedApprovalHeadAdvancesDiverges(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if pinned == nil || pinned.Match {
+	if pinned == nil || !pinned.Diverged() {
 		t.Fatalf("head que avança deve divergir; got %#v", pinned)
 	}
 }
@@ -1370,7 +1370,7 @@ func TestCheckPinnedApprovalExplicitApprovedBase(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if pinned == nil || !pinned.Match {
+	if pinned == nil || pinned.Match == nil || !*pinned.Match {
 		t.Fatalf("--approved-base explícito em rebase limpo deve match; got %#v", pinned)
 	}
 	if pinned.ApprovedBase != m1 || pinned.HeadBase != m2 {
@@ -1388,6 +1388,113 @@ func TestRangeDiffAllEqual(t *testing.T) {
 	if !rangeDiffAllEqual("") {
 		t.Fatal("summary vazio deve ser equal")
 	}
+}
+
+func TestCheckPinnedApprovalWhitespaceSensitive(t *testing.T) {
+	repo := t.TempDir()
+	run := initGitRepo(t, repo)
+	if err := os.WriteFile(filepath.Join(repo, "a.go"), []byte("package a\n\nfunc OK() {\n}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	run("add", ".")
+	run("commit", "-m", "base")
+	base := gitRevParse(t, repo, "HEAD")
+
+	if err := os.WriteFile(filepath.Join(repo, "a.go"), []byte("package a\n\nfunc OK() {\n\tx := 1\n\t_ = x\n}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	run("add", ".")
+	run("commit", "-m", "approved")
+	approved := gitRevParse(t, repo, "HEAD")
+
+	if err := os.WriteFile(filepath.Join(repo, "a.go"), []byte("package a\n\nfunc OK() {\n    x := 1\n    _ = x\n}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	run("add", ".")
+	run("commit", "-m", "whitespace-only")
+
+	pinned, err := CheckPinnedApproval(repo, base, "", approved, "HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pinned == nil || !pinned.Checked {
+		t.Fatalf("esperava checagem; got %#v", pinned)
+	}
+	if !pinned.Diverged() {
+		t.Fatalf("mudança só de whitespace deve divergir com patch-id verbatim; got %#v", pinned)
+	}
+	if pinned.PatchID == pinned.HeadPatchID {
+		t.Fatal("patch-ids verbatim deveriam diferir para tabs vs espaços")
+	}
+}
+
+func TestCheckPinnedApprovalUncheckedExplicit(t *testing.T) {
+	repo, base, _, _ := pinnedFixture(t, "package a\n\nfunc OK() {}\n")
+	pinned, err := CheckPinnedApproval(repo, base, "", "", "HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pinned == nil {
+		t.Fatal("sem approved-sha deve retornar pinned_approval explícito")
+	}
+	if pinned.Checked {
+		t.Fatalf("checked deve ser false; got %#v", pinned)
+	}
+}
+
+func TestRunRequireApprovedSHA(t *testing.T) {
+	repo, base, _, _ := pinnedFixture(t, "package a\n\nfunc OK() {}\n")
+	ticket := writeTicket(t, repo, "a.go")
+	cfg := DefaultConfig(repo)
+	cfg.TicketPath = ticket
+	cfg.BaseRef = base
+	cfg.HeadRef = "HEAD"
+	cfg.RequireApprovedSHA = true
+	cfg.Reviewers = 1
+	cfg.Standards = []string{"scope"}
+	_, err := Run(&cfg)
+	if err == nil {
+		t.Fatal("require_approved_sha sem --approved-sha deve falhar")
+	}
+	if !strings.Contains(err.Error(), "approved-sha") {
+		t.Fatalf("mensagem deve citar approved-sha: %v", err)
+	}
+}
+
+func TestRunPinsHeadSHAOnce(t *testing.T) {
+	repo, base, _, run := pinnedFixture(t, "package a\n\nfunc OK() {}\n")
+	ticket := writeTicket(t, repo, "a.go")
+	headBefore := gitRevParse(t, repo, "HEAD")
+
+	cfg := DefaultConfig(repo)
+	cfg.TicketPath = ticket
+	cfg.BaseRef = base
+	cfg.HeadRef = "HEAD"
+	cfg.Reviewers = 1
+	cfg.Standards = []string{"scope"}
+	rep, err := Run(&cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.HeadRef != headBefore {
+		t.Fatalf("head_ref deve ser SHA pinado no início; got %q want %q", rep.HeadRef, headBefore)
+	}
+	if rep.BaseRef != base {
+		t.Fatalf("base_ref deve ser SHA; got %q want %q", rep.BaseRef, base)
+	}
+	if rep.PinnedApproval == nil || rep.PinnedApproval.Checked {
+		t.Fatalf("sem approved-sha: pinned_approval.checked=false; got %#v", rep.PinnedApproval)
+	}
+
+	if err := os.WriteFile(filepath.Join(repo, "a.go"), []byte("package a\n\nfunc Moved() {}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	run("add", ".")
+	run("commit", "-m", "after-run-should-not-matter")
+	if rep.HeadRef == gitRevParse(t, repo, "HEAD") {
+		t.Fatal("relatório não deve refletir HEAD movido depois do pin")
+	}
+	_ = run
 }
 
 func TestDriftThreeDotIgnoresSquashOnBase(t *testing.T) {

@@ -22,8 +22,9 @@ com o scope declarado no ticket/rd.md e verifica se a base é ancestral do head.
 func init() {
 	driftCmd.Flags().String("base", "HEAD~1", "commit/ref base")
 	driftCmd.Flags().String("head", "HEAD", "commit/ref head")
-	driftCmd.Flags().String("approved-sha", "", "SHA aprovado; compara patch-id estável com o head")
+	driftCmd.Flags().String("approved-sha", "", "SHA aprovado; compara patch-id verbatim (sensível a whitespace) com o head")
 	driftCmd.Flags().String("approved-base", "", "base do range aprovado; default: merge-base(approved, base)")
+	driftCmd.Flags().Bool("require-approved-sha", false, "falha se --approved-sha estiver ausente (ou review.require_approved_sha)")
 	driftCmd.Flags().String("ticket", "rd.md", "caminho do ticket/rd.md")
 	driftCmd.Flags().String("output", "", "arquivo de saída JSON")
 }
@@ -72,6 +73,7 @@ func driftConfigFromFlags(cmd *cobra.Command, args []string) (*review.Config, er
 	cfg.HeadRef = head
 	cfg.ApprovedSHA = approved
 	cfg.ApprovedBase = approvedBase
+	cfg.RequireApprovedSHA = requireApprovedSHAFrom(cmd)
 	cfg.TicketPath = ticketPath
 	cfg.Reviewers = 1
 	cfg.Standards = []string{"scope"}
@@ -117,7 +119,7 @@ func printDriftReport(drift *review.DriftReport) {
 		fmt.Printf("  - %s\n", f)
 	}
 	if len(drift.OutOfScope) == 0 && len(drift.ForbiddenHit) == 0 && !drift.BaseMismatch &&
-		(drift.PinnedApproval == nil || drift.PinnedApproval.Match) {
+		!pinnedApprovalMismatch(drift.PinnedApproval) {
 		fmt.Println("OK: sem drift de escopo/base")
 	}
 }

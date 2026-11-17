@@ -10,20 +10,27 @@ import (
 )
 
 type PinnedApproval struct {
-	ApprovedSHA      string `json:"approved_sha"`
-	ApprovedBase     string `json:"approved_base"`
-	HeadBase         string `json:"head_base"`
-	PatchID          string `json:"patch_id"`
-	HeadPatchID      string `json:"head_patch_id"`
-	Match            bool   `json:"match"`
+	Checked          bool   `json:"checked"`
+	ApprovedSHA      string `json:"approved_sha,omitempty"`
+	ApprovedBase     string `json:"approved_base,omitempty"`
+	HeadBase         string `json:"head_base,omitempty"`
+	PatchID          string `json:"patch_id,omitempty"`
+	HeadPatchID      string `json:"head_patch_id,omitempty"`
+	Match            *bool  `json:"match,omitempty"`
 	RangeDiffSummary string `json:"range_diff,omitempty"`
+}
+
+func boolPtr(v bool) *bool { return &v }
+
+func (p *PinnedApproval) Diverged() bool {
+	return p != nil && p.Checked && p.Match != nil && !*p.Match
 }
 
 var rangeDiffStatusRe = regexp.MustCompile(`(?m)^\s*(?:\d+|-):\s+\S+\s+([=!<>])\s+(?:\d+|-):\s+\S+`)
 
 func CheckPinnedApproval(repo, base, approvedBase, approved, head string) (*PinnedApproval, error) {
 	if approved == "" {
-		return nil, nil
+		return &PinnedApproval{Checked: false}, nil
 	}
 	resolved, err := resolveGitRef(repo, approved)
 	if err != nil {
@@ -55,23 +62,25 @@ func CheckPinnedApproval(repo, base, approvedBase, approved, head string) (*Pinn
 		return nil, fmt.Errorf("merge-base head base: %w", err)
 	}
 
-	approvedID, err := gitPatchIDStable(repo, approvedSideBase, resolved)
+	approvedID, err := gitPatchIDVerbatim(repo, approvedSideBase, resolved)
 	if err != nil {
 		return nil, fmt.Errorf("patch-id approved_base..approved: %w", err)
 	}
-	headID, err := gitPatchIDStable(repo, headSideBase, headResolved)
+	headID, err := gitPatchIDVerbatim(repo, headSideBase, headResolved)
 	if err != nil {
 		return nil, fmt.Errorf("patch-id head_base..head: %w", err)
 	}
+	match := approvedID == headID
 	out := &PinnedApproval{
+		Checked:      true,
 		ApprovedSHA:  resolved,
 		ApprovedBase: approvedSideBase,
 		HeadBase:     headSideBase,
 		PatchID:      approvedID,
 		HeadPatchID:  headID,
-		Match:        approvedID == headID,
+		Match:        boolPtr(match),
 	}
-	if out.Match {
+	if match {
 		return out, nil
 	}
 	summary, err := gitRangeDiff(repo, approvedSideBase, resolved, headSideBase, headResolved)
@@ -80,23 +89,23 @@ func CheckPinnedApproval(repo, base, approvedBase, approved, head string) (*Pinn
 	}
 	out.RangeDiffSummary = summary
 	if rangeDiffAllEqual(summary) {
-		out.Match = true
+		out.Match = boolPtr(true)
 		out.RangeDiffSummary = ""
 	}
 	return out, nil
 }
 
-func gitPatchIDStable(repo, base, head string) (string, error) {
+func gitPatchIDVerbatim(repo, base, head string) (string, error) {
 	diff, err := gitDiff(repo, base, head)
 	if err != nil {
 		return "", err
 	}
-	cmd := exec.Command("git", "patch-id", "--stable")
+	cmd := exec.Command("git", "patch-id", "--verbatim")
 	cmd.Dir = repo
 	cmd.Stdin = strings.NewReader(diff)
 	out, err := cmd.Output()
 	if err != nil {
-		return "", git.Wrap(err, nil, "patch-id", "--stable")
+		return "", git.Wrap(err, nil, "patch-id", "--verbatim")
 	}
 	fields := strings.Fields(string(out))
 	if len(fields) == 0 {
