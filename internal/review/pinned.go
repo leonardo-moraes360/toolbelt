@@ -2,10 +2,11 @@ package review
 
 import (
 	"fmt"
-	"os"
 	"os/exec"
 	"regexp"
 	"strings"
+
+	"github.com/leonardo-moraes360/toolbelt/internal/git"
 )
 
 type PinnedApproval struct {
@@ -85,16 +86,6 @@ func CheckPinnedApproval(repo, base, approvedBase, approved, head string) (*Pinn
 	return out, nil
 }
 
-func gitMergeBase(repo, a, b string) (string, error) {
-	cmd := exec.Command("git", "merge-base", a, b) //nolint:gosec // refs do operador
-	cmd.Dir = repo
-	out, err := cmd.Output()
-	if err != nil {
-		return "", fmt.Errorf("git merge-base %s %s: %w", a, b, err)
-	}
-	return strings.TrimSpace(string(out)), nil
-}
-
 func gitPatchIDStable(repo, base, head string) (string, error) {
 	diff, err := gitDiff(repo, base, head)
 	if err != nil {
@@ -105,7 +96,7 @@ func gitPatchIDStable(repo, base, head string) (string, error) {
 	cmd.Stdin = strings.NewReader(diff)
 	out, err := cmd.Output()
 	if err != nil {
-		return "", fmt.Errorf("git patch-id: %w", err)
+		return "", git.Wrap(err, nil, "patch-id", "--stable")
 	}
 	fields := strings.Fields(string(out))
 	if len(fields) == 0 {
@@ -117,12 +108,12 @@ func gitPatchIDStable(repo, base, head string) (string, error) {
 func gitRangeDiff(repo, leftBase, leftHead, rightBase, rightHead string) (string, error) {
 	left := leftBase + ".." + leftHead
 	right := rightBase + ".." + rightHead
-	cmd := exec.Command("git", "-c", "core.pager=", "range-diff", "--no-patch", left, right) //nolint:gosec // refs do operador
-	cmd.Dir = repo
-	cmd.Env = append(os.Environ(), "GIT_PAGER=cat", "PAGER=cat")
-	out, err := cmd.CombinedOutput()
+	if leftBase == leftHead {
+		return "", fmt.Errorf("approved-sha coincide com a base (%s); intervalo base..approved vazio — não há commits para range-diff; o patch do head diverge do SHA aprovado", shortRef(leftBase))
+	}
+	out, err := git.CombinedOutput(repo, "range-diff", left, right)
 	if err != nil {
-		return "", fmt.Errorf("git range-diff %s %s: %w (%s)", left, right, err, strings.TrimSpace(string(out)))
+		return "", err
 	}
 	return strings.TrimSpace(string(out)), nil
 }
@@ -142,4 +133,11 @@ func rangeDiffAllEqual(summary string) bool {
 		}
 	}
 	return true
+}
+
+func shortRef(ref string) string {
+	if len(ref) > 12 {
+		return ref[:12]
+	}
+	return ref
 }

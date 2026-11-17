@@ -49,8 +49,8 @@ func TestDetectDriftOutOfScope(t *testing.T) {
 		Forbidden:  []string{"tests/hidden/**"},
 	}
 	rep := DetectDrift(ticket, []string{"src/auth.go", "README.md", "tests/hidden/x_test.go"}, "other")
-	if !rep.BaseMismatch {
-		t.Fatal("expected base mismatch")
+	if rep.ActualBase != "other" || rep.DeclaredBase != "base" {
+		t.Fatalf("bases actual=%q declared=%q", rep.ActualBase, rep.DeclaredBase)
 	}
 	if len(rep.OutOfScope) != 2 {
 		t.Fatalf("out of scope=%v", rep.OutOfScope)
@@ -373,7 +373,8 @@ func TestReviewForbiddenAndHiddenInvariant(t *testing.T) {
 	}
 	findings := Fresh(&ctx)
 	var forbidden, invariant bool
-	for _, f := range findings {
+	for i := range findings {
+		f := &findings[i]
 		if f.ID == "forbidden-tests/hidden/cheat.py" && f.Severity == SeverityCritical {
 			forbidden = true
 		}
@@ -541,8 +542,8 @@ func TestDetectDriftHeadCaretResolvesToSHA(t *testing.T) {
 	}
 
 	raw := DetectDrift(ticket, []string{"a.go"}, "HEAD^")
-	if !raw.BaseMismatch {
-		t.Fatal("sem resolve, HEAD^ vs SHA deveria mismatch por string")
+	if raw.ActualBase != "HEAD^" || raw.DeclaredBase != baseSHA {
+		t.Fatalf("DetectDrift sem enrich: actual=%q declared=%q", raw.ActualBase, raw.DeclaredBase)
 	}
 
 	rep, err := Run(&cfg)
@@ -553,15 +554,18 @@ func TestDetectDriftHeadCaretResolvesToSHA(t *testing.T) {
 		t.Fatal("expected drift")
 	}
 	if rep.Drift.BaseMismatch {
-		t.Fatalf("HEAD^ deveria resolver para o mesmo SHA do ticket; actual=%q declared=%q",
+		t.Fatalf("HEAD^ ancestral não deve mismatch; actual=%q declared=%q",
 			rep.Drift.ActualBase, rep.Drift.DeclaredBase)
 	}
 	if rep.Drift.ActualBase != baseSHA {
 		t.Fatalf("actual_base=%q want resolved SHA %q", rep.Drift.ActualBase, baseSHA)
 	}
+	if rep.Drift.MergeBase == "" {
+		t.Fatal("merge_base deve ser preenchido")
+	}
 }
 
-func TestDetectDriftResolvedStillMismatch(t *testing.T) {
+func TestDetectDriftAncestorBaseNoMismatch(t *testing.T) {
 	repo := t.TempDir()
 	run := func(args ...string) {
 		t.Helper()
@@ -606,8 +610,14 @@ func TestDetectDriftResolvedStillMismatch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rep.Drift == nil || !rep.Drift.BaseMismatch {
-		t.Fatal("bases diferentes após resolve ainda devem mismatch")
+	if rep.Drift == nil {
+		t.Fatal("expected drift")
+	}
+	if rep.Drift.BaseMismatch {
+		t.Fatal("HEAD^ é ancestral do head; base_mismatch deve ser false mesmo diferindo do ticket")
+	}
+	if rep.Drift.MergeBase == "" {
+		t.Fatal("merge_base vazio")
 	}
 }
 
@@ -703,7 +713,8 @@ func assertDistinctRoleFindings(t *testing.T, findings []Finding) {
 	t.Helper()
 	names := map[string]bool{}
 	hasQuality, hasAcceptance := false, false
-	for _, f := range findings {
+	for i := range findings {
+		f := &findings[i]
 		names[f.Reviewer] = true
 		if f.Reviewer == "goldfish-quality" && f.Category == "quality" {
 			hasQuality = true
@@ -742,7 +753,8 @@ func TestReviewQualityHeuristics(t *testing.T) {
 	}
 	findings := Fresh(&ctx)
 	var todo, large, noTest bool
-	for _, f := range findings {
+	for i := range findings {
+		f := &findings[i]
 		switch {
 		case strings.Contains(f.Message, "TODO") || strings.Contains(f.Message, "FIXME"):
 			todo = true
@@ -781,14 +793,209 @@ func TestReviewAcceptanceUsesChangedTestsOrFiles(t *testing.T) {
 	if findings[0].Reviewer != "goldfish-acceptance" || findings[0].Category != "acceptance" {
 		t.Fatalf("got %#v", findings[0])
 	}
+	if findings[0].Criterion == "" || findings[0].Evidence == "" {
+		t.Fatalf("acceptance finding must link criterion and evidence, got %#v", findings[0])
+	}
+	if findings[0].Role != "acceptance" {
+		t.Fatalf("role=%q want acceptance", findings[0].Role)
+	}
 
 	ctx.Changed = []string{"src/auth.go", "src/auth_test.go"}
 	ctx.Diff = "diff --git a/src/auth_test.go b/src/auth_test.go\n--- a/src/auth_test.go\n+++ b/src/auth_test.go\n@@ -0,0 +1,1 @@\n+func TestLoginReturns200OnSuccess(t *testing.T) {}\n"
 	findings = Fresh(&ctx)
-	for _, f := range findings {
+	for i := range findings {
+		f := &findings[i]
 		if f.ID == "accept-0" {
 			t.Fatalf("criterion evidenced in changed test should pass, got %#v", findings)
 		}
+	}
+}
+
+func TestReviewQualityTODOIgnoresPortugueseTodo(t *testing.T) {
+	ctx := FreshContext{
+		Reviewer: "goldfish-quality",
+		Changed:  []string{"src/a.go", "src/a_test.go"},
+		Diff: `diff --git a/src/a.go b/src/a.go
+--- a/src/a.go
++++ b/src/a.go
+@@ -1,3 +1,5 @@
+ package src
++// preciso fazer todo o trabalho amanhã
++return "todo mundo"
+`,
+		Standards: []string{"quality"},
+	}
+	findings := Fresh(&ctx)
+	for i := range findings {
+		f := &findings[i]
+		if strings.Contains(f.ID, "todo") || strings.Contains(f.Message, "TODO") {
+			t.Fatalf("palavra 'todo' em português não deve gerar finding: %#v", f)
+		}
+	}
+}
+
+func TestReviewQualityTODOUppercaseMarkersInComments(t *testing.T) {
+	ctx := FreshContext{
+		Reviewer: "goldfish-quality",
+		Changed:  []string{"src/a.go", "src/a_test.go"},
+		Diff: `diff --git a/src/a.go b/src/a.go
++++ b/src/a.go
++// TODO: wire
++// FIXME: later
++// XXX: risky
++// HACK: temp
++msg := "todo lowercase stays"
+`,
+		Standards: []string{"quality"},
+	}
+	findings := Fresh(&ctx)
+	var todo bool
+	for i := range findings {
+		f := &findings[i]
+		if strings.Contains(f.ID, "quality-todo") {
+			todo = true
+			if f.Role != "quality" {
+				t.Fatalf("role=%q", f.Role)
+			}
+		}
+	}
+	if !todo {
+		t.Fatal("expected TODO/FIXME/XXX/HACK finding in comments")
+	}
+}
+
+func TestReviewAcceptanceLinksCriterionAndEvidence(t *testing.T) {
+	ctx := FreshContext{
+		Reviewer: "goldfish-acceptance",
+		Ticket: &TicketScope{
+			Scope:      []string{"src/"},
+			Acceptance: []string{"session cookie is http-only"},
+		},
+		Changed: []string{"src/greet.go", "src/greet_test.go"},
+		Diff: `diff --git a/src/greet_test.go b/src/greet_test.go
++++ b/src/greet_test.go
++func TestGreet(t *testing.T) {}
+`,
+		Standards: []string{"acceptance"},
+	}
+	findings := Fresh(&ctx)
+	if len(findings) != 1 {
+		t.Fatalf("expected 1 finding for unrelated criterion, got %#v", findings)
+	}
+	f := findings[0]
+	if f.Criterion != "session cookie is http-only" {
+		t.Fatalf("criterion=%q", f.Criterion)
+	}
+	if !strings.Contains(f.Evidence, "TestGreet") {
+		t.Fatalf("evidence should list tests in diff: %q", f.Evidence)
+	}
+	if !strings.Contains(f.Message, "session cookie is http-only") {
+		t.Fatalf("message should name criterion: %q", f.Message)
+	}
+}
+
+func TestReviewInvariantsApplyToAddedLines(t *testing.T) {
+	ctx := FreshContext{
+		Reviewer: "goldfish-scope",
+		Ticket:   &TicketScope{Scope: []string{"src/"}},
+		Changed:  []string{"src/a.js"},
+		Diff: `diff --git a/src/a.js b/src/a.js
++++ b/src/a.js
++  // temporary note
++  console.log("debug")
++  return 1
+`,
+		Invariants: []mem.Invariant{
+			{ID: "1", Rule: "NUNCA use console.log"},
+			{ID: "2", Rule: "NUNCA adicione comentários no código"},
+		},
+		Standards: []string{"invariants"},
+	}
+	findings := Fresh(&ctx)
+	var consoleHit, commentHit bool
+	for i := range findings {
+		f := &findings[i]
+		if f.ID == "inv-1" && strings.Contains(f.Evidence, "console.log") {
+			consoleHit = true
+		}
+		if f.ID == "inv-2" && strings.Contains(strings.ToLower(f.Evidence), "coment") {
+			commentHit = true
+		}
+	}
+	if !consoleHit || !commentHit {
+		t.Fatalf("expected console.log and comment invariant hits on added lines, got %#v", findings)
+	}
+}
+
+func TestReviewAcceptanceSeesTestGreet(t *testing.T) {
+	ctx := FreshContext{
+		Reviewer: "goldfish-acceptance",
+		Ticket: &TicketScope{
+			Scope:      []string{"greet/"},
+			Acceptance: []string{"Greet personalizes the message for the user"},
+		},
+		Changed: []string{"greet/greet.go", "greet/greet_test.go"},
+		Diff: `diff --git a/greet/greet.go b/greet/greet.go
++++ b/greet/greet.go
++func Greet(n string) string { return "hello, " + n }
+diff --git a/greet/greet_test.go b/greet/greet_test.go
++++ b/greet/greet_test.go
++func TestGreet(t *testing.T) {
++	if Greet("x") != "hello, x" { t.Fatal(1) }
++}
+`,
+		Standards: []string{"acceptance"},
+	}
+	findings := Fresh(&ctx)
+	for i := range findings {
+		f := &findings[i]
+		if f.Category == "acceptance" {
+			t.Fatalf("TestGreet should cover Greet criterion, got %#v", f)
+		}
+	}
+}
+
+func TestReviewAcceptanceSeesJSTSTests(t *testing.T) {
+	ctx := FreshContext{
+		Reviewer: "goldfish-acceptance",
+		Ticket: &TicketScope{
+			Scope:      []string{"src/"},
+			Acceptance: []string{"Greet returns hello"},
+		},
+		Changed: []string{"src/greet.ts", "src/greet.test.ts"},
+		Diff: `diff --git a/src/greet.test.ts b/src/greet.test.ts
++++ b/src/greet.test.ts
++import { greet } from './greet'
++test('Greet returns hello', () => {
++  expect(greet('Ada')).toBe('hello, Ada')
++})
++it('covers edge', () => {})
+`,
+		Standards: []string{"acceptance"},
+	}
+	findings := Fresh(&ctx)
+	for i := range findings {
+		f := &findings[i]
+		if f.Category == "acceptance" {
+			t.Fatalf("JS/TS test title should cover Greet criterion, got %#v", f)
+		}
+	}
+}
+
+func TestFindingRoleInJSONAndAgreementSemantics(t *testing.T) {
+	f := Finding{
+		ID: "quality-todo-x", Category: "quality", Reviewer: "goldfish-quality", Agreement: 1,
+	}
+	normalizeFinding(&f)
+	if f.Role != "quality" {
+		t.Fatalf("role=%q want quality", f.Role)
+	}
+	all := aggregateFindings([]Finding{
+		{ID: "x", Category: "quality", Role: "quality", Message: "m", Reviewer: "a", Agreement: 1},
+		{ID: "x", Category: "quality", Role: "acceptance", Message: "m", Reviewer: "b", Agreement: 1},
+	})
+	if len(all) != 1 || all[0].Agreement != 2 {
+		t.Fatalf("expected role_agreement=2, got %#v", all)
 	}
 }
 
@@ -825,6 +1032,34 @@ func writeTicket(t *testing.T, repo, scopeFile string) string {
 		t.Fatal(err)
 	}
 	return path
+}
+
+func TestCheckPinnedApprovalEmptyRangeClearError(t *testing.T) {
+	repo := t.TempDir()
+	run := initGitRepo(t, repo)
+	if err := os.WriteFile(filepath.Join(repo, "a.go"), []byte("package a\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	run("add", ".")
+	run("commit", "-m", "base")
+	base := gitRevParse(t, repo, "HEAD")
+	if err := os.WriteFile(filepath.Join(repo, "a.go"), []byte("package a\nfunc X() {}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	run("add", ".")
+	run("commit", "-m", "head")
+
+	_, err := CheckPinnedApproval(repo, base, "", base, "HEAD")
+	if err == nil {
+		t.Fatal("approved-sha=base deve falhar com mensagem clara")
+	}
+	msg := err.Error()
+	if strings.Contains(strings.ToLower(msg), "usage: git range-diff") {
+		t.Fatalf("não deve despejar usage do range-diff:\n%s", msg)
+	}
+	if !strings.Contains(msg, "coincide com a base") && !strings.Contains(msg, "vazio") {
+		t.Fatalf("mensagem deve explicar intervalo vazio:\n%s", msg)
+	}
 }
 
 func TestCheckPinnedApprovalMatch(t *testing.T) {
@@ -1152,5 +1387,216 @@ func TestRangeDiffAllEqual(t *testing.T) {
 	}
 	if !rangeDiffAllEqual("") {
 		t.Fatal("summary vazio deve ser equal")
+	}
+}
+
+func TestDriftThreeDotIgnoresSquashOnBase(t *testing.T) {
+	repo := t.TempDir()
+	run := initGitRepo(t, repo)
+	run("checkout", "-b", "main")
+	mustWrite(t, filepath.Join(repo, "root.txt"), "root\n")
+	run("add", ".")
+	run("commit", "-m", "root")
+	mustWrite(t, filepath.Join(repo, "base.txt"), "base\n")
+	run("add", ".")
+	run("commit", "-m", "base")
+	fork := gitRevParse(t, repo, "HEAD")
+
+	run("checkout", "-b", "feature")
+	mustWrite(t, filepath.Join(repo, "pr.txt"), "pr\n")
+	run("add", ".")
+	run("commit", "-m", "pr change")
+
+	run("checkout", "main")
+	for _, n := range []string{"squash1.txt", "squash2.txt", "squash3.txt", "squash4.txt", "squash5.txt", "squash6.txt"} {
+		mustWrite(t, filepath.Join(repo, n), "sq\n")
+	}
+	run("add", ".")
+	run("commit", "-m", "squash other PR")
+	mainTip := gitRevParse(t, repo, "HEAD")
+
+	run("checkout", "feature")
+	rd := "---\ntitle: pr\nbase_commit: " + fork + "\nscope:\n  - pr.txt\n  - rd.md\n---\n"
+	mustWrite(t, filepath.Join(repo, "rd.md"), rd)
+	run("add", ".")
+	run("commit", "-m", "ticket")
+
+	cfg := DefaultConfig(repo)
+	cfg.TicketPath = filepath.Join(repo, "rd.md")
+	cfg.BaseRef = "main"
+	cfg.HeadRef = "HEAD"
+	cfg.Reviewers = 1
+	cfg.Standards = []string{"scope"}
+	rep, err := Run(&cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.Drift == nil {
+		t.Fatal("expected drift")
+	}
+	for _, f := range rep.Drift.OutOfScope {
+		if strings.HasPrefix(f, "squash") {
+			t.Fatalf("three-dot com --base main não deve incluir arquivos do squash: %v", rep.Drift.OutOfScope)
+		}
+	}
+	if rep.Drift.ActualBase != mainTip {
+		t.Fatalf("actual_base=%q want main tip %q", rep.Drift.ActualBase, mainTip)
+	}
+	if rep.Drift.MergeBase == "" {
+		t.Fatal("merge_base deve ser preenchido")
+	}
+}
+
+func TestDriftThreeDotAfterMergeMain(t *testing.T) {
+	repo := t.TempDir()
+	run := initGitRepo(t, repo)
+	run("checkout", "-b", "main")
+	mustWrite(t, filepath.Join(repo, "root.txt"), "root\n")
+	run("add", ".")
+	run("commit", "-m", "root")
+	mustWrite(t, filepath.Join(repo, "base.txt"), "base\n")
+	run("add", ".")
+	run("commit", "-m", "base")
+	fork := gitRevParse(t, repo, "HEAD")
+
+	run("checkout", "-b", "feature")
+	mustWrite(t, filepath.Join(repo, "pr.txt"), "pr\n")
+	run("add", ".")
+	run("commit", "-m", "pr")
+
+	run("checkout", "main")
+	mustWrite(t, filepath.Join(repo, "from_main.txt"), "m\n")
+	run("add", ".")
+	run("commit", "-m", "main advance")
+
+	run("checkout", "feature")
+	run("merge", "main", "-m", "merge main")
+	rd := "---\ntitle: pr\nbase_commit: " + fork + "\nscope:\n  - pr.txt\n  - rd.md\n---\n"
+	mustWrite(t, filepath.Join(repo, "rd.md"), rd)
+	run("add", ".")
+	run("commit", "-m", "ticket")
+
+	cfg := DefaultConfig(repo)
+	cfg.TicketPath = filepath.Join(repo, "rd.md")
+	cfg.BaseRef = "main"
+	cfg.HeadRef = "HEAD"
+	cfg.Reviewers = 1
+	cfg.Standards = []string{"scope"}
+	rep, err := Run(&cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.Drift == nil {
+		t.Fatal("expected drift")
+	}
+	for _, f := range rep.Drift.OutOfScope {
+		if f == "from_main.txt" {
+			t.Fatalf("após merge da main, --base main three-dot não deve marcar from_main.txt: %v", rep.Drift.OutOfScope)
+		}
+	}
+	if rep.Drift.MergeBase == "" {
+		t.Fatal("merge_base vazio")
+	}
+}
+
+func TestDriftBaseMismatchNonAncestor(t *testing.T) {
+	repo := t.TempDir()
+	run := initGitRepo(t, repo)
+	run("checkout", "-b", "main")
+	mustWrite(t, filepath.Join(repo, "a.txt"), "a\n")
+	run("add", ".")
+	run("commit", "-m", "a")
+	mustWrite(t, filepath.Join(repo, "b.txt"), "b\n")
+	run("add", ".")
+	run("commit", "-m", "b")
+
+	run("checkout", "-b", "feature")
+	mustWrite(t, filepath.Join(repo, "pr.txt"), "pr\n")
+	run("add", ".")
+	run("commit", "-m", "pr")
+
+	run("checkout", "main")
+	run("checkout", "-b", "side")
+	mustWrite(t, filepath.Join(repo, "side.txt"), "s\n")
+	run("add", ".")
+	run("commit", "-m", "side")
+	side := gitRevParse(t, repo, "HEAD")
+
+	run("checkout", "feature")
+	rd := "---\ntitle: t\nbase_commit: " + side + "\nscope:\n  - pr.txt\n---\n"
+	mustWrite(t, filepath.Join(repo, "rd.md"), rd)
+
+	cfg := DefaultConfig(repo)
+	cfg.TicketPath = filepath.Join(repo, "rd.md")
+	cfg.BaseRef = side
+	cfg.HeadRef = "HEAD"
+	cfg.Reviewers = 1
+	cfg.Standards = []string{"scope"}
+	rep, err := Run(&cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.Drift == nil || !rep.Drift.BaseMismatch {
+		t.Fatalf("base não ancestral deve setar base_mismatch; drift=%#v", rep.Drift)
+	}
+	if rep.Drift.ActualBase != side {
+		t.Fatalf("actual_base=%q want %q", rep.Drift.ActualBase, side)
+	}
+	if rep.Drift.MergeBase == "" {
+		t.Fatal("merge_base deve existir mesmo sem ancestralidade direta")
+	}
+}
+
+func TestDriftExplicitBaseUsedForDiff(t *testing.T) {
+	repo := t.TempDir()
+	run := initGitRepo(t, repo)
+	mustWrite(t, filepath.Join(repo, "a.txt"), "a\n")
+	run("add", ".")
+	run("commit", "-m", "a")
+	c1 := gitRevParse(t, repo, "HEAD")
+	mustWrite(t, filepath.Join(repo, "b.txt"), "b\n")
+	run("add", ".")
+	run("commit", "-m", "b")
+	c2 := gitRevParse(t, repo, "HEAD")
+	mustWrite(t, filepath.Join(repo, "c.txt"), "c\n")
+	run("add", ".")
+	run("commit", "-m", "c")
+
+	rd := "---\ntitle: t\nbase_commit: " + c1 + "\nscope:\n  - c.txt\n  - rd.md\n---\n"
+	mustWrite(t, filepath.Join(repo, "rd.md"), rd)
+
+	cfg := DefaultConfig(repo)
+	cfg.TicketPath = filepath.Join(repo, "rd.md")
+	cfg.BaseRef = c2
+	cfg.HeadRef = "HEAD"
+	cfg.Reviewers = 1
+	cfg.Standards = []string{"scope"}
+	rep, err := Run(&cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.Drift == nil {
+		t.Fatal("expected drift")
+	}
+	if rep.Drift.ActualBase != c2 {
+		t.Fatalf("actual_base=%q want explicit base %q", rep.Drift.ActualBase, c2)
+	}
+	for _, f := range rep.Drift.OutOfScope {
+		if f == "b.txt" {
+			t.Fatalf("--base explícito (c2) não deve incluir b.txt no diff: oos=%v", rep.Drift.OutOfScope)
+		}
+	}
+	if rep.Drift.BaseMismatch {
+		t.Fatal("base explícita ancestral não deve marcar base_mismatch só porque difere do ticket")
+	}
+	if rep.Drift.MergeBase == "" {
+		t.Fatal("merge_base vazio")
+	}
+}
+
+func mustWrite(t *testing.T, path, content string) {
+	t.Helper()
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
 	}
 }

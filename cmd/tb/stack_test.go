@@ -14,15 +14,64 @@ func TestStackUnknownOpNoUsage(t *testing.T) {
 		t.Skip()
 	}
 	tbBin := buildTB(t)
-	stderr, code := runTBCapture(t, tbBin, "", "stack", "nope")
+	out, code := runTBCapture(t, tbBin, "", "stack", "nope")
 	if code == 0 {
-		t.Fatalf("op desconhecida deveria sair ≠ 0\n%s", stderr)
+		t.Fatalf("op desconhecida deveria sair ≠ 0\n%s", out)
 	}
-	if !strings.Contains(stderr, "operação desconhecida") {
-		t.Fatalf("stderr: %s", stderr)
+	if !strings.Contains(out, "operação desconhecida") {
+		t.Fatalf("output: %s", out)
+	}
+	if strings.Contains(out, "Usage:") {
+		t.Fatalf("não deve dumpar Usage:\n%s", out)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(out), &payload); err != nil {
+		t.Fatalf("saída deveria ser JSON com error no step: %v\n%s", err, out)
+	}
+	steps, _ := payload["steps"].([]any)
+	if len(steps) == 0 {
+		t.Fatalf("steps vazios: %s", out)
+	}
+	first, _ := steps[0].(map[string]any)
+	if first["error"] == nil {
+		t.Fatalf("error ausente no step: %s", out)
+	}
+}
+
+func TestStackNoOpsShortErrorNoUsage(t *testing.T) {
+	if testing.Short() {
+		t.Skip()
+	}
+	tbBin := buildTB(t)
+	stderr, code := runTBCapture(t, tbBin, "", "stack")
+	if code == 0 {
+		t.Fatalf("stack sem ops deveria sair ≠ 0\n%s", stderr)
+	}
+	for _, op := range []string{"verify", "review", "drift", "guard"} {
+		if !strings.Contains(stderr, op) {
+			t.Fatalf("stderr deveria listar op %q:\n%s", op, stderr)
+		}
 	}
 	if strings.Contains(stderr, "Usage:") {
 		t.Fatalf("não deve dumpar Usage:\n%s", stderr)
+	}
+}
+
+func TestStackHelpClarifiesNotBranchStack(t *testing.T) {
+	if testing.Short() {
+		t.Skip()
+	}
+	tbBin := buildTB(t)
+	out, code := runTBCapture(t, tbBin, "", "stack", "--help")
+	if code != 0 {
+		t.Fatalf("stack --help deveria sair 0\n%s", out)
+	}
+	lower := strings.ToLower(out)
+	if !strings.Contains(lower, "verificação") && !strings.Contains(lower, "verify") {
+		t.Fatalf("help deveria deixar claro que empilha verificação:\n%s", out)
+	}
+	if !strings.Contains(lower, "branch") && !strings.Contains(lower, "graphite") && !strings.Contains(lower, "git-stack") {
+		t.Fatalf("help deveria esclarecer que não é stack de branches:\n%s", out)
 	}
 }
 
