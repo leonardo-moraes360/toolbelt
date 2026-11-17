@@ -45,6 +45,16 @@ func addMemberFlags(c *cobra.Command) {
 	c.Flags().String("as", "", "nome do agente (sessão criada por tb bus join)")
 }
 
+// printBusJSON imprime JSON indentado sem escapar <, > e &.
+func printBusJSON(v any) error {
+	b, err := bus.MarshalIndent(v)
+	if err != nil {
+		return err
+	}
+	_, err = fmt.Println(string(b))
+	return err
+}
+
 // readPayload aceita JSON literal ou @arquivo.
 func readPayload(v string) (json.RawMessage, error) {
 	if v == "" {
@@ -101,7 +111,7 @@ var busChannelCreateCmd = &cobra.Command{
 			return err
 		}
 		if jsonOutput {
-			return printJSON(map[string]any{"channel": ch, "invite": inv})
+			return printBusJSON(map[string]any{"channel": ch, "invite": inv})
 		}
 		fmt.Printf("canal: %s  dono: %s\n", ch.Name, ch.Owner)
 		fmt.Printf("convite do dono: %s (papel %s, uso único, expira %s)\n", inv.Code, inv.Role, inv.ExpiresAt.Format("15:04:05Z07:00"))
@@ -124,7 +134,7 @@ var busChannelListCmd = &cobra.Command{
 			return err
 		}
 		if jsonOutput {
-			return printJSON(chs)
+			return printBusJSON(chs)
 		}
 		if len(chs) == 0 {
 			fmt.Println("nenhum canal")
@@ -155,7 +165,7 @@ var busChannelShowCmd = &cobra.Command{
 			return err
 		}
 		if jsonOutput {
-			return printJSON(agents)
+			return printBusJSON(agents)
 		}
 		if len(agents) == 0 {
 			fmt.Println("nenhum agente no canal")
@@ -189,7 +199,7 @@ var busInviteCmd = &cobra.Command{
 			return err
 		}
 		if jsonOutput {
-			return printJSON(inv)
+			return printBusJSON(inv)
 		}
 		fmt.Printf("convite: %s (canal %s, papel %s, uso único, expira %s)\n", inv.Code, inv.Channel, inv.Role, inv.ExpiresAt.Format("15:04:05Z07:00"))
 		return nil
@@ -251,7 +261,7 @@ var busJoinCmd = &cobra.Command{
 			return fmt.Errorf("gravando sessão: %w", err)
 		}
 		if jsonOutput {
-			return printJSON(sess)
+			return printBusJSON(sess)
 		}
 		fmt.Printf("%s entrou em %s (papel %s, %s)\n", sess.AgentID, sess.Channel, sess.Role, sess.Version)
 		fmt.Printf("use --channel %s --as %s nos próximos comandos\n", sess.Channel, sess.Name)
@@ -297,7 +307,7 @@ var busSendCmd = &cobra.Command{
 			return err
 		}
 		if jsonOutput {
-			return printJSON(map[string]any{"envelope": bus.Wrap(&res.Message), "duplicate": res.Duplicate})
+			return printBusJSON(map[string]any{"envelope": bus.Wrap(&res.Message), "duplicate": res.Duplicate})
 		}
 		dup := ""
 		if res.Duplicate {
@@ -328,7 +338,7 @@ var busRecvCmd = &cobra.Command{
 			return err
 		}
 		if jsonOutput {
-			return printJSON(bus.WrapAll(msgs))
+			return printBusJSON(bus.WrapAll(msgs))
 		}
 		printMessages(msgs, "nenhuma mensagem")
 		return nil
@@ -365,7 +375,7 @@ var busClaimCmd = &cobra.Command{
 			return err
 		}
 		if jsonOutput {
-			return printJSON(c)
+			return printBusJSON(c)
 		}
 		fmt.Printf("%s é dono de %s\n", c.Owner, c.Thread)
 		return nil
@@ -392,7 +402,7 @@ var busCompleteCmd = &cobra.Command{
 			return err
 		}
 		if jsonOutput {
-			return printJSON(map[string]any{"claim": res.Claim, "envelope": bus.Wrap(&res.Message)})
+			return printBusJSON(map[string]any{"claim": res.Claim, "envelope": bus.Wrap(&res.Message)})
 		}
 		fmt.Printf("%s concluída por %s (task.result %s)\n", res.Claim.Thread, res.Claim.Owner, res.Message.ID)
 		return nil
@@ -416,7 +426,7 @@ var busLogCmd = &cobra.Command{
 			return err
 		}
 		if jsonOutput {
-			return printJSON(bus.WrapAll(msgs))
+			return printBusJSON(bus.WrapAll(msgs))
 		}
 		printMessages(msgs, "nenhuma mensagem no canal")
 		return nil

@@ -87,6 +87,15 @@ func busMemberFromArgs(args map[string]any) (*bus.Store, bus.Member, error) {
 	return s, m, nil
 }
 
+// busText formata a resposta sem escape HTML (o registry usaria MarshalIndent).
+func busText(v any) (any, error) {
+	b, err := bus.MarshalIndent(v)
+	if err != nil {
+		return nil, err
+	}
+	return string(b), nil
+}
+
 // objectArg aceita objeto JSON (map) ou string JSON.
 func objectArg(args map[string]any, key string) (json.RawMessage, error) {
 	v, ok := args[key]
@@ -274,7 +283,7 @@ func handleBusSend(_ context.Context, args map[string]any) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	return map[string]any{"envelope": bus.Wrap(&res.Message), "duplicate": res.Duplicate}, nil
+	return busText(map[string]any{"envelope": bus.Wrap(&res.Message), "duplicate": res.Duplicate})
 }
 
 func handleBusRecv(ctx context.Context, args map[string]any) (any, error) {
@@ -300,7 +309,7 @@ func handleBusRecv(ctx context.Context, args map[string]any) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	return bus.WrapAll(msgs), nil
+	return busText(bus.WrapAll(msgs))
 }
 
 func handleBusClaim(_ context.Context, args map[string]any) (any, error) {
@@ -326,5 +335,5 @@ func handleBusComplete(_ context.Context, args map[string]any) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	return map[string]any{"claim": res.Claim, "envelope": bus.Wrap(&res.Message)}, nil
+	return busText(map[string]any{"claim": res.Claim, "envelope": bus.Wrap(&res.Message)})
 }

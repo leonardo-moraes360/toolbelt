@@ -4,6 +4,7 @@
 package bus
 
 import (
+	"bytes"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
@@ -271,3 +272,19 @@ func hashSecret(s string) string {
 	h := sha256.Sum256([]byte(s))
 	return hex.EncodeToString(h[:])
 }
+
+// marshal serializa sem escapar <, > e & (payload é texto entre agentes, não
+// HTML), com indentação opcional e sem a quebra de linha final do Encoder.
+func marshal(v any, indent string) ([]byte, error) {
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	enc.SetIndent("", indent)
+	if err := enc.Encode(v); err != nil {
+		return nil, err
+	}
+	return bytes.TrimRight(buf.Bytes(), "\n"), nil
+}
+
+// MarshalIndent é json.MarshalIndent sem escape HTML (saída CLI/MCP do bus).
+func MarshalIndent(v any) ([]byte, error) { return marshal(v, "  ") }

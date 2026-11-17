@@ -704,7 +704,7 @@ func sanitizePayload(raw json.RawMessage) ([]byte, error) {
 	if obj == nil {
 		obj = map[string]any{}
 	}
-	out, err := json.Marshal(redactValue(obj))
+	out, err := marshal(redactValue(obj), "")
 	if err != nil {
 		return nil, err
 	}

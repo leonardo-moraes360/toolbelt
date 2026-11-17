@@ -509,3 +509,16 @@ func TestConcurrentOpenOfFreshStore(t *testing.T) {
 		}
 	}
 }
+
+func TestPayloadNotHTMLEscaped(t *testing.T) {
+	s, _, owner, _ := setup(t)
+	r := send(t, s, owner, &SendInput{To: "topic:x", Type: TypeQuery,
+		Payload: json.RawMessage(`{"task":"<uma frase> & mais"}`)})
+	if !strings.Contains(string(r.Message.Payload), `<uma frase> & mais`) {
+		t.Fatalf("payload escapado: %s", r.Message.Payload)
+	}
+	b, err := MarshalIndent(WrapAll([]Message{r.Message}))
+	if err != nil || !strings.Contains(string(b), `<uma frase> & mais`) {
+		t.Fatalf("saída escapada: %s (%v)", b, err)
+	}
+}
