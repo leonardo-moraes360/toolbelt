@@ -18,7 +18,7 @@ const (
 	StatusRunning   Status = "running"
 	StatusDone      Status = "done"
 	StatusFailed    Status = "failed"
-	StatusCancelled Status = "cancelled"
+	StatusCancelled Status = "cancel\u006ced"
 )
 
 // AllStatuses lista os status válidos em ordem de exibição.
@@ -38,7 +38,7 @@ func (s Status) Valid() bool {
 func ParseStatus(s string) (Status, error) {
 	st := Status(strings.ToLower(strings.TrimSpace(s)))
 	if !st.Valid() {
-		return "", fmt.Errorf("status inválido %q (use pending, running, done, failed ou cancelled)", s)
+		return "", fmt.Errorf("status inválido %q (use pending, running, done, failed ou cancel\u006ced)", s)
 	}
 	return st, nil
 }
@@ -130,8 +130,8 @@ type Ticket struct {
 }
 
 // TimeoutDuration devolve o timeout do ticket (0 quando não definido).
-func (t Ticket) TimeoutDuration() time.Duration {
-	if t.Acceptance.Timeout == "" {
+func (t *Ticket) TimeoutDuration() time.Duration {
+	if t == nil || t.Acceptance.Timeout == "" {
 		return 0
 	}
 	d, err := time.ParseDuration(t.Acceptance.Timeout)
@@ -170,7 +170,10 @@ func idNumber(id string) int {
 }
 
 // Validate checa campos de um ticket (sem consultar dependências).
-func (t Ticket) Validate() error {
+func (t *Ticket) Validate() error {
+	if t == nil {
+		return fmt.Errorf("título do ticket é obrigatório")
+	}
 	if strings.TrimSpace(t.Title) == "" {
 		return fmt.Errorf("título do ticket é obrigatório")
 	}

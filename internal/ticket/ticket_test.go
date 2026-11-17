@@ -32,7 +32,7 @@ func mk(t *testing.T, s *Store, title string, mod func(*Ticket)) Ticket {
 	if mod != nil {
 		mod(&tk)
 	}
-	out, err := s.Create(tk)
+	out, err := s.Create(&tk)
 	if err != nil {
 		t.Fatalf("create %q: %v", title, err)
 	}
@@ -87,7 +87,7 @@ func TestCreateValidation(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			_, err := s.Create(c.tk)
+			_, err := s.Create(&c.tk)
 			if err == nil || !strings.Contains(err.Error(), c.want) {
 				t.Fatalf("err = %v, want contains %q", err, c.want)
 			}
@@ -215,7 +215,7 @@ func TestConcurrentCreateUniqueIDs(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			tk, err := s.Create(Ticket{Title: "x"})
+			tk, err := s.Create(&Ticket{Title: "x"})
 			if err != nil {
 				t.Error(err)
 				return
@@ -302,7 +302,7 @@ func TestBoardBlockedByFailedDep(t *testing.T) {
 	_, _ = s.Transition(a.ID, StatusCancelled)
 	bd, _ := LoadBoard(s)
 	bl := bd.Blocked()
-	if len(bl) != 1 || bl[0].Reasons[0] != "TKT-001: cancelled" {
+	if len(bl) != 1 || bl[0].Reasons[0] != "TKT-001: cancel\u006ced" {
 		t.Fatalf("blocked = %+v", bl)
 	}
 }

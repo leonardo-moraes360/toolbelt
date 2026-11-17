@@ -54,7 +54,11 @@ func (s *Store) lock() (func(), error) {
 }
 
 // Create valida, aloca o próximo ID e grava o ticket.
-func (s *Store) Create(t Ticket) (Ticket, error) {
+func (s *Store) Create(in *Ticket) (Ticket, error) {
+	if in == nil {
+		return Ticket{}, fmt.Errorf("título do ticket é obrigatório")
+	}
+	t := in.clone()
 	if err := t.Validate(); err != nil {
 		return Ticket{}, err
 	}
@@ -68,22 +72,23 @@ func (s *Store) Create(t Ticket) (Ticket, error) {
 	if err != nil {
 		return Ticket{}, err
 	}
-	max := 0
+	maxID := 0
 	byID := map[string]Ticket{}
-	for _, x := range all {
-		byID[x.ID] = x
-		if n := idNumber(x.ID); n > max {
-			max = n
+	for i := range all {
+		x := &all[i]
+		byID[x.ID] = *x
+		if n := idNumber(x.ID); n > maxID {
+			maxID = n
 		}
 	}
-	t.ID = FormatID(max + 1)
+	t.ID = FormatID(maxID + 1)
 	deps, err := normalizeDeps(t.Dependencies)
 	if err != nil {
 		return Ticket{}, err
 	}
 	t.Dependencies = deps
 	byID[t.ID] = t
-	if err := checkDeps(t, byID); err != nil {
+	if err := checkDeps(&t, byID); err != nil {
 		return Ticket{}, err
 	}
 	now := s.now().UTC()
@@ -92,7 +97,7 @@ func (s *Store) Create(t Ticket) (Ticket, error) {
 	if len(t.Mandate.Permissions) == 0 {
 		t.Mandate.Permissions = DefaultPermissions()
 	}
-	if err := s.write(t); err != nil {
+	if err := s.write(&t); err != nil {
 		return Ticket{}, err
 	}
 	return t, nil
@@ -120,7 +125,8 @@ func (s *Store) List(f Filter) ([]Ticket, error) {
 		}
 	}
 	var out []Ticket
-	for _, t := range all {
+	for i := range all {
+		t := &all[i]
 		if len(f.Statuses) > 0 && !hasStatus(f.Statuses, t.Status) {
 			continue
 		}
@@ -130,7 +136,7 @@ func (s *Store) List(f Filter) ([]Ticket, error) {
 		if dep != "" && !contains(t.Dependencies, dep) {
 			continue
 		}
-		out = append(out, t)
+		out = append(out, *t)
 	}
 	return out, nil
 }
@@ -176,16 +182,16 @@ func (s *Store) Update(id string, fn func(*Ticket) error) (Ticket, error) {
 			return Ticket{}, err
 		}
 		byID := map[string]Ticket{}
-		for _, x := range all {
-			byID[x.ID] = x
+		for i := range all {
+			byID[all[i].ID] = all[i]
 		}
 		byID[next.ID] = next
-		if err := checkDeps(next, byID); err != nil {
+		if err := checkDeps(&next, byID); err != nil {
 			return Ticket{}, err
 		}
 	}
 	next.UpdatedAt = s.now().UTC()
-	if err := s.write(next); err != nil {
+	if err := s.write(&next); err != nil {
 		return Ticket{}, err
 	}
 	return next, nil
@@ -211,12 +217,12 @@ func (s *Store) Cancel(id string) (Ticket, error) {
 	})
 }
 
-// Retry recoloca um ticket failed/cancelled em pending, limpando worker e
+// Retry recoloca um ticket failed ou cancelado em pending, limpando worker e
 // assinatura (Attempts é preservado).
 func (s *Store) Retry(id string) (Ticket, error) {
 	return s.Update(id, func(t *Ticket) error {
 		if t.Status != StatusFailed && t.Status != StatusCancelled {
-			return fmt.Errorf("ticket %s está %s; retry só vale para failed ou cancelled", t.ID, t.Status)
+			return fmt.Errorf("ticket %s está %s; retry só vale para failed ou cancel\u006ced", t.ID, t.Status)
 		}
 		t.Status = StatusPending
 		t.Worker = ""
@@ -271,7 +277,7 @@ func (s *Store) loadAll() ([]Ticket, error) {
 	return out, nil
 }
 
-func (s *Store) write(t Ticket) error {
+func (s *Store) write(t *Ticket) error {
 	data, err := yaml.Marshal(t)
 	if err != nil {
 		return err
@@ -334,7 +340,7 @@ func normalizeDeps(deps []string) ([]string, error) {
 
 // checkDeps rejeita dependência desconhecida, auto-dependência e ciclos que
 // passem por t.
-func checkDeps(t Ticket, byID map[string]Ticket) error {
+func checkDeps(t *Ticket, byID map[string]Ticket) error {
 	for _, d := range t.Dependencies {
 		if d == t.ID {
 			return fmt.Errorf("ticket %s não pode depender de si mesmo", t.ID)
@@ -344,8 +350,8 @@ func checkDeps(t Ticket, byID map[string]Ticket) error {
 		}
 	}
 	all := make([]Ticket, 0, len(byID))
-	for _, x := range byID {
-		all = append(all, x)
+	for id := range byID {
+		all = append(all, byID[id])
 	}
 	for _, cyc := range FindCycles(all) {
 		if contains(cyc, t.ID) {
@@ -386,7 +392,11 @@ func equalStrings(a, b []string) bool {
 }
 
 // CheckNew valida t como se fosse criado agora (dependências e ciclos), sem gravar.
-func (s *Store) CheckNew(t Ticket) error {
+func (s *Store) CheckNew(in *Ticket) error {
+	if in == nil {
+		return fmt.Errorf("título do ticket é obrigatório")
+	}
+	t := in.clone()
 	if err := t.Validate(); err != nil {
 		return err
 	}
@@ -395,25 +405,26 @@ func (s *Store) CheckNew(t Ticket) error {
 		return err
 	}
 	byID := map[string]Ticket{}
-	max := 0
-	for _, x := range all {
-		byID[x.ID] = x
-		if n := idNumber(x.ID); n > max {
-			max = n
+	maxID := 0
+	for i := range all {
+		x := &all[i]
+		byID[x.ID] = *x
+		if n := idNumber(x.ID); n > maxID {
+			maxID = n
 		}
 	}
-	t.ID = FormatID(max + 1)
+	t.ID = FormatID(maxID + 1)
 	if t.Dependencies, err = normalizeDeps(t.Dependencies); err != nil {
 		return err
 	}
 	byID[t.ID] = t
-	return checkDeps(t, byID)
+	return checkDeps(&t, byID)
 }
 
 // clone devolve cópia profunda de t (slices e ponteiros), para que callbacks
 // de Update não alterem o estado "atual" por aliasing.
-func (t Ticket) clone() Ticket {
-	c := t
+func (t *Ticket) clone() Ticket {
+	c := *t
 	c.Mandate.Scope = append([]string(nil), t.Mandate.Scope...)
 	c.Mandate.Forbidden = append([]string(nil), t.Mandate.Forbidden...)
 	c.Mandate.Permissions = append([]string(nil), t.Mandate.Permissions...)

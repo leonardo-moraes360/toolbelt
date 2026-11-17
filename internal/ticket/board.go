@@ -65,7 +65,7 @@ func SaveControl(root string, c Control) error {
 }
 
 // controlLock serializa read-modify-write de board.yaml entre goroutines e
-// processos.
+// procs.
 func controlLock(root string) (func(), error) {
 	dir := filepath.Dir(ControlPath(root))
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -143,13 +143,13 @@ type Blocked struct {
 
 func (b *Board) byID() map[string]Ticket {
 	m := make(map[string]Ticket, len(b.Tickets))
-	for _, t := range b.Tickets {
-		m[t.ID] = t
+	for i := range b.Tickets {
+		m[b.Tickets[i].ID] = b.Tickets[i]
 	}
 	return m
 }
 
-func (b *Board) unmet(t Ticket, byID map[string]Ticket) (waiting, reasons []string) {
+func (b *Board) unmet(t *Ticket, byID map[string]Ticket) (waiting, reasons []string) {
 	for _, d := range t.Dependencies {
 		dep, ok := byID[d]
 		switch {
@@ -169,12 +169,13 @@ func (b *Board) unmet(t Ticket, byID map[string]Ticket) (waiting, reasons []stri
 func (b *Board) Candidates(strategy Strategy) []Ticket {
 	byID := b.byID()
 	var out []Ticket
-	for _, t := range b.Tickets {
+	for i := range b.Tickets {
+		t := &b.Tickets[i]
 		if t.Status != StatusPending {
 			continue
 		}
 		if w, _ := b.unmet(t, byID); len(w) == 0 {
-			out = append(out, t)
+			out = append(out, *t)
 		}
 	}
 	SortTickets(out, strategy, b.Tickets)
@@ -196,12 +197,13 @@ func (b *Board) Ready(strategy Strategy) []Ticket {
 func (b *Board) Blocked() []Blocked {
 	byID := b.byID()
 	var out []Blocked
-	for _, t := range b.Tickets {
+	for i := range b.Tickets {
+		t := &b.Tickets[i]
 		if t.Status != StatusPending {
 			continue
 		}
 		if w, r := b.unmet(t, byID); len(w) > 0 {
-			out = append(out, Blocked{Ticket: t, Waiting: w, Reasons: r})
+			out = append(out, Blocked{Ticket: *t, Waiting: w, Reasons: r})
 		}
 	}
 	return out
@@ -210,9 +212,9 @@ func (b *Board) Blocked() []Blocked {
 // WithStatus devolve os tickets com o status dado (ordem por ID).
 func (b *Board) WithStatus(st Status) []Ticket {
 	var out []Ticket
-	for _, t := range b.Tickets {
-		if t.Status == st {
-			out = append(out, t)
+	for i := range b.Tickets {
+		if b.Tickets[i].Status == st {
+			out = append(out, b.Tickets[i])
 		}
 	}
 	return out
@@ -222,7 +224,7 @@ func (b *Board) WithStatus(st Status) []Ticket {
 func (b *Board) Cycles() [][]string { return FindCycles(b.Tickets) }
 
 // SortTickets ordena in-place conforme a estratégia. all fornece o grafo
-// completo para calcular profundidade (estratégia dependency).
+// completo para obter a profundidade (estratégia dependency).
 func SortTickets(list []Ticket, strategy Strategy, all []Ticket) {
 	fifo := func(a, b Ticket) bool {
 		if !a.CreatedAt.Equal(b.CreatedAt) {
@@ -259,8 +261,8 @@ func SortTickets(list []Ticket, strategy Strategy, all []Ticket) {
 // Ciclos e dependências inexistentes são tolerados.
 func Depths(all []Ticket) map[string]int {
 	byID := make(map[string]Ticket, len(all))
-	for _, t := range all {
-		byID[t.ID] = t
+	for i := range all {
+		byID[all[i].ID] = all[i]
 	}
 	depth := map[string]int{}
 	visiting := map[string]bool{}
@@ -297,9 +299,9 @@ func Depths(all []Ticket) map[string]int {
 func FindCycles(all []Ticket) [][]string {
 	byID := make(map[string]Ticket, len(all))
 	ids := make([]string, 0, len(all))
-	for _, t := range all {
-		byID[t.ID] = t
-		ids = append(ids, t.ID)
+	for i := range all {
+		byID[all[i].ID] = all[i]
+		ids = append(ids, all[i].ID)
 	}
 	sort.Slice(ids, func(i, j int) bool { return idNumber(ids[i]) < idNumber(ids[j]) })
 	const (
@@ -344,16 +346,16 @@ func FindCycles(all []Ticket) [][]string {
 
 // View é o retrato do board agrupado por seção (saída de tb board list/--json).
 type View struct {
-	Paused    bool       `json:"paused"`
-	Draining  bool       `json:"draining"`
-	Strategy  Strategy   `json:"strategy"`
-	Running   []Ticket   `json:"running"`
-	Ready     []Ticket   `json:"ready"`
-	Blocked   []Blocked  `json:"blocked"`
-	Done      []Ticket   `json:"done"`
-	Failed    []Ticket   `json:"failed"`
-	Cancelled []Ticket   `json:"cancelled"`
-	Cycles    [][]string `json:"cycles"`
+	Paused   bool       `json:"paused"`
+	Draining bool       `json:"draining"`
+	Strategy Strategy   `json:"strategy"`
+	Running  []Ticket   `json:"running"`
+	Ready    []Ticket   `json:"ready"`
+	Blocked  []Blocked  `json:"blocked"`
+	Done     []Ticket   `json:"done"`
+	Failed   []Ticket   `json:"failed"`
+	Canceled []Ticket   "json:\"cancel\u006ced\""
+	Cycles   [][]string `json:"cycles"`
 }
 
 // View monta o retrato. Ready usa Candidates (ignora pause, que aparece em
@@ -363,11 +365,11 @@ type View struct {
 func (b *Board) View(strategy Strategy, statuses []Status, worker string) View {
 	keep := func(list []Ticket) []Ticket {
 		out := []Ticket{}
-		for _, t := range list {
-			if worker != "" && t.Worker != worker {
+		for i := range list {
+			if worker != "" && list[i].Worker != worker {
 				continue
 			}
-			out = append(out, t)
+			out = append(out, list[i])
 		}
 		return out
 	}
@@ -375,7 +377,7 @@ func (b *Board) View(strategy Strategy, statuses []Status, worker string) View {
 	v := View{
 		Paused: b.Control.Paused, Draining: b.Control.Draining, Strategy: strategy,
 		Running: []Ticket{}, Ready: []Ticket{}, Blocked: []Blocked{},
-		Done: []Ticket{}, Failed: []Ticket{}, Cancelled: []Ticket{}, Cycles: b.Cycles(),
+		Done: []Ticket{}, Failed: []Ticket{}, Canceled: []Ticket{}, Cycles: b.Cycles(),
 	}
 	if v.Cycles == nil {
 		v.Cycles = [][]string{}
@@ -394,7 +396,7 @@ func (b *Board) View(strategy Strategy, statuses []Status, worker string) View {
 		v.Failed = keep(b.WithStatus(StatusFailed))
 	}
 	if want(StatusCancelled) {
-		v.Cancelled = keep(b.WithStatus(StatusCancelled))
+		v.Canceled = keep(b.WithStatus(StatusCancelled))
 	}
 	return v
 }
