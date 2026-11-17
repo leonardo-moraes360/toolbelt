@@ -1,3 +1,5 @@
+🇧🇷 Português | [🇺🇸 English](../en/adr/010-invariantes-fora-compactacao.md)
+
 # ADR-010: Invariantes Fixados Fora da Compactação
 
 ## Status

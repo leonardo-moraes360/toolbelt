@@ -1,3 +1,5 @@
+🇧🇷 Português | [🇺🇸 English](../en/adr/001-go-vs-rust.md)
+
 # ADR-001: Go como Linguagem Principal
 
 ## Status

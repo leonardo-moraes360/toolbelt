@@ -1,3 +1,5 @@
+🇧🇷 Português | [🇺🇸 English](../../en/campo/rodada2/ky.md)
+
 # Campo rodada 2: `tb` em sindresorhus/ky
 
 Evidência coletada em 2026-11-16 num clone local em `/tmp/target` (sem push, issue, PR ou comentário no upstream). `tb` compilado deste repo em `main@a46c295` (`make build` → `/tmp/tb`). Única mudança de produto neste estudo: este arquivo. Trabalho no ky ficou restrito à VM.

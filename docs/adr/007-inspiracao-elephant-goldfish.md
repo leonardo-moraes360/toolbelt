@@ -1,3 +1,5 @@
+🇧🇷 Português | [🇺🇸 English](../en/adr/007-inspiracao-elephant-goldfish.md)
+
 # ADR-007: Inspiração — Elephant-Goldfish Model (EGM)
 
 ## Status

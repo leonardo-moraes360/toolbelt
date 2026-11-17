@@ -1,3 +1,5 @@
+🇧🇷 Português | [🇺🇸 English](../../en/campo/rodada2/typer.md)
+
 # Estudo de campo rodada 2: fastapi/typer
 
 Grupo: without existing AI-agent instrumentation (sem instrumentação de agente de IA para contribuição no próprio repositório).  

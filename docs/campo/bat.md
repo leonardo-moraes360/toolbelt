@@ -1,3 +1,5 @@
+🇧🇷 Português | [🇺🇸 English](../en/campo/bat.md)
+
 # Estudo de campo: sharkdp/bat
 
 Grupo: **sem instrumentação de agente de IA**. Clone local em `/tmp/target/bat`. Nenhuma interação com o upstream (sem push/issue/PR/comentário). `tb` buildado deste repo (`make build` → `toolbelt c8aae04`).

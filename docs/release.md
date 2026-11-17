@@ -1,3 +1,5 @@
+🇧🇷 Português | [🇺🇸 English](en/release.md)
+
 # Como publicar um release
 
 O workflow [`.github/workflows/release.yml`](../.github/workflows/release.yml) publica um GitHub Release com binários `tb` quando uma tag `v*` é enviada ao remoto. A configuração está em [`.goreleaser.yaml`](../.goreleaser.yaml).

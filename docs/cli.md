@@ -1,3 +1,5 @@
+🇧🇷 Português | [🇺🇸 English](en/cli.md)
+
 # Árvore de Comandos do `tb`
 
 Este documento descreve a CLI do toolbelt: comandos **implementados** (espelham `tb --help`) e seções **planejadas** (Fase 3+, marcadas explicitamente). Em caso de divergência, a CLI Cobra é a fonte da verdade.
@@ -643,6 +645,9 @@ Flags:
 
 Sem operação, ou com operação desconhecida, sai com erro curto listando as ops
 válidas (`verify`, `review`, `drift`, `guard`) — sem dump de `Usage`.
+Ticket inexistente ou ilegível (arquivo/ID apontado por `--ticket`) faz as etapas
+`review`/`drift` falharem com exit ≠ 0 e mensagem citando o caminho procurado
+(mesma semântica de `tb review` / `tb drift` / MCP).
 
 **Exemplos:**
 
@@ -721,6 +726,10 @@ Flags:
   --output <path>            Relatório JSON (sem shorthand `-o`; use `--output`)
   --json                     Saída em JSON (flag global)
 ```
+
+Ticket inexistente ou ilegível sai com código ≠ 0 e mensagem
+`ticket não encontrado: <caminho>` / `ticket ilegível (<caminho>): …`
+(CLI, MCP `tb_review` e `tb stack`/`tb_stack`).
 
 Também reporta drift de escopo e commit base. Isolamento fresco é obrigatório.
 `tb review -o …` é rejeitado (`unknown shorthand flag: 'o'`); use `--output`.
@@ -846,6 +855,10 @@ Flags:
   --output <path>            Saída JSON (sem shorthand `-o`)
   --json                     Saída em JSON (flag global)
 ```
+
+Ticket inexistente ou ilegível sai com código ≠ 0 e mensagem
+`ticket não encontrado: <caminho>` / `ticket ilegível (<caminho>): …`
+(CLI, MCP `tb_drift` e `tb stack`/`tb_stack`).
 
 O JSON de drift inclui `pinned_approval` no mesmo formato do `tb review`
 (`checked: false` sem a flag; com a flag: bases `approved_base`/`head_base`,

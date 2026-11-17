@@ -1,3 +1,5 @@
+🇧🇷 Português | [🇺🇸 English](../en/campo/pydantic-ai.md)
+
 # Campo: pydantic/pydantic-ai
 
 Estudo de campo do `tb` (build local `make build`, versão injetada `c8aae04`) contra clone local de [pydantic/pydantic-ai](https://github.com/pydantic/pydantic-ai) em `/tmp/target/pydantic-ai`. Sem push, issues, PRs ou comentários no alvo.

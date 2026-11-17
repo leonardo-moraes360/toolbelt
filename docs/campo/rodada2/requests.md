@@ -1,3 +1,5 @@
+🇧🇷 Português | [🇺🇸 English](../../en/campo/rodada2/requests.md)
+
 # Campo rodada 2: psf/requests
 
 Grupo: **without existing AI-agent instrumentation**.  

@@ -1,3 +1,5 @@
+🇧🇷 Português | [🇺🇸 English](../../en/campo/rodada2/commander-js.md)
+
 # Estudo de campo ROUND 2: commander.js
 
 Grupo: **without existing AI-agent instrumentation** (sem instrumentação de agente de IA além de política humana).  

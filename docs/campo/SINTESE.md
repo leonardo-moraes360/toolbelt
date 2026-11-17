@@ -1,3 +1,5 @@
+🇧🇷 Português | [🇺🇸 English](../en/campo/SINTESE.md)
+
 # Síntese do estudo de campo do `tb` (20 repositórios)
 
 > Data: 2026-11-15 · Branch: `campo/sintese` · Binário típico dos agentes: `toolbelt@c8aae04`  
