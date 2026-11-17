@@ -22,7 +22,7 @@ func TestListSearchEmptyAreArrays(t *testing.T) {
 	if string(raw) != "[]" {
 		t.Fatalf("list empty JSON=%s want []", raw)
 	}
-	if _, err := s.Add("anti_cheat", "keep hidden intact", ""); err != nil {
+	if _, err := s.Add("anti_cheat", "keep hidden intact", "", false); err != nil {
 		t.Fatal(err)
 	}
 	miss, err := s.Search("zzzz-none", false)

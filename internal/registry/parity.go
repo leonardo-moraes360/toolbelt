@@ -40,10 +40,11 @@ func registerMemMutateTools() {
 		InputSchema: &InputSchema{
 			Type: "object",
 			Properties: map[string]Property{
-				"rule":     {Type: "string", Description: "Texto da invariante"},
-				"category": {Type: "string", Description: "anti_cheat|mandate|security", Default: "anti_cheat"},
-				"ref":      {Type: "string", Description: "Caminho ADR/decisions.md"},
-				"cwd":      {Type: "string", Description: "Diretório do repositório"},
+				"rule":      {Type: "string", Description: "Texto da invariante"},
+				"category":  {Type: "string", Description: "anti_cheat|mandate|security", Default: "anti_cheat"},
+				"ref":       {Type: "string", Description: "Caminho ADR/decisions.md"},
+				"immutable": {Type: "boolean", Description: "true para marcar imutável (default mutável)", Default: false},
+				"cwd":       {Type: "string", Description: "Diretório do repositório"},
 			},
 			Required: []string{"rule"},
 		},
@@ -59,6 +60,8 @@ func registerMemMutateTools() {
 				"category": {Type: "string", Description: "Nova categoria"},
 				"rule":     {Type: "string", Description: "Nova regra"},
 				"ref":      {Type: "string", Description: "Novo caminho ADR/decisions.md"},
+				"force":    {Type: "boolean", Description: "true para editar imutável/anti_cheat", Default: false},
+				"reason":   {Type: "string", Description: "Motivo obrigatório com force"},
 				"cwd":      {Type: "string", Description: "Diretório do repositório"},
 			},
 			Required: []string{"id"},
@@ -71,8 +74,10 @@ func registerMemMutateTools() {
 		InputSchema: &InputSchema{
 			Type: "object",
 			Properties: map[string]Property{
-				"id":  {Type: "string", Description: "ID da invariante"},
-				"cwd": {Type: "string", Description: "Diretório do repositório"},
+				"id":     {Type: "string", Description: "ID da invariante"},
+				"force":  {Type: "boolean", Description: "true para aposentar imutável/anti_cheat", Default: false},
+				"reason": {Type: "string", Description: "Motivo obrigatório com force"},
+				"cwd":    {Type: "string", Description: "Diretório do repositório"},
 			},
 			Required: []string{"id"},
 		},
@@ -193,6 +198,7 @@ func registerReviewTools() {
 				"base":                 {Type: "string", Description: "Ref base", Default: "HEAD~1"},
 				"head":                 {Type: "string", Description: "Ref head", Default: "HEAD"},
 				"approved_sha":         {Type: "string", Description: "SHA aprovado; compara patch-id verbatim (sensível a whitespace) com o head"},
+				"approved_base":        {Type: "string", Description: "Base do range aprovado; default: merge-base(approved, base)"},
 				"require_approved_sha": {Type: "boolean", Description: "Falha se approved_sha estiver ausente", Default: false},
 				"reviewers":            {Type: "integer", Description: "Máximo de goldfish distintos", Default: 3},
 				"standards": {
@@ -216,6 +222,7 @@ func registerReviewTools() {
 				"base":                 {Type: "string", Description: "Ref base", Default: "HEAD~1"},
 				"head":                 {Type: "string", Description: "Ref head", Default: "HEAD"},
 				"approved_sha":         {Type: "string", Description: "SHA aprovado; compara patch-id verbatim (sensível a whitespace) com o head"},
+				"approved_base":        {Type: "string", Description: "Base do range aprovado; default: merge-base(approved, base)"},
 				"require_approved_sha": {Type: "boolean", Description: "Falha se approved_sha estiver ausente", Default: false},
 			},
 		},
@@ -260,6 +267,7 @@ func registerStackTools() {
 				"fail_fast":            {Type: "boolean", Description: "Para na primeira etapa que falhar", Default: false},
 				"ticket":               {Type: "string", Description: "Caminho do ticket/rd.md", Default: "rd.md"},
 				"approved_sha":         {Type: "string", Description: "SHA aprovado; patch-id verbatim (review/drift)"},
+				"approved_base":        {Type: "string", Description: "Base do range aprovado; default: merge-base(approved, base)"},
 				"require_approved_sha": {Type: "boolean", Description: "Falha se approved_sha estiver ausente", Default: false},
 				"warn_only":            {Type: "boolean", Description: "guard: não marca falha em SeverityError", Default: false},
 				"test_cmd":             {Type: "string", Description: "verify: testes visíveis"},
@@ -319,7 +327,12 @@ func handleMemAdd(_ context.Context, args map[string]any) (any, error) {
 	if category == "" {
 		category = "anti_cheat"
 	}
-	return s.Add(category, rule, StringArg(args, "ref"))
+	inv, err := s.Add(category, rule, StringArg(args, "ref"), BoolArg(args, "immutable", false))
+	if err != nil {
+		return nil, err
+	}
+	out := mem.RedactInvariant(inv)
+	return out, nil
 }
 
 func handleMemList(_ context.Context, args map[string]any) (any, error) {
@@ -327,7 +340,11 @@ func handleMemList(_ context.Context, args map[string]any) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	return s.List(StringArg(args, "category"), BoolArg(args, "all", false))
+	list, err := s.List(StringArg(args, "category"), BoolArg(args, "all", false))
+	if err != nil {
+		return nil, err
+	}
+	return mem.RedactInvariants(list), nil
 }
 
 func handleMemShow(_ context.Context, args map[string]any) (any, error) {
@@ -335,7 +352,12 @@ func handleMemShow(_ context.Context, args map[string]any) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	return s.Get(StringArg(args, "id"))
+	inv, err := s.Get(StringArg(args, "id"))
+	if err != nil {
+		return nil, err
+	}
+	out := mem.RedactInvariant(inv)
+	return out, nil
 }
 
 func handleMemEdit(_ context.Context, args map[string]any) (any, error) {
@@ -353,7 +375,15 @@ func handleMemEdit(_ context.Context, args map[string]any) (any, error) {
 	if v, ok := stringArgPresent(args, "ref"); ok {
 		fields.Ref = &v
 	}
-	return s.Edit(StringArg(args, "id"), fields)
+	inv, err := s.Edit(StringArg(args, "id"), fields, mem.MutateOpts{
+		Force:  BoolArg(args, "force", false),
+		Reason: StringArg(args, "reason"),
+	})
+	if err != nil {
+		return nil, err
+	}
+	out := mem.RedactInvariant(inv)
+	return out, nil
 }
 
 func handleMemRetire(_ context.Context, args map[string]any) (any, error) {
@@ -361,7 +391,15 @@ func handleMemRetire(_ context.Context, args map[string]any) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	return s.Retire(StringArg(args, "id"))
+	inv, err := s.Retire(StringArg(args, "id"), mem.MutateOpts{
+		Force:  BoolArg(args, "force", false),
+		Reason: StringArg(args, "reason"),
+	})
+	if err != nil {
+		return nil, err
+	}
+	out := mem.RedactInvariant(inv)
+	return out, nil
 }
 
 func handleMemSearch(_ context.Context, args map[string]any) (any, error) {
@@ -369,24 +407,21 @@ func handleMemSearch(_ context.Context, args map[string]any) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	return s.Search(StringArg(args, "query"), BoolArg(args, "all", false))
+	list, err := s.Search(StringArg(args, "query"), BoolArg(args, "all", false))
+	if err != nil {
+		return nil, err
+	}
+	return mem.RedactInvariants(list), nil
 }
 
 func handleMemCheck(_ context.Context, args map[string]any) (any, error) {
-	s, dir, err := memStoreFromArgs(args)
+	s, _, err := memStoreFromArgs(args)
 	if err != nil {
 		return nil, err
 	}
 	sha := StringArg(args, "expect_sha")
 	all := BoolArg(args, "all", false)
-	rep, err := memCheckReport(s, sha, all)
-	if err != nil {
-		if _, initErr := mem.EnsureDefaultAntiCheat(dir); initErr == nil && sha == "" {
-			return memCheckReport(s, "", all)
-		}
-		return nil, err
-	}
-	return rep, nil
+	return memCheckReport(s, sha, all)
 }
 
 func memCheckReport(s *mem.Store, sha string, includeRetired bool) (*mem.CheckReport, error) {
@@ -555,6 +590,7 @@ func driftConfigFromArgs(args map[string]any) (*review.Config, error) {
 	cfg.BaseExplicit = baseSet
 	cfg.HeadRef = head
 	cfg.ApprovedSHA = StringArg(args, "approved_sha")
+	cfg.ApprovedBase = StringArg(args, "approved_base")
 	cfg.RequireApprovedSHA = requireApprovedSHAArg(args)
 	cfg.TicketPath = ticketPath
 	cfg.Reviewers = 1
@@ -587,6 +623,7 @@ func reviewConfigFromArgs(args map[string]any) (*review.Config, error) {
 		cfg.HeadRef = v
 	}
 	cfg.ApprovedSHA = StringArg(args, "approved_sha")
+	cfg.ApprovedBase = StringArg(args, "approved_base")
 	cfg.RequireApprovedSHA = requireApprovedSHAArg(args)
 	ticket := StringArg(args, "ticket")
 	if ticket == "" {
@@ -719,6 +756,7 @@ func handleStack(ctx context.Context, args map[string]any) (any, error) {
 		FailFast:           BoolArg(args, "fail_fast", false),
 		Ticket:             ticket,
 		ApprovedSHA:        StringArg(args, "approved_sha"),
+		ApprovedBase:       StringArg(args, "approved_base"),
 		RequireApprovedSHA: requireApprovedSHAArg(args),
 		WarnOnly:           BoolArg(args, "warn_only", false),
 		TestCmd:            StringArg(args, "test_cmd"),

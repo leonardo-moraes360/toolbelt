@@ -409,7 +409,10 @@ tb mem add <regra> [flags]
 Flags:
   --category <cat>    Categoria: anti_cheat|mandate|security (default: anti_cheat)
   --ref <path>        Vínculo com ADR/decisions.md (ex: docs/adr/0001.md)
+  --immutable         Marca como imutável (default: mutável)
 ```
+
+**Default de imutabilidade:** novas invariantes nascem **mutáveis**. Use `--immutable` (CLI) ou `immutable: true` (MCP) para protegê-las. `tb mem init` grava o conjunto anti-trapaça já com `immutable: true`. Categoria `anti_cheat` e `immutable: true` exigem `--force --reason` para `edit`/`retire`.
 
 Categoria inválida ou `--ref` fora do formato ADR/decisions saem ≠ 0 com a lista
 dos valores válidos (`anti_cheat, mandate, security`; refs como
@@ -429,8 +432,8 @@ tb mem check [--expect-sha <sha>] [--all]
 
 ```bash
 tb mem show <id>
-tb mem edit <id> [--category <cat>] [--rule <texto>] [--ref <path>]
-tb mem retire <id>
+tb mem edit <id> [--category <cat>] [--rule <texto>] [--ref <path>] [--force] [--reason <motivo>]
+tb mem retire <id> [--force] [--reason <motivo>]
 ```
 
 **`tb mem init`:** cria o conjunto padrão anti-trapaça e imprime o caminho + as
@@ -447,12 +450,19 @@ Flags:
   --all               Inclui invariantes aposentadas
 ```
 
+`mem check` **falha fechado**: arquivo ausente/ilegível/corrompido, SHA divergente, IDs ausentes ou regra não avaliável (id/categoria/regra vazios) → exit ≠ 0. Não cria defaults automaticamente (use `tb mem init`).
+
+**Redação:** `show`/`list`/`search` (texto e `--json`) e payloads MCP equivalentes mascaram padrões comuns (`ghp_`/`gho_`/`github_pat_`, `AKIA…`, PEM private key, `Bearer`, `xox*`, `*_TOKEN=`) com `[REDACTED]`.
+
+**Histórico:** mudanças forçadas em protegidas são append-only em `.toolbelt/invariants_history.jsonl` (quem, quando, motivo, valor antigo).
+
 **Exemplos:**
 
 ```bash
 # Adicionar invariante (argumento posicional obrigatório)
 tb mem add "Não modificar tests/hidden/**"
 tb mem add --category security --ref docs/adr/0005.md "Não relaxar thresholds sem revisão"
+tb mem add --immutable --category mandate "Escopo fixo do ticket"
 
 # Listar / buscar / exibir / editar / aposentar
 tb mem list
@@ -462,14 +472,16 @@ tb mem search thresholds
 tb mem search autenticacao   # encontra "autenticação"
 tb mem show inv-123
 tb mem edit inv-123 --ref docs/decisions/auth.md --rule "Escopo via ticket"
+tb mem edit inv-123 --rule "nova" --force --reason "incidente"
 tb mem retire inv-123
+tb mem retire inv-123 --force --reason "substituída por ADR"
 tb mem check
 tb mem init
 tb mem init --json
 ```
 
 > Soft-retire mantém a entrada no YAML; `list`/`search`/`check` omitem retired a menos que `--all`.
-> Flags vault `--type`/`--title` **não existem** — `tb mem add` aceita regra posicional, `--category` e `--ref`.
+> Flags vault `--type`/`--title` **não existem** — `tb mem add` aceita regra posicional, `--category`, `--ref` e `--immutable`.
 > `tb mem init --json` devolve `{path, created, count, invariants}`; listas vazias saem como `[]`.
 
 ---
@@ -611,6 +623,7 @@ Flags:
   --fail-fast            Para na primeira etapa que falhar
   --ticket <path>        Ticket/rd.md (review/drift/verify; default: rd.md)
   --approved-sha <sha>   SHA aprovado; patch-id verbatim (review/drift)
+  --approved-base <ref>  Base do range aprovado (default: merge-base(approved, base))
   --require-approved-sha Falha se --approved-sha estiver ausente (ou `review.require_approved_sha`)
   --warn-only            guard: exit 0 mesmo com SeverityError
   --test-cmd <cmd>       verify: testes visíveis
@@ -693,7 +706,8 @@ tb review [ticket] [flags]
 Flags:
   --base <ref>          Commit base (default: HEAD~1 ou base_commit do ticket)
   --head <ref>          Commit head (default: HEAD)
-  --approved-sha <sha>       SHA aprovado; compara `git patch-id --verbatim` de base..approved vs base..head
+  --approved-sha <sha>       SHA aprovado; compara `git patch-id --verbatim` de approved_base..approved vs head_base..head
+  --approved-base <ref>      Base do range aprovado (default: `git merge-base <approved> <base>`)
   --require-approved-sha     Falha se `--approved-sha` estiver ausente (ou `review.require_approved_sha` na config)
   --ticket <path>            Ticket/rd.md (default: rd.md)
   --reviewers <n>            Máximo de goldfish distintos (default: 3; não clona)
@@ -713,12 +727,14 @@ Base e head são resolvidos para SHA **uma vez** no início do fluxo (anti-TOCTO
 esse SHA pinado é usado em todo o restante.
 
 O JSON sempre inclui `pinned_approval`. Sem `--approved-sha`:
-`{"checked": false}`. Com a flag: `checked`, `approved_sha`, `patch_id`,
-`head_patch_id`, `match` e, se divergir, `range_diff`. A comparação usa
-`git patch-id --verbatim` (sensível a whitespace). Patch diferente do aprovado
-imprime um resumo de `git range-diff` e sai com código ≠ 0. Se `--approved-sha`
-coincidir com a base (intervalo `base..approved` vazio), a CLI **não** despeja o
-usage do `git range-diff` — mostra mensagem clara sobre o intervalo inválido.
+`{"checked": false}`. Com a flag: `checked`, `approved_sha`, `approved_base`,
+`head_base`, `patch_id`, `head_patch_id`, `match` e, se divergir, `range_diff`.
+As bases default são `merge-base(approved, base)` e `merge-base(head, base)`.
+A comparação usa `git patch-id --verbatim` (sensível a whitespace); patch-id igual
+**ou** `git range-diff` só com `=` conta como match (rebase limpo). Patch diferente
+do aprovado imprime um resumo de `git range-diff` e sai com código ≠ 0. Se
+`--approved-sha` coincidir com a base (intervalo `base..approved` vazio), a CLI
+**não** despeja o usage do `git range-diff` — mostra mensagem clara sobre o intervalo inválido.
 Com `--require-approved-sha` (ou `review.require_approved_sha: true` em
 `.toolbelt/config.yaml`), a ausência de `--approved-sha` é erro.
 
@@ -814,7 +830,8 @@ tb drift [ticket] [flags]
 Flags:
   --base <ref>          Commit base (default: HEAD~1 ou base_commit do ticket)
   --head <ref>          Commit head (default: HEAD)
-  --approved-sha <sha>       SHA aprovado; compara `git patch-id --verbatim` de base..approved vs base..head
+  --approved-sha <sha>       SHA aprovado; compara `git patch-id --verbatim` de approved_base..approved vs head_base..head
+  --approved-base <ref>      Base do range aprovado (default: `git merge-base <approved> <base>`)
   --require-approved-sha     Falha se `--approved-sha` estiver ausente (ou `review.require_approved_sha`)
   --ticket <path>            Ticket/rd.md (default: rd.md)
   --output <path>            Saída JSON (sem shorthand `-o`)
@@ -826,8 +843,10 @@ Ticket inexistente ou ilegível sai com código ≠ 0 e mensagem
 (CLI, MCP `tb_drift` e `tb stack`/`tb_stack`).
 
 O JSON de drift inclui `pinned_approval` no mesmo formato do `tb review`
-(`checked: false` sem a flag; patch-id verbatim com a flag). Divergência sai
-com código ≠ 0 e mostra `git range-diff`. Base/head são pinados a SHA no início.
+(`checked: false` sem a flag; com a flag: bases `approved_base`/`head_base`,
+patch-id verbatim; match por patch-id igual ou range-diff só com `=`).
+Divergência sai com código ≠ 0 e mostra `git range-diff`. Base/head são pinados
+a SHA no início.
 `--approved-sha` igual à base segue a mesma mensagem clara do `tb review` (sem
 dump de usage).
 
@@ -1755,10 +1774,10 @@ Transporte unix/tcp e flags `--socket`/`--port`/`--tls-*` são planejados; hoje 
 | `tb_run` | — | `sh -c` com timeout; env filtrado; args `env`/`pass_env` (arrays) |
 | `tb_mem_add` / `tb_mem_list` / `tb_mem_show` / `tb_mem_edit` / `tb_mem_retire` / `tb_mem_search` / `tb_mem_check` / `tb_mem_init` | `tb mem …` | arg opcional `cwd`; `ref`/`all` (boolean; strings legadas ok) onde aplicável |
 | `tb_verify_run` | `tb verify run` | `ruler=tests\|visual`; args espelham flags + `env`/`pass_env` |
-| `tb_review` | `tb review` | ticket/base/head/approved_sha/require_approved_sha/reviewers/standards |
-| `tb_drift` | `tb drift` | retorna `{drift, has_drift, pinned_approval}` (`checked` explícito) |
+| `tb_review` | `tb review` | ticket/base/head/approved_sha/approved_base/require_approved_sha/reviewers/standards |
+| `tb_drift` | `tb drift` | retorna `{drift, has_drift, pinned_approval}` (`checked` explícito); `approved_sha`/`approved_base` |
 | `tb_guard_check` | `tb guard check` | `base`/`head` ou `range=A..B`; `strict_fail` por default em SeverityError; `warn_only=true` opt-out; `strict` deprecated (boolean) |
-| `tb_stack` | `tb stack` | `ops` (array), `base`/`head`, `fail_fast` (boolean), `env`/`pass_env`; retorna JSON agregado |
+| `tb_stack` | `tb stack` | `ops` (array), `base`/`head`, `fail_fast` (boolean), `approved_sha`/`approved_base`/`require_approved_sha`, `env`/`pass_env`; retorna JSON agregado |
 | `tb_graph_search` / `tb_graph_callers` / `tb_graph_deps` / `tb_graph_impact` / `tb_graph_index` | `tb graph …` | chamada requer `TB_GRAPH=on`; `depth`/`limit` integer; `transitive` boolean |
 
 Schemas tipam `depth`/`limit`/`reviewers`/`max_iter` como integer, `strict`/`warn_only`/`transitive`/`skip_unavailable`/`all` (mem) como boolean, `threshold` como number e `standards` como array de strings; valores string legados ainda são aceitos. Relatórios de verify/review/drift/guard voltam como JSON no `content` (sem código de saída de processo). Listas vazias usam `[]`; `hidden_passed` é `null` se a suíte oculta não se aplica.
