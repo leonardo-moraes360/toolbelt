@@ -63,15 +63,18 @@ type Edge struct {
 }
 
 type Index struct {
-	Root  string `json:"root"`
-	Nodes []Node `json:"nodes"`
-	Edges []Edge `json:"edges"`
+	Root        string `json:"root"`
+	Nodes       []Node `json:"nodes"`
+	Edges       []Edge `json:"edges"`
+	Fingerprint string `json:"fingerprint,omitempty"`
+	BuiltAt     string `json:"built_at,omitempty"`
 }
 
 type Store struct {
 	mu    sync.RWMutex
 	path  string
 	index *Index
+	stale bool
 }
 
 func Enabled() bool {

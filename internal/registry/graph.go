@@ -91,18 +91,41 @@ func openGraphStore() (*graph.Store, error) {
 	return s, nil
 }
 
-func handleGraphSearch(_ context.Context, args map[string]any) (any, error) {
+func openGraphStoreFresh() (*graph.Store, error) {
 	s, err := openGraphStore()
+	if err != nil {
+		return nil, err
+	}
+	opts := graphOptionsFromConfig()
+	indexOnChange := true
+	if cfg, err := config.Load(); err == nil {
+		indexOnChange = cfg.Graph.IndexOnChange
+	}
+	if _, err := s.EnsureFresh(".", &opts, indexOnChange); err != nil {
+		return nil, err
+	}
+	return s, nil
+}
+
+func graphNodesPayload(s *graph.Store, nodes []graph.Node) map[string]any {
+	return map[string]any{
+		"stale": s.Stale(),
+		"nodes": nodes,
+	}
+}
+
+func handleGraphSearch(_ context.Context, args map[string]any) (any, error) {
+	s, err := openGraphStoreFresh()
 	if err != nil {
 		return nil, err
 	}
 	q := StringArg(args, "query")
 	limit := IntArg(args, "limit", 20)
-	return s.Search(q, limit), nil
+	return graphNodesPayload(s, s.Search(q, limit)), nil
 }
 
 func handleGraphCallers(_ context.Context, args map[string]any) (any, error) {
-	s, err := openGraphStore()
+	s, err := openGraphStoreFresh()
 	if err != nil {
 		return nil, err
 	}
@@ -114,11 +137,11 @@ func handleGraphCallers(_ context.Context, args map[string]any) (any, error) {
 			return nil, reason
 		}
 	}
-	return nodes, nil
+	return graphNodesPayload(s, nodes), nil
 }
 
 func handleGraphDeps(_ context.Context, args map[string]any) (any, error) {
-	s, err := openGraphStore()
+	s, err := openGraphStoreFresh()
 	if err != nil {
 		return nil, err
 	}
@@ -130,11 +153,11 @@ func handleGraphDeps(_ context.Context, args map[string]any) (any, error) {
 		return nil, fmt.Errorf("module ou file é obrigatório")
 	}
 	transitive := BoolArg(args, "transitive", false)
-	return s.Deps(target, transitive), nil
+	return graphNodesPayload(s, s.Deps(target, transitive)), nil
 }
 
 func handleGraphImpact(_ context.Context, args map[string]any) (any, error) {
-	s, err := openGraphStore()
+	s, err := openGraphStoreFresh()
 	if err != nil {
 		return nil, err
 	}
@@ -149,7 +172,7 @@ func handleGraphImpact(_ context.Context, args map[string]any) (any, error) {
 			return nil, reason
 		}
 	}
-	return nodes, nil
+	return graphNodesPayload(s, nodes), nil
 }
 
 func handleGraphIndex(_ context.Context, args map[string]any) (any, error) {
@@ -166,10 +189,12 @@ func handleGraphIndex(_ context.Context, args map[string]any) (any, error) {
 	if err != nil {
 		return nil, err
 	}
+	s.SetStale(false)
 	return map[string]any{
 		"nodes": len(idx.Nodes),
 		"edges": len(idx.Edges),
 		"path":  s.Path(),
+		"stale": false,
 	}, nil
 }
 
