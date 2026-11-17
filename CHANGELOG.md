@@ -10,6 +10,8 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 ### Adicionado
 - `tb stack --jobs N`: concorrência para etapas somente leitura (`guard`/`drift`/`review`);
   default = nº de CPUs (máx. 32); `--jobs 1` força serial; MCP `tb_stack` aceita `jobs`
+- `tb sandbox run --allow-unsandboxed`: opt-in explícito para executar sem isolamento Landlock
+- Teste de integração que tenta escrever fora do workdir (pula se o kernel não tiver Landlock)
 - Grafo TS/JS: fingerprint no `graph.json` e detecção de índice desatualizado;
   com `graph.index_on_change: true` (default) `search`/`callers`/`deps`/`impact`/`stats`
   reindexam automaticamente; com `false`, avisam na saída e expõem `stale: true` no JSON
@@ -30,6 +32,12 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 - `tb stack`: etapas `guard`/`drift`/`review` rodam em paralelo (errgroup); `verify` permanece
   isolado; JSON preserva a ordem pedida; `--fail-fast` cancela as demais via context;
   `Prepare` paraleliza git/IO independentes
+- `tb review` / `tb drift` / `tb stack`: `--approved-sha` passa a usar
+  `git patch-id --verbatim` (sensível a whitespace); JSON sempre expõe
+  `pinned_approval.checked` (`false` quando a checagem não rodou);
+  `--require-approved-sha` e config `review.require_approved_sha` falham se a
+  flag estiver ausente; base/head são resolvidos para SHA uma vez no início
+  (anti-TOCTOU) e reutilizados no fluxo
 - **Breaking (JSON grafo):** consultas MCP/CLI (`search`/`callers`/`deps`/`impact`) passam a
   emitir `{"stale": bool, "nodes": [...]}` em vez de um array nu; `stats`/`index` incluem `stale`
 - Indexador JS/TS indexa `*.test.*`, `*.spec.*`, `__tests__` e `e2e` (antes eram omitidos);
@@ -61,6 +69,15 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
   estrito e por `--warn-only`); remove o exemplo invocável com `--strict`
 
 ### Corrigido
+- **Sandbox Landlock (fail-closed):** probe de ABI usa `LANDLOCK_CREATE_RULESET_VERSION` (antes `flags=0` → `EFAULT` e falso “sem Landlock”); `PR_SET_NO_NEW_PRIVS` antes de `landlock_restrict_self`; rights FS completos por ABI (incl. truncate/make_*); ruleset aplicado no filho via re-exec antes do `exec` do comando; erros de ruleset não são mais engolidos; sem Landlock a execução recusa com erro claro (use `--allow-unsandboxed`)
+- `tb review` (goldfish): detecta só `TODO`/`FIXME`/`XXX`/`HACK` como palavra
+  inteira em maiúsculas em comentários (ignora “todo” em português)
+- `tb review` acceptance: cada achado liga `criterion` + `evidence` do diff;
+  considera testes adicionados (`Test*` em Go; `test`/`it`/`describe` em JS/TS)
+- `tb review` invariants: aplica regras de mandate (ex. proibir `console.log`,
+  sem comentários) às linhas adicionadas do diff
+- `tb review`: saída texto usa `papel=<role>` (e `papéis_acordo` se >1) no lugar
+  de `acordo=N/M`; JSON inclui `role` (e `criterion`/`evidence` no aceite)
 - Funções genéricas TS (`function foo<T>(…)`) voltam a aparecer no índice
 - Imports relativos estilo NodeNext (`.js`→`.ts`/`.tsx`, sem extensão, `index`) deixam de
   ficar como `pkg:./…` e resolvem para `file:…`
@@ -126,6 +143,13 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 - `tb review`: goldfish distintos por papel (`scope`, `quality`, `acceptance`) em vez do mesmo checker clonado N vezes; `--reviewers` só limita papéis; qualidade cobre TODO/FIXME, funções grandes e código sem testes; aceite exige evidência em testes/arquivos de código
 
 ### Corrigido
+- `tb guard check`: renames (`R*`) checam origem e destino; matching de
+  `protected_paths` é case-insensitive; globs com `**` funcionam; regras
+  inválidas não entram em `rules_checked`; config lida da **base**
+  (`git show base:.toolbelt/guard.yaml`) e alteração nesse arquivo é
+  violação; YAML malformado falha fechado (exit ≠ 0); varredura usa o
+  diff/`git show head:path` (não o working tree); detecção de enfraquecimento
+  de testes JS/TS (`skip`/`only`/`xit`/asserções triviais)
 - Descrição longa do CLI: completa o adjetivo em pt-BR (`persistent` → `persistente`)
 - `docs/cli.md` alinhado à CLI real: remove `graph callers --file`; `router` documentado como stub; seções planejadas (`proc`/`agent`/`watchdog`/`merge`) marcadas; `init`/`sandbox`/`workspace`, mem show/edit/retire/search, guard `--warn-only`, review standards e códigos de saída conferidos contra `--help`/MCP
 - Teste `TestDocsCLIExamplesMatchCobra` extrai `tb …` de `docs/cli.md` e valida subcomandos/flags na árvore Cobra

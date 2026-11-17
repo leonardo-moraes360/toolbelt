@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
@@ -14,10 +14,11 @@ import (
 var ErrUnsupported = errors.New("Landlock indisponível nesta plataforma")
 
 type Config struct {
-	WorkDir        string
-	AllowedPaths   []PathAccess
-	ForbiddenPaths []string
-	Timeout        time.Duration
+	WorkDir          string
+	AllowedPaths     []PathAccess
+	ForbiddenPaths   []string
+	Timeout          time.Duration
+	AllowUnsandboxed bool
 }
 
 type PathAccess struct {
@@ -38,18 +39,30 @@ type Result struct {
 	Sandboxed bool          `json:"sandboxed"`
 }
 
-func New(config Config) (*Sandbox, error) {
+func New(config Config) (*Sandbox, error) { //nolint:gocritic // API pública estável por valor
+
 	if config.WorkDir == "" {
 		return nil, errors.New("workdir obrigatório")
 	}
+	abs, err := filepath.Abs(config.WorkDir)
+	if err != nil {
+		return nil, fmt.Errorf("workdir: %w", err)
+	}
+	config.WorkDir = abs
+
 	s := &Sandbox{config: config}
 	if runtime.GOOS == "linux" {
 		s.landlockOK = landlockAvailable()
-		if !s.landlockOK {
-			slog.Warn("Landlock indisponível; execução sem isolamento de filesystem")
+	}
+	if !s.landlockOK && !config.AllowUnsandboxed {
+		if runtime.GOOS != "linux" {
+			return nil, fmt.Errorf("%w; use --allow-unsandboxed para optar por execução sem isolamento", ErrUnsupported)
 		}
-	} else {
-		slog.Warn("sandbox Landlock só no Linux", "os", runtime.GOOS)
+		_, _, probeErr := CheckLandlockSupport()
+		if probeErr == nil {
+			probeErr = ErrUnsupported
+		}
+		return nil, fmt.Errorf("Landlock indisponível (%v); use --allow-unsandboxed para optar por execução sem isolamento", probeErr)
 	}
 	return s, nil
 }
@@ -61,16 +74,42 @@ func (s *Sandbox) Run(ctx context.Context, command string, args ...string) (*Res
 		defer cancel()
 	}
 
-	cmd := exec.CommandContext(ctx, command, args...) //nolint:gosec // sandbox invocado explicitamente pelo operador
-	cmd.Dir = s.config.WorkDir
-
-	if s.landlockOK {
-		_ = applyLandlock(s.config.WorkDir, s.config.AllowedPaths, s.config.ForbiddenPaths)
+	bin, err := exec.LookPath(command)
+	if err != nil {
+		return nil, fmt.Errorf("comando não encontrado: %w", err)
 	}
 
+	if s.landlockOK {
+		return s.runIsolated(ctx, bin, args...)
+	}
+	return s.runPlain(ctx, bin, args...)
+}
+
+func (s *Sandbox) runPlain(ctx context.Context, bin string, args ...string) (*Result, error) {
+	cmd := exec.CommandContext(ctx, bin, args...) //nolint:gosec // sandbox invocado explicitamente pelo operador
+	cmd.Dir = s.config.WorkDir
+	return finishRun(ctx, cmd, false)
+}
+
+func (s *Sandbox) runIsolated(ctx context.Context, bin string, args ...string) (*Result, error) {
+	self, err := os.Executable()
+	if err != nil {
+		return nil, fmt.Errorf("executável atual: %w", err)
+	}
+	env, err := prepareChildEnv(&s.config, bin, args)
+	if err != nil {
+		return nil, err
+	}
+	cmd := exec.CommandContext(ctx, self) //nolint:gosec // re-exec do próprio binário como trampolim Landlock
+	cmd.Dir = s.config.WorkDir
+	cmd.Env = env
+	return finishRun(ctx, cmd, true)
+}
+
+func finishRun(ctx context.Context, cmd *exec.Cmd, sandboxed bool) (*Result, error) {
 	start := time.Now()
 	out, err := cmd.CombinedOutput()
-	res := &Result{Output: string(out), Duration: time.Since(start), Sandboxed: s.landlockOK}
+	res := &Result{Output: string(out), Duration: time.Since(start), Sandboxed: sandboxed}
 
 	if err != nil {
 		if ctx.Err() == context.DeadlineExceeded {

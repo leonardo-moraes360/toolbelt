@@ -63,25 +63,26 @@ func ParseOps(names []string) ([]Op, error) {
 }
 
 type Options struct {
-	RepoDir       string
-	Base          string
-	Head          string
-	Ops           []Op
-	FailFast      bool
-	Jobs          int
-	Ticket        string
-	ApprovedSHA   string
-	WarnOnly      bool
-	TestCmd       string
-	HiddenTestCmd string
-	MaxIter       int
-	Timeout       time.Duration
-	Reviewers     int
-	Standards     []string
-	LoadGraph     bool
-	Loaders       *Loaders
-	EnvAllow      []string
-	EnvPass       []string
+	RepoDir            string
+	Base               string
+	Head               string
+	Ops                []Op
+	FailFast           bool
+	Jobs               int
+	Ticket             string
+	ApprovedSHA        string
+	RequireApprovedSHA bool
+	WarnOnly           bool
+	TestCmd            string
+	HiddenTestCmd      string
+	MaxIter            int
+	Timeout            time.Duration
+	Reviewers          int
+	Standards          []string
+	LoadGraph          bool
+	Loaders            *Loaders
+	EnvAllow           []string
+	EnvPass            []string
 }
 
 type Loaders struct {
@@ -309,26 +310,6 @@ func runParallelWave(ctx context.Context, wave []Op, opts *Options, shared *Shar
 	return steps, ok
 }
 
-func prepareRepoRefs(opts *Options) (repo, base, head string, err error) {
-	repo = opts.RepoDir
-	if repo == "" {
-		repo, err = os.Getwd()
-		if err != nil {
-			return "", "", "", err
-		}
-	}
-	base = opts.Base
-	if base == "" {
-		base = "HEAD~1"
-	}
-	head = opts.Head
-	if head == "" {
-		head = "HEAD"
-	}
-	base = resolveEffectiveBase(repo, base, opts.Ticket)
-	return repo, base, head, nil
-}
-
 type prepareLoads struct {
 	diff       string
 	nameStatus string
@@ -392,7 +373,11 @@ func Prepare(ctx context.Context, opts *Options) (*Shared, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	repo, base, head, err := prepareRepoRefs(opts)
+	repo, err := resolveRepoDir(opts.RepoDir)
+	if err != nil {
+		return nil, err
+	}
+	base, head, err := pinStackRefs(repo, opts.Base, opts.Head, opts.Ticket)
 	if err != nil {
 		return nil, err
 	}
@@ -423,6 +408,32 @@ func Prepare(ctx context.Context, opts *Options) (*Shared, error) {
 		shared.GraphLoads++
 	}
 	return shared, nil
+}
+
+func resolveRepoDir(repo string) (string, error) {
+	if repo != "" {
+		return repo, nil
+	}
+	return os.Getwd()
+}
+
+func pinStackRefs(repo, base, head, ticket string) (baseSHA, headSHA string, err error) {
+	if base == "" {
+		base = "HEAD~1"
+	}
+	if head == "" {
+		head = "HEAD"
+	}
+	base = resolveEffectiveBase(repo, base, ticket)
+	baseSHA, err = resolveGitSHA(repo, base)
+	if err != nil {
+		return "", "", fmt.Errorf("base: %w", err)
+	}
+	headSHA, err = resolveGitSHA(repo, head)
+	if err != nil {
+		return "", "", fmt.Errorf("head: %w", err)
+	}
+	return baseSHA, headSHA, nil
 }
 
 func defaultLoaders() *Loaders {
@@ -558,6 +569,7 @@ func runReview(ctx context.Context, opts *Options, shared *Shared) (StepResult, 
 	cfg.BaseExplicit = true
 	cfg.HeadRef = shared.Head
 	cfg.ApprovedSHA = opts.ApprovedSHA
+	cfg.RequireApprovedSHA = opts.RequireApprovedSHA
 	cfg.TicketPath = resolveTicket(shared.RepoDir, ticketOrDefault(opts.Ticket))
 	if opts.Reviewers > 0 {
 		cfg.Reviewers = opts.Reviewers
@@ -591,6 +603,7 @@ func runDrift(ctx context.Context, opts *Options, shared *Shared) (StepResult, e
 	cfg.BaseExplicit = true
 	cfg.HeadRef = shared.Head
 	cfg.ApprovedSHA = opts.ApprovedSHA
+	cfg.RequireApprovedSHA = opts.RequireApprovedSHA
 	cfg.TicketPath = ticketPath
 	cfg.Reviewers = 1
 	cfg.Standards = []string{"scope"}
@@ -645,13 +658,14 @@ func reviewOK(rep *review.Report) bool {
 	if rep == nil || !rep.FreshOK {
 		return false
 	}
-	if rep.PinnedApproval != nil && !rep.PinnedApproval.Match {
+	if pinnedApprovalMismatch(rep.PinnedApproval) {
 		return false
 	}
 	if rep.Drift != nil && (len(rep.Drift.OutOfScope) > 0 || len(rep.Drift.ForbiddenHit) > 0 || rep.Drift.BaseMismatch) {
 		return false
 	}
-	for _, f := range rep.Findings {
+	for i := range rep.Findings {
+		f := &rep.Findings[i]
 		if f.Severity == review.SeverityCritical || f.Severity == review.SeverityError {
 			return false
 		}
@@ -663,10 +677,22 @@ func driftOK(drift *review.DriftReport) bool {
 	if drift == nil {
 		return true
 	}
-	if drift.PinnedApproval != nil && !drift.PinnedApproval.Match {
+	if pinnedApprovalMismatch(drift.PinnedApproval) {
 		return false
 	}
 	return len(drift.OutOfScope) == 0 && len(drift.ForbiddenHit) == 0 && !drift.BaseMismatch
+}
+
+func pinnedApprovalMismatch(p *review.PinnedApproval) bool {
+	return p.Diverged()
+}
+
+func resolveGitSHA(repo, ref string) (string, error) {
+	out, err := git.Output(repo, "rev-parse", "--verify", ref)
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(out)), nil
 }
 
 func hasStrictError(violations []guard.Violation) bool {
