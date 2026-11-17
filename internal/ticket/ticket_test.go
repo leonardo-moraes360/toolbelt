@@ -56,7 +56,7 @@ func TestCreateAllocatesIDsAndDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if st.Mode().Perm() != 0o644 {
+	if st.Mode().Perm() != 0o600 {
 		t.Fatalf("mode = %v", st.Mode().Perm())
 	}
 	got, err := s.Get("2")

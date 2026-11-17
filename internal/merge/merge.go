@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/leonardo-moraes360/toolbelt/internal/gitref"
@@ -100,6 +101,28 @@ type Result struct {
 	Sensitive []Sensitive  `json:"sensitive"`
 }
 
+var (
+	gitOnce sync.Once
+	gitBin  string
+	gitErr  error
+)
+
+// gitPath resolve o git uma única vez para caminho absoluto (evita busca em PATH a cada chamada).
+func gitPath() (string, error) {
+	gitOnce.Do(func() {
+		p, err := exec.LookPath("git")
+		if err == nil {
+			p, err = filepath.Abs(p)
+		}
+		if err != nil {
+			gitErr = fmt.Errorf("git não encontrado no PATH: %w", err)
+			return
+		}
+		gitBin = p
+	})
+	return gitBin, gitErr
+}
+
 type runner struct {
 	repo string
 	cfg  []string // -c user.name/email fallback
@@ -107,7 +130,11 @@ type runner struct {
 
 func (r runner) git(dir string, args ...string) (string, error) {
 	full := append(append(append([]string{}, hardenedGitArgs...), r.cfg...), args...)
-	cmd := exec.Command("git", full...)
+	bin, err := gitPath()
+	if err != nil {
+		return "", err
+	}
+	cmd := exec.Command(bin, full...)
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "LC_ALL=C", "GIT_EDITOR=true")
 	var stdout, stderr strings.Builder

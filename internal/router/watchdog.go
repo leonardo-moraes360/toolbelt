@@ -84,7 +84,7 @@ func (l *alertLog) append(a *Alert) error {
 	if err != nil {
 		return err
 	}
-	f, err := os.OpenFile(l.path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644) //nolint:gosec // caminho interno .toolbelt/router
+	f, err := os.OpenFile(l.path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600) //nolint:gosec // caminho interno .toolbelt/router
 	if err != nil {
 		return err
 	}

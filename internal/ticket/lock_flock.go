@@ -9,7 +9,7 @@ import (
 
 // acquireLock obtém lock exclusivo (flock) sobre o arquivo path.
 func acquireLock(path string) (func(), error) {
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o644)
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {
 		return nil, err
 	}

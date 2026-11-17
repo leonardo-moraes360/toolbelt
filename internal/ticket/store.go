@@ -282,7 +282,7 @@ func (s *Store) write(t *Ticket) error {
 	return WriteFileAtomic(s.Path(t.ID), data)
 }
 
-// WriteFileAtomic grava via arquivo temporário + rename, com modo 0644.
+// WriteFileAtomic grava via arquivo temporário + rename, com modo 0600.
 func WriteFileAtomic(path string, data []byte) error {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -308,7 +308,7 @@ func WriteFileAtomic(path string, data []byte) error {
 		cleanup()
 		return err
 	}
-	if err := os.Chmod(name, 0o644); err != nil {
+	if err := os.Chmod(name, 0o600); err != nil {
 		cleanup()
 		return err
 	}
