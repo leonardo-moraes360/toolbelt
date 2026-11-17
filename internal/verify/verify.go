@@ -82,6 +82,24 @@ type cmdCache struct {
 	lintOK    bool
 }
 
+type MissingCommandError struct {
+	Command   string
+	ConfigKey string
+}
+
+func (e *MissingCommandError) Error() string {
+	return fmt.Sprintf(errMissingCmdFmt, e.Command, e.ConfigKey)
+}
+
+func (e *MissingCommandError) ExitCode() int {
+	return 127
+}
+
+func IsMissingCommand(err error) bool {
+	var e *MissingCommandError
+	return errors.As(err, &e)
+}
+
 func DefaultConfig(repo string) Config {
 	return Config{
 		RepoDir:       repo,
@@ -159,6 +177,14 @@ func runVerifyLoops(ctx context.Context, cfg *Config, res *Result) (*Result, err
 		res.Iterations = i
 		passed, stopIter, iterErr := runVerifyIteration(ctx, cfg, res, cache)
 		if iterErr != nil {
+			if IsMissingCommand(iterErr) {
+				res.Verdict = VerdictFail
+				if res.Reason == "" {
+					res.Reason = iterErr.Error()
+				}
+				res.Error = iterErr.Error()
+				return res, iterErr
+			}
 			if res.Reason == "" {
 				res.Reason = iterErr.Error()
 				res.Error = res.Reason
@@ -425,7 +451,7 @@ func runConfiguredCmd(ctx context.Context, cfg *Config, command, configKey strin
 		return true, output, nil
 	}
 	if isCommandMissing(runErr) {
-		return false, output, fmt.Errorf(errMissingCmdFmt, command, configKey)
+		return false, output, &MissingCommandError{Command: command, ConfigKey: configKey}
 	}
 	log.Debug("teste falhou", "output", output, "error", runErr)
 	return false, output, nil

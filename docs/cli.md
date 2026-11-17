@@ -207,7 +207,7 @@ Linguagens e docs (extensível via `LanguageIndexer`, regex leve, sem cgo):
 | `graph.languages` | Extensões |
 |-------------------|-----------|
 | `go` | `.go` (AST; arestas `calls`) |
-| `javascript` | cobre TypeScript (`ts`/`tsx`): `.js`, `.mjs`, `.cjs`, `.ts`, `.tsx`, `.jsx` (funções/`const` arrow, JSX `<Comp />` como `calls`; resolve imports relativos ao símbolo do módulo importado). Não há linguagem `typescript` separada — use `javascript` |
+| `javascript` | cobre TypeScript (`ts`/`tsx`): `.js`, `.mjs`, `.cjs`, `.ts`, `.tsx`, `.jsx` (funções genéricas `foo<T>`, `const` arrow, JSX `<Comp />` como `calls`; indexa `*.test.*`/`*.spec.*`/`__tests__`/`e2e`; resolve imports relativos NodeNext (`.js`→`.ts`, sem extensão, `index`) e aliases de `tsconfig.json`/`jsconfig.json` (`extends`/`baseUrl`/`paths`); segue `import { a as b }` e `import * as ns`). Não há linguagem `typescript` separada — use `javascript` |
 | `python` | `.py` (defines/imports + arestas `calls` por módulo qualificado; `callers`/`impact` ignoram arestas com confiança &lt; 0.6) |
 | `java` | `.java` |
 | `kotlin` | `.kt`, `.kts` |
@@ -247,6 +247,7 @@ graph:
   docs: [markdown, html, txt]
   frameworks: [react, vue, svelte, astro, angular, routes, mdx]
   max_file_bytes: 524288   # ignora arquivos maiores
+  index_on_change: true    # reindexa em search/callers/deps/impact/stats se o fingerprint mudou
 ```
 
 Ignora subdiretórios como `node_modules`, `vendor`, `dist`, `build`,
@@ -256,6 +257,14 @@ um symlink (ex.: `/tmp/target` → dir real), ela é resolvida com
 `EvalSymlinks` antes do walk — caso contrário o índice ficaria vazio, pois
 `filepath.Walk` não desce symlinks. O grafo continua sob demanda (ADR-011):
 `TB_GRAPH=on` ou `--enable`.
+
+Frescor do índice: cada `graph.json` guarda um `fingerprint` (mtime+tamanho dos
+arquivos indexáveis). Em `search`/`callers`/`deps`/`impact`/`stats`, se o
+fingerprint divergir e `graph.index_on_change` for `true` (default), o grafo é
+reindexado automaticamente; se for `false`, a saída avisa e o JSON inclui
+`stale: true`. Saídas JSON de consulta usam o envelope
+`{"stale": false, "nodes": [...]}`; `stats`/`index` incluem `stale` no objeto
+de estatísticas.
 
 ```bash
 tb graph [--enable] <subcommand>
@@ -301,8 +310,10 @@ Em Python/JS/TS, `--function` resolve por título ou sufixo do id qualificado
 (`func:pkg.mod.nome`; componentes/hooks React também). Arestas `calls` com
 confiança &lt; 0.6 (alvos ambíguos / sem import) ficam de fora do resultado
 default de `callers` e `impact`. Em TS/JS, imports relativos
-(`../components/Layout`) resolvem para o símbolo do módulo importado
-(`components.Layout`), inclusive uso JSX `<Layout />`.
+(`../components/Layout`, `./utils.js` → `utils.ts`, `./index`) e aliases de
+`tsconfig`/`jsconfig` (`@/…`) resolvem para o arquivo/símbolo importado;
+`import { helper as format }` e `import * as Utils` / `Utils.helper()` também
+alimentam `callers`/`impact` (incluindo funções em arquivos de teste).
 
 **`tb graph deps`:**
 
@@ -697,7 +708,9 @@ Também reporta drift de escopo e commit base. Isolamento fresco é obrigatório
 
 Com `--approved-sha`, o JSON inclui `pinned_approval` (`approved_sha`, `patch_id`,
 `head_patch_id`, `match` e, se divergir, `range_diff`). Patch diferente do aprovado
-imprime um resumo de `git range-diff` e sai com código ≠ 0.
+imprime um resumo de `git range-diff` e sai com código ≠ 0. Se `--approved-sha`
+coincidir com a base (intervalo `base..approved` vazio), a CLI **não** despeja o
+usage do `git range-diff` — mostra mensagem clara sobre o intervalo inválido.
 
 O ticket/rd.md aceita frontmatter YAML ou Markdown: seção `## Scope` / `## Escopo`
 (ou `Scope:` / `Escopo:`) e `## Forbidden` / `## Proibido` (ou `Forbidden:` /
@@ -713,17 +726,23 @@ Invariantes de path (ex.: `tests/hidden/`, `thresholds.yaml`) são casadas contr
 arquivos **alterados** pelo mesmo matcher de path/glob (`tests/hidden/**`,
 `tests/hidden/*`) — não por substring no texto do diff ou do ticket. Mencionar
 `forbidden: tests/hidden/**` em `rd.md` sem tocar esse diretório não gera
-finding critical.
+finding critical. Invariantes de mandate sobre conteúdo (ex.: proibir
+`console.log` ou comentários) são aplicadas às linhas adicionadas (`+`) do diff.
 
 **Revisores (goldfish) distintos**:
 
 | Revisor | `--standards` | O que verifica |
 |---------|---------------|----------------|
-| `goldfish-scope` | `scope` (+ `invariants`) | Arquivos fora do scope, toques em forbidden; invariantes de `tb mem` |
-| `goldfish-quality` | `quality` | TODO/FIXME adicionados; funções muito grandes no diff (≥80 linhas +); código fonte alterado sem testes |
-| `goldfish-acceptance` | `acceptance` (alias: `completeness`) | Cada critério de aceite do ticket tem evidência em testes/arquivos de código alterados (não conta o próprio ticket) |
+| `goldfish-scope` | `scope` (+ `invariants`) | Arquivos fora do scope, toques em forbidden; invariantes de `tb mem` aplicadas a paths alterados **e** a linhas `+` do diff (ex.: `console.log`, comentários proibidos) |
+| `goldfish-quality` | `quality` | Marcadores `TODO`/`FIXME`/`XXX`/`HACK` (palavra inteira em maiúsculas, em comentários); funções muito grandes no diff (≥80 linhas +); código fonte alterado sem testes |
+| `goldfish-acceptance` | `acceptance` (alias: `completeness`) | Cada critério de aceite do ticket tem evidência em testes/arquivos de código alterados (não conta o próprio ticket); considera `Test*` (Go) e `test`/`it`/`describe` (JS/TS) adicionados no diff |
 
 Heurísticas são determinísticas e offline (sem LLM).
+
+Cada finding JSON inclui `role` (papel do goldfish: `scope`, `quality`, `acceptance`, `invariants`).
+Achados de aceite também trazem `criterion` e `evidence` (testes/arquivos vistos no diff).
+`agreement` conta quantos papéis distintos concordaram no mesmo achado (em geral 1).
+No modo texto, imprime `papel=<role>` (e `papéis_acordo=N` só se N>1) — não usa mais `acordo=N/M`.
 
 **Exemplos:**
 
@@ -735,8 +754,8 @@ tb review --ticket rd.md
 #  Base..Head: HEAD~1..HEAD | Revisores: 3 | Fresh: true
 # ═══════════════════════════════════════════════════════════
 # FINDINGS:
-#   [warning] (goldfish-quality/quality) TODO/FIXME adicionado no diff [src/a.go]
-#   [warning] (goldfish-acceptance/acceptance) critério de aceite sem evidência...
+#   [warning] (goldfish-quality/quality) TODO/FIXME/XXX/HACK adicionado em comentário no diff [src/a.go]  papel=quality
+#   [warning] (goldfish-acceptance/acceptance) critério de aceite sem evidência...  papel=acceptance
 
 # Só escopo + qualidade (sem aceite)
 tb review --ticket rd.md --standards scope,quality --reviewers 2
@@ -793,6 +812,8 @@ Flags:
 
 Com `--approved-sha`, o JSON de drift inclui `pinned_approval` (mesmo formato do
 `tb review`). Divergência de patch-id sai com código ≠ 0 e mostra `git range-diff`.
+`--approved-sha` igual à base segue a mesma mensagem clara do `tb review` (sem
+dump de usage).
 
 **Exemplos:**
 
@@ -921,13 +942,17 @@ retry de `--max-iter` (ESCALATE imediato). `--dry-run` devolve o plano
 Se o binário do `test_cmd` / `hidden_test_cmd` / `build_cmd` / `lint_cmd` não
 existe (exit 127), não é executável (exit 126) ou o `exec` falha com
 `ErrNotFound`, o verify **falha imediatamente** sem retries, com mensagem do tipo
-`comando não encontrado: X — ajuste verify.test_cmd`. Falhas genuínas do
-`test_cmd`/`hidden_test_cmd` (exit ≠ 0/126/127) continuam no loop de `--max-iter`.
+`comando não encontrado: X — ajuste verify.test_cmd`. O processo `tb` sai com
+código **127**. Com `--json` (ou `--output`), emite o envelope `verify.Result`
+normal incluindo `error` (e `verdict: FAIL`), em vez de sair sem JSON. Falhas
+genuínas do `test_cmd`/`hidden_test_cmd` (exit ≠ 0/126/127) continuam no loop
+de `--max-iter`.
 
 Veredictos `ESCALATE` e `FAIL` saem com **exit ≠ 0** também com `--json`
 (igual ao modo texto). Só `PASS` e `SKIPPED` (ruler visual / `--dry-run`) usam
-exit 0. O JSON de verify (e cada etapa do `tb stack`) inclui `reason`/`error`
-com o motivo da falha ou do ESCALATE (não só em DEBUG no stderr).
+exit 0. Comando inexistente usa exit **127** (ver tabela de códigos). O JSON
+de verify (e cada etapa do `tb stack`) inclui `reason`/`error` com o motivo da
+falha ou do ESCALATE (não só em DEBUG no stderr).
 
 **Guard dentro do verify (anti-cheat vs mandate):**
 
@@ -1890,6 +1915,8 @@ Segredos: qualquer nome contendo `TOKEN`, `SECRET`, `KEY` ou `PASSWORD`
 - Erros esperados de domínio/runtime (`RunE`, ex.: flag de negócio obrigatória ausente, falha de git, arquivo inexistente) saem com **exit ≠ 0** e mensagem em stderr **sem** dump de `Usage` do Cobra.
 - Erros genuínos de parse de **flags** ou **args** (flag desconhecida, `ExactArgs`/`MinimumNArgs`, etc.) mantêm `Usage` no stderr para orientar a invocação.
 - Subcomando desconhecido em qualquer nível (ex.: `tb mem nao-existe`, `tb bench nope`) sai com **exit ≠ 0** e erro `unknown command "…"`, em vez de imprimir help com exit 0.
+- Falhas de git em `guard` / `review` / `drift` / `verify` (e no `stack` que os empilha) **não** mostram só `exit status 128/129`: a mensagem inclui o stderr do git, a ref ausente (`ref ausente: …`) e uma dica `git fetch origin <ref>`.
+- `--approved-sha` igual à base (intervalo `base..approved` vazio) não despeja o usage do `git range-diff`; sai com mensagem clara sobre o intervalo inválido.
 
 ## Códigos de Saída
 
@@ -1899,9 +1926,10 @@ A CLI atual não usa uma tabela estável de códigos 2–7. Na prática:
 |--------|-------------|
 | 0 | Sucesso (`PASS`/`SKIPPED` no verify; guard sem `SeverityError` ou com `--warn-only`) |
 | ≠0 (tipicamente 1) | Erro de parse/domínio, `FAIL`/`ESCALATE` no verify, `SeverityError` no guard, subcomando desconhecido |
+| 127 | `tb verify run`: `test_cmd` / `build_cmd` / `lint_cmd` / `hidden_test_cmd` não encontrado (ou não executável / `ErrNotFound`); com `--json` emite o envelope `verify.Result` com campo `error` |
 | exit do filho | `tb sandbox run` propaga o exit code do processo quando ≠ 0 e sem timeout |
 
-Quando o comando configurado no verify não existe/não é executável, o **processo filho** reporta 126/127 e o verify falha imediatamente (sem retries); o `tb` sai ≠ 0.
+Quando o comando configurado no verify não existe/não é executável, o verify falha imediatamente (sem retries) e o processo `tb` sai **127**.
 
 ---
 

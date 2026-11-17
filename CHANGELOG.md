@@ -10,6 +10,10 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 ### Adicionado
 - `tb verify run` / `tb stack`: flags `--build-cmd`, `--lint-cmd`, `--no-build`, `--no-lint` e `--dry-run` (plano com `dir`/`commands` sem executar); MCP `tb_verify_run` / `tb_stack` com os mesmos campos
 - JSON de verify e de cada etapa do stack expõem `reason`/`error` no ESCALATE/FAIL (não só DEBUG no stderr)
+- Grafo TS/JS: fingerprint no `graph.json` e detecção de índice desatualizado;
+  com `graph.index_on_change: true` (default) `search`/`callers`/`deps`/`impact`/`stats`
+  reindexam automaticamente; com `false`, avisam na saída e expõem `stale: true` no JSON
+- Resolução de `tsconfig.json`/`jsconfig.json` (`extends`, `baseUrl`, `paths`) no indexador JS/TS
 - Landing page estática em `site/` (HTML/CSS/JS, tema Synthwave, PT/EN) publicada via
   GitHub Pages (`https://leonardo-moraes360.github.io/toolbelt/`)
 - Workflow `.github/workflows/pages.yml` (configure/upload/deploy-pages; sem `enablement`)
@@ -23,6 +27,10 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
   `created`/`count`/`invariants`
 
 ### Mudanças
+- **Breaking (JSON grafo):** consultas MCP/CLI (`search`/`callers`/`deps`/`impact`) passam a
+  emitir `{"stale": bool, "nodes": [...]}` em vez de um array nu; `stats`/`index` incluem `stale`
+- Indexador JS/TS indexa `*.test.*`, `*.spec.*`, `__tests__` e `e2e` (antes eram omitidos);
+  `impact`/`callers` passam a listar testes que importam o símbolo
 - Saídas JSON usam listas vazias `[]` (nunca `null`) para `violations`, `out_of_scope`,
   `forbidden_hit`, `missing` e resultados vazios de `tb mem list|search`
 - `tb init --json` e `tb mem init --json` emitem payload do que foi criado/detectado
@@ -53,6 +61,27 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 - Stack/verify respeitam overrides de comando: `--test-cmd` + `--no-build`/`--no-lint` (ou `--build-cmd`/`--lint-cmd` vazios) pulam o `build_cmd`/`lint_cmd` do config
 - `tests/hidden/` sem toolchain aplicável deixa de forçar `go test` (marca `hidden_available: false`); detecta Go/Python/JS quando há suíte
 - Build/lint bem-sucedidos são cacheados na mesma execução; falha determinística de build/lint não entra no retry de `--max-iter`
+- `tb review` (goldfish): detecta só `TODO`/`FIXME`/`XXX`/`HACK` como palavra
+  inteira em maiúsculas em comentários (ignora “todo” em português)
+- `tb review` acceptance: cada achado liga `criterion` + `evidence` do diff;
+  considera testes adicionados (`Test*` em Go; `test`/`it`/`describe` em JS/TS)
+- `tb review` invariants: aplica regras de mandate (ex. proibir `console.log`,
+  sem comentários) às linhas adicionadas do diff
+- `tb review`: saída texto usa `papel=<role>` (e `papéis_acordo` se >1) no lugar
+  de `acordo=N/M`; JSON inclui `role` (e `criterion`/`evidence` no aceite)
+- Funções genéricas TS (`function foo<T>(…)`) voltam a aparecer no índice
+- Imports relativos estilo NodeNext (`.js`→`.ts`/`.tsx`, sem extensão, `index`) deixam de
+  ficar como `pkg:./…` e resolvem para `file:…`
+- Aliases de import (`import { a as b }`) e namespaces (`import * as ns`, `ns.fn()`) alimentam
+  arestas `calls` resolvíveis
+- Erros de git em `tb guard` / `tb review` / `tb drift` / `tb verify` deixam de
+  aparecer só como `exit status 128/129`: incluem stderr do git, a ref ausente e
+  dica `git fetch origin <ref>` (helper central `internal/git`)
+- `--approved-sha` igual à base não despeja mais o usage do `git range-diff`;
+  mensagem clara sobre intervalo `base..approved` vazio
+- `tb verify run` com comando inexistente (`test_cmd` / `build_cmd` / `lint_cmd` /
+  `hidden_test_cmd`) sai com código **127**; com `--json` emite o envelope
+  `verify.Result` (inclui `error`) em vez de sair sem JSON
 - `tb drift` / `tb review` / `tb stack`: diff de arquivos passa a usar three-dot
   (`base...head` / merge-base), evitando falsos `out_of_scope` após merge da main
   ou squash de outro PR na base
