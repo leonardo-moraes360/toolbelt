@@ -32,7 +32,7 @@ func alertsOf(t *testing.T, root, kind string) []Alert {
 // pre antes e post depois do git real.
 func gitShim(t *testing.T, pre, post string) {
 	t.Helper()
-	real, err := exec.LookPath("git")
+	gitBin, err := exec.LookPath("git")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -51,7 +51,7 @@ if [ -n "$IS_ADD" ]; then
 %s
 fi
 exit $rc
-`, pre, real, post)
+`, pre, gitBin, post)
 	if err := os.WriteFile(filepath.Join(dir, "git"), []byte(script), 0o755); err != nil { //nolint:gosec // teste
 		t.Fatal(err)
 	}
@@ -89,7 +89,7 @@ echo x > f.txt`, b.ID, pidf, pidf)
 		o.Tick = 30 * time.Second
 		o.AgentCmd = sh(script)
 	})
-	runWithTimeout(t, r, context.Background())
+	runWithTimeout(context.Background(), t, r)
 	gotA, gotB := get(t, st, a.ID), get(t, st, b.ID)
 	if gotA.Status != ticket.StatusDone {
 		t.Fatalf("ticket inocente falhou: %+v %+v", gotA, gotA.Result)
@@ -113,43 +113,38 @@ func newBareRouter(t *testing.T) *Router {
 }
 
 // Finding 2: atribuição por TB_TICKET_ID; ausente/desconhecido => conservador.
+func assertUnattributableEscape(t *testing.T, r *Router, name string, o sandbox.Orphan) {
+	t.Helper()
+	al := r.classifyEscapes([]sandbox.Orphan{o})
+	if len(al) != 1 || al[0].kind != AlertAgentEscaped || al[0].ticket != "" ||
+		!strings.Contains(al[0].msg, "não atribuível") || !strings.Contains(al[0].msg, "TKT-001, TKT-002") {
+		t.Fatalf("%s: %+v", name, al)
+	}
+	if !r.takeEscaped("TKT-001") || !r.takeEscaped("TKT-002") {
+		t.Fatalf("%s: deveria marcar todos os tickets em execução", name)
+	}
+}
+
 func TestCollectEscapesAttribution(t *testing.T) {
-	// substitui o Sweep global por órfãos sintéticos via procs.found não é possível;
-	// usa classify diretamente.
 	r := newBareRouter(t)
 	r.markActive("TKT-001", "w1")
 	r.markActive("TKT-002", "w2")
-	run := func(orphans ...sandbox.Orphan) []pendingAlert { return r.classifyEscapes(orphans) }
 	tkt := func(id string) map[string]string { return map[string]string{ticketIDVar: id} }
-
-	al := run(sandbox.Orphan{PID: 1, Vars: tkt("TKT-002")})
+	al := r.classifyEscapes([]sandbox.Orphan{{PID: 1, Vars: tkt("TKT-002")}})
 	if len(al) != 1 || al[0].ticket != "TKT-002" || r.takeEscaped("TKT-001") || !r.takeEscaped("TKT-002") {
 		t.Fatalf("atribuído: %+v", al)
 	}
-	for name, o := range map[string]sandbox.Orphan{
-		"ausente":      {PID: 2},
-		"env -u":       {PID: 3, Vars: map[string]string{}},
-		"desconhecido": {PID: 4, Vars: tkt("TKT-999")},
-		"foreign-miss": {PID: 5, ForeignGroup: true, GroupOwner: "TKT-001"},
-	} {
-		al = run(o)
-		if len(al) != 1 || al[0].kind != AlertAgentEscaped || al[0].ticket != "" ||
-			!strings.Contains(al[0].msg, "não atribuível") || !strings.Contains(al[0].msg, "TKT-001, TKT-002") {
-			t.Fatalf("%s: %+v", name, al)
-		}
-		if !r.takeEscaped("TKT-001") || !r.takeEscaped("TKT-002") {
-			t.Fatalf("%s: deveria marcar todos os tickets em execução", name)
-		}
-	}
-	// infiltrado em grupo alheio com TB_TICKET_ID próprio: culpado é o dono do env
-	al = run(sandbox.Orphan{PID: 6, ForeignGroup: true, GroupOwner: "TKT-001", Vars: tkt("TKT-002")})
+	assertUnattributableEscape(t, r, "ausente", sandbox.Orphan{PID: 2})
+	assertUnattributableEscape(t, r, "env -u", sandbox.Orphan{PID: 3, Vars: map[string]string{}})
+	assertUnattributableEscape(t, r, "desconhecido", sandbox.Orphan{PID: 4, Vars: tkt("TKT-999")})
+	assertUnattributableEscape(t, r, "foreign-miss", sandbox.Orphan{PID: 5, ForeignGroup: true, GroupOwner: "TKT-001"})
+	al = r.classifyEscapes([]sandbox.Orphan{{PID: 6, ForeignGroup: true, GroupOwner: "TKT-001", Vars: tkt("TKT-002")}})
 	if len(al) != 1 || al[0].ticket != "TKT-002" || r.takeEscaped("TKT-001") || !r.takeEscaped("TKT-002") {
 		t.Fatalf("infiltrado: %+v", al)
 	}
-	// sem agente rodando: nenhum ticket falha
 	r.unmarkActive("TKT-001")
 	r.unmarkActive("TKT-002")
-	al = run(sandbox.Orphan{PID: 7})
+	al = r.classifyEscapes([]sandbox.Orphan{{PID: 7}})
 	if len(al) != 1 || al[0].kind != AlertOrphanKilled || r.takeEscaped("TKT-001") {
 		t.Fatalf("sem ativos: %+v", al)
 	}
@@ -182,7 +177,7 @@ func TestCompleteClearsEscapedMarkOnDiscard(t *testing.T) {
 	tk := mk(t, st, "x") // pending: complete cai no caminho de descarte
 	r := newRouter(t, root, nil)
 	r.escapedTkts = map[string]bool{tk.ID: true}
-	r.complete(workerDone{slot: &slot{id: "w1", ticket: tk.ID}, id: tk.ID})
+	r.complete(&workerDone{slot: &slot{id: "w1", ticket: tk.ID}, id: tk.ID})
 	if r.escapedTkts[tk.ID] {
 		t.Fatal("marca de escape sobreviveu ao complete (envenena a retentativa)")
 	}
@@ -202,7 +197,7 @@ func TestDaemonFromWorktreeCreationDoesNotFailTicket(t *testing.T) {
 	st := ticket.Open(root)
 	tk := mk(t, st, "daemon do usuário")
 	r := newRouter(t, root, func(o *Options) { o.AgentCmd = sh("sleep 0.5; echo ok > f.txt") })
-	runWithTimeout(t, r, context.Background())
+	runWithTimeout(context.Background(), t, r)
 	if got := get(t, st, tk.ID); got.Status != ticket.StatusDone {
 		t.Fatalf("ticket falhou por daemon alheio: %+v %+v", got, got.Result)
 	}
@@ -231,7 +226,7 @@ func TestWorktreeCreationDoesNotRunUserHooks(t *testing.T) {
 	st := ticket.Open(root)
 	tk := mk(t, st, "hook")
 	r := newRouter(t, root, nil)
-	runWithTimeout(t, r, context.Background())
+	runWithTimeout(context.Background(), t, r)
 	if _, err := os.Stat(marker); err == nil {
 		t.Fatal("post-checkout do usuário foi executado pelo router")
 	}
@@ -260,7 +255,7 @@ func TestSweepNotBlockedBySlowWorktreeAdd(t *testing.T) {
 	tk := mk(t, st, "lento")
 	head := runGit(t, root, "rev-parse", "HEAD")
 	done := make(chan error, 1)
-	go func() { _, err := r.createWorkspace(tk, head); done <- err }()
+	go func() { _, err := r.createWorkspace(&tk, head); done <- err }()
 	time.Sleep(400 * time.Millisecond) // dentro do git lento
 	start := time.Now()
 	if esc := procs.Sweep(); len(esc) != 0 {
@@ -297,7 +292,7 @@ func TestRouterRunFailsClosedWithoutLandlock(t *testing.T) {
 		t.Fatal("worktree criado sem sandbox")
 	}
 	r2 := newRouter(t, root, nil) // AllowUnsandboxed: true
-	runWithTimeout(t, r2, context.Background())
+	runWithTimeout(context.Background(), t, r2)
 	if got := get(t, st, tk.ID); got.Status != ticket.StatusDone {
 		t.Fatalf("com opt-in explícito deveria rodar: %+v %+v", got, got.Result)
 	}
@@ -332,7 +327,7 @@ func TestGlobalGitConfigFilterNeverRunsAndIdentityIsKept(t *testing.T) {
 		o.AgentCmd = sh("echo conteudo > f.txt")
 		o.Environ = []string{"PATH=" + os.Getenv("PATH"), "HOME=" + home}
 	})
-	runWithTimeout(t, r, context.Background())
+	runWithTimeout(context.Background(), t, r)
 	got := get(t, st, tk.ID)
 	if got.Status != ticket.StatusDone {
 		t.Fatalf("%+v %+v", got, got.Result)
@@ -341,6 +336,6 @@ func TestGlobalGitConfigFilterNeverRunsAndIdentityIsKept(t *testing.T) {
 		t.Fatal("filtro da config global do usuário rodou sobre o conteúdo do agente")
 	}
 	if who := runGit(t, root, "log", "-1", "--format=%an <%ae>", got.Result.HeadCommit); who != "Global Dev <global@example.com>" {
-		t.Fatalf("autor = %q", who)
+		t.Fatalf("who = %q", who)
 	}
 }

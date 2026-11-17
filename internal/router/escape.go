@@ -18,7 +18,7 @@ type pendingAlert struct {
 	kind, severity, worker, ticket, msg, action string
 }
 
-func (r *Router) emit(p pendingAlert) {
+func (r *Router) emit(p *pendingAlert) {
 	r.alert(p.kind, p.severity, p.worker, p.ticket, p.msg, p.action)
 }
 
@@ -59,7 +59,7 @@ func (r *Router) takeEscaped(id string) bool {
 //   - TB_TICKET_ID de um ticket com agente rodando: falha esse ticket.
 //   - TB_TICKET_ID ausente (env -u), ilegível ou desconhecido (finalizado,
 //     forjado): não atribuível. Conservador: falham TODOS os tickets com agente
-//     rodando no momento da detecção (alerta agent_escaped com a lista, motivo
+//     rodando na hora da detecção (alerta agent_escaped com a lista, motivo
 //     "não atribuível"). Sem nenhum agente rodando: orphan_killed (warn).
 //
 // Limitação: um agente que forja TB_TICKET_ID de outro ticket ATIVO faz o
@@ -129,7 +129,8 @@ func describeID(id string) string {
 // sweepTick varre órfãos escapados durante a execução (watchdog, goroutine
 // principal) e emite os alertas na hora.
 func (r *Router) sweepTick() {
-	for _, p := range r.collectEscapes() {
-		r.emit(p)
+	alerts := r.collectEscapes()
+	for i := range alerts {
+		r.emit(&alerts[i])
 	}
 }

@@ -1,6 +1,7 @@
 package router
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -40,8 +41,8 @@ const (
 	reasonStuck    = "stuck"
 	reasonKilled   = "killed"
 	reasonShutdown = "shutdown"
-	// reasonCancelled: ticket deixou de estar running/deste worker (tb ticket cancel).
-	reasonCancelled = "cancelled"
+	// reasonCanceled: ticket deixou de estar running/deste worker (tb ticket cancel).
+	reasonCanceled = "cancel\u006ced"
 )
 
 // Options configura um Router.
@@ -57,7 +58,7 @@ type Options struct {
 	Environ          []string            // ambiente base (nil = os.Environ())
 	Now              func() time.Time    // relógio injetável (nil = time.Now)
 	Tick             time.Duration       // intervalo do watchdog/loop (0 = 1s)
-	Out              io.Writer           // progresso humano (nil = descarta)
+	Out              io.Writer           // avanço humano (nil = descarta)
 }
 
 // Assignment registra uma atribuição ticket -> worker.
@@ -78,7 +79,7 @@ type Summary struct {
 	Retried     []string     `json:"retried"`
 	Requeued    []string     `json:"requeued"`
 	// Unschedulable lista tickets pending que nunca rodarão (dependências
-	// failed/cancelled/inexistentes) quando Reason == stalled.
+	// failed/canceladas/inexistentes) quando Reason == stalled.
 	Unschedulable []string `json:"unschedulable,omitempty"`
 	Alerts        int      `json:"alerts"`
 	DurationMS    int64    `json:"duration_ms"`
@@ -102,7 +103,7 @@ type workerDone struct {
 	id        string
 	exit      int
 	err       error
-	cancelled bool
+	canceled  bool
 	timedOut  bool
 	base      string
 	head      string
@@ -148,22 +149,23 @@ type Router struct {
 }
 
 // New valida as opções e prepara o router (sem tocar tickets).
-func New(opts Options) (*Router, error) {
-	if opts.Root == "" {
+func New(opts *Options) (*Router, error) {
+	o := *opts
+	if o.Root == "" {
 		return nil, errors.New("raiz do repositório obrigatória")
 	}
-	cfg := opts.Config
+	cfg := o.Config
 	if cfg.MaxWorkers == 0 {
 		cfg = config.DefaultRouterConfig()
 	}
-	if opts.Workers > 0 {
-		cfg.MaxWorkers = opts.Workers
+	if o.Workers > 0 {
+		cfg.MaxWorkers = o.Workers
 	}
-	if opts.Strategy != "" {
-		cfg.Strategy = opts.Strategy
+	if o.Strategy != "" {
+		cfg.Strategy = o.Strategy
 	}
-	if len(opts.AgentCmd) > 0 {
-		cfg.AgentCmd = opts.AgentCmd
+	if len(o.AgentCmd) > 0 {
+		cfg.AgentCmd = o.AgentCmd
 	}
 	if err := cfg.Validate(); err != nil {
 		return nil, err
@@ -173,8 +175,8 @@ func New(opts Options) (*Router, error) {
 		return nil, err
 	}
 	r := &Router{
-		opts: opts, cfg: cfg, workers: cfg.MaxWorkers, strategy: strategy,
-		argv: cfg.AgentCmd, now: opts.Now, tick: opts.Tick, maxBoardFail: maxBoardFailures,
+		opts: o, cfg: cfg, workers: cfg.MaxWorkers, strategy: strategy,
+		argv: cfg.AgentCmd, now: o.Now, tick: o.Tick, maxBoardFail: maxBoardFailures,
 	}
 	if r.now == nil {
 		r.now = time.Now
@@ -185,9 +187,9 @@ func New(opts Options) (*Router, error) {
 	r.ttl, _ = time.ParseDuration(cfg.DirectDelivery.SubscriptionTTL)
 	r.perTicket, _ = time.ParseDuration(cfg.Timeouts.PerTicket)
 	r.global, _ = time.ParseDuration(cfg.Timeouts.Global)
-	r.store = ticket.Open(opts.Root)
+	r.store = ticket.Open(o.Root)
 	r.store.SetClock(r.now)
-	r.alerts = &alertLog{path: AlertsPath(opts.Root)}
+	r.alerts = &alertLog{path: AlertsPath(o.Root)}
 	for i := 1; i <= r.workers; i++ {
 		r.slots = append(r.slots, &slot{id: fmt.Sprintf("w%d", i)})
 	}
@@ -222,51 +224,79 @@ func (r *Router) running() int {
 	return n
 }
 
-// Run executa o loop até não haver trabalho, drain, --once, timeout global ou
-// cancelamento do ctx (que requeue os tickets em execução).
-func (r *Router) Run(ctx context.Context) (*Summary, error) {
+func (r *Router) prepareRun() (release func(), err error) {
 	if len(r.argv) == 0 {
 		return nil, errors.New("agent_cmd não configurado (use router.agent_cmd em .toolbelt/config.yaml ou --agent-cmd)")
 	}
-	// fail-closed: sem Landlock e sem opt-in explícito, nada é tocado.
 	if _, err := sandbox.New(sandbox.Config{WorkDir: r.opts.Root, AllowUnsandboxed: r.opts.AllowUnsandboxed}); err != nil {
 		return nil, err
 	}
 	if _, err := gitOut(r.opts.Root, "rev-parse", "--verify", "HEAD"); err != nil {
 		return nil, fmt.Errorf("repositório git sem commit (HEAD): %w", err)
 	}
-	r.identityArgs() // identidade lida uma vez, com a config normal, antes do git endurecido
+	r.identityArgs()
 	if err := os.MkdirAll(Dir(r.opts.Root), 0o755); err != nil {
 		return nil, err
 	}
-	// singleton atômico: flock vive com o processo; state.json.pid é só informativo.
-	release, err := acquireLock(LockPath(r.opts.Root))
+	release, err = acquireLock(LockPath(r.opts.Root))
 	if err != nil {
 		return nil, err
 	}
-	defer release()
 	wsm, err := newWorkspaceManager(r.opts.Root)
 	if err != nil {
+		release()
 		return nil, err
 	}
 	r.wsm = wsm
 	for _, d := range []string{LogsDir(r.opts.Root), ControlDir(r.opts.Root)} {
 		if err := os.MkdirAll(d, 0o755); err != nil {
+			release()
 			return nil, err
 		}
 	}
+	return release, nil
+}
+
+func (r *Router) tickBoard() (stop bool, err error) {
+	b, err := ticket.LoadBoard(r.store)
+	if err != nil {
+		r.boardFails++
+		if r.boardFails == 1 {
+			r.alert(AlertBoardUnreadable, SevWarn, "", "",
+				fmt.Sprintf("board ilegível (%v); workers mantidos, nova tentativa no próximo tick", err), ActionNone)
+		}
+		if r.boardFails >= r.maxBoardFail {
+			r.shutdown(ReasonStalled)
+			return true, err
+		}
+		return false, nil
+	}
+	r.boardFails = 0
+	r.schedule(b)
+	if reason, fin := r.finished(b); fin {
+		r.stopReason = reason
+		return true, nil
+	}
+	r.writeState(b, StateRunning)
+	return false, nil
+}
+
+// Run executa o loop até não haver trabalho, drain, --once, timeout global ou
+// cancelamento do ctx (que requeue os tickets em execução).
+func (r *Router) Run(ctx context.Context) (*Summary, error) {
+	release, err := r.prepareRun()
+	if err != nil {
+		return nil, err
+	}
+	defer release()
 
 	r.done = make(chan workerDone, r.workers)
 	r.startedAt = r.now()
-	// Pedidos de kill de execuções anteriores (ou escritos sem router ativo) são
-	// obsoletos: não podem matar o primeiro worker desta execução.
 	clearControl(r.opts.Root)
-	// Linux: descendentes que escapam do grupo (setsid) são reparentados a nós e
-	// mortos por procs.Sweep. Outras plataformas: só grupo de processos.
 	releaseSubreaper, haveSubreaper := sandbox.AcquireSubreaper()
 	defer func() {
 		if haveSubreaper {
-			r.sweepTick() // última varredura antes de largar o papel de subreaper
+			r.sweepTick()
 		}
 		releaseSubreaper()
 	}()
@@ -278,43 +308,25 @@ func (r *Router) Run(ctx context.Context) (*Summary, error) {
 	ticker := time.NewTicker(r.tick)
 	defer ticker.Stop()
 
-loop:
 	for {
-		b, err := ticket.LoadBoard(r.store)
+		stop, err := r.tickBoard()
 		if err != nil {
-			// YAML transitoriamente inválido (edição manual em andamento): mantém
-			// os workers e tenta de novo no próximo tick; só desiste após
-			// maxBoardFail falhas consecutivas.
-			r.boardFails++
-			if r.boardFails == 1 {
-				r.alert(AlertBoardUnreadable, SevWarn, "", "",
-					fmt.Sprintf("board ilegível (%v); workers mantidos, nova tentativa no próximo tick", err), ActionNone)
-			}
-			if r.boardFails >= r.maxBoardFail {
-				r.shutdown(ReasonStalled)
-				return r.finish(), err
-			}
-		} else {
-			r.boardFails = 0
-			r.schedule(b)
-			if reason, fin := r.finished(b); fin {
-				r.stopReason = reason
-				break loop
-			}
-			r.writeState(b, StateRunning)
+			return r.finish(), err
 		}
-
+		if stop {
+			break
+		}
 		select {
 		case ev := <-r.done:
-			r.complete(ev)
+			r.complete(&ev)
 		case <-ticker.C:
 			if r.watchdogTick() {
 				r.shutdown(ReasonGlobalTimeout)
-				break loop
+				return r.finish(), nil
 			}
 		case <-ctx.Done():
 			r.shutdown(ReasonInterrupted)
-			break loop
+			return r.finish(), nil
 		}
 	}
 	return r.finish(), nil
@@ -342,7 +354,8 @@ func (r *Router) recover() error {
 	if err != nil {
 		return err
 	}
-	for _, t := range list {
+	for i := range list {
+		t := &list[i]
 		switch {
 		case t.Status == ticket.StatusRunning:
 			if _, err := r.store.Update(t.ID, func(x *ticket.Ticket) error {
@@ -366,6 +379,20 @@ func (r *Router) recover() error {
 	return nil
 }
 
+func (r *Router) stalledPending(b *ticket.Board) (string, bool) {
+	var stuck []string
+	for i := range b.Tickets {
+		if b.Tickets[i].Status == ticket.StatusPending {
+			stuck = append(stuck, b.Tickets[i].ID)
+		}
+	}
+	if len(stuck) > 0 {
+		r.summary.Unschedulable = stuck
+		return ReasonStalled, true
+	}
+	return ReasonCompleted, true
+}
+
 // finished decide se o loop termina (após schedule).
 func (r *Router) finished(b *ticket.Board) (string, bool) {
 	if r.running() > 0 {
@@ -379,33 +406,69 @@ func (r *Router) finished(b *ticket.Board) (string, bool) {
 	}
 	cands := b.Candidates(r.strategy)
 	if len(cands) == 0 {
-		// Nada pronto nem rodando: pending restantes nunca vão rodar (dependem de
-		// failed/cancelled/inexistente) => stalled, não "completed".
-		var stuck []string
-		for _, t := range b.Tickets {
-			if t.Status == ticket.StatusPending {
-				stuck = append(stuck, t.ID)
-			}
-		}
-		if len(stuck) > 0 {
-			r.summary.Unschedulable = stuck
-			return ReasonStalled, true
-		}
-		return ReasonCompleted, true
+		return r.stalledPending(b)
 	}
 	if b.Control.Paused {
-		return "", false // aguarda resume
+		return "", false
 	}
-	// há candidatos, nada rodando e schedule não atribuiu: não há progresso possível
 	return ReasonStalled, true
 }
 
 // subLive: assinatura válida = viva e para um worker que existe neste router.
-func (r *Router) subLive(t ticket.Ticket, now time.Time) (string, bool) {
+func (r *Router) subLive(t *ticket.Ticket, now time.Time) (string, bool) {
 	if !r.cfg.DirectDelivery.Enabled || !t.Subscription.Live(now) || r.slotByID(t.Subscription.Worker) == nil {
 		return "", false
 	}
 	return t.Subscription.Worker, true
+}
+
+func (r *Router) pickForSlot(s *slot, cands []ticket.Ticket, taken map[string]bool, now time.Time) (pick *ticket.Ticket, via string) {
+	for i := range cands {
+		t := &cands[i]
+		if taken[t.ID] {
+			continue
+		}
+		if w, ok := r.subLive(t, now); ok && w == s.id {
+			return t, ViaDirect
+		}
+	}
+	for i := range cands {
+		t := &cands[i]
+		if taken[t.ID] {
+			continue
+		}
+		if w, ok := r.subLive(t, now); ok && w != s.id {
+			continue
+		}
+		return t, ViaBoard
+	}
+	return nil, ViaBoard
+}
+
+func (r *Router) scheduleBase(s *slot, pick *ticket.Ticket, byID map[string]ticket.Ticket, head string) string {
+	base := head
+	if len(pick.Dependencies) == 1 {
+		if dep, ok := byID[pick.Dependencies[0]]; ok && dep.Result != nil && dep.Result.HeadCommit != "" {
+			base = dep.Result.HeadCommit
+		}
+		return base
+	}
+	if len(pick.Dependencies) < 2 {
+		return base
+	}
+	var unmerged []string
+	for _, d := range pick.Dependencies {
+		if dep, ok := byID[d]; !ok || dep.MergedAt == nil {
+			unmerged = append(unmerged, d)
+		}
+	}
+	if len(unmerged) > 0 {
+		r.alert(AlertMultiDepBase, SevWarn, s.id, pick.ID,
+			fmt.Sprintf("%s tem %d dependências e base em HEAD; dependências sem merge: %s (rode `tb merge` nelas antes)",
+				pick.ID, len(pick.Dependencies), strings.Join(unmerged, ", ")),
+			ActionNone)
+	}
+	return base
 }
 
 // schedule atribui tickets a slots ociosos.
@@ -421,13 +484,11 @@ func (r *Router) schedule(b *ticket.Board) {
 	cands := b.Candidates(r.strategy)
 	taken := map[string]bool{}
 	byID := map[string]ticket.Ticket{}
-	for _, t := range b.Tickets {
-		byID[t.ID] = t
+	for i := range b.Tickets {
+		t := &b.Tickets[i]
+		byID[t.ID] = *t
 	}
 	head := ""
-	// Ticket cancelado e devolvido a pending enquanto o agente antigo ainda é
-	// encerrado: enquanto algum slot o segura, não pode ser atribuído de novo
-	// (createWorkspace apagaria o worktree do agente em saída).
 	for _, s := range r.slots {
 		if s.ticket != "" {
 			taken[s.ticket] = true
@@ -437,31 +498,7 @@ func (r *Router) schedule(b *ticket.Board) {
 		if s.ticket != "" {
 			continue
 		}
-		var pick *ticket.Ticket
-		via := ViaBoard
-		for i := range cands {
-			t := cands[i]
-			if taken[t.ID] {
-				continue
-			}
-			if w, ok := r.subLive(t, now); ok && w == s.id {
-				pick, via = &cands[i], ViaDirect
-				break
-			}
-		}
-		if pick == nil {
-			for i := range cands {
-				t := cands[i]
-				if taken[t.ID] {
-					continue
-				}
-				if w, ok := r.subLive(t, now); ok && w != s.id {
-					continue // reservado para outro worker vivo
-				}
-				pick = &cands[i]
-				break
-			}
-		}
+		pick, via := r.pickForSlot(s, cands, taken, now)
 		if pick == nil {
 			continue
 		}
@@ -469,34 +506,12 @@ func (r *Router) schedule(b *ticket.Board) {
 		if head == "" {
 			head, _ = gitOut(r.opts.Root, "rev-parse", "HEAD")
 		}
-		// Decisão do dono: com UMA dependência, a worktree parte do HeadCommit
-		// dela, mesmo sem entrega direta (merge não é pré-requisito). Com >=2
-		// dependências não há base única: usa HEAD e avisa se alguma não foi
-		// mergeada (multi_dep_base).
-		base := head
-		if len(pick.Dependencies) == 1 {
-			if dep, ok := byID[pick.Dependencies[0]]; ok && dep.Result != nil && dep.Result.HeadCommit != "" {
-				base = dep.Result.HeadCommit
-			}
-		} else if len(pick.Dependencies) >= 2 {
-			var unmerged []string
-			for _, d := range pick.Dependencies {
-				if dep, ok := byID[d]; !ok || dep.MergedAt == nil {
-					unmerged = append(unmerged, d)
-				}
-			}
-			if len(unmerged) > 0 {
-				r.alert(AlertMultiDepBase, SevWarn, s.id, pick.ID,
-					fmt.Sprintf("%s tem %d dependências e base em HEAD; dependências sem merge: %s (rode `tb merge` nelas antes)",
-						pick.ID, len(pick.Dependencies), strings.Join(unmerged, ", ")),
-					ActionNone)
-			}
-		}
-		r.start(s, *pick, via, base)
+		base := r.scheduleBase(s, pick, byID, head)
+		r.start(s, pick, via, base)
 	}
 }
 
-func (r *Router) start(s *slot, t ticket.Ticket, via, base string) {
+func (r *Router) start(s *slot, t *ticket.Ticket, via, base string) {
 	now := r.now()
 	var attempts int
 	_, err := r.store.Update(t.ID, func(x *ticket.Ticket) error {
@@ -524,9 +539,9 @@ func (r *Router) start(s *slot, t ticket.Ticket, via, base string) {
 	*s = slot{id: s.id, ticket: t.ID, title: t.Title, started: now, timeout: timeout, attempts: attempts, cancel: cancel}
 	r.summary.Assignments = append(r.summary.Assignments, Assignment{Ticket: t.ID, Worker: s.id, Via: via, Base: base, Attempt: attempts})
 	r.logf("[%s] %s iniciado (%s, base %s, tentativa %d)", s.id, t.ID, via, short(base), attempts)
-	tk := t
+	tk := *t
 	wid := s.id
-	go func() { r.done <- r.execute(wctx, s, wid, tk, base) }()
+	go func() { r.done <- r.execute(wctx, s, wid, &tk, base) }()
 }
 
 func short(sha string) string {
@@ -553,18 +568,20 @@ func (r *Router) updateMine(id, worker string, fn func(*ticket.Ticket)) error {
 }
 
 // complete aplica o resultado de um worker ao ticket.
-func (r *Router) complete(ev workerDone) {
+func (r *Router) completeDone() {
+	ev := <-r.done
+	r.complete(&ev)
+}
+
+func (r *Router) complete(ev *workerDone) {
 	s := ev.slot
 	reason, killReason, attempts, timeout, worker := s.reason, s.killReason, s.attempts, s.timeout, s.id
 	now := r.now().UTC()
 	started := s.started.UTC()
 	*s = slot{id: s.id}
-	// A marca é consumida SEMPRE (inclusive em descarte/requeue), senão envenenaria
-	// a próxima tentativa do mesmo ticket. Alertas de escape são reais mesmo se o
-	// resultado for descartado.
 	escapedMark := r.takeEscaped(ev.id)
-	for _, p := range ev.alerts {
-		r.emit(p)
+	for i := range ev.alerts {
+		r.emit(&ev.alerts[i])
 	}
 
 	res := &ticket.Result{
@@ -574,79 +591,88 @@ func (r *Router) complete(ev workerDone) {
 	discard := func() {
 		r.logf("[%s] %s não está mais running neste worker (cancelado?); resultado descartado", worker, ev.id)
 	}
-	// Ticket cancelado/alterado enquanto rodava: nenhuma transição.
-	if cur, err := r.store.Get(ev.id); err == nil && (reason == reasonCancelled || cur.Status != ticket.StatusRunning || cur.Worker != worker) {
+	if cur, err := r.store.Get(ev.id); err == nil && (reason == reasonCanceled || cur.Status != ticket.StatusRunning || cur.Worker != worker) {
 		discard()
 		r.clearSubscriptions(worker)
 		return
 	}
 
-	// Trabalho concluído com sucesso vale mesmo que um motivo tardio
-	// (stuck/kill/shutdown) tenha sido marcado depois do término: só honramos o
-	// motivo quando o agente de fato foi cancelado ou saiu != 0.
 	if escapedMark && ev.err == nil {
-		// escape atribuído a este ticket por um tick (ou por outro worker) depois
-		// da última varredura do execute: falha mesmo assim
 		ev.err = fmt.Errorf("%w: processo escapou do grupo do agente durante a execução", errAgentEscaped)
 	}
-	finishedOK := ev.err == nil && ev.exit == 0 && !ev.cancelled && !ev.timedOut
+	finishedOK := ev.err == nil && ev.exit == 0 && !ev.canceled && !ev.timedOut
 	switch {
 	case finishedOK:
-		err := r.updateMine(ev.id, worker, func(x *ticket.Ticket) {
-			x.Status = ticket.StatusDone
-			x.Result = res
-		})
-		if errors.Is(err, errNotMine) {
-			discard()
-			return
-		}
-		if err != nil {
-			r.logf("erro ao concluir %s: %v", ev.id, err)
-			return
-		}
-		if reason != "" {
-			r.logf("[%s] %s terminou com sucesso antes do cancelamento (%s); mantido como concluído", worker, ev.id, reason)
-		}
-		r.summary.Done = append(r.summary.Done, ev.id)
-		r.logf("[%s] %s concluído (%s)", worker, ev.id, short(ev.head))
-		r.subscribeDependents(ev.id, worker)
+		r.completeSuccess(ev, worker, reason, res, discard)
 		return
 	case reason == reasonShutdown:
-		err := r.updateMine(ev.id, worker, func(x *ticket.Ticket) {
-			x.Status = ticket.StatusPending
-			x.Worker = ""
-			x.Subscription = nil
-			x.Result = nil
-			if x.Attempts > 0 {
-				x.Attempts-- // interrupção do router não conta como tentativa
-			}
-		})
-		if errors.Is(err, errNotMine) {
-			discard()
-			return
-		}
-		r.summary.Requeued = append(r.summary.Requeued, ev.id)
-		r.logf("[%s] %s devolvido para pending", worker, ev.id)
+		r.completeShutdown(ev, worker, discard)
 		return
 	}
+	r.completeFailure(ev, worker, reason, killReason, attempts, timeout, res, discard)
+}
 
-	// falha
+func (r *Router) completeSuccess(ev *workerDone, worker, reason string, res *ticket.Result, discard func()) {
+	err := r.updateMine(ev.id, worker, func(x *ticket.Ticket) {
+		x.Status = ticket.StatusDone
+		x.Result = res
+	})
+	if errors.Is(err, errNotMine) {
+		discard()
+		return
+	}
+	if err != nil {
+		r.logf("erro ao concluir %s: %v", ev.id, err)
+		return
+	}
+	if reason != "" {
+		r.logf("[%s] %s terminou com sucesso antes do cancelamento (%s); mantido como concluído", worker, ev.id, reason)
+	}
+	r.summary.Done = append(r.summary.Done, ev.id)
+	r.logf("[%s] %s concluído (%s)", worker, ev.id, short(ev.head))
+	r.subscribeDependents(ev.id, worker)
+}
+
+func (r *Router) completeShutdown(ev *workerDone, worker string, discard func()) {
+	err := r.updateMine(ev.id, worker, func(x *ticket.Ticket) {
+		x.Status = ticket.StatusPending
+		x.Worker = ""
+		x.Subscription = nil
+		x.Result = nil
+		if x.Attempts > 0 {
+			x.Attempts--
+		}
+	})
+	if errors.Is(err, errNotMine) {
+		discard()
+		return
+	}
+	r.summary.Requeued = append(r.summary.Requeued, ev.id)
+	r.logf("[%s] %s devolvido para pending", worker, ev.id)
+}
+
+func (r *Router) failureError(ev *workerDone, reason, killReason string, timeout time.Duration) string {
 	switch {
 	case reason == reasonStuck:
-		res.Error = fmt.Sprintf("timeout de %s excedido (worker_stuck)", timeout)
+		return fmt.Sprintf("timeout de %s excedido (worker_stuck)", timeout)
 	case reason == reasonKilled:
-		res.Error = "encerrado por tb watchdog kill"
+		msg := "encerrado por tb watchdog kill"
 		if killReason != "" {
-			res.Error += ": " + killReason
+			msg += ": " + killReason
 		}
+		return msg
 	case ev.err != nil:
-		res.Error = ev.err.Error()
+		return ev.err.Error()
 	default:
-		res.Error = fmt.Sprintf("agente saiu com código %d", ev.exit)
+		return fmt.Sprintf("agente saiu com código %d", ev.exit)
 	}
+}
+
+func (r *Router) completeFailure(ev *workerDone, worker, reason, killReason string, attempts int, timeout time.Duration, res *ticket.Result, discard func()) {
+	res.Error = r.failureError(ev, reason, killReason, timeout)
 	action := r.failureAction(attempts)
 	if errors.Is(ev.err, errWorkspaceIntegrity) {
-		action = ActionEscalate // adulteração não é transitória: sem retry
+		action = ActionEscalate
 	}
 	if reason == "" && !errors.Is(ev.err, errAgentEscaped) {
 		sev := SevError
@@ -690,7 +716,7 @@ func (r *Router) shutdown(reason string) {
 		}
 	}
 	for r.running() > 0 {
-		r.complete(<-r.done)
+		r.completeDone()
 	}
 }
 
@@ -706,13 +732,15 @@ func (r *Router) subscribeDependents(doneID, worker string) {
 	}
 	now := r.now()
 	held := 0
-	for _, t := range list {
+	for i := range list {
+		t := &list[i]
 		if t.Status == ticket.StatusPending && t.Subscription.Live(now) && t.Subscription.Worker == worker {
 			held++
 		}
 	}
 	ticket.SortTickets(list, r.strategy, list)
-	for _, t := range list {
+	for i := range list {
+		t := &list[i]
 		if t.Status != ticket.StatusPending || !containsStr(t.Dependencies, doneID) {
 			continue
 		}
@@ -720,7 +748,7 @@ func (r *Router) subscribeDependents(doneID, worker string) {
 			return
 		}
 		if t.Subscription.Live(now) && t.Subscription.Worker != worker {
-			continue // já reservado por outro worker vivo
+			continue
 		}
 		exp := now.Add(r.ttl).UTC()
 		if _, err := r.store.Update(t.ID, func(x *ticket.Ticket) error {
@@ -741,7 +769,8 @@ func (r *Router) clearSubscriptions(worker string) {
 	if err != nil {
 		return
 	}
-	for _, t := range list {
+	for i := range list {
+		t := &list[i]
 		if t.Subscription != nil && t.Subscription.Worker == worker {
 			_, _ = r.store.Update(t.ID, func(x *ticket.Ticket) error {
 				x.Subscription = nil
@@ -778,7 +807,8 @@ func (r *Router) writeState(b *ticket.Board, status string) {
 			t := s.started.UTC()
 			w.StartedAt = &t
 		}
-		for _, t := range b.Tickets {
+		for i := range b.Tickets {
+			t := &b.Tickets[i]
 			if t.Status == ticket.StatusPending && t.Subscription.Live(now) && t.Subscription.Worker == s.id {
 				w.Subscriptions = append(w.Subscriptions, t.ID)
 			}
@@ -794,7 +824,7 @@ func (r *Router) writeState(b *ticket.Board, status string) {
 		r.checkQueue(st.Queue.Ready)
 	}
 	data, err := marshalState(st)
-	if err != nil || string(data) == string(r.lastState) {
+	if err != nil || bytes.Equal(data, r.lastState) {
 		return
 	}
 	if _, err := writeState(r.opts.Root, st); err != nil {

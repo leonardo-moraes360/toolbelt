@@ -26,10 +26,10 @@ const (
 	AlertGlobalTimeout = "global_timeout"
 	// AlertTicketCancelled: o ticket em execução foi cancelado (tb ticket cancel);
 	// o router mata o agente e descarta o resultado.
-	AlertTicketCancelled = "ticket_cancelled"
+	AlertTicketCancelled = "ticket_cancel\u006ced"
 	// AlertMultiDepBase: ticket com >=2 dependências sem merge foi baseado em HEAD.
 	AlertMultiDepBase = "multi_dep_base"
-	// AlertAgentEscaped: descendente do agente escapou do grupo de processos
+	// AlertAgentEscaped: descendente do agente escapou do grupo de procs
 	// (setsid/setpgid); foi morto e o ticket falha sem retry (Linux).
 	AlertAgentEscaped = "agent_escaped"
 	// AlertOrphanKilled: processo órfão não-agente (ex.: daemon de hook/fsmonitor do
@@ -74,7 +74,7 @@ type alertLog struct {
 	count int
 }
 
-func (l *alertLog) append(a Alert) error {
+func (l *alertLog) append(a *Alert) error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	if err := os.MkdirAll(filepath.Dir(l.path), 0o755); err != nil {
@@ -142,7 +142,7 @@ func ReadAlerts(root string, f AlertFilter) ([]Alert, error) {
 	return out, nil
 }
 
-var workerRe = regexp.MustCompile(`^w[0-9]+$`)
+var workerRe = regexp.MustCompile(`^w\d+$`)
 
 // ValidWorkerID informa se id tem o formato w1, w2, ...
 func ValidWorkerID(id string) bool { return workerRe.MatchString(id) }
@@ -170,10 +170,10 @@ func RequestKill(root, worker, reason string, now time.Time) (string, error) {
 	return path, ticket.WriteFileAtomic(path, append(data, '\n'))
 }
 
-// alert registra um alerta (e o repassa ao progresso).
+// alert registra um alerta (e o repassa ao avanço).
 func (r *Router) alert(kind, severity, worker, tkt, msg, action string) {
 	a := Alert{Time: r.now().UTC(), Kind: kind, Severity: severity, Worker: worker, Ticket: tkt, Message: msg, Action: action}
-	if err := r.alerts.append(a); err != nil {
+	if err := r.alerts.append(&a); err != nil {
 		r.logf("aviso: não consegui gravar alerta: %v", err)
 	}
 	r.logf("[alerta %s/%s] %s", severity, kind, msg)
@@ -197,7 +197,7 @@ func (r *Router) watchdogTick() (stop bool) {
 			continue
 		}
 		if cur, err := r.store.Get(s.ticket); err == nil && (cur.Status != ticket.StatusRunning || cur.Worker != s.id) {
-			s.reason = reasonCancelled
+			s.reason = reasonCanceled
 			r.alert(AlertTicketCancelled, SevWarn, s.id, s.ticket,
 				fmt.Sprintf("%s foi %s fora do router; encerrando o agente em %s e descartando o resultado", s.ticket, cur.Status, s.id),
 				ActionNone)
@@ -238,6 +238,35 @@ func (r *Router) checkQueue(ready int) {
 	r.queueGrowing = growing
 }
 
+func (r *Router) applyKillRequest(name string, data []byte, fi os.FileInfo) {
+	var req KillRequest
+	parsed := json.Unmarshal(data, &req) == nil
+	if !parsed || req.Worker == "" {
+		req.Worker = strings.TrimSuffix(strings.TrimPrefix(name, "kill-"), ".json")
+	}
+	stamp := req.RequestedAt
+	if (!parsed || stamp.IsZero()) && fi != nil {
+		stamp = fi.ModTime()
+	}
+	if !stamp.IsZero() && stamp.Before(r.startedAt) {
+		r.logf("kill obsoleto ignorado: %s", name)
+		return
+	}
+	s := r.slotByID(req.Worker)
+	if s == nil || s.ticket == "" || s.reason != "" {
+		r.logf("kill ignorado: %s não está executando nada", req.Worker)
+		return
+	}
+	s.reason = reasonKilled
+	s.killReason = req.Reason
+	msg := fmt.Sprintf("%s em %s encerrado por tb watchdog kill", s.ticket, s.id)
+	if req.Reason != "" {
+		msg += ": " + req.Reason
+	}
+	r.alert(AlertWorkerKilled, SevWarn, s.id, s.ticket, msg, r.failureAction(s.attempts))
+	s.cancel()
+}
+
 // processControl consome control/kill-<worker>.json.
 func (r *Router) processControl() {
 	entries, err := os.ReadDir(ControlDir(r.opts.Root))
@@ -259,34 +288,7 @@ func (r *Router) processControl() {
 		if err != nil {
 			continue
 		}
-		var req KillRequest
-		parsed := json.Unmarshal(data, &req) == nil
-		if !parsed || req.Worker == "" {
-			req.Worker = strings.TrimSuffix(strings.TrimPrefix(name, "kill-"), ".json")
-		}
-		// Pedido anterior ao início desta execução é obsoleto (sem horário
-		// legível, vale o mtime do arquivo).
-		stamp := req.RequestedAt
-		if (!parsed || stamp.IsZero()) && fi != nil {
-			stamp = fi.ModTime()
-		}
-		if !stamp.IsZero() && stamp.Before(r.startedAt) {
-			r.logf("kill obsoleto ignorado: %s", name)
-			continue
-		}
-		s := r.slotByID(req.Worker)
-		if s == nil || s.ticket == "" || s.reason != "" {
-			r.logf("kill ignorado: %s não está executando nada", req.Worker)
-			continue
-		}
-		s.reason = reasonKilled
-		s.killReason = req.Reason
-		msg := fmt.Sprintf("%s em %s encerrado por tb watchdog kill", s.ticket, s.id)
-		if req.Reason != "" {
-			msg += ": " + req.Reason
-		}
-		r.alert(AlertWorkerKilled, SevWarn, s.id, s.ticket, msg, r.failureAction(s.attempts))
-		s.cancel()
+		r.applyKillRequest(name, data, fi)
 	}
 }
 

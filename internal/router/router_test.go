@@ -63,7 +63,7 @@ func newRouter(t *testing.T, root string, mut func(*Options)) *Router {
 	if mut != nil {
 		mut(&o)
 	}
-	r, err := New(o)
+	r, err := New(&o)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,7 +72,7 @@ func newRouter(t *testing.T, root string, mut func(*Options)) *Router {
 
 func mk(t *testing.T, s *ticket.Store, title string, deps ...string) ticket.Ticket {
 	t.Helper()
-	tk, err := s.Create(ticket.Ticket{Title: title, Dependencies: deps})
+	tk, err := s.Create(&ticket.Ticket{Title: title, Dependencies: deps})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,7 +81,7 @@ func mk(t *testing.T, s *ticket.Store, title string, deps ...string) ticket.Tick
 
 func mkTimeout(t *testing.T, s *ticket.Store, title, timeout string) ticket.Ticket {
 	t.Helper()
-	tk, err := s.Create(ticket.Ticket{Title: title, Acceptance: ticket.Acceptance{Timeout: timeout}})
+	tk, err := s.Create(&ticket.Ticket{Title: title, Acceptance: ticket.Acceptance{Timeout: timeout}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -97,7 +97,7 @@ func get(t *testing.T, s *ticket.Store, id string) ticket.Ticket {
 	return tk
 }
 
-func runWithTimeout(t *testing.T, r *Router, ctx context.Context) *Summary {
+func runWithTimeout(ctx context.Context, t *testing.T, r *Router) *Summary {
 	t.Helper()
 	type res struct {
 		s   *Summary
@@ -172,25 +172,9 @@ func startedOrder(s *Summary) []string {
 	return out
 }
 
-func TestDependencyOrdering(t *testing.T) {
-	root := newRepo(t)
-	st := ticket.Open(root)
-	var a, b, c ticket.Ticket
-	b = mk(t, st, "b")        // TKT-001
-	c = mk(t, st, "c", b.ID)  // TKT-002
-	a = mk(t, st, "a", c.ID)  // TKT-003
-	free := mk(t, st, "free") // TKT-004
-
-	r := newRouter(t, root, func(o *Options) { o.Workers = 1 })
-	sum := runWithTimeout(t, r, context.Background())
-	if sum.Reason != ReasonCompleted {
-		t.Fatalf("reason = %s", sum.Reason)
-	}
-	order := startedOrder(sum)
-	if len(order) != 4 || index(order, b.ID) > index(order, c.ID) || index(order, c.ID) > index(order, a.ID) {
-		t.Fatalf("ordem inválida: %v", order)
-	}
-	for _, id := range []string{a.ID, b.ID, c.ID, free.ID} {
+func assertDoneWithCommit(t *testing.T, st *ticket.Store, ids ...string) {
+	t.Helper()
+	for _, id := range ids {
 		tk := get(t, st, id)
 		if tk.Status != ticket.StatusDone || tk.Result == nil || tk.Result.HeadCommit == "" || tk.Result.Branch != "tb-workspace/"+id {
 			t.Fatalf("%s: %+v", id, tk)
@@ -199,7 +183,25 @@ func TestDependencyOrdering(t *testing.T) {
 			t.Fatalf("%s: agente escreveu arquivo mas não houve commit", id)
 		}
 	}
-	// o commit do worker contém o arquivo do agente
+}
+
+func TestDependencyOrdering(t *testing.T) {
+	root := newRepo(t)
+	st := ticket.Open(root)
+	b := mk(t, st, "b")
+	c := mk(t, st, "c", b.ID)
+	a := mk(t, st, "a", c.ID)
+	free := mk(t, st, "free")
+	r := newRouter(t, root, func(o *Options) { o.Workers = 1 })
+	sum := runWithTimeout(context.Background(), t, r)
+	if sum.Reason != ReasonCompleted {
+		t.Fatalf("reason = %s", sum.Reason)
+	}
+	order := startedOrder(sum)
+	if len(order) != 4 || index(order, b.ID) > index(order, c.ID) || index(order, c.ID) > index(order, a.ID) {
+		t.Fatalf("ordem inválida: %v", order)
+	}
+	assertDoneWithCommit(t, st, a.ID, b.ID, c.ID, free.ID)
 	if out := runGit(t, root, "show", "--stat", "--format=%s", get(t, st, b.ID).Result.HeadCommit); !strings.Contains(out, "out-"+b.ID+".txt") || !strings.Contains(out, "tb: "+b.ID) {
 		t.Fatalf("commit do worker: %s", out)
 	}
@@ -220,7 +222,7 @@ func TestDirectDeliverySameWorkerAndBaseChaining(t *testing.T) {
 if [ "$TB_TICKET_ID" = "TKT-002" ]; then sleep 0.4; fi
 if [ "$TB_TICKET_ID" = "TKT-003" ]; then cat a.txt > b.txt; fi`
 	r := newRouter(t, root, func(o *Options) { o.Workers = 2; o.AgentCmd = sh(script) })
-	sum := runWithTimeout(t, r, context.Background())
+	sum := runWithTimeout(context.Background(), t, r)
 	if len(sum.Done) != 3 {
 		t.Fatalf("done = %v failed=%v", sum.Done, sum.Failed)
 	}
@@ -354,7 +356,7 @@ func TestTimeoutStuckRetryThenFailed(t *testing.T) {
 	tk := mkTimeout(t, st, "lento", "250ms")
 	r := newRouter(t, root, func(o *Options) { o.AgentCmd = sh("sleep 30") })
 	start := time.Now()
-	sum := runWithTimeout(t, r, context.Background())
+	sum := runWithTimeout(context.Background(), t, r)
 	if time.Since(start) > 20*time.Second {
 		t.Fatal("watchdog não matou o agente (sleep 30 sobreviveu)")
 	}
@@ -406,7 +408,7 @@ func TestCrashAlertAndRetry(t *testing.T) {
 	st := ticket.Open(root)
 	tk := mk(t, st, "quebra")
 	r := newRouter(t, root, func(o *Options) { o.AgentCmd = sh("echo falhou; exit 3") })
-	sum := runWithTimeout(t, r, context.Background())
+	sum := runWithTimeout(context.Background(), t, r)
 	got := get(t, st, tk.ID)
 	if got.Status != ticket.StatusFailed || got.Attempts != 2 || got.Result.ExitCode != 3 {
 		t.Fatalf("ticket: %+v result=%+v", got, got.Result)
@@ -449,7 +451,7 @@ func TestQueueGrowingAlertOnce(t *testing.T) {
 		mk(t, st, "t")
 	}
 	r := newRouter(t, root, func(o *Options) { o.Workers = 1; o.AgentCmd = sh("sleep 0.15") })
-	runWithTimeout(t, r, context.Background())
+	runWithTimeout(context.Background(), t, r)
 	if n := countKind(alertKinds(t, root), AlertQueueGrowing); n != 1 {
 		t.Fatalf("queue_growing = %d, esperado 1 (uma vez por transição)", n)
 	}
@@ -586,7 +588,7 @@ func TestGlobalTimeoutStopsAndRequeues(t *testing.T) {
 	cfg := testCfg()
 	cfg.Timeouts.Global = "300ms"
 	r := newRouter(t, root, func(o *Options) { o.Config = cfg; o.AgentCmd = sh("sleep 30") })
-	sum := runWithTimeout(t, r, context.Background())
+	sum := runWithTimeout(context.Background(), t, r)
 	if sum.Reason != ReasonGlobalTimeout || get(t, st, tk.ID).Status != ticket.StatusPending {
 		t.Fatalf("summary: %+v ticket=%+v", sum, get(t, st, tk.ID))
 	}
@@ -602,7 +604,7 @@ func TestOnceRunsSingleRound(t *testing.T) {
 		mk(t, st, "t")
 	}
 	r := newRouter(t, root, func(o *Options) { o.Workers = 2; o.Once = true })
-	sum := runWithTimeout(t, r, context.Background())
+	sum := runWithTimeout(context.Background(), t, r)
 	if sum.Reason != ReasonOnce || len(sum.Done) != 2 {
 		t.Fatalf("summary: %+v", sum)
 	}
@@ -619,7 +621,7 @@ func TestFailedDependencyBlocksDependents(t *testing.T) {
 	cfg := testCfg()
 	cfg.Retry.MaxAttempts = 1
 	r := newRouter(t, root, func(o *Options) { o.Config = cfg; o.AgentCmd = sh("exit 1") })
-	sum := runWithTimeout(t, r, context.Background())
+	sum := runWithTimeout(context.Background(), t, r)
 	if get(t, st, b.ID).Status != ticket.StatusPending || len(sum.Failed) != 1 || sum.Reason != ReasonStalled {
 		t.Fatalf("summary: %+v", sum)
 	}
@@ -636,7 +638,7 @@ func TestChildEnvFilteredAndInjected(t *testing.T) {
 		o.AgentCmd = sh("env")
 		o.Environ = []string{"PATH=" + os.Getenv("PATH"), "HOME=" + root, "MY_API_TOKEN=supersecreto", "OUTRA=valor"}
 	})
-	runWithTimeout(t, r, context.Background())
+	runWithTimeout(context.Background(), t, r)
 	got := get(t, st, tk.ID)
 	data, err := os.ReadFile(filepath.Join(root, got.Result.Log))
 	if err != nil {
@@ -675,19 +677,19 @@ func TestCommitIdentityFallbackWhenUnconfigured(t *testing.T) {
 	st := ticket.Open(root)
 	tk := mk(t, st, "sem identidade")
 	r := newRouter(t, root, func(o *Options) { o.Environ = []string{"PATH=" + os.Getenv("PATH"), "HOME=" + home} })
-	runWithTimeout(t, r, context.Background())
+	runWithTimeout(context.Background(), t, r)
 	got := get(t, st, tk.ID)
 	if got.Status != ticket.StatusDone {
 		t.Fatalf("ticket: %+v err=%v", got, got.Result)
 	}
 	if who := runGit(t, root, "log", "-1", "--format=%an <%ae>", got.Result.HeadCommit); who != "tb <tb@localhost>" {
-		t.Fatalf("autor = %q", who)
+		t.Fatalf("who = %q", who)
 	}
 }
 
 func TestRunRequiresAgentCmdAndHEAD(t *testing.T) {
 	root := newRepo(t)
-	r, err := New(Options{Root: root, Config: testCfg(), AllowUnsandboxed: true})
+	r, err := New(&Options{Root: root, Config: testCfg(), AllowUnsandboxed: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -696,11 +698,11 @@ func TestRunRequiresAgentCmdAndHEAD(t *testing.T) {
 	}
 	empty := t.TempDir()
 	runGit(t, empty, "init", "-q")
-	r2, _ := New(Options{Root: empty, Config: testCfg(), AgentCmd: sh("true"), AllowUnsandboxed: true})
+	r2, _ := New(&Options{Root: empty, Config: testCfg(), AgentCmd: sh("true"), AllowUnsandboxed: true})
 	if _, err := r2.Run(context.Background()); err == nil || !strings.Contains(err.Error(), "commit") {
 		t.Fatalf("esperava erro de repo sem commit: %v", err)
 	}
-	if _, err := New(Options{Root: root, Workers: 2, Strategy: "xyz"}); err == nil {
+	if _, err := New(&Options{Root: root, Workers: 2, Strategy: "xyz"}); err == nil {
 		t.Fatal("strategy inválida deveria falhar")
 	}
 }
@@ -713,9 +715,24 @@ func TestRecoverOrphanRunning(t *testing.T) {
 		t.Fatal(err)
 	}
 	r := newRouter(t, root, nil)
-	sum := runWithTimeout(t, r, context.Background())
+	sum := runWithTimeout(context.Background(), t, r)
 	if len(sum.Done) != 1 || get(t, st, tk.ID).Status != ticket.StatusDone {
 		t.Fatalf("summary: %+v", sum)
+	}
+}
+
+func assertPlanRounds(t *testing.T, p *Plan, a, b, c, d *ticket.Ticket) {
+	t.Helper()
+	if len(p.Rounds) != 2 {
+		t.Fatalf("rounds: %+v", p.Rounds)
+	}
+	r1 := p.Rounds[0].Assignments
+	if len(r1) != 2 || r1[0].Ticket != a.ID || r1[0].Worker != "w1" || r1[1].Ticket != b.ID || r1[1].Worker != "w2" {
+		t.Fatalf("rodada 1: %+v", r1)
+	}
+	r2 := p.Rounds[1].Assignments
+	if len(r2) != 2 || r2[0].Ticket != c.ID || r2[0].Via != ViaDirect || r2[0].Base != a.ID || r2[1].Ticket != d.ID || r2[1].Base != "HEAD" {
+		t.Fatalf("rodada 2: %+v", r2)
 	}
 }
 
@@ -733,22 +750,10 @@ func TestBuildPlan(t *testing.T) {
 	g := mk(t, st, "g", f.ID)
 	board, _ := ticket.LoadBoard(st)
 	p := BuildPlan(board, 2, ticket.StrategyDependency, true, 5)
-	if len(p.Rounds) != 2 {
-		t.Fatalf("rounds: %+v", p.Rounds)
-	}
-	r1 := p.Rounds[0].Assignments
-	if len(r1) != 2 || r1[0].Ticket != a.ID || r1[0].Worker != "w1" || r1[1].Ticket != b.ID || r1[1].Worker != "w2" {
-		t.Fatalf("rodada 1: %+v", r1)
-	}
-	r2 := p.Rounds[1].Assignments
-	// c depende só de a (rodou em w1): entrega direta, base encadeada; d depende de 2 (HEAD)
-	if len(r2) != 2 || r2[0].Ticket != c.ID || r2[0].Via != ViaDirect || r2[0].Base != a.ID || r2[1].Ticket != d.ID || r2[1].Base != "HEAD" {
-		t.Fatalf("rodada 2: %+v", r2)
-	}
+	assertPlanRounds(t, &p, &a, &b, &c, &d)
 	if len(p.Unschedulable) != 1 || p.Unschedulable[0].Ticket != g.ID {
 		t.Fatalf("unschedulable: %+v", p.Unschedulable)
 	}
-	// sem entrega direta tudo é board
 	p2 := BuildPlan(board, 2, ticket.StrategyFIFO, false, 5)
 	for _, rd := range p2.Rounds {
 		for _, as := range rd.Assignments {
@@ -786,7 +791,7 @@ func TestReadAlertsFilters(t *testing.T) {
 	l := &alertLog{path: AlertsPath(root)}
 	base := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
 	for i, k := range []string{AlertWorkerSlow, AlertWorkerCrash, AlertWorkerSlow} {
-		if err := l.append(Alert{Time: base.Add(time.Duration(i) * time.Minute), Kind: k, Severity: SevWarn, Message: "m", Action: ActionNone}); err != nil {
+		if err := l.append(&Alert{Time: base.Add(time.Duration(i) * time.Minute), Kind: k, Severity: SevWarn, Message: "m", Action: ActionNone}); err != nil {
 			t.Fatal(err)
 		}
 	}

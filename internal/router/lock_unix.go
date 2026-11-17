@@ -28,7 +28,7 @@ func acquireLock(path string) (release func(), err error) {
 		return nil, fmt.Errorf("lock do router: %w", err)
 	}
 	_ = f.Truncate(0)
-	_, _ = fmt.Fprintf(f, "%d\n", os.Getpid()) // informativo
+	_, _ = fmt.Fprintf(f, "%d\n", os.Getpid()) // só info
 	return func() {
 		_ = syscall.Flock(int(f.Fd()), syscall.LOCK_UN) //nolint:gosec // fd pequeno
 		_ = f.Close()
