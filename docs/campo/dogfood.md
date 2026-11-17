@@ -34,3 +34,13 @@ Assinatura/Rekor **não** verificados (sem `cosign`); `gh attestation verify` in
 | 10 | `tb verify run --json` | trecho com as linhas `--- FAIL` | `reason` truncado pelo início (`[no test files]`, `ok …`); falhas de pacotes posteriores somem no `…` | média |
 | 11 | `tb init` + `TestDocsEnglishMirrorComplete` | `--write-agents`/bootstrap não quebra a suíte | criar `docs/campo/*.md` sem par em `docs/en/` quebra `go test` — invariante de docs PT/EN pega pelo teste, não pelo `tb guard` | info |
 | 12 | `tb verify run --dry-run` | — | ok: `verdict: SKIPPED` + plano | info |
+
+## 2026-11-17 — Fase 3 (ticket/board/router/watchdog/merge)
+
+| # | Comando | Esperado | Obtido | Sev. |
+|---|---------|----------|--------|------|
+| 4 | `go test ./...` | — | **resolvido**: `initGitRepo` fixa `-b master` | — |
+| 13 | `tb stack … --ticket rd.md` | analisar mudanças não commitadas (working tree) | só compara `--base..--head` (commits); precisei de commit descartável em worktree detached para rodar o stack antes de commitar | média |
+| 14 | `tb stack drift review` | — | ok: pegou `internal/review/review_test.go` fora do Scope declarado no rd.md | info |
+| 15 | `tb guard` (via stack) | `t.Skip` condicionado a ambiente (Landlock/git ausente) distinguível de skip de trapaça | 24 avisos `test_skip` para skips legítimos de ambiente; ruído | baixa |
+| 16 | `tb sandbox run -- sh -c 'echo > /dev/null'` | escrita em `/dev/null` permitida | `Permission denied` (também na v0.0.3): git/shells quebram no sandbox — corrigido nesta fase | alta |

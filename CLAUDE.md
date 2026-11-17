@@ -28,4 +28,3 @@ Atritos/bugs do `tb` achados ao usá-lo aqui vão em `docs/campo/dogfood.md` (da
 ## Notas locais
 
 - `golangci-lint` não está no PATH desta máquina: `verify.lint_cmd` usa `go vet ./...`. CI roda golangci-lint.
-- `go test ./...` falha em `internal/review` quando `init.defaultBranch=main` (testes assumem `master`).
