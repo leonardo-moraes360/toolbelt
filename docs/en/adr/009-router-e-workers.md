@@ -249,6 +249,44 @@ router:
 - **Description**: workers as pure functions without state
 - **Why not**: overhead of serializing/deserializing code state
 
+## Implementation (Phase 3)
+
+Implemented (see [cli.md](../cli.md)): `tb ticket` (YAML tickets under
+`.toolbelt/tickets/`), `tb board` (pause/resume/drain), `tb router run`
+(**foreground** scheduler, workers `w1..wN` in their own worktrees, execution
+inside the fail-closed sandbox), direct delivery (subscription with TTL and a
+per-worker limit; base on the dependency's commit), `tb watchdog` (alerts
+`worker_slow`, `worker_stuck`, `worker_crash`, `worker_killed`, `queue_growing`,
+`global_timeout`, `ticket_cancelled`, `multi_dep_base`, `agent_escaped`, `board_unreadable`; runs in the router loop, no auto-scaling) and `tb merge`
+(`fail` and `last_wins` strategies, atomic via compare-and-swap).
+
+Router hardening: single instance per repository (exclusive lock
+`.toolbelt/router/lock`), worktree integrity check before committing (git with
+fsmonitor/hooks disabled, `--no-verify`; violation ⇒ `failed` without retry),
+agent output capped at 1 MiB, a `stalled` summary (non-zero exit) when `pending`
+tickets stay blocked by `failed`/`cancelled` dependencies, and a base on the
+single dependency's `head_commit` regardless of direct delivery (≥ 2
+dependencies: `HEAD` + `multi_dep_base` alert).
+
+Isolation of the router's git (which runs outside the sandbox): nested `.git`
+in the worktree and gitlinks/`.gitmodules` added by the agent are refused
+(`failed` without retry); submodules are ignored by the router's git. On Linux
+the router is a *subreaper* and kills descendants that escape the process group
+(`setsid`/`setpgid`), failing the ticket with `agent_escaped` without running
+git; agents must not detach. On macOS/Windows this is not detected
+(limitation). The mandate (`Scope`/`Forbidden`/`Permissions`) is only recorded:
+the router does **not enforce** it — use `tb drift`/`tb review`/`tb guard` (or
+`tb stack --ticket`) before `tb merge`.
+
+Differences from the design above: no `start`/`stop` daemon; configuration in
+the `router:` section of `.toolbelt/config.yaml` (no `router.yaml`); merge
+`prompt`/`semantic` are **not implemented**; `resource_high` and
+`watchdog scale` **do not exist**.
+
+Still hypotheses, **not measured** with the toolbelt benchmark: ~40% input-token
+reduction, ~60% throughput gain and p95 improvement — which is why the status
+stays `proposed`.
+
 ## References
 
 - Research on coding agent scalability

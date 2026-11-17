@@ -2,7 +2,7 @@
 
 # `tb` Command Tree
 
-This document describes the toolbelt CLI: **implemented** commands (mirrored from `tb --help`) and **planned** sections (Phase 3+, marked explicitly). On divergence, the Cobra CLI is the source of truth.
+This document describes the toolbelt CLI: **implemented** commands (mirrored from `tb --help`) and **planned** sections (`tb run`/`proc`/`md`/`agent`, marked explicitly). On divergence, the Cobra CLI is the source of truth.
 
 ## Local-first: no GitHub
 
@@ -66,8 +66,8 @@ Or Markdown only:
 - [ ] docs descrevem o comportamento real
 ```
 
-`tb ticket` (create tickets automatically) is **planned** — until then the file
-is manual.
+`tb ticket create --from rd.md` (Phase 3) creates the ticket from that file;
+you still write the `rd.md` yourself.
 
 ## Overview
 
@@ -86,11 +86,14 @@ tb  (implementado hoje)
 ├── verify       Verificação adversarial (run; rulers tests|visual)
 ├── workspace    Workspaces via git worktree (create|list|remove; alias: ws)
 ├── version      Mostra versão (também: tb --version)
-└── router       Stub (não implementado)
+├── ticket       Work tickets (create|list|show|cancel|retry)       ✓ Phase 3
+├── board        Ticket board (list|watch|pause|resume|drain)          ✓ Phase 3
+├── router       Foreground scheduler (run|status|config)           ✓ Phase 3
+├── watchdog     Worker alerts and control (status|alerts|kill)       ✓ Phase 3
+└── merge        Merges done tickets (fail|last_wins)                     ✓ Phase 3
 
-tb  (planejado — Fase 3+)
+tb  (planned)
 ├── run / proc / md / agent
-├── ticket / board / watchdog / merge
 └── serve        (hoje use: tb mcp)
 ```
 
@@ -1258,411 +1261,362 @@ approved_changes:
 
 ---
 
-### `tb ticket` — Ticket Management (planned — Phase 3+)
+### `tb ticket` — Ticket Management (✓ Phase 3)
 
-> **Not implemented.** The current CLI does not expose `tb ticket`. Use a manual `rd.md` consumed by `tb drift` / `tb review`.
-
-Creates and manages work tickets for the Router/Workers pattern.
-
-```bash
-tb ticket <subcommand>
-
-Subcomandos:
-  create    Cria tickets a partir de tarefa
-  list      Lista tickets existentes
-  show      Exibe detalhes de um ticket
-  cancel    Cancela ticket pendente
-  retry     Reenfileira ticket falhado
-```
-
-**`tb ticket create`:**
+Creates and manages the work tickets consumed by the router. Each ticket is a
+versionable YAML file at `.toolbelt/tickets/TKT-NNN.yaml` (monotonic IDs, 3+
+digits). Writes are atomic (temp + rename) and serialized by
+`.toolbelt/tickets/.lock`. Every subcommand honors `--json`.
 
 ```bash
-tb ticket create [flags] <task-description>
-
-Flags:
-  --from <file>         Arquivo de spec para decompor
-  --max-tickets <n>     Máximo de tickets a criar (default: 10)
-  --parallel <n>        Sugestão de tickets paralelos (default: 3)
-  --mandate <file>      Template de mandate (default: .toolbelt/mandate.yaml)
-  --output <path>       Arquivo de saída JSON/YAML
-  --json                Saída em JSON
-  --dry-run             Mostra tickets sem criar
-```
-
-**Examples:**
-
-```bash
-# Criar tickets a partir de descrição
-tb ticket create "Implementar autenticação JWT completa"
-# ═══════════════════════════════════════════════════════════════
-# DECOMPOSIÇÃO DE TAREFA
-# ═══════════════════════════════════════════════════════════════
-# 
-# Tarefa: Implementar autenticação JWT completa
-# 
-# Tickets criados: 4
-# 
-# ┌────────────┬────────────────────────────────────────┬──────────┐
-# │ ID         │ Título                                 │ Deps     │
-# ├────────────┼────────────────────────────────────────┼──────────┤
-# │ TKT-001    │ Criar modelo User                      │ -        │
-# │ TKT-002    │ Implementar JWT signing                │ TKT-001  │
-# │ TKT-003    │ Criar handler POST /auth/login         │ TKT-002  │
-# │ TKT-004    │ Criar middleware de validação JWT      │ TKT-002  │
-# └────────────┴────────────────────────────────────────┴──────────┘
-# 
-# Paralelismo máximo: 2 (TKT-003 e TKT-004 após TKT-002)
-# Tempo estimado: 15-25 min
-
-# Criar a partir de spec
-tb ticket create --from docs/specs/auth.md --max-tickets 5
-
-# Dry run para revisar antes de criar
-tb ticket create --dry-run "Refatorar módulo de pagamentos"
-```
-
-**`tb ticket list`:**
-
-```bash
-tb ticket list [flags]
-
-Flags:
-  --status <statuses>   Filtrar por status: pending,running,done,failed,cancelled
-  --deps <ticket-id>    Mostrar dependentes de um ticket
-  --json                Saída em JSON
-```
-
-**Examples:**
-
-```bash
-# Listar todos os tickets
+tb ticket create --title "Criar modelo User" --scope "src/models/**" --accept "go test ./src/models passa" --timeout 10m
+tb ticket create --title "Implementar JWT signing" --dep TKT-001 --priority 1
+tb ticket create --from rd.md
+tb ticket create --title "Refatorar pagamentos" --dry-run
 tb ticket list
-# ID         STATUS    TITLE                              WORKER
-# TKT-001    done      Criar modelo User                  worker-001
-# TKT-002    done      Implementar JWT signing            worker-002
-# TKT-003    running   Criar handler POST /auth/login     worker-001
-# TKT-004    pending   Criar middleware validação JWT     -
-
-# Filtrar por status
 tb ticket list --status pending,running
-
-# Ver dependentes de um ticket
-tb ticket list --deps TKT-002
+tb ticket list --deps TKT-001
+tb ticket show TKT-002
+tb ticket cancel TKT-002
+tb ticket retry TKT-002
 ```
+
+**Subcommands and flags:**
+
+| Subcommand | Flags | Description |
+|------------|-------|-------------|
+| `create` | `--title`, `--description`, `--from <rd.md>`, `--scope`, `--forbid`, `--accept`, `--dep`, `--priority <n>`, `--timeout <dur>`, `--dry-run` | Creates a ticket (`--title` or `--from`). `--scope`/`--forbid`/`--dep` take a list or repetition; `--accept` is repeatable |
+| `list` | `--status a,b`, `--deps <id>` | Lists tickets; `--deps` shows only those depending on the ID |
+| `show <id>` | — | Details: status, priority, deps, mandate, acceptance, result, merge |
+| `cancel <id>` | — | Cancels a `pending`/`running` ticket |
+| `retry <id>` | — | Moves a `failed`/`cancelled` ticket back to `pending` |
+
+`--from` reads an `rd.md` / ticket file (the same format used by `tb review`
+and `tb drift`: `## Scope`, `## Forbidden` and an acceptance checklist). `tb`
+does not decompose free-form tasks into tickets and does not talk to GitHub —
+use `--title` or an `rd.md` you wrote. Unknown dependency IDs and cycles are
+rejected at creation time.
+
+**Output examples:**
+
+```bash
+tb ticket create --title "Criar modelo User"
+# ticket TKT-001 criado: Criar modelo User
+tb ticket list
+# TKT-001	pending  	p0	Criar modelo User
+# TKT-002	pending  	p1	JWT signing	(deps: TKT-001)
+```
+
+**Statuses and transitions:**
+
+| From | To |
+|------|----|
+| `pending` | `running`, `cancelled` |
+| `running` | `done`, `failed`, `pending` (retry), `cancelled` |
+| `failed` / `cancelled` | `pending` (`tb ticket retry`) |
+| `done` | terminal |
 
 **Ticket format:**
 
 ```yaml
 # .toolbelt/tickets/TKT-001.yaml
-ticket:
-  id: "TKT-001"
-  title: "Criar modelo User"
-  status: pending
-  created_at: "2026-01-15T10:30:00Z"
-  
-  mandate:
-    scope:
-      - "src/models/user.go"
-      - "src/models/user_test.go"
+id: TKT-001
+title: Criar modelo User
+status: done            # pending | running | done | failed | cancelled
+priority: 0             # higher first
+mandate:
+    scope: [src/models/**]
+    forbidden: [tests/hidden/**]
     permissions: [read, write, run_tests]
-    forbidden:
-      - "src/database/*"
-      - "tests/hidden/*"
-      - ".toolbelt/thresholds.yaml"
-      
-  context:
-    files:
-      - "docs/specs/auth.md"
-      - "vault/decisions/user-schema.md"
-    symbols:
-      - "Session"
-      - "validateEmail"
-    graph_queries:
-      - "callers:Session"
-      
-  acceptance:
-    criteria: "Testes em src/models/user_test.go passam"
-    timeout: "10m"
-    
-  dependencies: []
-  
-  subscription:
-    worker: "worker-001"
-    direct_delivery: true
-  
-  resources:
-    cpu_limit: "50%"
-    mem_limit: "512M"
+acceptance:
+    criteria: ["go test ./src/models passa"]
+    timeout: 10m
+dependencies: []
+attempts: 1
+worker: w1
+result:                 # filled in by the router
+    branch: tb-workspace/TKT-001
+    base_commit: 356c934e...
+    head_commit: a3e62ba7...
+    workspace: .toolbelt/workspaces/TKT-001
+    exit_code: 0
+    log: .toolbelt/router/logs/TKT-001.log
 ```
+
+A ticket may also carry a `subscription` (worker, `direct_delivery`,
+`expires_at`) — see direct delivery under `tb router`. `merged_at` is written
+by `tb merge`.
 
 ---
 
-### `tb board` — Board Visualization (planned — Phase 3+)
+### `tb board` — Board View (✓ Phase 3)
 
-> **Not implemented.**
-
-Displays and manages the ticket board (work queue).
-
-```bash
-tb board <subcommand>
-
-Subcomandos:
-  list      Lista tickets no board
-  watch     Monitora board em tempo real
-  pause     Pausa processamento de novos tickets
-  resume    Retoma processamento
-  drain     Espera workers finalizarem e para
-```
-
-**`tb board list`:**
+Shows tickets in sections and controls whether new tickets get assigned. The
+control state (`paused`/`draining`) lives in `.toolbelt/board.yaml`, created on
+the first `pause`/`drain`.
 
 ```bash
-tb board list [flags]
-
-Flags:
-  --status <statuses>   Filtrar: pending,running,done,failed
-  --worker <id>         Filtrar por worker
-  --priority            Ordenar por prioridade
-  --json                Saída em JSON
-```
-
-**Examples:**
-
-```bash
-# Ver estado atual do board
 tb board list
-# ═══════════════════════════════════════════════════════════════
-# BOARD: auth-implementation
-# ═══════════════════════════════════════════════════════════════
-# 
-# RUNNING (2):
-# ┌────────────┬────────────────────────────────────┬────────────┐
-# │ TKT-003    │ Criar handler POST /auth/login     │ worker-001 │
-# │ TKT-005    │ Implementar rate limiting          │ worker-002 │
-# └────────────┴────────────────────────────────────┴────────────┘
-# 
-# PENDING (3):
-# ┌────────────┬────────────────────────────────────┬──────────┐
-# │ TKT-004    │ Criar middleware validação JWT     │ blocked  │
-# │ TKT-006    │ Adicionar logout endpoint          │ ready    │
-# │ TKT-007    │ Testes de integração               │ ready    │
-# └────────────┴────────────────────────────────────┴──────────┘
-# 
-# Workers: 2 ativos, 1 idle
-# Tempo estimado restante: 8-12 min
-
-# Monitorar em tempo real
-tb board watch
-# (atualiza a cada 2s)
-
-# Pausar board
+tb board list --status pending,failed
+tb board list --worker w1 --strategy priority
+tb board watch --interval 2s
 tb board pause
-# Board pausado. Tickets running continuam, novos não são atribuídos.
-
-# Retomar
 tb board resume
+tb board drain
+```
+
+**Subcommands and flags:**
+
+| Subcommand | Flags | Description |
+|------------|-------|-------------|
+| `list` | `--status a,b`, `--worker <id>`, `--strategy fifo\|priority\|dependency` | Sections RUNNING / READY / BLOCKED / DONE / FAILED / CANCELLED |
+| `watch` | `--interval <dur>` (default 2s), `--status`, `--worker`, `--strategy` | Reprints the board until Ctrl+C |
+| `pause` | — | No new assignments; running work continues |
+| `resume` | — | Clears `pause` and `drain` |
+| `drain` | — | Finishes what is running and assigns nothing new |
+
+Section ordering (`--strategy`, default `dependency`): `fifo` (creation order),
+`priority` (priority desc., then fifo), `dependency` (topological depth asc.,
+then priority). READY = `pending` with all dependencies `done` and the board
+not paused; BLOCKED lists what is being waited on.
+
+**Example:**
+
+```bash
+tb board list
+# board: ativo (estratégia: dependency)
+#
+# RUNNING (0)
+#
+# READY (1)
+#   TKT-001	pending  	p0	Criar modelo User
+#
+# BLOCKED (1)
+#   TKT-002	JWT signing	(aguardando: TKT-001: pending)
+#
+# DONE (0)
+# FAILED (0)
+# CANCELLED (0)
 ```
 
 ---
 
-### `tb router` — Router Control (stub — not implemented)
+### `tb router` — Router and Workers (✓ Phase 3)
 
-Today `tb router` is only a stub in the Cobra tree (no local subcommands or flags).
-It prints a “not yet implemented” warning and exits 0. The design below
-is **planned** (Phase 5) and does not yet exist in the CLI.
-
-```bash
-tb router
-```
-
-**Planned (not available):**
+The router is a **foreground scheduler** (not a daemon: there is no
+`start`/`stop`). `tb router run` distributes ready board tickets across N
+workers (`w1..wN`); each ticket runs in its own worktree
+(`.toolbelt/workspaces/<ticket>`, branch `tb-workspace/<ticket>`), executing
+the agent command **inside the sandbox**. The watchdog runs inside the same
+loop.
 
 ```bash
-# subcomandos futuros — NÃO implementados
-# tb router start [--workers N] [--strategy fifo|priority|dependency]
-# tb router stop
-# tb router status
-# tb router config
+tb router run --agent-cmd "meu-agente --task-file $TB_TICKET_FILE"
+tb router run --workers 2 --strategy priority --once
+tb router run --dry-run
+tb router run --allow-unsandboxed
+tb router status
+tb router config
 ```
 
-**Planned Router configuration:**
+**Subcommands and flags:**
+
+| Subcommand | Flags | Description |
+|------------|-------|-------------|
+| `run` | `--workers <n>`, `--strategy fifo\|priority\|dependency`, `--agent-cmd "<cmd>"`, `--once`, `--dry-run`, `--allow-unsandboxed` | Runs until the queue is empty; Ctrl-C returns `running` tickets to `pending` |
+| `status` | — | Reads `state.json`; detects stale state (dead PID) |
+| `config` | — | Prints the effective configuration (`router:`) |
+
+- `--dry-run` prints the per-round plan (worker, ticket, `board`/`direct` origin, base) without executing.
+- `--once` does one scheduling round and exits when the started tickets finish.
+- Without Landlock the sandbox is **fail-closed**: the router refuses to run. `--allow-unsandboxed` is an explicit opt-in (see `tb sandbox`).
+- The child environment is filtered (allowlist; secrets only with `--pass-env`) and receives `TB_TICKET_ID`, `TB_TICKET_FILE` (absolute path), `TB_WORKER_ID` and `TB_WORKSPACE`.
+- Per-ticket timeout = the ticket's `acceptance.timeout` or `router.timeouts.per_ticket`.
+- When the agent exits with changes, the router runs `git add -A` and commits `tb: <id> <title>` in the worktree, and records `base_commit`/`head_commit` on the ticket. Exit 0 → `done`; otherwise `failed`, or back to `pending` while `attempts < router.retry.max_attempts`.
+- **Single instance:** only one `tb router run` per repository, enforced by the exclusive lock `.toolbelt/router/lock` (`flock`; on non-unix systems an `O_EXCL` lockfile — if one is left behind after a crash, remove it manually).
+- **Worktree integrity:** before committing, the router verifies that `<ws>/.git` is the expected worktree pointer file and runs git with hardened configuration (fsmonitor and hooks disabled, `--no-verify`, the user's global/system config turned off — `GIT_CONFIG_GLOBAL=/dev/null` and `GIT_CONFIG_NOSYSTEM=1` — so user filters such as git-lfs do **not** run on the agent's content; `user.name`/`user.email` are read once from the root with the normal config and passed via `-c`, falling back to `tb <tb@localhost>`). The router's own `git worktree add/remove` also runs without hooks (`core.hooksPath=/dev/null`), fsmonitor and detached maintenance: worktrees created by the router never execute the user's `post-checkout` hooks. A violation ⇒ ticket `failed` without retry (`integridade do worktree violada`).
+- **Nested `.git`, gitlinks and `.gitmodules`:** the router's git runs outside the sandbox, so a repository/submodule created by the agent (e.g. `sub/.git` with `filter.*.clean` inside a gitlink of the base commit) is never touched: before any git call the router walks the worktree (without following symlinks) and refuses any `.git` entry other than the root pointer; after `git add -A` it refuses commits that add/modify gitlinks (mode 160000) or `.gitmodules`. Either way the ticket becomes `failed` without retry (`integridade do worktree violada`). The router's git also runs with `--ignore-submodules=all` and submodules disabled (`diff.ignoreSubmodules`, `submodule.recurse`, `fetch.recurseSubmodules`).
+- **Detached processes (Linux):** the router becomes a *subreaper* (`PR_SET_CHILD_SUBREAPER`) and tracks the pids it starts itself (agents and git). After each agent and on every watchdog tick, every untracked direct child — an agent descendant that called `setsid`/`setpgid` and escaped the process group — is killed (`SIGKILL`) and reaped. Policy: agents **must not detach**; any escaped process found is killed. If that happens during a ticket, the `agent_escaped` alert (error) is emitted and the ticket fails **without retry and without running git on the worktree**. Attribution uses the escaped process's own `TB_TICKET_ID` (only that variable is read from `/proc/<pid>/environ`): only the owning ticket fails; the others carry on. If `TB_TICKET_ID` is missing (`env -u`), unreadable or unknown, the escape is **unattributable** and, conservatively, **every** ticket whose agent was running at detection time fails (an `agent_escaped` alert with no ticket, listing them). An orphan found inside an agent's process group whose `TB_TICKET_ID` differs from the group's owner (`setpgid` into another agent's pgid to hide) is also an escape. Daemons born during worktree creation (the `git worktree add` window) without `TB_TICKET_ID` are killed with an `orphan_killed` alert (warn) and no ticket fails. Limitation: an agent that forges another active ticket's `TB_TICKET_ID` gets the escape attributed to that ticket. Outside Linux (macOS/Windows) there is no subreaper: only the process group applies (a descendant that detaches is neither detected nor killed — a **limitation**). `tb sandbox run` is unchanged.
+- **The mandate is not enforced:** the ticket mandate's `Scope`, `Forbidden` and `Permissions` are **recorded** but not enforced by the router — the agent's edits are committed as-is. Run `tb drift`, `tb review` and `tb guard` (or `tb stack --ticket`) on the result **before** `tb merge`.
+- **Stale control:** `control/kill-*.json` requests are deleted when `tb router run` starts, and requests whose `requested_at` predates the run start are ignored.
+- **Unreadable board:** a transiently invalid ticket YAML does not take the router down: it emits `board_unreadable` (warn), keeps the workers and retries on the next tick; after 30 consecutive failing ticks the router stops with `stalled` (non-zero exit).
+- **Cancel then retry:** a ticket is only assigned again after the slot still holding it finishes killing the previous agent.
+- **Agent output:** exit 0 that leaves background child processes counts as success; the process group is killed after the exit. Kept/logged output is capped to the last 1 MiB; logs use mode 0600. Exit 0 wins over a late stuck/kill verdict.
+- **`stalled` summary:** if `pending` tickets remain blocked by `failed`/`cancelled` dependencies (the `unschedulable` list), the summary reason is `stalled` and `tb router run` exits non-zero.
+
+**Direct delivery:** when a ticket finishes `done`, each `pending` ticket that
+depends on it receives a *subscription* to that worker (TTL
+`subscription_ttl`, at most `max_subscriptions_per_worker` per worker). A
+worker prefers tickets subscribed to it; if the subscribed ticket has exactly
+one dependency with a `head_commit`, the worktree starts from that commit
+(context affinity). A ticket with a single dependency always starts from its
+`head_commit`, with or without direct delivery; with ≥ 2 dependencies it starts
+from `HEAD` (`multi_dep_base` alert if any is unmerged). Expired subscriptions are ignored, and if the worker fails
+its subscriptions are cleared and the ticket returns to the board.
+
+**Example:**
+
+```bash
+tb router run --agent-cmd "sh -c 'echo x > f-$TB_TICKET_ID.txt'"
+# router iniciado: 3 workers, estratégia dependency
+# [w1] TKT-001 iniciado (board, base 356c934e, tentativa 1)
+# [w1] TKT-001 concluído (a3e62ba7)
+# [w1] TKT-002 iniciado (direct, base a3e62ba7, tentativa 1)
+# [w1] TKT-002 concluído (a6ebf42e)
+# router encerrado (completed)
+```
+
+**Configuration** (`.toolbelt/config.yaml`; there is no `router.yaml`):
 
 ```yaml
-# .toolbelt/router.yaml (planejado)
 router:
   max_workers: 3
-  strategy: dependency  # fifo | priority | dependency
-  
+  strategy: dependency        # fifo | priority | dependency
+  agent_cmd: []               # agent argv (required, or --agent-cmd)
   direct_delivery:
     enabled: true
     subscription_ttl: 30m
-  
+    max_subscriptions_per_worker: 5
   timeouts:
     per_ticket: 10m
-    idle_worker: 5m
     global: 1h
-    
   retry:
     max_attempts: 2
-    backoff: exponential
-    
-  workers:
-    model: "claude-sonnet-4-20250514"
-    temperature: 0.3
-    capabilities:
-      - read:code
-      - write:code
-      - run:tests
-      - query:graph
-      
-  merge:
-    conflict_strategy: prompt  # prompt | last_wins | fail
-    atomic: true
+  slow_threshold: 0.8         # timeout fraction for worker_slow
 ```
+
+**Runtime files** (`.toolbelt/router/`, gitignored):
+
+| Path | Content |
+|------|---------|
+| `state.json` | PID, strategy, workers (idle/working, ticket, subscriptions) and queue (ready/blocked/running); updated on every change |
+| `alerts.jsonl` | Watchdog alerts, one JSON per line (created on the first alert) |
+| `control/` | Requests to the running router (e.g. `kill-w1.json`) |
+| `logs/TKT-NNN.log` | Agent stdout/stderr per ticket |
 
 ---
 
-### `tb watchdog` — Worker Monitoring (planned — Phase 3+)
+### `tb watchdog` — Worker Monitoring (✓ Phase 3)
 
-> **Not implemented.** The current CLI does not expose `tb watchdog`.
-
-Monitors worker health and performance.
-
-```bash
-tb watchdog <subcommand>
-
-Subcomandos:
-  status    Exibe status de todos os workers
-  kill      Força término de worker travado
-  scale     Ajusta número de workers
-  alerts    Lista alertas recentes
-```
-
-**`tb watchdog status`:**
+The watchdog **runs inside the router loop** (1s tick). The `tb watchdog`
+command only **reads** the persisted state (`.toolbelt/router/`) and sends
+control requests; there is no `scale` (the router does not scale itself).
 
 ```bash
-tb watchdog status [flags]
-
-Flags:
-  --worker <id>         Status de worker específico
-  --json                Saída em JSON
-```
-
-**Examples:**
-
-```bash
-# Status de todos os workers
 tb watchdog status
-# ═══════════════════════════════════════════════════════════════
-# WATCHDOG STATUS
-# ═══════════════════════════════════════════════════════════════
-# 
-# ┌────────────┬──────────┬────────────┬──────────┬────────────┬───────────┐
-# │ WORKER     │ STATUS   │ TICKET     │ ELAPSED  │ HEALTH     │ SUBSCRIBED│
-# ├────────────┼──────────┼────────────┼──────────┼────────────┼───────────┤
-# │ worker-001 │ working  │ TKT-003    │ 2m 30s   │ ██████████ │ TKT-006   │
-# │ worker-002 │ working  │ TKT-005    │ 4m 15s   │ ████████░░ │ -         │
-# │ worker-003 │ idle     │ -          │ 30s      │ ██████████ │ TKT-007,08│
-# └────────────┴──────────┴────────────┴──────────┴────────────┴───────────┘
-# 
-# Alertas: 0
-# Tickets timeout: 0
-# CPU total: 45%
-# Memória total: 1.2GB
-
-# Forçar término de worker
-tb watchdog kill worker-002 --reason "Travado em loop"
-# worker-002 terminado. Ticket TKT-005 retornado ao board.
-
-# Escalar workers
-tb watchdog scale --workers 5
-# Workers escalados: 3 → 5
+tb watchdog status --worker w1
+tb watchdog alerts --since 10m --kind worker_stuck --limit 20
+tb watchdog kill w1 --reason "travado em loop"
 ```
 
-**Monitored alerts:**
+| Subcommand | Flags | Description |
+|------------|-------|-------------|
+| `status` | `--worker <id>` | Worker state and alert counts per kind |
+| `alerts` | `--since <10m\|2h\|RFC3339>`, `--kind <kind>`, `--limit <n>` | Lists `alerts.jsonl` |
+| `kill <worker>` | `--reason` | Writes `control/kill-<worker>.json`; the router cancels the running ticket (counts as an attempt). Errors if no router is running |
 
-| Alert | Condition | Action |
-|-------|-----------|--------|
-| `worker_slow` | > 80% of timeout | Warning in the log |
-| `worker_stuck` | 100% of timeout | Cancel ticket, kill worker |
-| `worker_crash` | Exit code != 0 | Retry or escalate |
-| `queue_growing` | Queue > 2× workers | Suggest scaling |
-| `resource_high` | CPU/Mem > 90% | Pause new assignments |
+**Alerts:**
+
+| Alert | Severity | Condition | Action |
+|-------|----------|-----------|--------|
+| `worker_slow` | warn | elapsed ≥ `slow_threshold` × timeout (once) | `none` |
+| `worker_stuck` | critical | elapsed ≥ ticket timeout; the worker is cancelled | `retry` (attempts left) or `escalate` |
+| `worker_crash` | error (critical on escalate) | agent exits with code ≠ 0 | `retry` or `escalate` |
+| `worker_killed` | warn | `tb watchdog kill` | `retry` or `escalate` |
+| `queue_growing` | warn | ready > 2 × workers (once per transition) | `none` (suggestion only) |
+| `global_timeout` | critical | `router.timeouts.global` reached; router exits | `stop` |
+| `ticket_cancelled` | warn | ticket cancelled (`tb ticket cancel`) while running; the watchdog kills the agent, the result is discarded and the ticket stays cancelled | `none` |
+| `multi_dep_base` | warn | ticket with ≥ 2 dependencies not all merged is based on `HEAD`; run `tb merge` on the dependencies first | `none` |
+| `agent_escaped` | error | an agent descendant escaped the process group (`setsid`/`setpgid`); it was killed and the owning ticket (by `TB_TICKET_ID`; unattributable ⇒ all running ones) fails without retry or git (Linux) | `escalate` |
+| `orphan_killed` | warn | a non-agent orphan was killed without failing any ticket (daemon born during worktree creation without `TB_TICKET_ID`, or an orphan with no agent running) | `none` |
+| `board_unreadable` | warn | a ticket YAML is invalid; workers kept, retried every tick | `none` |
+
+**Example:**
+
+```bash
+tb watchdog alerts --kind worker_stuck
+# 11:57:56  critical worker_stuck   w1 TKT-001     TKT-001 em w1 excedeu o timeout de 2s; cancelando [ação: retry]
+# 11:57:59  critical worker_stuck   w1 TKT-001     TKT-001 em w1 excedeu o timeout de 2s; cancelando [ação: escalate]
+```
 
 ---
 
-### `tb merge` — Result Aggregation (planned — Phase 3+)
+### `tb merge` — Result Aggregation (✓ Phase 3)
 
-> **Not implemented.** The current CLI does not expose `tb merge`.
-
-Aggregates results from multiple workers and resolves conflicts.
-
-```bash
-tb merge [flags] <ticket-ids>
-
-Flags:
-  --strategy <type>     Conflito: prompt|last_wins|fail (default: prompt)
-  --dry-run             Mostra mudanças sem aplicar
-  --force               Ignora conflitos e usa último
-  --output <path>       Patch unificado de saída
-  --json                Saída em JSON
-```
-
-**Examples:**
+Integrates the commits of `done` tickets (`base_commit..head_commit`) into a
+temporary detached worktree and only then advances the target branch.
 
 ```bash
-# Merge automático de tickets concluídos
-tb merge TKT-001 TKT-002 TKT-003
-# ═══════════════════════════════════════════════════════════════
-# MERGE: 3 tickets
-# ═══════════════════════════════════════════════════════════════
-# 
-# Arquivos modificados: 5
-# 
-# ┌──────────────────────────────────┬──────────────────────────┐
-# │ ARQUIVO                          │ STATUS                   │
-# ├──────────────────────────────────┼──────────────────────────┤
-# │ src/models/user.go               │ TKT-001 (único)          │
-# │ src/services/jwt.go              │ TKT-002 (único)          │
-# │ src/handlers/auth.go             │ ⚠ CONFLITO (TKT-002,003) │
-# │ src/middleware/auth.go           │ TKT-003 (único)          │
-# │ go.mod                           │ TKT-001 + TKT-002 (merge)│
-# └──────────────────────────────────┴──────────────────────────┘
-# 
-# Conflito em src/handlers/auth.go:
-# 
-# TKT-002 (linha 45):
-#   func validateToken(token string) bool { ... }
-# 
-# TKT-003 (linha 45):
-#   func validateToken(token string) (*Claims, error) { ... }
-# 
-# [1] Manter TKT-002
-# [2] Manter TKT-003
-# [3] Editar manualmente
-# Escolha: 2
-# 
-# Merge concluído. 5 arquivos atualizados.
-
-# Dry run para ver conflitos
+tb merge TKT-001 TKT-002
 tb merge --dry-run TKT-001 TKT-002
-
-# Forçar merge usando último
 tb merge --strategy last_wins TKT-001 TKT-002
-
-# Gerar patch unificado
-tb merge --output changes.patch TKT-001 TKT-002 TKT-003
+tb merge --into integracao TKT-001 TKT-002
+tb merge --output changes.patch TKT-001 TKT-002
+tb merge --force TKT-001
+tb merge --allow-sensitive TKT-001
 ```
+
+**Flags:**
+
+| Flag | Description |
+|------|-------------|
+| `--strategy fail\|last_wins` | Conflict handling (default `fail`) |
+| `--dry-run` | Integrates in the temporary worktree, reports and discards |
+| `--into <branch>` | Target branch (default: current branch) |
+| `--output <file.patch>` | Writes the `target..integrated` diff without moving refs |
+| `--force` | Allows re-merging already merged tickets |
+| `--allow-sensitive` | Allows applying tickets that change sensitive paths (see below) |
+| `--json` | JSON output |
+
+Apply order: dependencies first, then argument order. Each ticket must be
+`done` with a `head_commit`.
 
 **Conflict strategies:**
 
 | Strategy | Behavior |
 |----------|----------|
-| `prompt` | Ask the user for each conflict |
-| `last_wins` | Use the most recent ticket's version |
-| `fail` | Fail if there is any conflict |
-| `semantic` | Try semantic merge via LLM (experimental) |
+| `fail` (default) | Aborts on the first conflict, lists files/tickets and **changes no ref** |
+| `last_wins` | On a conflicting file, keeps the **whole** file from the later ticket (no hunk merging) and records the resolution |
+| `prompt` / `semantic` | **Not implemented** (explicit error) |
+
+**Atomicity:** the target branch is never touched during integration. The
+advance uses compare-and-swap (`git update-ref refs/heads/X new old`) and only
+happens if the target is still at the starting SHA; if the target branch is
+checked out and dirty, the merge is refused. The temporary worktree is always
+removed. On success the tickets get `merged_at`.
+
+**Trust gate:** every `git` call in merge runs hardened (`core.hooksPath=/dev/null`,
+`core.fsmonitor=false`, `diff.external=`, `core.pager=cat`, `commit.gpgsign=false`,
+`maintenance.auto=false`, `gc.auto=0`, `submodule.recurse=false`), so hooks
+written by agents (e.g. `post-merge` in `.githooks/`) do not run on the
+fast-forward or in temporary worktrees. Additionally, when **applying**, the merge
+is refused (no refs changed; lists ticket + path + reason) if any ticket changes
+sensitive paths: the hooks directory (`core.hooksPath`, `.husky/`, `.githooks/`),
+`.toolbelt/**`, `.github/workflows/**`, `.gitmodules`, gitlinks (mode 160000),
+`.gitattributes` at any level, and the `guard` protected paths. Review and use
+`--allow-sensitive` (`--force` remains only for re-merge). `--dry-run`/`--output`
+only report; JSON carries `sensitive: [{ticket, path, reason}]`.
+
+**`last_wins` details:** integration commits run with `gpgsign` and hooks
+disabled; if `--continue` fails, the merge aborts without changing any ref;
+overlap detection uses `--no-renames` (renames count for both paths). In the
+MCP tool `tb_merge`, the conflict report is returned with `ok:false`.
+
+**Output examples:**
+
+```bash
+tb merge --dry-run TKT-001 TKT-002
+# merge TKT-001 TKT-002 -> main (fail) [dry-run]
+# ARQUIVO        TICKETS  STATUS
+# f-TKT-001.txt  TKT-001  merge
+# f-TKT-002.txt  TKT-002  merge
+# resultado: a6ebf42ee47be5c4ca290b2055efe75b00f8eaf6 (início 356c934e)
+tb merge TKT-002 TKT-003
+# merge TKT-002 TKT-003 -> main (fail) [não aplicado]
+# ARQUIVO  TICKETS          STATUS
+# a.txt    TKT-002,TKT-003  conflict
+# Error: conflito de merge: 1 arquivo(s) em conflito; nenhuma ref foi alterada (use --strategy last_wins para resolver)
+```
 
 ---
 
@@ -1782,6 +1736,12 @@ Unix/tcp transport and `--socket`/`--port`/`--tls-*` flags are planned; today on
 | `tb_drift` | `tb drift` | returns `{drift, has_drift, pinned_approval}` (`checked` explicit) |
 | `tb_guard_check` | `tb guard check` | `base`/`head` or `range=A..B`; `strict_fail` by default on SeverityError; `warn_only=true` opt-out; `strict` deprecated (boolean) |
 | `tb_stack` | `tb stack` | `ops` (array), `base`/`head`, `fail_fast` (boolean), `jobs` (integer), `approved_sha`/`approved_base`/`require_approved_sha`, `env`/`pass_env`; returns aggregated JSON |
+| `tb_ticket_list` / `tb_ticket_show` | `tb ticket list` / `tb ticket show` | `status`, `deps` / `id`; arg opcional `cwd` |
+| `tb_ticket_create` | `tb ticket create` | `title`, `description`, `scope`/`forbid`/`accept`/`dep` (arrays), `priority` (integer), `timeout`, `dry_run` (boolean) |
+| `tb_board` | `tb board` | `action=list\|pause\|resume\|drain`, `strategy`, `status`, `worker` |
+| `tb_router_status` | `tb router status` | só leitura de `state.json` |
+| `tb_watchdog_alerts` | `tb watchdog alerts` | `since`, `kind`, `limit` (integer) |
+| `tb_merge` | `tb merge` | `ids` (array), `strategy`, `into`, `force`, `allow_sensitive` (default `false`); **dry-run por padrão** — só altera refs com `apply=true` |
 | `tb_graph_search` / `tb_graph_callers` / `tb_graph_deps` / `tb_graph_impact` / `tb_graph_index` | `tb graph …` | call requires `TB_GRAPH=on`; `depth`/`limit` integer; `transitive` boolean |
 
 Schemas type `depth`/`limit`/`reviewers`/`max_iter` as integer, `strict`/`warn_only`/`transitive`/`skip_unavailable`/`all` (mem) as boolean, `threshold` as number, and `standards` as a string array; legacy string values are still accepted. verify/review/drift/guard reports come back as JSON in `content` (without a process exit code). Empty lists use `[]`; `hidden_passed` is `null` if the hidden suite does not apply.
@@ -1845,7 +1805,7 @@ tb sandbox run <command> [args...] [flags]
 
 **Fail-closed** behavior: if the kernel has no Landlock (or ruleset application fails), `tb sandbox run` **refuses** to execute and returns a clear error asking for `--allow-unsandboxed`. There is no silent fallback to unsandboxed execution.
 
-On Linux with Landlock, writes are restricted to `--workdir` and the system temp directory (`os.TempDir()`, typically `/tmp`) when that is not an ancestor of the workdir. System paths needed for execution (`/bin`, `/usr`, `/lib`, `/etc`, `/dev`, `/proc`, …) are read-only. The ruleset is applied in the child process (re-exec + `PR_SET_NO_NEW_PRIVS` + `landlock_restrict_self`) **before** `exec` of the command.
+On Linux with Landlock, writes are restricted to `--workdir` and the system temp directory (`os.TempDir()`, typically `/tmp`) when that is not an ancestor of the workdir. System paths needed for execution (`/bin`, `/usr`, `/lib`, `/etc`, `/dev`, `/proc`, …) are read-only. Minimal per-file exception under `/dev`: `/dev/null`, `/dev/zero`, `/dev/full` are read+write (plus truncate on ABI ≥ 3), `/dev/random` and `/dev/urandom` are read-only; missing nodes are skipped. Terminals (`/dev/tty`, `/dev/ptmx`, `/dev/pts/*`) are deliberately blocked (escape/TIOCSTI injection into other terminals). The rest of `/dev` (including `/dev/shm`) stays read-only. The ruleset is applied in the child process (re-exec + `PR_SET_NO_NEW_PRIVS` + `landlock_restrict_self`) **before** `exec` of the command.
 
 ```bash
 tb sandbox check

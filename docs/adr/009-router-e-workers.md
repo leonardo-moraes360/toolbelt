@@ -249,6 +249,44 @@ router:
 - **Descrição**: workers como funções puras sem estado
 - **Por que não**: overhead de serialização/deserialização do estado do código
 
+## Implementação (Fase 3)
+
+Implementado (ver [cli.md](../cli.md)): `tb ticket` (tickets YAML em
+`.toolbelt/tickets/`), `tb board` (pause/resume/drain), `tb router run`
+(scheduler **em primeiro plano**, workers `w1..wN` em worktrees próprias,
+execução dentro do sandbox fail-closed), entrega direta (subscription com TTL e
+limite por worker; base no commit da dependência), `tb watchdog` (alertas
+`worker_slow`, `worker_stuck`, `worker_crash`, `worker_killed`, `queue_growing`,
+`global_timeout`, `ticket_cancelled`, `multi_dep_base`, `agent_escaped`, `board_unreadable`; roda no loop do router, sem auto-scaling) e `tb merge`
+(estratégias `fail` e `last_wins`, atômico via compare-and-swap).
+
+Endurecimento do router: instância única por repositório (lock exclusivo
+`.toolbelt/router/lock`), verificação de integridade do worktree antes do commit
+(git com fsmonitor/hooks desabilitados, `--no-verify`; violação ⇒ `failed` sem
+retry), saída do agente limitada a 1 MiB, resumo `stalled` (exit ≠ 0) quando
+tickets `pending` ficam bloqueados por dependências `failed`/`cancelled`, e base
+no `head_commit` da dependência única independentemente da entrega direta
+(≥ 2 dependências: `HEAD` + alerta `multi_dep_base`).
+
+Isolamento do git do router (que roda fora do sandbox): `.git` aninhado no
+worktree, gitlinks e `.gitmodules` adicionados pelo agente são recusados
+(`failed` sem retry); submódulos são ignorados no git do router. No Linux o
+router é *subreaper* e mata descendentes que escapam do grupo de processos
+(`setsid`/`setpgid`), falhando o ticket com `agent_escaped` sem rodar git;
+agentes não devem se desacoplar. Em macOS/Windows isso não é detectado
+(limitação). O mandato (`Scope`/`Forbidden`/`Permissions`) é só registrado: o
+router **não o impõe** — use `tb drift`/`tb review`/`tb guard` (ou
+`tb stack --ticket`) antes de `tb merge`.
+
+Diferenças em relação ao desenho acima: sem daemon `start`/`stop`; configuração
+na seção `router:` de `.toolbelt/config.yaml` (sem `router.yaml`);
+`prompt`/`semantic` do merge **não implementados**; `resource_high` e
+`watchdog scale` **não existem**.
+
+Ainda hipóteses, **não medidas** com o benchmark do toolbelt: redução de ~40%
+em tokens de input, ganho de ~60% em throughput e melhoria de p95 — por isso o
+status permanece `proposed`.
+
 ## Referências
 
 - Pesquisas em escalabilidade de agentes de codificação
