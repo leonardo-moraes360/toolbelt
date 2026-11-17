@@ -198,6 +198,7 @@ func registerReviewTools() {
 				"base":                 {Type: "string", Description: "Ref base", Default: "HEAD~1"},
 				"head":                 {Type: "string", Description: "Ref head", Default: "HEAD"},
 				"approved_sha":         {Type: "string", Description: "SHA aprovado; compara patch-id verbatim (sensível a whitespace) com o head"},
+				"approved_base":        {Type: "string", Description: "Base do range aprovado; default: merge-base(approved, base)"},
 				"require_approved_sha": {Type: "boolean", Description: "Falha se approved_sha estiver ausente", Default: false},
 				"reviewers":            {Type: "integer", Description: "Máximo de goldfish distintos", Default: 3},
 				"standards": {
@@ -221,6 +222,7 @@ func registerReviewTools() {
 				"base":                 {Type: "string", Description: "Ref base", Default: "HEAD~1"},
 				"head":                 {Type: "string", Description: "Ref head", Default: "HEAD"},
 				"approved_sha":         {Type: "string", Description: "SHA aprovado; compara patch-id verbatim (sensível a whitespace) com o head"},
+				"approved_base":        {Type: "string", Description: "Base do range aprovado; default: merge-base(approved, base)"},
 				"require_approved_sha": {Type: "boolean", Description: "Falha se approved_sha estiver ausente", Default: false},
 			},
 		},
@@ -265,6 +267,7 @@ func registerStackTools() {
 				"fail_fast":            {Type: "boolean", Description: "Para na primeira etapa que falhar", Default: false},
 				"ticket":               {Type: "string", Description: "Caminho do ticket/rd.md", Default: "rd.md"},
 				"approved_sha":         {Type: "string", Description: "SHA aprovado; patch-id verbatim (review/drift)"},
+				"approved_base":        {Type: "string", Description: "Base do range aprovado; default: merge-base(approved, base)"},
 				"require_approved_sha": {Type: "boolean", Description: "Falha se approved_sha estiver ausente", Default: false},
 				"warn_only":            {Type: "boolean", Description: "guard: não marca falha em SeverityError", Default: false},
 				"test_cmd":             {Type: "string", Description: "verify: testes visíveis"},
@@ -587,6 +590,7 @@ func driftConfigFromArgs(args map[string]any) (*review.Config, error) {
 	cfg.BaseExplicit = baseSet
 	cfg.HeadRef = head
 	cfg.ApprovedSHA = StringArg(args, "approved_sha")
+	cfg.ApprovedBase = StringArg(args, "approved_base")
 	cfg.RequireApprovedSHA = requireApprovedSHAArg(args)
 	cfg.TicketPath = ticketPath
 	cfg.Reviewers = 1
@@ -619,6 +623,7 @@ func reviewConfigFromArgs(args map[string]any) (*review.Config, error) {
 		cfg.HeadRef = v
 	}
 	cfg.ApprovedSHA = StringArg(args, "approved_sha")
+	cfg.ApprovedBase = StringArg(args, "approved_base")
 	cfg.RequireApprovedSHA = requireApprovedSHAArg(args)
 	ticket := StringArg(args, "ticket")
 	if ticket == "" {
@@ -751,6 +756,7 @@ func handleStack(ctx context.Context, args map[string]any) (any, error) {
 		FailFast:           BoolArg(args, "fail_fast", false),
 		Ticket:             ticket,
 		ApprovedSHA:        StringArg(args, "approved_sha"),
+		ApprovedBase:       StringArg(args, "approved_base"),
 		RequireApprovedSHA: requireApprovedSHAArg(args),
 		WarnOnly:           BoolArg(args, "warn_only", false),
 		TestCmd:            StringArg(args, "test_cmd"),

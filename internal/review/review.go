@@ -59,6 +59,7 @@ type Config struct {
 	BaseRef            string
 	HeadRef            string
 	ApprovedSHA        string
+	ApprovedBase       string
 	RequireApprovedSHA bool
 	TicketPath         string
 	Reviewers          int
@@ -170,7 +171,7 @@ func attachPinnedApproval(cfg *Config, report *Report, drift *DriftReport) error
 	if cfg.RequireApprovedSHA && strings.TrimSpace(cfg.ApprovedSHA) == "" {
 		return fmt.Errorf("approved-sha obrigatório (require_approved_sha)")
 	}
-	pinned, err := CheckPinnedApproval(cfg.RepoDir, cfg.BaseRef, cfg.ApprovedSHA, cfg.HeadRef)
+	pinned, err := CheckPinnedApproval(cfg.RepoDir, cfg.BaseRef, cfg.ApprovedBase, cfg.ApprovedSHA, cfg.HeadRef)
 	if err != nil {
 		return err
 	}

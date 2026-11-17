@@ -23,6 +23,7 @@ func init() {
 	driftCmd.Flags().String("base", "HEAD~1", "commit/ref base")
 	driftCmd.Flags().String("head", "HEAD", "commit/ref head")
 	driftCmd.Flags().String("approved-sha", "", "SHA aprovado; compara patch-id verbatim (sensível a whitespace) com o head")
+	driftCmd.Flags().String("approved-base", "", "base do range aprovado; default: merge-base(approved, base)")
 	driftCmd.Flags().Bool("require-approved-sha", false, "falha se --approved-sha estiver ausente (ou review.require_approved_sha)")
 	driftCmd.Flags().String("ticket", "rd.md", "caminho do ticket/rd.md")
 	driftCmd.Flags().String("output", "", "arquivo de saída JSON")
@@ -55,6 +56,7 @@ func driftConfigFromFlags(cmd *cobra.Command, args []string) (*review.Config, er
 	base, _ := cmd.Flags().GetString("base")
 	head, _ := cmd.Flags().GetString("head")
 	approved, _ := cmd.Flags().GetString("approved-sha")
+	approvedBase, _ := cmd.Flags().GetString("approved-base")
 	baseSet := cmd.Flags().Changed("base")
 
 	ticket, err := review.LoadTicket(ticketPath)
@@ -70,6 +72,7 @@ func driftConfigFromFlags(cmd *cobra.Command, args []string) (*review.Config, er
 	cfg.BaseExplicit = baseSet
 	cfg.HeadRef = head
 	cfg.ApprovedSHA = approved
+	cfg.ApprovedBase = approvedBase
 	cfg.RequireApprovedSHA = requireApprovedSHAFrom(cmd)
 	cfg.TicketPath = ticketPath
 	cfg.Reviewers = 1
