@@ -10,6 +10,8 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 ### Adicionado
 - `tb stack --jobs N`: concorrência para etapas somente leitura (`guard`/`drift`/`review`);
   default = nº de CPUs (máx. 32); `--jobs 1` força serial; MCP `tb_stack` aceita `jobs`
+- Release: SBOM (syft via `sboms:` no GoReleaser), assinatura keyless cosign do `checksums.txt` (OIDC GitHub) e atestação de proveniência SLSA (`actions/attest-build-provenance`)
+- CI: job `govulncheck` em todo push/PR
 - `tb sandbox run --allow-unsandboxed`: opt-in explícito para executar sem isolamento Landlock
 - Teste de integração que tenta escrever fora do workdir (pula se o kernel não tiver Landlock)
 - Grafo TS/JS: fingerprint no `graph.json` e detecção de índice desatualizado;
@@ -32,6 +34,9 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 - `tb stack`: etapas `guard`/`drift`/`review` rodam em paralelo (errgroup); `verify` permanece
   isolado; JSON preserva a ordem pedida; `--fail-fast` cancela as demais via context;
   `Prepare` paraleliza git/IO independentes
+- Instalação por binário no README exige `cosign verify-blob` + `sha256sum -c` (remove `curl | tar` e a menção ao Homebrew sem tap)
+- Go atualizado para `1.27.4` (`go.mod`, workflows CI/Release); golangci-lint no CI passa a v2.15.0 (compatível com Go 1.27)
+- `docs/release.md` documenta SBOM, assinatura, atestação e validação local com `--skip=sign`
 - `tb review` / `tb drift` / `tb stack`: `--approved-sha` passa a usar
   `git patch-id --verbatim` (sensível a whitespace); JSON sempre expõe
   `pinned_approval.checked` (`false` quando a checagem não rodou);
@@ -111,6 +116,10 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
   (`*TOKEN*`/`*SECRET*`/`*KEY*`/`*PASSWORD*`) nunca passam sem opt-in explícito
   (`--pass-env` / `env.pass` / arg MCP `pass_env`). Extensão via `--env` /
   `env.allow` / arg MCP `env`.
+- `tb mem`: invariantes `immutable` ou categoria `anti_cheat` exigem `--force` + `--reason` em `edit`/`retire`; histórico append-only em `.toolbelt/invariants_history.jsonl`
+- `tb mem add`: novas invariantes nascem **mutáveis**; use `--immutable` (MCP: `immutable`) para proteger; `mem init` continua criando defaults imutáveis
+- `tb mem check`: falha **fechado** (arquivo ilegível/corrompido, SHA divergente, IDs ausentes, regra não avaliável → exit ≠ 0); não auto-inicializa defaults
+- Redação de segredos (`ghp_`/`gho_`/`github_pat_`, `AKIA`, PEM, `Bearer`, `xox*`, `*_TOKEN=`) em `mem show`/`list`/`search` (CLI `--json` e MCP)
 
 ## [0.0.2] - 2026-11-16
 
