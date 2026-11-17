@@ -31,6 +31,7 @@ func init() {
 	reviewCmd.Flags().String("base", "HEAD~1", "commit/ref base")
 	reviewCmd.Flags().String("head", "HEAD", "commit/ref head")
 	reviewCmd.Flags().String("approved-sha", "", "SHA aprovado; compara patch-id verbatim (sensível a whitespace) com o head")
+	reviewCmd.Flags().String("approved-base", "", "base do range aprovado; default: merge-base(approved, base)")
 	reviewCmd.Flags().Bool("require-approved-sha", false, "falha se --approved-sha estiver ausente (ou review.require_approved_sha)")
 	reviewCmd.Flags().String("ticket", "rd.md", "caminho do ticket/rd.md")
 	reviewCmd.Flags().Int("reviewers", 3, "máximo de goldfish distintos (não clona o mesmo)")
@@ -66,6 +67,7 @@ func reviewConfigFromFlags(cmd *cobra.Command, args []string) (*review.Config, e
 	cfg.BaseExplicit = cmd.Flags().Changed("base")
 	cfg.HeadRef, _ = cmd.Flags().GetString("head")
 	cfg.ApprovedSHA, _ = cmd.Flags().GetString("approved-sha")
+	cfg.ApprovedBase, _ = cmd.Flags().GetString("approved-base")
 	cfg.RequireApprovedSHA = requireApprovedSHAFrom(cmd)
 	cfg.TicketPath, _ = cmd.Flags().GetString("ticket")
 	cfg.Reviewers, _ = cmd.Flags().GetInt("reviewers")
@@ -155,6 +157,8 @@ func printPinnedApproval(p *review.PinnedApproval) {
 		return
 	}
 	fmt.Printf("  approved_sha: %s\n", p.ApprovedSHA)
+	fmt.Printf("  approved_base: %s\n", p.ApprovedBase)
+	fmt.Printf("  head_base: %s\n", p.HeadBase)
 	fmt.Printf("  patch_id: %s\n", p.PatchID)
 	fmt.Printf("  head_patch_id: %s\n", p.HeadPatchID)
 	if p.Match != nil {
