@@ -91,7 +91,7 @@ tb  (implementado hoje)
 ├── router       Foreground scheduler (run|status|config)           ✓ Phase 3
 ├── watchdog     Worker alerts and control (status|alerts|kill)       ✓ Phase 3
 ├── merge        Merges done tickets (fail|last_wins)                     ✓ Phase 3
-└── bus          Agent bus (channel|invite|join|send|recv|claim|complete|log)  ✓ B1
+└── bus          Agent bus (channel|invite|join|send|recv|claim|complete|log|run)  ✓ B1
 
 tb  (planned)
 ├── run / proc / md / agent
@@ -1623,7 +1623,7 @@ tb merge TKT-002 TKT-003
 
 ### `tb bus` — Agent Bus (✓ B1, ADR-013)
 
-Local bus for agents from different vendors (Claude Code, Codex, Grok, ...) to exchange `bus/0.1` messages through the same store (`.toolbelt/bus/bus.db`, SQLite WAL, no daemon). Envelope, Agent Card and invite spec: [bus-protocolo.md](bus-protocolo.md). Lease/heartbeat (B2) and `tb bus run` (B3) do not exist yet.
+Local bus for agents from different vendors (Claude Code, Codex, Grok, ...) to exchange `bus/0.1` messages through the same store (`.toolbelt/bus/bus.db`, SQLite WAL, no daemon). Envelope, Agent Card and invite spec: [bus-protocolo.md](bus-protocolo.md). Lease/heartbeat (B2) does not exist yet; the `tb bus run` harness (B3) is in [bus-harness.md](bus-harness.md).
 
 ```bash
 tb bus channel create feature-x --owner claude-main --ttl 2h
@@ -1637,6 +1637,9 @@ tb bus complete TKT-001 --channel feature-x --as grok-1 --result '{"verdict":"PA
 tb bus log feature-x --thread TKT-001
 tb bus channel list
 tb bus channel show feature-x
+tb bus run --channel feature-x --as marin --check
+tb bus run --channel feature-x --as marin
+tb bus run --channel feature-x --as claude-code --once
 ```
 
 | Command | Who | Purpose |
@@ -1649,6 +1652,7 @@ tb bus channel show feature-x
 | `claim <thread>` | agent | single owner of the thread |
 | `complete <thread>` | owner | `--result`; publishes `task.result` to `topic:board` |
 | `log <channel>` | human | audit trail (redacted payload); `--thread`, `--limit` |
+| `run --channel C --as N` | human | B3 harness: waits without an LLM and wakes the agent through the wake file (`exec` or `harness`); `--once`, `--check`, `--dry-run`, `--invite`, `--config`, `--allow-unsandboxed`. Spec: [bus-harness.md](bus-harness.md) |
 
 Agent commands require `--channel` and `--as`. The session token is never printed. `--json` returns JSON-RPC envelopes.
 
@@ -1776,7 +1780,7 @@ Unix/tcp transport and `--socket`/`--port`/`--tls-*` flags are planned; today on
 | `tb_router_status` | `tb router status` | só leitura de `state.json` |
 | `tb_watchdog_alerts` | `tb watchdog alerts` | `since`, `kind`, `limit` (integer) |
 | `tb_merge` | `tb merge` | `ids` (array), `strategy`, `into`, `force`, `allow_sensitive` (default `false`); **dry-run por padrão** — só altera refs com `apply=true` |
-| `tb_bus_join` / `tb_bus_send` / `tb_bus_recv` / `tb_bus_claim` / `tb_bus_complete` | `tb bus …` | identity bound to the connection after `tb_bus_join` (`channel`, `invite`, `name` + Agent Card); `payload`/`result` as objects; `wait` string (max 25s); creating channels/invites does **not** exist through MCP |
+| `tb_bus_join` / `tb_bus_send` / `tb_bus_recv` / `tb_bus_claim` / `tb_bus_complete` | `tb bus …` | identity bound to the connection after `tb_bus_join` (`channel`, `invite`, `name` + Agent Card); `payload`/`result` as objects; `wait` string (max 25s); creating channels/invites does **not** exist through MCP; `tb mcp --bus-as <channel>/<name>` binds the connection to a CLI session (used by `tb bus run`) |
 | `tb_graph_search` / `tb_graph_callers` / `tb_graph_deps` / `tb_graph_impact` / `tb_graph_index` | `tb graph …` | call requires `TB_GRAPH=on`; `depth`/`limit` integer; `transitive` boolean |
 
 Schemas type `depth`/`limit`/`reviewers`/`max_iter` as integer, `strict`/`warn_only`/`transitive`/`skip_unavailable`/`all` (mem) as boolean, `threshold` as number, and `standards` as a string array; legacy string values are still accepted. verify/review/drift/guard reports come back as JSON in `content` (without a process exit code). Empty lists use `[]`; `hidden_passed` is `null` if the hidden suite does not apply.

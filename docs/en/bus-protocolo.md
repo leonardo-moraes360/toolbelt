@@ -79,7 +79,7 @@ Declared on `join`. It is informational: **capability is not permission**; the r
 | `tools` | string[] | |
 | `sandbox` | string | e.g. `landlock`, `none` |
 | `max_concurrency` | integer | ≥ 0 |
-| `wake` | string | `harness`, `notify` or `manual` (default `manual`) |
+| `wake` | string | `exec`, `harness`, `notify` or `manual` (default `manual`; see [bus-harness.md](bus-harness.md)) |
 | `session` | string | vendor session handle (for `--resume` in B3) |
 
 ## Invite

@@ -79,7 +79,7 @@ Declarado no `join`. É informativo: **capacidade não é permissão**; o papel 
 | `tools` | string[] | |
 | `sandbox` | string | ex.: `landlock`, `none` |
 | `max_concurrency` | inteiro | ≥ 0 |
-| `wake` | string | `harness`, `notify` ou `manual` (padrão `manual`) |
+| `wake` | string | `exec`, `harness`, `notify` ou `manual` (padrão `manual`; ver [bus-harness.md](bus-harness.md)) |
 | `session` | string | handle de sessão do vendor (para `--resume` no B3) |
 
 ## Convite

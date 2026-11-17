@@ -451,7 +451,7 @@ func init() {
 	jf.String("vendor", "", "vendor (Agent Card)")
 	jf.String("model", "", "modelo (Agent Card)")
 	jf.String("tier", "", "tier (Agent Card)")
-	jf.String("wake", "", "harness|notify|manual (padrão manual)")
+	jf.String("wake", "", "exec|harness|notify|manual (padrão manual)")
 	jf.String("session", "", "handle de sessão do vendor")
 	jf.StringSlice("capability", nil, "capabilities (repetível)")
 

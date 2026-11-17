@@ -37,16 +37,25 @@ func SaveSession(root string, sess *Session) error {
 
 // LoadMember lê o token da sessão CLI e autentica no store.
 func (s *Store) LoadMember(channel, name string) (Member, error) {
+	m, _, err := s.LoadSession(channel, name)
+	return m, err
+}
+
+// LoadSession é LoadMember que também retorna o token (para prender uma
+// conexão MCP à sessão CLI). O token nunca deve ser impresso.
+func (s *Store) LoadSession(channel, name string) (Member, string, error) {
 	p, err := sessionPath(s.root, channel, name)
 	if err != nil {
-		return Member{}, err
+		return Member{}, "", err
 	}
 	b, err := os.ReadFile(p)
 	if errors.Is(err, os.ErrNotExist) {
-		return Member{}, fmt.Errorf("sem sessão de %q no canal %q: rode tb bus join antes", name, channel)
+		return Member{}, "", fmt.Errorf("sem sessão de %q no canal %q: rode tb bus join antes", name, channel)
 	}
 	if err != nil {
-		return Member{}, err
+		return Member{}, "", err
 	}
-	return s.Auth(channel, name, strings.TrimSpace(string(b)))
+	token := strings.TrimSpace(string(b))
+	m, err := s.Auth(channel, name, token)
+	return m, token, err
 }

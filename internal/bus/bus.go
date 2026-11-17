@@ -82,6 +82,7 @@ func ParseType(s string) (Type, error) {
 type Wake string
 
 const (
+	WakeExec    Wake = "exec"
 	WakeHarness Wake = "harness"
 	WakeNotify  Wake = "notify"
 	WakeManual  Wake = "manual"
@@ -134,9 +135,9 @@ func (c *AgentCard) Validate() error {
 	switch c.Wake {
 	case "":
 		c.Wake = WakeManual
-	case WakeHarness, WakeNotify, WakeManual:
+	case WakeExec, WakeHarness, WakeNotify, WakeManual:
 	default:
-		return fmt.Errorf("wake inválido %q (use harness, notify ou manual)", c.Wake)
+		return fmt.Errorf("wake inválido %q (use exec, harness, notify ou manual)", c.Wake)
 	}
 	if c.ContextWindow < 0 || c.MaxConcurrency < 0 {
 		return errors.New("context_window e max_concurrency não podem ser negativos")

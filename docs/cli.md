@@ -91,7 +91,7 @@ tb  (implementado hoje)
 ├── router       Scheduler em primeiro plano (run|status|config)           ✓ Fase 3
 ├── watchdog     Alertas e controle de workers (status|alerts|kill)       ✓ Fase 3
 ├── merge        Integra tickets done (fail|last_wins)                     ✓ Fase 3
-└── bus          Barramento entre agentes (channel|invite|join|send|recv|claim|complete|log)  ✓ B1
+└── bus          Barramento entre agentes (channel|invite|join|send|recv|claim|complete|log|run)  ✓ B1
 
 tb  (planejado)
 ├── run / proc / md / agent
@@ -1664,7 +1664,7 @@ tb merge TKT-002 TKT-003
 
 ### `tb bus` — Barramento entre Agentes (✓ B1, ADR-013)
 
-Barramento local para agentes de vendors diferentes (Claude Code, Codex, Grok, ...) trocarem mensagens `bus/0.1` pelo mesmo store (`.toolbelt/bus/bus.db`, SQLite WAL, sem daemon). Spec do envelope, Agent Card e convite: [bus-protocolo.md](bus-protocolo.md). Lease/heartbeat (B2) e `tb bus run` (B3) ainda não existem.
+Barramento local para agentes de vendors diferentes (Claude Code, Codex, Grok, ...) trocarem mensagens `bus/0.1` pelo mesmo store (`.toolbelt/bus/bus.db`, SQLite WAL, sem daemon). Spec do envelope, Agent Card e convite: [bus-protocolo.md](bus-protocolo.md). Lease/heartbeat (B2) ainda não existe; o harness `tb bus run` (B3) está em [bus-harness.md](bus-harness.md).
 
 ```bash
 tb bus channel create feature-x --owner claude-main --ttl 2h
@@ -1678,6 +1678,9 @@ tb bus complete TKT-001 --channel feature-x --as grok-1 --result '{"verdict":"PA
 tb bus log feature-x --thread TKT-001
 tb bus channel list
 tb bus channel show feature-x
+tb bus run --channel feature-x --as marin --check
+tb bus run --channel feature-x --as marin
+tb bus run --channel feature-x --as claude-code --once
 ```
 
 | Comando | Quem | Função |
@@ -1690,6 +1693,7 @@ tb bus channel show feature-x
 | `claim <thread>` | agente | dono único da thread |
 | `complete <thread>` | dono | `--result`; publica `task.result` em `topic:board` |
 | `log <canal>` | humano | trilha de auditoria (payload redigido); `--thread`, `--limit` |
+| `run --channel C --as N` | humano | harness B3: espera sem LLM e acorda o agente pelo arquivo de wake (`exec` ou `harness`); `--once`, `--check`, `--dry-run`, `--invite`, `--config`, `--allow-unsandboxed`. Spec: [bus-harness.md](bus-harness.md) |
 
 Comandos de agente exigem `--channel` e `--as`. O token de sessão nunca é impresso. `--json` devolve envelopes JSON-RPC.
 
@@ -1817,7 +1821,7 @@ Transporte unix/tcp e flags `--socket`/`--port`/`--tls-*` são planejados; hoje 
 | `tb_router_status` | `tb router status` | só leitura de `state.json` |
 | `tb_watchdog_alerts` | `tb watchdog alerts` | `since`, `kind`, `limit` (integer) |
 | `tb_merge` | `tb merge` | `ids` (array), `strategy`, `into`, `force`, `allow_sensitive` (padrão `false`); **dry-run por padrão** — só altera refs com `apply=true` |
-| `tb_bus_join` / `tb_bus_send` / `tb_bus_recv` / `tb_bus_claim` / `tb_bus_complete` | `tb bus …` | identidade presa à conexão após `tb_bus_join` (`channel`, `invite`, `name` + Agent Card); `payload`/`result` como objeto; `wait` string (máx. 25s); criar canal/convite **não** existe via MCP |
+| `tb_bus_join` / `tb_bus_send` / `tb_bus_recv` / `tb_bus_claim` / `tb_bus_complete` | `tb bus …` | identidade presa à conexão após `tb_bus_join` (`channel`, `invite`, `name` + Agent Card); `payload`/`result` como objeto; `wait` string (máx. 25s); criar canal/convite **não** existe via MCP; `tb mcp --bus-as <canal>/<nome>` liga a conexão a uma sessão CLI (usado por `tb bus run`) |
 | `tb_graph_search` / `tb_graph_callers` / `tb_graph_deps` / `tb_graph_impact` / `tb_graph_index` | `tb graph …` | chamada requer `TB_GRAPH=on`; `depth`/`limit` integer; `transitive` boolean |
 
 Schemas tipam `depth`/`limit`/`reviewers`/`max_iter` como integer, `strict`/`warn_only`/`transitive`/`skip_unavailable`/`all` (mem) como boolean, `threshold` como number e `standards` como array de strings; valores string legados ainda são aceitos. Relatórios de verify/review/drift/guard voltam como JSON no `content` (sem código de saída de processo). Listas vazias usam `[]`; `hidden_passed` é `null` se a suíte oculta não se aplica.

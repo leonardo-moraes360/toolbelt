@@ -136,7 +136,7 @@ func registerBusTools() {
 				"tools":           {Type: "array", Items: &Property{Type: "string"}, Description: "Ferramentas"},
 				"sandbox":         {Type: "string", Description: "Sandbox (landlock, none)"},
 				"max_concurrency": {Type: "integer", Description: "Concorrência máxima"},
-				"wake":            {Type: "string", Description: "harness|notify|manual (padrão manual)"},
+				"wake":            {Type: "string", Description: "exec|harness|notify|manual (padrão manual)"},
 				"session":         {Type: "string", Description: "Handle de sessão do vendor"},
 				"cwd":             cwdProp,
 			},
@@ -336,4 +336,23 @@ func handleBusComplete(_ context.Context, args map[string]any) (any, error) {
 		return nil, err
 	}
 	return busText(map[string]any{"claim": res.Claim, "envelope": bus.Wrap(&res.Message)})
+}
+
+// BindBusSession prende esta conexão MCP à sessão CLI <canal>/<nome> já no
+// início (tb mcp --bus-as), lendo o arquivo de sessão local. Usado pelo
+// harness: o agente acordado não precisa de convite novo a cada despertar.
+func BindBusSession(root, channel, name string) error {
+	s, err := bus.Open(root)
+	if err != nil {
+		return err
+	}
+	defer s.Close()
+	m, token, err := s.LoadSession(channel, name)
+	if err != nil {
+		return err
+	}
+	busState.mu.Lock()
+	busState.sessions[channel] = busSession{root: root, member: m, token: token}
+	busState.mu.Unlock()
+	return nil
 }

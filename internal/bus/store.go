@@ -972,3 +972,20 @@ func (s *Store) Log(channel, thread string, limit int) ([]Message, error) {
 	}
 	return out, nil
 }
+
+// Cursor devolve o cursor de leitura do membro.
+func (s *Store) Cursor(m Member) (int64, error) {
+	var c int64
+	err := s.db.QueryRow(`SELECT cursor FROM agents WHERE channel = ? AND name = ?`, m.Channel, m.Name).Scan(&c)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, ErrUnauthorized
+	}
+	return c, err
+}
+
+// DataVersion devolve PRAGMA data_version: muda quando outra conexão grava.
+func (s *Store) DataVersion() (int64, error) {
+	var v int64
+	err := s.db.QueryRow(`PRAGMA data_version`).Scan(&v)
+	return v, err
+}
