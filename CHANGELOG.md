@@ -74,6 +74,11 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
   estrito e por `--warn-only`); remove o exemplo invocável com `--strict`
 
 ### Corrigido
+- `tb review` / `tb drift` / `tb stack`: `--approved-sha` compara
+  `approved_base..approved` vs `head_base..head` (não a mesma `--base` nos dois
+  lados); default das bases via `git merge-base`; nova flag `--approved-base`;
+  range-diff só com `=` (e patch-id igual) conta como match após rebase limpo;
+  JSON de `pinned_approval` expõe `approved_base` e `head_base`
 - **Sandbox Landlock (fail-closed):** probe de ABI usa `LANDLOCK_CREATE_RULESET_VERSION` (antes `flags=0` → `EFAULT` e falso “sem Landlock”); `PR_SET_NO_NEW_PRIVS` antes de `landlock_restrict_self`; rights FS completos por ABI (incl. truncate/make_*); ruleset aplicado no filho via re-exec antes do `exec` do comando; erros de ruleset não são mais engolidos; sem Landlock a execução recusa com erro claro (use `--allow-unsandboxed`)
 - `tb review` (goldfish): detecta só `TODO`/`FIXME`/`XXX`/`HACK` como palavra
   inteira em maiúsculas em comentários (ignora “todo” em português)

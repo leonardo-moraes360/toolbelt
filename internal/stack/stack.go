@@ -71,6 +71,7 @@ type Options struct {
 	Jobs               int
 	Ticket             string
 	ApprovedSHA        string
+	ApprovedBase       string
 	RequireApprovedSHA bool
 	WarnOnly           bool
 	TestCmd            string
@@ -569,6 +570,7 @@ func runReview(ctx context.Context, opts *Options, shared *Shared) (StepResult, 
 	cfg.BaseExplicit = true
 	cfg.HeadRef = shared.Head
 	cfg.ApprovedSHA = opts.ApprovedSHA
+	cfg.ApprovedBase = opts.ApprovedBase
 	cfg.RequireApprovedSHA = opts.RequireApprovedSHA
 	cfg.TicketPath = resolveTicket(shared.RepoDir, ticketOrDefault(opts.Ticket))
 	if opts.Reviewers > 0 {
@@ -603,6 +605,7 @@ func runDrift(ctx context.Context, opts *Options, shared *Shared) (StepResult, e
 	cfg.BaseExplicit = true
 	cfg.HeadRef = shared.Head
 	cfg.ApprovedSHA = opts.ApprovedSHA
+	cfg.ApprovedBase = opts.ApprovedBase
 	cfg.RequireApprovedSHA = opts.RequireApprovedSHA
 	cfg.TicketPath = ticketPath
 	cfg.Reviewers = 1
