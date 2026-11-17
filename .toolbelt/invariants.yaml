@@ -1,0 +1,58 @@
+version: 1
+invariants:
+    - id: inv-1794924591544708041
+      category: anti_cheat
+      rule: NUNCA modifique arquivos em tests/hidden/
+      added_at: 2026-11-17T14:09:51.544709494Z
+      immutable: true
+    - id: inv-1794924591544855941
+      category: anti_cheat
+      rule: NUNCA altere thresholds em .toolbelt/thresholds.yaml
+      added_at: 2026-11-17T14:09:51.544856351Z
+      immutable: true
+    - id: inv-1794924591544952693
+      category: security
+      rule: Secrets nunca aparecem em logs ou prompts
+      added_at: 2026-11-17T14:09:51.544952904Z
+      immutable: true
+    - id: inv-1794924668487546178
+      category: mandate
+      rule: 'tb é 100% local: nenhum comando fala com GitHub/rede; review/drift/verify leem ticket/rd.md do disco'
+      ref: docs/en/adr/002-mcp-a2a-protocolos.md
+      added_at: 2026-11-17T14:11:08.4875475Z
+      immutable: false
+      retired: true
+      retired_at: 2026-11-17T14:11:24.830247936Z
+    - id: inv-1794924668490610534
+      category: security
+      rule: 'Sandbox é fail-closed: sem Landlock recusa executar; nunca adicionar fallback silencioso sem sandbox'
+      ref: docs/en/adr/004-sandbox-isolamento.md
+      added_at: 2026-11-17T14:11:08.490611756Z
+      immutable: false
+    - id: inv-1794924668499509417
+      category: mandate
+      rule: 'Grafo é sob demanda: desabilitado por padrão (TB_GRAPH=on/--enable); não ligar por default'
+      ref: docs/en/adr/011-grafo-sob-demanda.md
+      added_at: 2026-11-17T14:11:08.499510198Z
+      immutable: false
+    - id: inv-1794924668502229753
+      category: mandate
+      rule: Docs PT-BR (docs/, README.md) e espelho EN (docs/en/, README.en.md) mudam juntos no mesmo PR
+      added_at: 2026-11-17T14:11:08.502230455Z
+      immutable: false
+    - id: inv-1794924668504646637
+      category: mandate
+      rule: Commits em Conventional Commits; branch a partir de main (feature/, fix/, docs/, adr/, chore/)
+      added_at: 2026-11-17T14:11:08.504647288Z
+      immutable: false
+    - id: inv-1794924668507354640
+      category: mandate
+      rule: 'Implementador e avaliador separados: review roda em contexto novo, nunca no mesmo agente que escreveu o código'
+      ref: docs/en/adr/007-inspiracao-elephant-goldfish.md
+      added_at: 2026-11-17T14:11:08.507355843Z
+      immutable: false
+    - id: inv-1794924684833006405
+      category: mandate
+      rule: 'tb é 100% local: nenhum comando fala com GitHub/rede; review/drift/verify leem ticket/rd.md do disco (docs/en/cli.md#local-first-sem-github)'
+      added_at: 2026-11-17T14:11:24.833007617Z
+      immutable: false

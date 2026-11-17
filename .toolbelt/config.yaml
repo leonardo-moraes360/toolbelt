@@ -1,0 +1,63 @@
+defaults:
+    sandbox: false
+    timeout: 30s
+    json_output: false
+sandbox:
+    allow_net: []
+    cpu_limit: 100
+    mem_limit: 1G
+    time_limit: 5m
+graph:
+    auto_index: true
+    index_on_change: true
+    infer_relations: false
+    languages:
+        - go
+        - javascript
+        - python
+        - java
+        - kotlin
+        - csharp
+        - cpp
+        - rust
+        - php
+        - ruby
+        - swift
+        - shell
+    docs:
+        - markdown
+        - html
+        - txt
+    frameworks:
+        - react
+        - vue
+        - svelte
+        - astro
+        - angular
+        - routes
+        - mdx
+    max_file_bytes: 524288
+vault:
+    path: .toolbelt/vault
+    sync_on_change: true
+logging:
+    level: info
+    file: .toolbelt/logs/tb.log
+    format: text
+bench:
+    tasks_dir: bench/tasks
+    fixtures_dir: bench/fixtures
+    output_dir: bench/results
+    default_agent: ""
+    repetitions: 5
+    timeout: 10m
+verify:
+    test_cmd: go test ./...
+    hidden_test_cmd: ""
+    build_cmd: go build ./...
+    lint_cmd: go vet ./...
+review:
+    require_approved_sha: false
+env:
+    allow: []
+    pass: []

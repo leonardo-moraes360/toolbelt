@@ -1,0 +1,6 @@
+sources:
+    - AGENTS.md
+hints:
+    - go build ./...
+    - go test ./...
+    - golangci-lint run
