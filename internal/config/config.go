@@ -44,6 +44,9 @@ type Config struct {
 
 	// Review configura review/drift (approved-sha).
 	Review ReviewConfig `yaml:"review"`
+
+	// Env configura a allowlist de variáveis passadas a filhos (sh -c).
+	Env EnvConfig `yaml:"env"`
 }
 
 // Defaults são valores padrão para commands.
@@ -106,6 +109,12 @@ type VerifyConfig struct {
 // ReviewConfig configura tb review / tb drift.
 type ReviewConfig struct {
 	RequireApprovedSHA bool `yaml:"require_approved_sha"`
+}
+
+// EnvConfig controla quais variáveis de ambiente chegam aos filhos (sh -c).
+type EnvConfig struct {
+	Allow []string `yaml:"allow"`
+	Pass  []string `yaml:"pass"`
 }
 
 // DefaultConfig retorna a configuração padrão.
@@ -222,6 +231,15 @@ func loadFromFile(path string, cfg *Config) error {
 		return err
 	}
 	return yaml.Unmarshal(data, cfg)
+}
+
+// LoadFile carrega um arquivo de configuração YAML específico.
+func LoadFile(path string) (*Config, error) {
+	cfg := DefaultConfig()
+	if err := loadFromFile(path, cfg); err != nil {
+		return nil, err
+	}
+	return cfg, nil
 }
 
 // Save salva a configuração em um arquivo.

@@ -14,8 +14,8 @@ var (
 	reJSImportFrom = regexp.MustCompile(`(?m)(?:import|export)(?:[\s\w\{\}\*,]*)\s+from\s+['"]([^'"]+)['"]`)
 	reJSImportSide = regexp.MustCompile(`(?m)^\s*import\s+['"]([^'"]+)['"]`)
 	reJSRequire    = regexp.MustCompile(`require\(\s*['"]([^'"]+)['"]\s*\)`)
-	reJSFuncDecl   = regexp.MustCompile(`(?m)(?:export\s+)?(?:default\s+)?(?:async\s+)?function\s+([A-Za-z_$][\w$]*)\s*\(`)
-	reJSFuncAssign = regexp.MustCompile(`(?m)(?:export\s+)?(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*(?::\s*[^=]+)?=\s*(?:async\s*)?(?:function\b|\()`)
+	reJSFuncDecl   = regexp.MustCompile(`(?m)(?:export\s+)?(?:default\s+)?(?:async\s+)?function\s+([A-Za-z_$][\w$]*)\s*(?:<[^(){]*?>)?\s*\(`)
+	reJSFuncAssign = regexp.MustCompile(`(?m)(?:export\s+)?(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*(?::\s*[^=]+)?=\s*(?:async\s*)?(?:function\b|\(|<[A-Za-z_$])`)
 	reJSCall       = regexp.MustCompile(`\b([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)?)\s*\(`)
 	reJSXCallTag   = regexp.MustCompile(`<([A-Z][A-Za-z0-9_]*)\b`)
 	jsCallKeywords = map[string]bool{
@@ -40,10 +40,7 @@ func (JSIndexer) Match(path string) bool {
 	if !jsExts[ext] {
 		return false
 	}
-	if strings.HasSuffix(strings.ToLower(path), ".d.ts") {
-		return false
-	}
-	return !skipIndexedTestFile(path)
+	return !strings.HasSuffix(strings.ToLower(path), ".d.ts")
 }
 
 func (JSIndexer) IndexFile(root, rel string) ([]Node, []Edge, error) {
@@ -56,15 +53,17 @@ func (JSIndexer) IndexFile(root, rel string) ([]Node, []Edge, error) {
 	code := stripJSComments(raw)
 	modName := moduleNameFromRel(rel)
 	nodes, edges, _, fileID := baseFileNodes(modName, rel, 0.9)
+	cfg := loadJSPathConfig(root)
 
 	funcIDs, fnNodes, fnEdges := extractJSFunctions(modName, filepath.ToSlash(rel), fileID, code)
 	nodes = append(nodes, fnNodes...)
 	edges = append(edges, fnEdges...)
 
-	impNodes, impEdges := extractJSImports(fileID, raw)
+	impNodes, impEdges := extractJSImports(root, rel, fileID, raw, cfg)
 	nodes = append(nodes, impNodes...)
 	edges = append(edges, impEdges...)
-	edges = append(edges, extractJSCalls(fileID, funcIDs, code)...)
+	bindings := extractJSBindings(root, rel, raw, cfg)
+	edges = append(edges, extractJSCalls(fileID, funcIDs, code, bindings)...)
 
 	return nodes, edges, nil
 }
@@ -96,7 +95,7 @@ func extractJSFunctions(modName, relPath, fileID, src string) (map[string]string
 	return funcIDs, nodes, edges
 }
 
-func extractJSImports(fileID, raw string) ([]Node, []Edge) {
+func extractJSImports(root, rel, fileID, raw string, cfg *jsPathConfig) ([]Node, []Edge) {
 	imports := map[string]bool{}
 	for _, re := range []*regexp.Regexp{reJSImportFrom, reJSImportSide, reJSRequire} {
 		for _, m := range re.FindAllStringSubmatch(raw, -1) {
@@ -108,14 +107,30 @@ func extractJSImports(fileID, raw string) ([]Node, []Edge) {
 	var nodes []Node
 	var edges []Edge
 	for imp := range imports {
-		target := "pkg:" + imp
+		nodes, edges = appendResolvedJSImport(nodes, edges, root, rel, fileID, imp, cfg, 0.9)
+	}
+	return nodes, edges
+}
+
+func appendResolvedJSImport(nodes []Node, edges []Edge, root, rel, fileID, imp string, cfg *jsPathConfig, conf float64) ([]Node, []Edge) {
+	if resolved, ok := resolveJSImport(root, rel, imp, cfg); ok {
+		target := "file:" + resolved
 		nodes = append(nodes, Node{
-			ID: target, Type: NodePackage, Title: imp, Source: "extracted", Confidence: 0.9,
+			ID: target, Type: NodeFile, Path: resolved, Title: filepath.Base(resolved),
+			Package: moduleNameFromRel(resolved), Source: "extracted", Confidence: conf,
 		})
 		edges = append(edges, Edge{
-			SourceID: fileID, TargetID: target, Type: EdgeImports, Source: "extracted", Confidence: 0.9,
+			SourceID: fileID, TargetID: target, Type: EdgeImports, Source: "extracted", Confidence: conf,
 		})
+		return nodes, edges
 	}
+	target := "pkg:" + imp
+	nodes = append(nodes, Node{
+		ID: target, Type: NodePackage, Title: imp, Source: "extracted", Confidence: conf,
+	})
+	edges = append(edges, Edge{
+		SourceID: fileID, TargetID: target, Type: EdgeImports, Source: "extracted", Confidence: conf,
+	})
 	return nodes, edges
 }
 
@@ -147,15 +162,31 @@ func (s *jsCallSink) addCallee(sourceID, callee string, funcIDs map[string]strin
 	s.add(sourceID, "sym:"+callee, 0.55)
 }
 
-func extractJSCalls(fileID string, funcIDs map[string]string, src string) []Edge {
+func (s *jsCallSink) addBoundCallee(sourceID, raw string, funcIDs map[string]string, bindings []jsBinding) {
+	if exportName, module, ok := resolveJSBoundCallee(raw, bindings); ok {
+		if id, ok := funcIDs[exportName]; ok {
+			s.add(sourceID, id, 0.7)
+			return
+		}
+		sym := "sym:" + exportName
+		if module != "" {
+			sym = "sym:" + exportName + "@" + module
+		}
+		s.add(sourceID, sym, 0.55)
+		return
+	}
+	s.addCallee(sourceID, jsCalleeName(raw), funcIDs)
+}
+
+func extractJSCalls(fileID string, funcIDs map[string]string, src string, bindings []jsBinding) []Edge {
 	spans := jsFunctionSpans(src, funcIDs)
 	sink := &jsCallSink{seen: map[string]bool{}}
-	appendJSCallExprs(sink, fileID, funcIDs, src, spans)
-	appendJSXCallEdges(sink, fileID, funcIDs, src, spans)
+	appendJSCallExprs(sink, fileID, funcIDs, src, spans, bindings)
+	appendJSXCallEdges(sink, fileID, funcIDs, src, spans, bindings)
 	return sink.edges
 }
 
-func appendJSCallExprs(sink *jsCallSink, fileID string, funcIDs map[string]string, src string, spans []jsSpan) {
+func appendJSCallExprs(sink *jsCallSink, fileID string, funcIDs map[string]string, src string, spans []jsSpan, bindings []jsBinding) {
 	for _, m := range reJSCall.FindAllStringSubmatchIndex(src, -1) {
 		if len(m) < 4 {
 			continue
@@ -169,7 +200,7 @@ func appendJSCallExprs(sink *jsCallSink, fileID string, funcIDs map[string]strin
 		if jsIsDefSite(spans, at, callee) {
 			continue
 		}
-		sink.addCallee(jsCallerAt(spans, fileID, at), callee, funcIDs)
+		sink.addBoundCallee(jsCallerAt(spans, fileID, at), raw, funcIDs, bindings)
 	}
 }
 
@@ -187,7 +218,7 @@ func jsCalleeAllowed(raw, callee string) bool {
 	return true
 }
 
-func appendJSXCallEdges(sink *jsCallSink, fileID string, funcIDs map[string]string, src string, spans []jsSpan) {
+func appendJSXCallEdges(sink *jsCallSink, fileID string, funcIDs map[string]string, src string, spans []jsSpan, bindings []jsBinding) {
 	for _, m := range reJSXCallTag.FindAllStringSubmatchIndex(src, -1) {
 		if len(m) < 4 {
 			continue
@@ -196,7 +227,7 @@ func appendJSXCallEdges(sink *jsCallSink, fileID string, funcIDs map[string]stri
 		if name == "" {
 			continue
 		}
-		sink.addCallee(jsCallerAt(spans, fileID, m[0]), name, funcIDs)
+		sink.addBoundCallee(jsCallerAt(spans, fileID, m[0]), name, funcIDs, bindings)
 	}
 }
 

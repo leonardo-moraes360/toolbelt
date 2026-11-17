@@ -19,8 +19,8 @@ var reviewCmd = &cobra.Command{
 
 Goldfish distintos (contexto fresco cada um):
   scope       — escopo declarado e paths forbidden (+ invariantes de tb mem)
-  quality     — TODO/FIXME adicionados, funções muito grandes, código sem testes
-  acceptance  — critérios de aceite do ticket evidenciados em testes/arquivos
+  quality     — TODO/FIXME/XXX/HACK em comentários, funções grandes, código sem testes
+  acceptance  — critérios de aceite evidenciados em testes/arquivos (inclui Test*/test/it)
 
 Também reporta drift de escopo e commit base.`,
 	Args: cobra.MaximumNArgs(1),
@@ -63,6 +63,7 @@ func reviewConfigFromFlags(cmd *cobra.Command, args []string) (*review.Config, e
 	}
 	cfg := review.DefaultConfig(cwd)
 	cfg.BaseRef, _ = cmd.Flags().GetString("base")
+	cfg.BaseExplicit = cmd.Flags().Changed("base")
 	cfg.HeadRef, _ = cmd.Flags().GetString("head")
 	cfg.ApprovedSHA, _ = cmd.Flags().GetString("approved-sha")
 	cfg.RequireApprovedSHA = requireApprovedSHAFrom(cmd)
@@ -100,7 +101,8 @@ func reviewBlockingError(rep *review.Report) error {
 	if rep.Drift != nil && (len(rep.Drift.OutOfScope) > 0 || len(rep.Drift.ForbiddenHit) > 0 || rep.Drift.BaseMismatch) {
 		return fmt.Errorf("drift detectado no escopo/base")
 	}
-	for _, f := range rep.Findings {
+	for i := range rep.Findings {
+		f := &rep.Findings[i]
 		if f.Severity == review.SeverityCritical || f.Severity == review.SeverityError {
 			return fmt.Errorf("revisão encontrou findings bloqueantes")
 		}
@@ -124,12 +126,21 @@ func printReviewReport(rep *review.Report) {
 		return
 	}
 	fmt.Println("FINDINGS:")
-	for _, f := range rep.Findings {
+	for i := range rep.Findings {
+		f := &rep.Findings[i]
+		role := f.Role
+		if role == "" {
+			role = f.Category
+		}
 		fmt.Printf("  [%s] (%s/%s) %s", f.Severity, f.Reviewer, f.Category, f.Message)
 		if f.File != "" {
 			fmt.Printf(" [%s]", f.File)
 		}
-		fmt.Printf("  acordo=%d/%d\n", f.Agreement, rep.Reviewers)
+		if f.Agreement > 1 {
+			fmt.Printf("  papel=%s papéis_acordo=%d\n", role, f.Agreement)
+		} else {
+			fmt.Printf("  papel=%s\n", role)
+		}
 	}
 }
 

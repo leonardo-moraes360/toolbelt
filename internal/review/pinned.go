@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
+
+	"github.com/leonardo-moraes360/toolbelt/internal/git"
 )
 
 type PinnedApproval struct {
@@ -66,7 +68,7 @@ func gitPatchIDVerbatim(repo, base, head string) (string, error) {
 	cmd.Stdin = strings.NewReader(diff)
 	out, err := cmd.Output()
 	if err != nil {
-		return "", fmt.Errorf("git patch-id: %w", err)
+		return "", git.Wrap(err, nil, "patch-id", "--verbatim")
 	}
 	fields := strings.Fields(string(out))
 	if len(fields) == 0 {
@@ -78,11 +80,19 @@ func gitPatchIDVerbatim(repo, base, head string) (string, error) {
 func gitRangeDiff(repo, base, approved, head string) (string, error) {
 	left := base + ".." + approved
 	right := base + ".." + head
-	cmd := exec.Command("git", "range-diff", left, right) //nolint:gosec // refs do operador
-	cmd.Dir = repo
-	out, err := cmd.CombinedOutput()
+	if base == approved {
+		return "", fmt.Errorf("approved-sha coincide com a base (%s); intervalo base..approved vazio — não há commits para range-diff; o patch do head diverge do SHA aprovado", shortRef(base))
+	}
+	out, err := git.CombinedOutput(repo, "range-diff", left, right)
 	if err != nil {
-		return "", fmt.Errorf("git range-diff %s %s: %w (%s)", left, right, err, strings.TrimSpace(string(out)))
+		return "", err
 	}
 	return strings.TrimSpace(string(out)), nil
+}
+
+func shortRef(ref string) string {
+	if len(ref) > 12 {
+		return ref[:12]
+	}
+	return ref
 }
