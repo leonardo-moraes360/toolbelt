@@ -73,7 +73,10 @@ func newEnv(t *testing.T) *env {
 
 func (e *env) writeConfig(t *testing.T, body string) string {
 	t.Helper()
-	p := ConfigPath(e.root, "ch", "w")
+	p, err := ConfigPath(e.root, "ch", "w")
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -114,7 +117,8 @@ func runFor(t *testing.T, h *Harness, d time.Duration) {
 
 func readAudit(t *testing.T, e *env) string {
 	t.Helper()
-	b, _ := os.ReadFile(filepath.Join(RunDir(e.root, "ch"), "w.jsonl"))
+	dir, _ := RunDir(e.root, "ch")
+	b, _ := os.ReadFile(filepath.Join(dir, "w.jsonl"))
 	return string(b)
 }
 
@@ -337,4 +341,179 @@ nao json
 	if got := lastSessionID(out); got != "b" {
 		t.Fatalf("session: %q", got)
 	}
+}
+
+// Achado 1: 500+ mensagens que não acordam não podem esconder um task.assign.
+func TestManyNonWakingMessagesDoNotHideWake(t *testing.T) {
+	e := newEnv(t)
+	e.writeConfig(t, fastCfg)
+	for i := 0; i < 501; i++ {
+		e.send(t, bus.TypeAck, "")
+	}
+	e.send(t, bus.TypeTaskAssign, "")
+	f := &fakeAdapter{}
+	runFor(t, e.open(t, f), 300*time.Millisecond)
+	if got := f.got(); len(got) != 1 || got[0].Messages[0].Type != bus.TypeTaskAssign {
+		t.Fatalf("task.assign escondido: %+v", got)
+	}
+}
+
+type flakyAdapter struct {
+	fakeAdapter
+	okFirst int
+}
+
+func (f *flakyAdapter) Wake(ctx context.Context, p *Packet, st *State) (Outcome, error) {
+	f.mu.Lock()
+	n := len(f.packets)
+	f.mu.Unlock()
+	if n < f.okFirst {
+		return f.fakeAdapter.Wake(ctx, p, st)
+	}
+	f.mu.Lock()
+	f.packets = append(f.packets, *p)
+	f.mu.Unlock()
+	return Outcome{ExitCode: 1}, nil
+}
+
+// Achado 2: rewake que falha não pode virar laço infinito nem spam de status.
+func TestFailedRewakeIsBounded(t *testing.T) {
+	e := newEnv(t)
+	e.writeConfig(t, fastCfg+"rewake_after: 80ms\n")
+	e.send(t, bus.TypeQuery, "")
+	f := &flakyAdapter{okFirst: 1}
+	runFor(t, e.open(t, f), 1200*time.Millisecond)
+	if n := len(f.got()); n != 3 { // 1 ok + 2 tentativas do único rewake
+		t.Fatalf("despertares: %d", n)
+	}
+	log, _ := e.store.Log("ch", "", 0)
+	statuses := 0
+	for i := range log {
+		if log[i].Type == bus.TypeTaskStatus {
+			statuses++
+		}
+	}
+	if statuses != 1 {
+		t.Fatalf("task.status wake_failed: %d", statuses)
+	}
+	if !strings.Contains(readAudit(t, e), "wake_unread") {
+		t.Fatal("deveria terminar em wake_unread")
+	}
+}
+
+// Achado 6: depois que o agente leu, o harness volta a ficar ocioso.
+func TestIdleAfterReadPastRewake(t *testing.T) {
+	e := newEnv(t)
+	e.writeConfig(t, fastCfg+"rewake_after: 300ms\n")
+	e.send(t, bus.TypeQuery, "")
+	f := &fakeAdapter{}
+	h := e.open(t, f)
+	runFor(t, h, 150*time.Millisecond)
+	if _, err := e.store.Recv(context.Background(), e.worker, bus.RecvOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	runFor(t, h, 500*time.Millisecond)
+	v, _ := h.store.DataVersion()
+	if !h.idle(v, time.Now()) || len(f.got()) != 1 {
+		t.Fatalf("idle=%v despertares=%d estado=%+v", h.idle(v, time.Now()), len(f.got()), h.st)
+	}
+}
+
+// Achado 8: estado de outro store (seq acima do máximo atual) é descartado.
+func TestStaleStateIsReset(t *testing.T) {
+	e := newEnv(t)
+	e.writeConfig(t, fastCfg)
+	dir, _ := RunDir(e.root, "ch")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := saveState(filepath.Join(dir, "w.state"), &State{NotifiedSeq: 999, Session: "s"}); err != nil {
+		t.Fatal(err)
+	}
+	e.send(t, bus.TypeQuery, "")
+	f := &fakeAdapter{}
+	runFor(t, e.open(t, f), 300*time.Millisecond)
+	if len(f.got()) != 1 {
+		t.Fatalf("mensagem nova ignorada por estado velho: %d", len(f.got()))
+	}
+}
+
+func TestPrivateDirOutsideRepo(t *testing.T) {
+	e := newEnv(t)
+	priv, err := bus.PrivateDir(e.root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.HasPrefix(priv, e.root) {
+		t.Fatalf("diretório privado dentro do repo: %s", priv)
+	}
+	if _, err := os.Stat(filepath.Join(bus.Dir(e.root), "sessions")); !os.IsNotExist(err) {
+		t.Fatal("sessões ainda no repositório")
+	}
+}
+
+// writeScript grava um executável sh em dir/name.
+func writeScript(t *testing.T, dir, name, body string) string {
+	t.Helper()
+	p := filepath.Join(dir, name)
+	if err := os.WriteFile(p, []byte("#!/bin/sh\n"+body), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+
+// Achados 3, 4 e 5: preset claude achado no PATH (comando relativo) roda no
+// sandbox; o filho não lê token de outro agente nem a config de wake; a
+// auditoria não guarda o stream (que traz payloads).
+func TestClaudePresetFromPathIsolatedAndQuiet(t *testing.T) {
+	e := newEnv(t)
+	bin := t.TempDir()
+	ownerTok, _ := bus.AgentDir(e.root, "ch", "boss")
+	ownerSess, _ := e.store.Join("ch", mustInvite(t, e), &bus.AgentCard{Name: "spy-target"}, "")
+	_ = bus.SaveSession(e.root, &ownerSess)
+	otherTok, _ := bus.AgentDir(e.root, "ch", "spy-target")
+	cfgPath, _ := ConfigPath(e.root, "ch", "w")
+	out := filepath.Join(e.root, "probe.out")
+	writeScript(t, bin, "claude", `
+cat "`+otherTok+`/token" > /dev/null 2>&1 && echo "OTHER_TOKEN_READ" >> `+out+`
+cat "`+cfgPath+`" > /dev/null 2>&1 && echo "WAKE_CONFIG_READ" >> `+out+`
+echo ran >> `+out+`
+echo '{"type":"user","message":{"content":[{"type":"tool_result","content":"conteudo-privado"}]}}'
+echo '{"type":"result","subtype":"success","is_error":false,"num_turns":2,"session_id":"s-1","result":"vi conteudo-privado"}'
+`)
+	_ = ownerTok
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	e.writeConfig(t, "adapter: harness\nharness:\n  vendor: claude\ncoalesce:\n  debounce: 50ms\n  max_delay: 1s\n")
+	e.send(t, bus.TypeQuery, `{"x":"conteudo-privado"}`)
+	h, err := Open(&Options{Root: e.root, Channel: "ch", Name: "w", Poll: 10 * time.Millisecond, AllowUnsandboxed: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer h.Close()
+	runFor(t, h, 1500*time.Millisecond)
+	probe, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatalf("claude do PATH não rodou: %v\n%s", err, readAudit(t, e))
+	}
+	if !landlockOn() {
+		t.Log("Landlock indisponível: isolamento de leitura não verificado")
+	} else if strings.Contains(string(probe), "_READ") {
+		t.Fatalf("filho leu arquivo privado: %s", probe)
+	}
+	audit := readAudit(t, e)
+	if !strings.Contains(audit, "wake_ok") || strings.Contains(audit, "conteudo-privado") {
+		t.Fatalf("auditoria: %s", audit)
+	}
+	if h.st.Session != "s-1" {
+		t.Fatalf("session: %q", h.st.Session)
+	}
+}
+
+func mustInvite(t *testing.T, e *env) string {
+	t.Helper()
+	inv, err := e.store.CreateInvite("ch", bus.RoleWorker, "", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return inv.Code
 }

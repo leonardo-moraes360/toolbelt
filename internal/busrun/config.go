@@ -72,9 +72,14 @@ var DefaultAllowedTools = []string{
 	"mcp__toolbelt__tb_bus_claim", "mcp__toolbelt__tb_bus_complete",
 }
 
-// ConfigPath devolve o caminho padrão do arquivo de wake.
-func ConfigPath(root, channel, name string) string {
-	return filepath.Join(bus.Dir(root), "wake", channel, name+".yaml")
+// ConfigPath devolve o caminho padrão do arquivo de wake
+// (<privado>/wake/<canal>/<nome>.yaml, fora do repositório).
+func ConfigPath(root, channel, name string) (string, error) {
+	priv, err := bus.PrivateDir(root)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(priv, "wake", channel, name+".yaml"), nil
 }
 
 // LoadConfig lê, aplica padrões e valida. Recusa arquivo com permissão

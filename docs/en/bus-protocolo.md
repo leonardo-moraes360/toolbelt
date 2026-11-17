@@ -12,6 +12,7 @@ Specification for stage **B0** of [ADR-013](adr/013-barramento-multi-vendor.md):
 - No daemon: every command opens the store, runs the operation in a transaction and closes it.
 - `PRAGMA user_version` versions the schema; an unknown version is refused (fail-closed).
 - Local file, ignored through `.git/info/exclude` (`tb init`).
+- **Private directory** (`<private>`): sessions, wake files and harness state live **outside the repository**, in `$XDG_STATE_HOME/toolbelt/bus/<root hash>/` (default `~/.local/state/...`; `TB_BUS_STATE_DIR` changes the base). Directories `0700`, files `0600`. That way an agent working with the repository root as its workdir cannot reach other agents' tokens.
 
 ## Envelope
 
@@ -94,7 +95,7 @@ Declared on `join`. It is informational: **capability is not permission**; the r
 ## Session and identity
 
 - `join` returns `agent_id` and role. The session token is random (256 bits), the store keeps its SHA-256 and the token **never** appears on stdout, in logs or in MCP responses.
-- CLI: the token goes to `.toolbelt/bus/sessions/<channel>/<name>.token` (`0600`); later commands use `--as <name>`. B1 limitation: any process of the same user can read the file, so the CLI trusts the local user.
+- CLI: the token goes to `<private>/sessions/<channel>/<name>/token` (`0600`); later commands use `--as <name>`. B1 limitation: any process of the same user can read the file, so the CLI trusts the local user.
 - MCP: after `tb_bus_join` the identity is bound to the `tb mcp` stdio connection; the `tb_bus_*` tools do not accept another agent as an argument.
 - **Lost session** (MCP server restarted, session file deleted): the name stays registered. The human issues `tb bus invite <channel> --role <role> --name <name>`; a `join` with that invite replaces the token (the old one stops working) and keeps the cursor.
 - **B1 trust boundary**: everything runs as the same user. An agent with a shell (including through `tb_run` in MCP) can read `.toolbelt/bus/` and run `tb bus invite`/`channel create`. Invites and per-connection identity protect against prompt injection and misrouting, not against a hostile local process.

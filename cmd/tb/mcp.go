@@ -7,6 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/leonardo-moraes360/toolbelt/internal/bus"
 	"github.com/leonardo-moraes360/toolbelt/internal/log"
 	"github.com/leonardo-moraes360/toolbelt/internal/mcp"
 	"github.com/leonardo-moraes360/toolbelt/internal/registry"
@@ -41,6 +42,11 @@ func bindBusAs(cmd *cobra.Command) error {
 	if !ok || channel == "" || name == "" {
 		return fmt.Errorf("--bus-as inválido %q (use <canal>/<nome>)", as)
 	}
+	if state, _ := cmd.Flags().GetString("bus-state"); state != "" {
+		if err := os.Setenv(bus.EnvStateDir, state); err != nil {
+			return err
+		}
+	}
 	root, _ := cmd.Flags().GetString("bus-root")
 	if root == "" {
 		cwd, err := os.Getwd()
@@ -55,4 +61,5 @@ func bindBusAs(cmd *cobra.Command) error {
 func init() {
 	mcpCmd.Flags().String("bus-as", "", "prende a conexão à sessão do bus <canal>/<nome> (usado por tb bus run)")
 	mcpCmd.Flags().String("bus-root", "", "raiz do repositório do bus (padrão: procura .toolbelt a partir do cwd)")
+	mcpCmd.Flags().String("bus-state", "", "base do diretório privado do bus (padrão $XDG_STATE_HOME/toolbelt/bus)")
 }

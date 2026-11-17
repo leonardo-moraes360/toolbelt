@@ -8,9 +8,12 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 
+	"github.com/leonardo-moraes360/toolbelt/internal/bus"
 	"github.com/leonardo-moraes360/toolbelt/internal/execenv"
 	"github.com/leonardo-moraes360/toolbelt/internal/sandbox"
 )
@@ -40,12 +43,24 @@ func childEnv(cfg *Config, p *Packet, extra ...string) []string {
 	return append(env, extra...)
 }
 
-func sandboxPaths(cfg *Config, bin string) []sandbox.PathAccess {
-	var out []sandbox.PathAccess
-	if bin != "" {
-		out = append(out, sandbox.PathAccess{Path: dirOf(bin), ReadOnly: true})
+// binDirs devolve o diretório do binário e, se for symlink, o do alvo real
+// (ex.: ~/.local/bin/claude -> ~/.local/share/claude/versions/x).
+func binDirs(bin string) []string {
+	dirs := []string{filepath.Dir(bin)}
+	if resolved, err := filepath.EvalSymlinks(bin); err == nil && filepath.Dir(resolved) != dirs[0] {
+		dirs = append(dirs, filepath.Dir(resolved))
 	}
-	for _, p := range cfg.Sandbox.Read {
+	return dirs
+}
+
+func sandboxPaths(cfg *Config, bins, extraRead []string) []sandbox.PathAccess {
+	var out []sandbox.PathAccess
+	for _, b := range bins {
+		for _, d := range binDirs(b) {
+			out = append(out, sandbox.PathAccess{Path: d, ReadOnly: true})
+		}
+	}
+	for _, p := range append(append([]string{}, extraRead...), cfg.Sandbox.Read...) {
 		out = append(out, sandbox.PathAccess{Path: p, ReadOnly: true})
 	}
 	for _, p := range cfg.Sandbox.Write {
@@ -54,31 +69,42 @@ func sandboxPaths(cfg *Config, bin string) []sandbox.PathAccess {
 	return out
 }
 
-func dirOf(p string) string {
-	if i := strings.LastIndexByte(p, os.PathSeparator); i > 0 {
-		return p[:i]
-	}
-	return p
+// childSpec descreve uma execução do filho.
+type childSpec struct {
+	argv      []string
+	stdin     []byte
+	env       []string
+	workdir   string
+	extraBins []string // binários além de argv[0] que o filho executa (tb mcp)
+	extraRead []string // diretórios extras somente leitura
 }
 
-// runChild roda argv no sandbox com stdin opcional.
-func runChild(ctx context.Context, h *Harness, argv []string, stdin []byte, env []string, workdir string) (Outcome, error) {
+// runChild resolve argv[0] no PATH (o sandbox precisa do caminho real para
+// liberar o diretório certo) e roda no sandbox com stdin opcional.
+func runChild(ctx context.Context, h *Harness, c *childSpec) (Outcome, error) {
+	bin, err := exec.LookPath(c.argv[0])
+	if err != nil {
+		return Outcome{}, fmt.Errorf("binário do adapter: %w", err)
+	}
+	if bin, err = filepath.Abs(bin); err != nil {
+		return Outcome{}, err
+	}
 	cfg := sandbox.Config{
-		WorkDir:          workdir,
-		AllowedPaths:     sandboxPaths(h.cfg, argv[0]),
+		WorkDir:          c.workdir,
+		AllowedPaths:     sandboxPaths(h.cfg, append([]string{bin}, c.extraBins...), c.extraRead),
 		Timeout:          h.cfg.Timeout,
 		AllowUnsandboxed: h.opts.AllowUnsandboxed,
-		Env:              env,
+		Env:              c.env,
 		ProcessGroup:     true,
 	}
-	if stdin != nil {
-		cfg.Stdin = bytes.NewReader(stdin)
+	if c.stdin != nil {
+		cfg.Stdin = bytes.NewReader(c.stdin)
 	}
 	sb, err := sandbox.New(cfg)
 	if err != nil {
 		return Outcome{}, err
 	}
-	res, err := sb.Run(ctx, argv[0], argv[1:]...)
+	res, err := sb.Run(ctx, bin, c.argv[1:]...)
 	if err != nil {
 		return Outcome{}, err
 	}
@@ -92,7 +118,7 @@ func (a execAdapter) Wake(ctx context.Context, p *Packet, _ *State) (Outcome, er
 	if err != nil {
 		return Outcome{}, err
 	}
-	return runChild(ctx, a.h, a.h.cfg.Exec.Argv, b, childEnv(a.h.cfg, p), a.h.root)
+	return runChild(ctx, a.h, &childSpec{argv: a.h.cfg.Exec.Argv, stdin: b, env: childEnv(a.h.cfg, p), workdir: a.h.root})
 }
 
 type claudeAdapter struct{ h *Harness }
@@ -127,7 +153,7 @@ func (a claudeAdapter) argv(p *Packet, session, mcpConfig string) []string {
 }
 
 func (a claudeAdapter) Wake(ctx context.Context, p *Packet, st *State) (Outcome, error) {
-	mcpConfig, err := a.h.writeMCPConfig()
+	mcpConfig, tbBin, err := a.h.writeMCPConfig()
 	if err != nil {
 		return Outcome{}, err
 	}
@@ -135,23 +161,51 @@ func (a claudeAdapter) Wake(ctx context.Context, p *Packet, st *State) (Outcome,
 	if workdir == "" {
 		workdir = a.h.root
 	}
-	session := st.Session
-	if session == "" {
-		session = a.h.cfg.Harness.Session
+	spec := func(session string) *childSpec {
+		return &childSpec{argv: a.argv(p, session, mcpConfig), env: childEnv(a.h.cfg, p), workdir: workdir,
+			extraBins: []string{tbBin}, extraRead: []string{a.h.agentDir}}
 	}
-	out, err := runChild(ctx, a.h, a.argv(p, session, mcpConfig), nil, childEnv(a.h.cfg, p), workdir)
+	session := a.h.session()
+	out, err := runChild(ctx, a.h, spec(session))
 	if err != nil {
 		return out, err
 	}
 	if out.ExitCode != 0 && session != "" && strings.Contains(out.Output, "No conversation found") {
 		a.h.audit(&Event{Event: "session_reset", FirstSeq: p.FirstSeq, LastSeq: p.LastSeq})
-		out, err = runChild(ctx, a.h, a.argv(p, "", mcpConfig), nil, childEnv(a.h.cfg, p), workdir)
-		if err != nil {
+		if out, err = runChild(ctx, a.h, spec("")); err != nil {
 			return out, err
 		}
 	}
 	out.Session = lastSessionID(out.Output)
+	out.Output = resultSummary(out.Output, out.ExitCode)
 	return out, nil
+}
+
+// resultSummary reduz o stream-json a um resumo sem conteúdo: o stream traz
+// tool_results (payloads lidos com recv) e a resposta do modelo, que não podem
+// ir para a auditoria.
+func resultSummary(output string, exit int) string {
+	var res struct {
+		Type    string `json:"type"`
+		Subtype string `json:"subtype"`
+		IsError bool   `json:"is_error"`
+		Turns   int    `json:"num_turns"`
+	}
+	sc := bufio.NewScanner(strings.NewReader(output))
+	sc.Buffer(make([]byte, 0, 64<<10), 4<<20)
+	found := false
+	for sc.Scan() {
+		var ev struct {
+			Type string `json:"type"`
+		}
+		if json.Unmarshal(sc.Bytes(), &ev) == nil && ev.Type == "result" {
+			found = json.Unmarshal(sc.Bytes(), &res) == nil
+		}
+	}
+	if !found {
+		return fmt.Sprintf("sem evento result (exit %d)", exit)
+	}
+	return fmt.Sprintf("result subtype=%s is_error=%t turns=%d", res.Subtype, res.IsError, res.Turns)
 }
 
 // lastSessionID extrai o último session_id do stream-json.
@@ -184,26 +238,34 @@ type mcpServer struct {
 	Args    []string `json:"args"`
 }
 
-func (h *Harness) writeMCPConfig() (string, error) {
-	self, err := os.Executable()
+// writeMCPConfig grava <AgentDir>/mcp.json e devolve o caminho e o tb usado.
+func (h *Harness) writeMCPConfig() (path, tbBin string, err error) {
+	tbBin, err = os.Executable()
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	if h.opts.TBBinary != "" {
-		self = h.opts.TBBinary
+		tbBin = h.opts.TBBinary
+	}
+	priv, err := bus.PrivateDir(h.root)
+	if err != nil {
+		return "", "", err
 	}
 	cfg := mcpConfigFile{MCPServers: map[string]mcpServer{
-		"toolbelt": {Command: self, Args: []string{"mcp", "--bus-as", h.member.Channel + "/" + h.member.Name, "--bus-root", h.root}},
+		"toolbelt": {Command: tbBin, Args: []string{"mcp",
+			"--bus-as", h.member.Channel + "/" + h.member.Name,
+			"--bus-root", h.root,
+			"--bus-state", filepath.Dir(priv)}},
 	}}
 	b, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
-	path := h.base + ".mcp.json"
+	path = filepath.Join(h.agentDir, "mcp.json")
 	if err := os.WriteFile(path, b, 0o600); err != nil {
-		return "", err
+		return "", "", err
 	}
-	return path, nil
+	return path, tbBin, nil
 }
 
 func newAdapter(h *Harness) (Adapter, error) {

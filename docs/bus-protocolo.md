@@ -12,6 +12,7 @@ Especificação da etapa **B0** do [ADR-013](adr/013-barramento-multi-vendor.md)
 - Sem daemon: todo comando abre o store, faz a operação numa transação e fecha.
 - `PRAGMA user_version` versiona o schema; versão desconhecida é recusada (fail-closed).
 - Arquivo local, ignorado via `.git/info/exclude` (`tb init`).
+- **Diretório privado** (`<privado>`): sessões, arquivos de wake e estado do harness ficam **fora do repositório**, em `$XDG_STATE_HOME/toolbelt/bus/<hash da raiz>/` (padrão `~/.local/state/...`; `TB_BUS_STATE_DIR` troca a base). Diretórios `0700`, arquivos `0600`. Assim um agente que trabalha com a raiz do repositório como workdir não alcança tokens de outros agentes.
 
 ## Envelope
 
@@ -94,7 +95,7 @@ Declarado no `join`. É informativo: **capacidade não é permissão**; o papel 
 ## Sessão e identidade
 
 - `join` devolve `agent_id` e papel. O token de sessão é aleatório (256 bits), o store guarda o SHA-256 e o token **nunca** sai em stdout, log ou resposta MCP.
-- CLI: o token vai para `.toolbelt/bus/sessions/<canal>/<nome>.token` (`0600`); os comandos seguintes usam `--as <nome>`. Limite do B1: qualquer processo do mesmo usuário lê o arquivo, então a CLI confia no usuário local.
+- CLI: o token vai para `<privado>/sessions/<canal>/<nome>/token` (`0600`); os comandos seguintes usam `--as <nome>`. Limite do B1: qualquer processo do mesmo usuário lê o arquivo, então a CLI confia no usuário local.
 - MCP: a identidade fica presa à conexão stdio do `tb mcp` após `tb_bus_join`; as ferramentas `tb_bus_*` não aceitam outro agente como argumento.
 - **Sessão perdida** (servidor MCP reiniciado, arquivo de sessão apagado): o nome continua registrado. O humano emite `tb bus invite <canal> --role <papel> --name <nome>`; o `join` com esse convite substitui o token (o antigo deixa de valer) e mantém o cursor.
 - **Limite de confiança do B1**: tudo roda como o mesmo usuário. Um agente com shell (inclusive via `tb_run` no MCP) consegue ler `.toolbelt/bus/` e rodar `tb bus invite`/`channel create`. Convite e identidade por conexão protegem contra injeção de prompt e erro de roteamento, não contra um processo local hostil.

@@ -989,3 +989,53 @@ func (s *Store) DataVersion() (int64, error) {
 	err := s.db.QueryRow(`PRAGMA data_version`).Scan(&v)
 	return v, err
 }
+
+const pendingWhere = ` WHERE channel = ? AND seq > ? AND sender <> ?
+	AND (recipient = ? OR recipient = ? OR recipient LIKE 'topic:%')
+	AND (expires_at IS NULL OR expires_at > ?)
+	AND type IN (?`
+
+// Pending lista, sem avançar o cursor e sem transação de escrita, as
+// mensagens endereçadas a m com seq em (after, upto] (upto ≤ 0 = sem teto),
+// filtradas por tipo no SQL (mensagens de outros tipos não ocupam o limite).
+func (s *Store) Pending(m Member, after, upto int64, types []Type, limit int) ([]Message, error) {
+	if len(types) == 0 {
+		return []Message{}, nil
+	}
+	if limit <= 0 || limit > 500 {
+		limit = 500
+	}
+	placeholders := strings.Repeat(",?", len(types)-1)
+	q := selectMessage + pendingWhere + placeholders + ")" //nolint:gosec // G202: só placeholders "?"; valores vão em args
+	args := []any{m.Channel, after, m.ID(), m.ID(), "role:" + string(m.Role), s.nowNS()}
+	for _, t := range types {
+		args = append(args, string(t))
+	}
+	if upto > 0 {
+		q += ` AND seq <= ?`
+		args = append(args, upto)
+	}
+	q += ` ORDER BY seq LIMIT ?`
+	args = append(args, limit)
+	rows, err := s.db.Query(q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []Message{}
+	for rows.Next() {
+		msg, err := scanMessage(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, msg)
+	}
+	return out, rows.Err()
+}
+
+// MaxSeq devolve o maior seq gravado no canal (0 se vazio).
+func (s *Store) MaxSeq(channel string) (int64, error) {
+	var v sql.NullInt64
+	err := s.db.QueryRow(`SELECT MAX(seq) FROM messages WHERE channel = ?`, channel).Scan(&v)
+	return v.Int64, err
+}

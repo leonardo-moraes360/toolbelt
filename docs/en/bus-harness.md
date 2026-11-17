@@ -31,13 +31,13 @@ tb bus run --channel feature-x --as marin --dry-run
 |---|---|
 | `--channel`, `--as` | agent already registered with `tb bus join` (uses its CLI session) |
 | `--invite`, `--role` | optional: run `join` first if there is no session yet |
-| `--config` | wake file (default `.toolbelt/bus/wake/<channel>/<name>.yaml`) |
+| `--config` | wake file (default `<private>/wake/<channel>/<name>.yaml`) |
 | `--once` | handles what is pending, does at most one wake and exits |
 | `--check` | validates config, session, binary and sandbox, then exits without waking anyone |
 | `--dry-run` | prints the wake packet that would be delivered instead of calling the adapter |
 | `--allow-unsandboxed` | explicit opt-in to run the child without the sandbox (as in `tb router run`) |
 
-One harness per agent: exclusive lock on `.toolbelt/bus/run/<channel>/<name>.lock`. A second `tb bus run` for the same agent exits with an error.
+One harness per agent: exclusive lock on `<private>/run/<channel>/<name>.lock`. A second `tb bus run` for the same agent exits with an error.
 
 ## Loop (layer L0)
 
@@ -46,8 +46,8 @@ One harness per agent: exclusive lock on `.toolbelt/bus/run/<channel>/<name>.loc
 3. **Coalesce.** After the first waking message, the harness waits `debounce` (default `3s`) for more, up to `max_delay` (default `30s`) from the first one. `urgent` ends the wait immediately.
 4. **Budget.** At most `max_wakes` wakes per `per` window (default `6` per `1h`). When exceeded, nothing is dropped: the harness logs `wake_budget_exceeded` and waits for the window to free up. This stops agents from waking each other in a loop.
 5. **Wake.** Builds the wake packet and calls the adapter. One wake at a time per agent: messages that arrive during a wake go into the next one.
-6. **Confirm.** When the adapter succeeds, the harness stores `notified_seq` = the packet's last `seq` in `.toolbelt/bus/run/<channel>/<name>.state`. If after `rewake_after` (default `10m`) the agent's cursor is still below that `seq`, the agent did not read: the harness resends the same packet once and, if it stays unread, logs `wake_unread` and stops resending until a new message arrives.
-7. **Failure.** An adapter that exits with an error or times out is retried with backoff (1s, 2s, 4s, 8s, 16s; 5 attempts). When exhausted, the harness logs `wake_failed` and publishes `task.status` to `topic:board` with `{"state":"wake_failed","agent":"agent:<name>","last_seq":N}`, without the child's output.
+6. **Confirm.** When the adapter succeeds, the harness stores `notified_seq` = the packet's last `seq` in `<private>/run/<channel>/<name>.state`. If after `rewake_after` (default `10m`) the agent's cursor is still below that `seq`, the agent did not read: the harness resends the same packet exactly once (whether that works or not) and, if it stays unread, logs `wake_unread` and stops resending until a new message arrives. State whose `notified_seq` is above the channel's highest `seq` (database recreated) is discarded on open.
+7. **Failure.** An adapter that exits with an error or times out is retried with backoff (1s, 2s, 4s, 8s, 16s; 5 attempts). When exhausted, the harness logs `wake_failed`, publishes `task.status` to `topic:board` with `{"state":"wake_failed","agent":"agent:<name>","last_seq":N}` (once per `last_seq`, without the child's output) and tries again after `rewake_after`. Transient store errors (e.g. `SQLITE_BUSY`) are logged as `error` and the loop goes on; only an invalid session stops the harness.
 
 No lease in this stage: once B2 exists, the same loop renews the lease and sends heartbeats.
 
@@ -77,7 +77,7 @@ Delivered to the adapter. It never contains a message payload.
 
 ## Wake file
 
-`.toolbelt/bus/wake/<channel>/<name>.yaml`, mode `0600`, written by the human. `--check` refuses a file with looser permissions.
+`<private>/wake/<channel>/<name>.yaml` (the bus private directory, outside the repository; see [bus-protocolo.md](bus-protocolo.md)), mode `0600`, written by the human. `--check` refuses a file with looser permissions.
 
 Common fields:
 
@@ -98,7 +98,7 @@ sandbox:
   write: []              # extra absolute paths, read-write
 ```
 
-In the sandbox the child can always read the system directories, write the repository root and read its own executable's directory. Anything else it needs (e.g. `~/.claude`, the directory of the `tb` used by `.mcp.json`, the Node runtime) goes into `sandbox.read`/`sandbox.write`.
+In the sandbox the child can always read the system directories, write its workdir and read its own executable's directory (resolved on `PATH`, following symlinks). With the `harness` adapter it can also read the directory of the `tb` used by `mcp.json` and **only** `<private>/sessions/<channel>/<name>/` (its own token and `mcp.json`): other agents' tokens, wake files and harness state are out of reach. Anything else it needs (e.g. `~/.claude`, the Node runtime) goes into `sandbox.read`/`sandbox.write`.
 
 The Agent Card keeps `wake` as a string; the only change is accepting the new value `exec`. Paths, session and keys live in the wake file, not in the card, because the card is visible to the whole channel.
 
@@ -149,7 +149,7 @@ The harness runs, without a shell:
 
 ```bash
 claude -p "<prompt>" --resume <session> --output-format stream-json --verbose \
-  --mcp-config .toolbelt/bus/run/<channel>/<name>.mcp.json \
+  --mcp-config <private>/sessions/<channel>/<name>/mcp.json \
   --permission-mode <mode> --allowedTools <tools>
 ```
 
@@ -158,14 +158,14 @@ claude -p "<prompt>" --resume <session> --output-format stream-json --verbose \
 - **Session:** after each run the harness reads the `session_id` from the final `stream-json` event and stores it in `.state` for the next `--resume`. If the session no longer exists, it starts a new one and logs `session_reset`.
 - **Permissions:** `bypassPermissions` and `--dangerously-skip-permissions` are refused by `--check`. Without `allowed_tools`, the list above applies (bus tools only).
 - **Sandbox:** the child runs in the `tb` Landlock sandbox (fail-closed). Without Landlock it refuses, unless `--allow-unsandboxed` is given. Today the sandbox restricts the filesystem, not the network: the child reaches the vendor API normally, and `sandbox.allow_net` is not enforced yet.
-- **Result:** the harness does not republish the model's output. The agent replies through the bus tools. The output only goes to the audit log, truncated and redacted.
+- **Result:** the harness does not republish the model's output. The agent replies through the bus tools. The `stream-json` carries `tool_result`s with the payloads it read, so the audit log keeps only a summary of the `result` event (`subtype`, `is_error`, `num_turns`).
 - **Visibility:** the run resumes the session in headless mode. An open interactive window of the same agent (desktop app, terminal) does not show the wake; its effect shows up in `tb bus log` and in the resumed session itself.
 
 Other vendors come in as new presets of the same adapter once they have a headless mode with resume. For those without one, the path is `exec`.
 
 ## Audit
 
-`.toolbelt/bus/run/<channel>/<name>.jsonl` (`0600`), one line per event: `wake_start`, `wake_ok`, `wake_attempt_failed`, `wake_failed`, `wake_unread`, `wake_budget_exceeded`, `session_reset`. An invalid config produces no event: `tb bus run` fails to open. Each line has the `seq`s involved, duration and exit code; never a payload, token or `pass_env` value.
+`<private>/run/<channel>/<name>.jsonl` (`0600`), one line per event: `wake_start`, `wake_ok`, `wake_attempt_failed`, `wake_failed`, `wake_unread`, `wake_budget_exceeded`, `session_reset`, `error`. An invalid config produces no event: `tb bus run` fails to open. Each line has the `seq`s involved, duration and exit code; never a payload, token or `pass_env` value.
 
 ## Out of this cut
 

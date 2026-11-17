@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/leonardo-moraes360/toolbelt/internal/bus"
 )
 
 func runBus(t *testing.T, tbBin, dir string, args ...string) []byte {
@@ -91,7 +93,11 @@ func busCLISetup(t *testing.T, tbBin, dir string) string {
 	var workerInv struct{ Code string }
 	unmarshalOut(t, runBus(t, tbBin, dir, "invite", "fx", "--role", "worker"), &workerInv)
 	joinOut := runBus(t, tbBin, dir, "join", "fx", "--invite", created.Invite.Code, "--name", "claude-main", "--vendor", "anthropic")
-	token, err := os.ReadFile(filepath.Join(dir, ".toolbelt", "bus", "sessions", "fx", "claude-main.token"))
+	agentDir, err := bus.AgentDir(dir, "fx", "claude-main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	token, err := os.ReadFile(filepath.Join(agentDir, "token"))
 	if err != nil {
 		t.Fatal(err)
 	}

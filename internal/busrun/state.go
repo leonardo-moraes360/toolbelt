@@ -12,17 +12,28 @@ import (
 	"github.com/leonardo-moraes360/toolbelt/internal/mem"
 )
 
-// RunDir devolve .toolbelt/bus/run/<canal>.
-func RunDir(root, channel string) string { return filepath.Join(bus.Dir(root), "run", channel) }
+// RunDir devolve <privado>/run/<canal> (fora do repositório; ver bus.PrivateDir).
+func RunDir(root, channel string) (string, error) {
+	priv, err := bus.PrivateDir(root)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(priv, "run", channel), nil
+}
 
 // State é o estado persistido do harness de um agente.
 type State struct {
-	NotifiedSeq int64       `json:"notified_seq"`
-	NotifiedAt  time.Time   `json:"notified_at,omitempty"`
-	Rewaked     bool        `json:"rewaked,omitempty"`
-	Unread      bool        `json:"unread,omitempty"`
-	Session     string      `json:"session,omitempty"`
-	Wakes       []time.Time `json:"wakes,omitempty"`
+	NotifiedSeq int64     `json:"notified_seq"`
+	NotifiedAt  time.Time `json:"notified_at,omitempty"`
+	Rewaked     bool      `json:"rewaked,omitempty"`
+	Unread      bool      `json:"unread,omitempty"`
+	Read        bool      `json:"read,omitempty"`
+	FailedSeq   int64     `json:"failed_seq,omitempty"`
+	Session     string    `json:"session,omitempty"`
+	// ConfigSession é o harness.session da config na última execução: se o
+	// humano mudar a config, ela vence a sessão gravada.
+	ConfigSession string      `json:"config_session,omitempty"`
+	Wakes         []time.Time `json:"wakes,omitempty"`
 }
 
 func loadState(path string) (State, error) {
@@ -85,10 +96,10 @@ const maxDetail = 4 << 10
 type auditLog struct{ path string }
 
 func (a auditLog) write(ev *Event) error {
+	ev.Detail = mem.RedactText(ev.Detail) // antes de truncar: o corte não pode partir um segredo
 	if len(ev.Detail) > maxDetail {
 		ev.Detail = ev.Detail[len(ev.Detail)-maxDetail:]
 	}
-	ev.Detail = mem.RedactText(ev.Detail)
 	b, err := json.Marshal(ev)
 	if err != nil {
 		return err

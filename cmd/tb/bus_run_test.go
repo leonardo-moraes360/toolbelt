@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/leonardo-moraes360/toolbelt/internal/busrun"
 )
 
 func assertFirstWakeArgv(t *testing.T, dir string) {
@@ -57,11 +59,15 @@ func TestBusRunHarnessClaudeEndToEnd(t *testing.T) {
 	runBus(t, tbBin, dir, "send", "--channel", "fx", "--as", "boss", "--to", "role:worker",
 		"--type", "task.assign", "--thread", "T-1", "--payload", `{"segredo":"conteudo-privado"}`)
 
-	cfgPath := filepath.Join(dir, ".toolbelt", "bus", "wake", "fx", "claude-w.yaml")
+	cfgPath, err := busrun.ConfigPath(dir, "fx", "claude-w")
+	if err != nil {
+		t.Fatal(err)
+	}
+	runDir, _ := busrun.RunDir(dir, "fx")
 	if err := os.MkdirAll(filepath.Dir(cfgPath), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	cfg := "adapter: harness\nharness:\n  vendor: claude\n  command: " + fake + "\nsandbox:\n  read: [" + filepath.Dir(tbBin) + "]\n"
+	cfg := "adapter: harness\nharness:\n  vendor: claude\n  command: " + fake + "\n"
 	if err := os.WriteFile(cfgPath, []byte(cfg), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -79,10 +85,10 @@ func TestBusRunHarnessClaudeEndToEnd(t *testing.T) {
 	var envs []busEnvelopeOut
 	unmarshalOut(t, runBus(t, tbBin, dir, "log", "fx", "--thread", "T-1"), &envs)
 	if len(envs) != 2 || envs[1].Params.Type != "task.result" || envs[1].Params.From != "agent:claude-w" {
-		audit, _ := os.ReadFile(filepath.Join(dir, ".toolbelt", "bus", "run", "fx", "claude-w.jsonl"))
+		audit, _ := os.ReadFile(filepath.Join(runDir, "claude-w.jsonl"))
 		t.Fatalf("thread T-1: %+v\naudit: %s", envs, audit)
 	}
-	state, err := os.ReadFile(filepath.Join(dir, ".toolbelt", "bus", "run", "fx", "claude-w.state"))
+	state, err := os.ReadFile(filepath.Join(runDir, "claude-w.state"))
 	if err != nil || !strings.Contains(string(state), `"session":"fake-session-1"`) {
 		t.Fatalf("session_id não gravado: %s (%v)", state, err)
 	}

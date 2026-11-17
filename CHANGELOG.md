@@ -13,7 +13,8 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 - MCP: `tb_bus_join`, `tb_bus_send`, `tb_bus_recv`, `tb_bus_claim`, `tb_bus_complete` (identidade presa à conexão; criar canal/convite não é exposto)
 - Barramento: `tb bus invite --name` vincula convite a um agente e recupera sessão perdida (token rotacionado); nome do dono e nomes com convite vinculado aberto ficam reservados
 - Barramento B3: `tb bus run` (harness por agente; espera sem LLM via `PRAGMA data_version`, filtro `wake_on`, agrupamento com debounce/max_delay, orçamento de despertares, rewake/`wake_unread`, retry com backoff e `task.status` `wake_failed`) com adapters `exec` (comando local, wake packet no stdin, env filtrado + `pass_env`) e `harness` (preset `claude -p --resume --output-format stream-json`, sem `bypassPermissions`, `session_id` persistido); spec em `docs/bus-harness.md`
-- `tb mcp --bus-as <canal>/<nome> [--bus-root]`: liga a conexão MCP a uma sessão CLI do bus
+- `tb mcp --bus-as <canal>/<nome> [--bus-root] [--bus-state]`: liga a conexão MCP a uma sessão CLI do bus
+- Barramento: sessões, arquivos de wake e estado do harness saem do repositório para `$XDG_STATE_HOME/toolbelt/bus/<hash>/` (`TB_BUS_STATE_DIR` sobrepõe); o agente acordado lê só o próprio token
 - Sandbox: `Config.Stdin` (entrada padrão do filho, inclusive via trampolim Landlock)
 - `tb init`: `.toolbelt/bus/` entra em `.git/info/exclude`
 

@@ -7,9 +7,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/leonardo-moraes360/toolbelt/internal/bus"
+	"github.com/leonardo-moraes360/toolbelt/internal/log"
 )
 
 var errLocked = errors.New("outro tb bus run já está rodando para este agente")
@@ -30,16 +32,17 @@ type Options struct {
 
 // Harness é o processo que espera e acorda um agente.
 type Harness struct {
-	opts    Options
-	root    string
-	cfg     *Config
-	store   *bus.Store
-	member  bus.Member
-	adapter Adapter
-	base    string // .toolbelt/bus/run/<canal>/<nome>
-	st      State
-	unlock  func()
-	now     func() time.Time
+	opts     Options
+	root     string
+	cfg      *Config
+	store    *bus.Store
+	member   bus.Member
+	adapter  Adapter
+	base     string // <privado>/run/<canal>/<nome>
+	agentDir string // <privado>/sessions/<canal>/<nome> (token + mcp.json)
+	st       State
+	unlock   func()
+	now      func() time.Time
 
 	lastVersion int64
 	lastMax     int64
@@ -62,7 +65,11 @@ func Open(opts *Options) (*Harness, error) {
 		o.Attempts = 5
 	}
 	if o.ConfigPath == "" {
-		o.ConfigPath = ConfigPath(o.Root, o.Channel, o.Name)
+		p, err := ConfigPath(o.Root, o.Channel, o.Name)
+		if err != nil {
+			return nil, err
+		}
+		o.ConfigPath = p
 	}
 	cfg, err := LoadConfig(o.ConfigPath)
 	if err != nil {
@@ -86,11 +93,17 @@ func (h *Harness) init() error {
 		return err
 	}
 	h.member = m
-	dir := RunDir(h.root, m.Channel)
+	dir, err := RunDir(h.root, m.Channel)
+	if err != nil {
+		return err
+	}
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
 	h.base = filepath.Join(dir, m.Name)
+	if h.agentDir, err = bus.AgentDir(h.root, m.Channel, m.Name); err != nil {
+		return err
+	}
 	unlock, err := acquireLock(h.base + ".lock")
 	if err != nil {
 		return err
@@ -98,6 +111,12 @@ func (h *Harness) init() error {
 	h.unlock = unlock
 	if h.st, err = loadState(h.base + ".state"); err != nil {
 		return err
+	}
+	// Estado de outro store (bus.db recriado, agente reentrou): seqs recomeçam.
+	if maxSeq, err := h.store.MaxSeq(m.Channel); err != nil {
+		return err
+	} else if h.st.NotifiedSeq > maxSeq {
+		h.st = State{Session: h.st.Session, ConfigSession: h.st.ConfigSession}
 	}
 	if h.opts.Adapter != nil {
 		h.adapter = h.opts.Adapter
@@ -147,31 +166,33 @@ func (h *Harness) Member() bus.Member { return h.member }
 
 func (h *Harness) audit(ev *Event) {
 	ev.Time = h.now().UTC()
+	for _, name := range h.cfg.PassEnv {
+		if v := os.Getenv(name); len(v) >= 4 {
+			ev.Detail = strings.ReplaceAll(ev.Detail, v, "[REDACTED]")
+		}
+	}
 	_ = auditLog{path: h.base + ".jsonl"}.write(ev)
 }
 
-func (h *Harness) wakes(t bus.Type) bool {
-	for _, w := range h.cfg.WakeOn {
-		if w == t {
-			return true
-		}
-	}
-	return false
+// pending devolve as mensagens que acordam com seq em (from, to].
+func (h *Harness) pending(from, to int64) ([]bus.Message, error) {
+	return h.store.Pending(h.member, from, to, h.cfg.WakeOn, 500)
 }
 
-// pending devolve as mensagens que acordam, acima de max(cursor, notified).
-func (h *Harness) pending(ctx context.Context, from, to int64) ([]bus.Message, error) {
-	msgs, err := h.store.Recv(ctx, h.member, bus.RecvOptions{Peek: true, Since: from + 1, Limit: 500})
-	if err != nil {
-		return nil, err
+// session devolve a sessão a retomar: a do estado, salvo se o humano mudou
+// harness.session na config desde a última execução.
+func (h *Harness) session() string {
+	cfgSess := h.cfg.Harness.Session
+	if cfgSess != h.st.ConfigSession {
+		h.st.ConfigSession = cfgSess
+		h.st.Session = cfgSess
 	}
-	out := msgs[:0]
-	for i := range msgs {
-		if (to <= 0 || msgs[i].Seq <= to) && h.wakes(msgs[i].Type) {
-			out = append(out, msgs[i])
-		}
-	}
-	return out, nil
+	return h.st.Session
+}
+
+// Erros que encerram o harness; os demais são transitórios (log + continua).
+func fatal(err error) bool {
+	return errors.Is(err, bus.ErrUnauthorized) || errors.Is(err, errLocked)
 }
 
 // Run executa o laço até ctx terminar. once: no máximo um despertar.
@@ -179,8 +200,14 @@ func (h *Harness) Run(ctx context.Context, once bool) error {
 	t := time.NewTicker(h.opts.Poll)
 	defer t.Stop()
 	for {
-		if _, err := h.step(ctx, once); err != nil || once {
-			return err
+		if _, err := h.step(ctx, once); err != nil {
+			if once || fatal(err) {
+				return err
+			}
+			h.audit(&Event{Event: "error", Detail: err.Error()})
+			log.Warn("harness do bus: erro transitório", "error", err)
+		} else if once {
+			return nil
 		}
 		select {
 		case <-ctx.Done():
@@ -196,7 +223,7 @@ func (h *Harness) DryRun(ctx context.Context) (*Packet, error) {
 	if err != nil {
 		return nil, err
 	}
-	msgs, err := h.pending(ctx, max(cursor, h.st.NotifiedSeq), 0)
+	msgs, err := h.pending(max(cursor, h.st.NotifiedSeq), 0)
 	if err != nil {
 		return nil, err
 	}
@@ -220,9 +247,9 @@ func (h *Harness) step(ctx context.Context, once bool) (bool, error) {
 		return false, err
 	}
 	if cursor >= h.st.NotifiedSeq {
-		h.st.Rewaked, h.st.Unread = false, false
+		h.st.Read = true
 	}
-	msgs, err := h.pending(ctx, max(cursor, h.st.NotifiedSeq), 0)
+	msgs, err := h.pending(max(cursor, h.st.NotifiedSeq), 0)
 	if err != nil {
 		return false, err
 	}
@@ -262,10 +289,11 @@ func (h *Harness) ready(msgs []bus.Message, now time.Time) bool {
 }
 
 func (h *Harness) rewakeDue(now time.Time) bool {
-	return h.st.NotifiedSeq > 0 && !h.st.Unread && now.Sub(h.st.NotifiedAt) >= h.cfg.RewakeAfter
+	return h.st.NotifiedSeq > 0 && !h.st.Read && !h.st.Unread && now.Sub(h.st.NotifiedAt) >= h.cfg.RewakeAfter
 }
 
-// maybeRewake reenvia uma vez o último packet se o agente não leu.
+// maybeRewake reenvia uma única vez o último packet se o agente não leu;
+// tendo reenviado (com sucesso ou não), o próximo prazo vira wake_unread.
 func (h *Harness) maybeRewake(ctx context.Context, cursor int64, now time.Time) (bool, error) {
 	if cursor >= h.st.NotifiedSeq || !h.rewakeDue(now) || now.Before(h.retryAfter) {
 		return false, nil
@@ -275,16 +303,14 @@ func (h *Harness) maybeRewake(ctx context.Context, cursor int64, now time.Time) 
 		h.audit(&Event{Event: "wake_unread", LastSeq: h.st.NotifiedSeq})
 		return false, h.save()
 	}
-	msgs, err := h.pending(ctx, cursor, h.st.NotifiedSeq)
+	msgs, err := h.pending(cursor, h.st.NotifiedSeq)
 	if err != nil || len(msgs) == 0 {
 		return false, err
 	}
+	h.st.Rewaked = true
+	h.st.NotifiedAt = now
 	woke, err := h.wake(ctx, "rewake", msgs, now)
-	if woke {
-		h.st.Rewaked = true
-		err = errors.Join(err, h.save())
-	}
-	return woke, err
+	return woke, errors.Join(err, h.save())
 }
 
 func (h *Harness) save() error { return saveState(h.base+".state", &h.st) }
@@ -292,6 +318,7 @@ func (h *Harness) save() error { return saveState(h.base+".state", &h.st) }
 // wake aplica orçamento, chama o adapter com retry e grava o estado.
 func (h *Harness) wake(ctx context.Context, reason string, msgs []bus.Message, now time.Time) (bool, error) {
 	if !h.st.allowWake(now, h.cfg.Budget) {
+		_ = h.save()
 		if !h.budgetLog {
 			h.audit(&Event{Event: "wake_budget_exceeded", FirstSeq: msgs[0].Seq, LastSeq: msgs[len(msgs)-1].Seq})
 			h.budgetLog = true
@@ -299,6 +326,9 @@ func (h *Harness) wake(ctx context.Context, reason string, msgs []bus.Message, n
 		return false, nil
 	}
 	h.budgetLog = false
+	if err := h.save(); err != nil { // slot do orçamento persiste mesmo se cancelar
+		return false, err
+	}
 	p := newPacket(h.member, reason, msgs)
 	var out Outcome
 	var err error
@@ -320,9 +350,9 @@ func (h *Harness) wake(ctx context.Context, reason string, msgs []bus.Message, n
 			if out.Session != "" {
 				h.st.Session = out.Session
 			}
-			h.st.NotifiedSeq, h.st.NotifiedAt = p.LastSeq, h.now()
 			if reason == "messages" {
-				h.st.Rewaked, h.st.Unread = false, false
+				h.st.NotifiedSeq, h.st.NotifiedAt = p.LastSeq, h.now()
+				h.st.Rewaked, h.st.Unread, h.st.Read = false, false, false
 			}
 			h.firstSeen, h.retryAfter = time.Time{}, time.Time{}
 			return true, h.save()
@@ -347,6 +377,10 @@ func (h *Harness) fail(p *Packet) error {
 	h.audit(&Event{Event: "wake_failed", FirstSeq: p.FirstSeq, LastSeq: p.LastSeq, Attempt: p.Attempt})
 	h.retryAfter = h.now().Add(h.cfg.RewakeAfter)
 	h.firstSeen = time.Time{}
+	if h.st.FailedSeq == p.LastSeq { // task.status só uma vez por last_seq
+		return h.save()
+	}
+	h.st.FailedSeq = p.LastSeq
 	payload, _ := json.Marshal(map[string]any{"state": "wake_failed", "agent": h.member.ID(), "last_seq": p.LastSeq})
 	_, err := h.store.Send(h.member, &bus.SendInput{To: "topic:board", Type: bus.TypeTaskStatus, Payload: payload})
 	return errors.Join(err, h.save())
