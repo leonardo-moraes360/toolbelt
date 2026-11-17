@@ -12,6 +12,7 @@ import (
 	"github.com/leonardo-moraes360/toolbelt/internal/guard"
 	"github.com/leonardo-moraes360/toolbelt/internal/mem"
 	"github.com/leonardo-moraes360/toolbelt/internal/review"
+	"github.com/leonardo-moraes360/toolbelt/internal/stack"
 	"github.com/leonardo-moraes360/toolbelt/internal/verify"
 )
 
@@ -24,6 +25,7 @@ func RegisterParityTools() {
 	registerVerifyTools()
 	registerReviewTools()
 	registerGuardTools()
+	registerStackTools()
 }
 
 func registerMemTools() {
@@ -97,7 +99,7 @@ func registerMemQueryTools() {
 			Type: "object",
 			Properties: map[string]Property{
 				"category": {Type: "string", Description: "Filtrar categoria"},
-				"all":      {Type: "string", Description: "true para incluir aposentadas", Default: "false"},
+				"all":      {Type: "boolean", Description: "true para incluir aposentadas", Default: false},
 				"cwd":      {Type: "string", Description: "Diretório do repositório"},
 			},
 		},
@@ -123,7 +125,7 @@ func registerMemQueryTools() {
 			Type: "object",
 			Properties: map[string]Property{
 				"query": {Type: "string", Description: "Texto a buscar em id/categoria/regra/ref"},
-				"all":   {Type: "string", Description: "true para incluir aposentadas", Default: "false"},
+				"all":   {Type: "boolean", Description: "true para incluir aposentadas", Default: false},
 				"cwd":   {Type: "string", Description: "Diretório do repositório"},
 			},
 			Required: []string{"query"},
@@ -137,7 +139,7 @@ func registerMemQueryTools() {
 			Type: "object",
 			Properties: map[string]Property{
 				"expect_sha": {Type: "string", Description: "SHA256 esperado"},
-				"all":        {Type: "string", Description: "true para incluir aposentadas", Default: "false"},
+				"all":        {Type: "boolean", Description: "true para incluir aposentadas", Default: false},
 				"cwd":        {Type: "string", Description: "Diretório do repositório"},
 			},
 		},
@@ -163,6 +165,16 @@ func registerVerifyTools() {
 				"manifest":         {Type: "string", Description: "Manifesto visual"},
 				"threshold":        {Type: "number", Description: "Threshold visual", Default: 0.95},
 				"skip_unavailable": {Type: "boolean", Description: "Skip gracioso se ruler indisponível", Default: true},
+				"env": {
+					Type:        "array",
+					Description: "Chaves extras na allowlist de ambiente",
+					Items:       &Property{Type: "string"},
+				},
+				"pass_env": {
+					Type:        "array",
+					Description: "Opt-in explícito para segredos (*TOKEN*/SECRET/KEY/PASSWORD)",
+					Items:       &Property{Type: "string"},
+				},
 			},
 		},
 		Handler: handleVerifyRun,
@@ -228,6 +240,52 @@ func registerGuardTools() {
 	})
 }
 
+func registerStackTools() {
+	Register(&Tool{
+		Name:        "tb_stack",
+		Description: "Empilha verify/review/drift/guard com contexto compartilhado (paridade com tb stack)",
+		InputSchema: &InputSchema{
+			Type: "object",
+			Properties: map[string]Property{
+				"ops": {
+					Type:        "array",
+					Description: "Operações na ordem: verify, review, drift, guard",
+					Items:       &Property{Type: "string"},
+				},
+				"cwd":             {Type: "string", Description: "Diretório do repositório"},
+				"base":            {Type: "string", Description: "Ref base", Default: "HEAD~1"},
+				"head":            {Type: "string", Description: "Ref head", Default: "HEAD"},
+				"fail_fast":       {Type: "boolean", Description: "Para na primeira etapa que falhar", Default: false},
+				"ticket":          {Type: "string", Description: "Caminho do ticket/rd.md", Default: "rd.md"},
+				"approved_sha":    {Type: "string", Description: "SHA aprovado (review/drift)"},
+				"warn_only":       {Type: "boolean", Description: "guard: não marca falha em SeverityError", Default: false},
+				"test_cmd":        {Type: "string", Description: "verify: testes visíveis"},
+				"hidden_test_cmd": {Type: "string", Description: "verify: testes ocultos"},
+				"max_iter":        {Type: "integer", Description: "verify: máximo de iterações", Default: 0},
+				"timeout":         {Type: "string", Description: "verify: timeout", Default: "10m"},
+				"reviewers":       {Type: "integer", Description: "review: máximo de goldfish", Default: 0},
+				"standards": {
+					Type:        "array",
+					Description: "review: papéis scope/quality/acceptance",
+					Items:       &Property{Type: "string"},
+				},
+				"env": {
+					Type:        "array",
+					Description: "Chaves extras na allowlist de ambiente (verify)",
+					Items:       &Property{Type: "string"},
+				},
+				"pass_env": {
+					Type:        "array",
+					Description: "Opt-in explícito para segredos no verify",
+					Items:       &Property{Type: "string"},
+				},
+			},
+			Required: []string{"ops"},
+		},
+		Handler: handleStack,
+	})
+}
+
 func resolveToolCWD(args map[string]any) (string, error) {
 	if cwd := StringArg(args, "cwd"); cwd != "" {
 		return AbsPath(cwd), nil
@@ -266,7 +324,7 @@ func handleMemList(_ context.Context, args map[string]any) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	return s.List(StringArg(args, "category"), boolArgTrue(args, "all"))
+	return s.List(StringArg(args, "category"), BoolArg(args, "all", false))
 }
 
 func handleMemShow(_ context.Context, args map[string]any) (any, error) {
@@ -308,7 +366,7 @@ func handleMemSearch(_ context.Context, args map[string]any) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	return s.Search(StringArg(args, "query"), boolArgTrue(args, "all"))
+	return s.Search(StringArg(args, "query"), BoolArg(args, "all", false))
 }
 
 func handleMemCheck(_ context.Context, args map[string]any) (any, error) {
@@ -317,10 +375,10 @@ func handleMemCheck(_ context.Context, args map[string]any) (any, error) {
 		return nil, err
 	}
 	sha := StringArg(args, "expect_sha")
-	all := boolArgTrue(args, "all")
+	all := BoolArg(args, "all", false)
 	rep, err := memCheckReport(s, sha, all)
 	if err != nil {
-		if initErr := mem.EnsureDefaultAntiCheat(dir); initErr == nil && sha == "" {
+		if _, initErr := mem.EnsureDefaultAntiCheat(dir); initErr == nil && sha == "" {
 			return memCheckReport(s, "", all)
 		}
 		return nil, err
@@ -340,11 +398,6 @@ func memCheckReport(s *mem.Store, sha string, includeRetired bool) (*mem.CheckRe
 	return s.Check(sha, ids, includeRetired)
 }
 
-func boolArgTrue(args map[string]any, key string) bool {
-	v := strings.ToLower(strings.TrimSpace(StringArg(args, key)))
-	return v == "true" || v == "1" || v == "yes"
-}
-
 func stringArgPresent(args map[string]any, key string) (string, bool) {
 	raw, ok := args[key]
 	if !ok || raw == nil {
@@ -362,10 +415,11 @@ func handleMemInit(_ context.Context, args map[string]any) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := mem.EnsureDefaultAntiCheat(dir); err != nil {
+	result, err := mem.EnsureDefaultAntiCheat(dir)
+	if err != nil {
 		return nil, err
 	}
-	return map[string]any{"ok": true, "path": filepath.Join(dir, mem.DefaultInvariantsFile)}, nil
+	return result, nil
 }
 
 func handleVerifyRun(ctx context.Context, args map[string]any) (any, error) {
@@ -406,6 +460,8 @@ func runVerifyTests(ctx context.Context, cwd string, args map[string]any) (any, 
 		return nil, fmt.Errorf("timeout inválido: %w", err)
 	}
 	cfg.Timeout = timeout
+	cfg.EnvAllow = append(cfg.EnvAllow, StringSliceArg(args, "env", nil)...)
+	cfg.EnvPass = append(cfg.EnvPass, StringSliceArg(args, "pass_env", nil)...)
 	return verify.Run(ctx, &cfg)
 }
 
@@ -426,6 +482,8 @@ func applyVerifyFileConfig(cfg *verify.Config) {
 	if fileCfg.Verify.LintCmd != "" {
 		cfg.LintCmd = fileCfg.Verify.LintCmd
 	}
+	cfg.EnvAllow = append(cfg.EnvAllow, fileCfg.Env.Allow...)
+	cfg.EnvPass = append(cfg.EnvPass, fileCfg.Env.Pass...)
 }
 
 func runVerifyVisual(ctx context.Context, cwd string, args map[string]any) (any, error) {
@@ -474,6 +532,7 @@ func driftConfigFromArgs(args map[string]any) (*review.Config, error) {
 		ticketPath = filepath.Join(cwd, ticketPath)
 	}
 	base := StringArg(args, "base")
+	baseSet := base != ""
 	if base == "" {
 		base = "HEAD~1"
 	}
@@ -485,11 +544,12 @@ func driftConfigFromArgs(args map[string]any) (*review.Config, error) {
 	if err != nil && !os.IsNotExist(err) {
 		return nil, err
 	}
-	if ticket != nil && ticket.BaseCommit != "" && base == "HEAD~1" {
+	if !baseSet && ticket != nil && ticket.BaseCommit != "" {
 		base = ticket.BaseCommit
 	}
 	cfg := review.DefaultConfig(cwd)
 	cfg.BaseRef = base
+	cfg.BaseExplicit = baseSet
 	cfg.HeadRef = head
 	cfg.ApprovedSHA = StringArg(args, "approved_sha")
 	cfg.TicketPath = ticketPath
@@ -517,6 +577,7 @@ func reviewConfigFromArgs(args map[string]any) (*review.Config, error) {
 	cfg := review.DefaultConfig(cwd)
 	if v := StringArg(args, "base"); v != "" {
 		cfg.BaseRef = v
+		cfg.BaseExplicit = true
 	}
 	if v := StringArg(args, "head"); v != "" {
 		cfg.HeadRef = v
@@ -599,4 +660,58 @@ func hasGuardStrictError(violations []guard.Violation) bool {
 		}
 	}
 	return false
+}
+
+func handleStack(ctx context.Context, args map[string]any) (any, error) {
+	cwd, err := resolveToolCWD(args)
+	if err != nil {
+		return nil, err
+	}
+	opNames := StringSliceArg(args, "ops", nil)
+	ops, err := stack.ParseOps(opNames)
+	if err != nil {
+		return nil, err
+	}
+	base := StringArg(args, "base")
+	if base == "" {
+		base = "HEAD~1"
+	}
+	head := StringArg(args, "head")
+	if head == "" {
+		head = "HEAD"
+	}
+	timeoutStr := StringArg(args, "timeout")
+	if timeoutStr == "" {
+		timeoutStr = "10m"
+	}
+	timeout, err := time.ParseDuration(timeoutStr)
+	if err != nil {
+		return nil, fmt.Errorf("timeout inválido: %w", err)
+	}
+	ticket := StringArg(args, "ticket")
+	if ticket == "" {
+		ticket = "rd.md"
+	}
+	if !filepath.IsAbs(ticket) {
+		ticket = filepath.Join(cwd, ticket)
+	}
+	opts := &stack.Options{
+		RepoDir:       cwd,
+		Base:          base,
+		Head:          head,
+		Ops:           ops,
+		FailFast:      BoolArg(args, "fail_fast", false),
+		Ticket:        ticket,
+		ApprovedSHA:   StringArg(args, "approved_sha"),
+		WarnOnly:      BoolArg(args, "warn_only", false),
+		TestCmd:       StringArg(args, "test_cmd"),
+		HiddenTestCmd: StringArg(args, "hidden_test_cmd"),
+		MaxIter:       IntArg(args, "max_iter", 0),
+		Timeout:       timeout,
+		Reviewers:     IntArg(args, "reviewers", 0),
+		Standards:     StringSliceArg(args, "standards", nil),
+		EnvAllow:      StringSliceArg(args, "env", nil),
+		EnvPass:       StringSliceArg(args, "pass_env", nil),
+	}
+	return stack.Run(ctx, opts)
 }

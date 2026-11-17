@@ -3,11 +3,12 @@ package review
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"unicode"
 
+	"github.com/leonardo-moraes360/toolbelt/internal/git"
 	"github.com/leonardo-moraes360/toolbelt/internal/mem"
 	"gopkg.in/yaml.v3"
 )
@@ -28,7 +29,10 @@ type Finding struct {
 	Message   string   `json:"message"`
 	File      string   `json:"file,omitempty"`
 	Reviewer  string   `json:"reviewer"`
+	Role      string   `json:"role"`
 	Agreement int      `json:"agreement"`
+	Criterion string   `json:"criterion,omitempty"`
+	Evidence  string   `json:"evidence,omitempty"`
 }
 
 type TicketScope struct {
@@ -40,14 +44,25 @@ type TicketScope struct {
 	Description string   `yaml:"description" json:"description"`
 }
 
+type Shared struct {
+	Diff          string
+	Changed       []string
+	Invariants    []mem.Invariant
+	HasDiff       bool
+	HasChanged    bool
+	HasInvariants bool
+}
+
 type Config struct {
-	RepoDir     string
-	BaseRef     string
-	HeadRef     string
-	ApprovedSHA string
-	TicketPath  string
-	Reviewers   int
-	Standards   []string
+	RepoDir      string
+	BaseRef      string
+	HeadRef      string
+	ApprovedSHA  string
+	TicketPath   string
+	Reviewers    int
+	Standards    []string
+	Shared       *Shared
+	BaseExplicit bool
 }
 
 type Report struct {
@@ -67,6 +82,7 @@ type DriftReport struct {
 	BaseMismatch   bool            `json:"base_mismatch"`
 	DeclaredBase   string          `json:"declared_base,omitempty"`
 	ActualBase     string          `json:"actual_base,omitempty"`
+	MergeBase      string          `json:"merge_base,omitempty"`
 	PinnedApproval *PinnedApproval `json:"pinned_approval,omitempty"`
 }
 
@@ -96,20 +112,20 @@ func Run(cfg *Config) (*Report, error) {
 	if err != nil && !os.IsNotExist(err) {
 		return nil, err
 	}
-	if ticket != nil && ticket.BaseCommit != "" && cfg.BaseRef == "HEAD~1" {
+	if !cfg.BaseExplicit && ticket != nil && ticket.BaseCommit != "" && cfg.BaseRef == "HEAD~1" {
 		cfg.BaseRef = ticket.BaseCommit
 	}
 
-	changed, err := listChangedFiles(cfg.RepoDir, cfg.BaseRef, cfg.HeadRef)
+	changed, err := resolveChanged(cfg)
 	if err != nil {
 		return nil, err
 	}
-	diff, err := gitDiff(cfg.RepoDir, cfg.BaseRef, cfg.HeadRef)
+	diff, err := resolveDiff(cfg)
 	if err != nil {
 		return nil, err
 	}
 
-	invariants, _ := loadInvariants(cfg.RepoDir)
+	invariants := resolveInvariants(cfg)
 	roster := buildReviewerRoster(cfg.Standards, cfg.Reviewers)
 
 	report := &Report{
@@ -121,7 +137,7 @@ func Run(cfg *Config) (*Report, error) {
 	}
 
 	drift := DetectDrift(ticket, changed, cfg.BaseRef)
-	reconcileDriftBase(cfg.RepoDir, drift)
+	enrichDriftBase(cfg.RepoDir, drift, cfg.HeadRef)
 	report.Drift = drift
 
 	pinned, err := CheckPinnedApproval(cfg.RepoDir, cfg.BaseRef, cfg.ApprovedSHA, cfg.HeadRef)
@@ -226,13 +242,25 @@ func Fresh(ctx *FreshContext) []Finding {
 	if standards["acceptance"] {
 		out = append(out, reviewAcceptance(ctx)...)
 	}
+	for i := range out {
+		normalizeFinding(&out[i])
+	}
 	return out
+}
+
+func normalizeFinding(f *Finding) {
+	if f.Role == "" {
+		f.Role = f.Category
+	}
+	if f.Agreement <= 0 {
+		f.Agreement = 1
+	}
 }
 
 func reviewScope(ctx *FreshContext) []Finding {
 	if ctx.Ticket == nil || len(ctx.Ticket.Scope) == 0 {
 		return []Finding{{
-			ID: "scope-missing", Severity: SeverityWarning, Category: "scope",
+			ID: "scope-missing", Severity: SeverityWarning, Category: "scope", Role: "scope",
 			Message: "ticket/rd.md sem scope declarado", Reviewer: ctx.Reviewer, Agreement: 1,
 		}}
 	}
@@ -240,14 +268,14 @@ func reviewScope(ctx *FreshContext) []Finding {
 	for _, f := range ctx.Changed {
 		if !inScope(f, ctx.Ticket.Scope) {
 			out = append(out, Finding{
-				ID: "drift-" + f, Severity: SeverityError, Category: "scope",
+				ID: "drift-" + f, Severity: SeverityError, Category: "scope", Role: "scope",
 				Message: "mudança fora do scope declarado", File: f,
 				Reviewer: ctx.Reviewer, Agreement: 1,
 			})
 		}
 		if hitForbidden(f, ctx.Ticket.Forbidden) {
 			out = append(out, Finding{
-				ID: "forbidden-" + f, Severity: SeverityCritical, Category: "scope",
+				ID: "forbidden-" + f, Severity: SeverityCritical, Category: "scope", Role: "scope",
 				Message: "arquivo proibido pelo mandate foi alterado", File: f,
 				Reviewer: ctx.Reviewer, Agreement: 1,
 			})
@@ -259,41 +287,65 @@ func reviewScope(ctx *FreshContext) []Finding {
 func reviewInvariants(ctx *FreshContext) []Finding {
 	var out []Finding
 	lowerDiff := strings.ToLower(ctx.Diff)
+	added := addedSourceDiffLines(ctx.Diff)
 	for _, inv := range ctx.Invariants {
 		rule := strings.ToLower(inv.Rule)
-		if strings.Contains(rule, "nunca") || strings.Contains(rule, "never") {
-			if suggestsViolation(rule, lowerDiff, ctx.Changed) {
-				out = append(out, Finding{
-					ID: "inv-" + inv.ID, Severity: SeverityCritical, Category: "invariants",
-					Message:  "possível violação de invariante: " + inv.Rule,
-					Reviewer: ctx.Reviewer, Agreement: 1,
-				})
-			}
+		if !prohibitoryRule(rule) {
+			continue
 		}
-	}
-	return out
-}
-
-func reviewAcceptance(ctx *FreshContext) []Finding {
-	if ctx.Ticket == nil || len(ctx.Ticket.Acceptance) == 0 {
-		return nil
-	}
-	evidence := acceptanceEvidence(ctx)
-	var out []Finding
-	for i, crit := range ctx.Ticket.Acceptance {
-		if acceptanceCovered(crit, evidence) {
+		evidence := ""
+		if suggestsViolation(rule, lowerDiff, ctx.Changed) {
+			evidence = "path alterado casa com a invariante"
+		}
+		if hit, ev := suggestsAddedLineViolation(inv.Rule, added); hit {
+			evidence = ev
+		}
+		if evidence == "" {
 			continue
 		}
 		out = append(out, Finding{
-			ID: fmt.Sprintf("accept-%d", i), Severity: SeverityWarning, Category: "acceptance",
-			Message:  "critério de aceite sem evidência em testes/arquivos alterados: " + crit,
+			ID: "inv-" + inv.ID, Severity: SeverityCritical, Category: "invariants", Role: "invariants",
+			Message:  "possível violação de invariante: " + inv.Rule,
+			Evidence: evidence,
 			Reviewer: ctx.Reviewer, Agreement: 1,
 		})
 	}
 	return out
 }
 
-func acceptanceEvidence(ctx *FreshContext) string {
+func prohibitoryRule(rule string) bool {
+	return strings.Contains(rule, "nunca") ||
+		strings.Contains(rule, "never") ||
+		strings.Contains(rule, "proib") ||
+		strings.Contains(rule, "forbid") ||
+		strings.Contains(rule, "sem coment") ||
+		strings.Contains(rule, "no comment")
+}
+
+func reviewAcceptance(ctx *FreshContext) []Finding {
+	if ctx.Ticket == nil || len(ctx.Ticket.Acceptance) == 0 {
+		return nil
+	}
+	tests := extractDiffTests(ctx.Diff)
+	evidence := acceptanceEvidence(ctx, tests)
+	summary := summarizeAcceptanceEvidence(ctx, tests)
+	var out []Finding
+	for i, crit := range ctx.Ticket.Acceptance {
+		if acceptanceCovered(crit, evidence, tests) {
+			continue
+		}
+		out = append(out, Finding{
+			ID: fmt.Sprintf("accept-%d", i), Severity: SeverityWarning, Category: "acceptance", Role: "acceptance",
+			Message:   "critério de aceite sem evidência em testes/arquivos alterados: " + crit,
+			Criterion: crit,
+			Evidence:  summary,
+			Reviewer:  ctx.Reviewer, Agreement: 1,
+		})
+	}
+	return out
+}
+
+func acceptanceEvidence(ctx *FreshContext, tests []string) string {
 	var paths []string
 	codeOrTest := map[string]bool{}
 	for _, f := range ctx.Changed {
@@ -306,13 +358,52 @@ func acceptanceEvidence(ctx *FreshContext) string {
 	b.WriteString(strings.ToLower(strings.Join(paths, " ")))
 	b.WriteByte(' ')
 	b.WriteString(strings.ToLower(diffForFiles(ctx.Diff, codeOrTest)))
+	b.WriteByte(' ')
+	for _, name := range tests {
+		b.WriteString(strings.ToLower(name))
+		b.WriteByte(' ')
+		for _, part := range splitIdent(name) {
+			if len(part) >= 3 {
+				b.WriteString(strings.ToLower(part))
+				b.WriteByte(' ')
+			}
+		}
+	}
 	return b.String()
 }
 
-func acceptanceCovered(crit, evidence string) bool {
+func summarizeAcceptanceEvidence(ctx *FreshContext, tests []string) string {
+	var parts []string
+	if len(tests) > 0 {
+		parts = append(parts, "testes="+strings.Join(tests, ","))
+	}
+	var files []string
+	for _, f := range ctx.Changed {
+		if isSourceFile(f) || isTestFile(f) {
+			files = append(files, filepath.ToSlash(f))
+		}
+	}
+	if len(files) > 0 {
+		parts = append(parts, "arquivos="+strings.Join(files, ","))
+	}
+	if len(parts) == 0 {
+		return "nenhum teste ou arquivo de código no diff"
+	}
+	return strings.Join(parts, "; ")
+}
+
+func acceptanceCovered(crit, evidence string, tests []string) bool {
+	for _, sym := range criterionSymbols(crit) {
+		for _, name := range tests {
+			if testCoversSymbol(name, sym) {
+				return true
+			}
+		}
+	}
 	tokens := strings.Fields(strings.ToLower(crit))
 	hit, meaningful := 0, 0
 	for _, tok := range tokens {
+		tok = strings.Trim(tok, ".,;:()[]{}\"'`")
 		if len(tok) < 4 {
 			continue
 		}
@@ -322,6 +413,120 @@ func acceptanceCovered(crit, evidence string) bool {
 		}
 	}
 	return meaningful == 0 || hit*2 >= meaningful
+}
+
+var (
+	goTestFuncRe = regexp.MustCompile(`(?m)^\+\s*func\s+(Test[A-Za-z0-9_]+)\s*\(`)
+	jsTestCallRe = regexp.MustCompile("(?m)^\\+\\s*(?:it|test|describe)(?:\\.(?:only|skip|todo))?\\s*\\(\\s*['\"`]([^'\"`]+)['\"`]")
+	jsTestFuncRe = regexp.MustCompile(`(?m)^\+\s*(?:export\s+)?(?:async\s+)?function\s+(test[A-Za-z0-9_]+)\s*\(`)
+)
+
+func extractDiffTests(diff string) []string {
+	seen := map[string]bool{}
+	var names []string
+	add := func(name string) {
+		name = strings.TrimSpace(name)
+		if name == "" || seen[name] {
+			return
+		}
+		seen[name] = true
+		names = append(names, name)
+	}
+	for _, m := range goTestFuncRe.FindAllStringSubmatch(diff, -1) {
+		add(m[1])
+	}
+	for _, m := range jsTestCallRe.FindAllStringSubmatch(diff, -1) {
+		add(m[1])
+	}
+	for _, m := range jsTestFuncRe.FindAllStringSubmatch(diff, -1) {
+		add(m[1])
+	}
+	return names
+}
+
+func criterionSymbols(crit string) []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, tok := range strings.Fields(crit) {
+		tok = strings.Trim(tok, ".,;:()[]{}\"'`")
+		if tok == "" {
+			continue
+		}
+		runes := []rune(tok)
+		if unicode.IsUpper(runes[0]) && len(tok) >= 3 {
+			if !seen[tok] {
+				seen[tok] = true
+				out = append(out, tok)
+			}
+		}
+		for _, part := range splitIdent(tok) {
+			if len(part) < 3 || seen[part] {
+				continue
+			}
+			pr := []rune(part)
+			if unicode.IsUpper(pr[0]) {
+				seen[part] = true
+				out = append(out, part)
+			}
+		}
+	}
+	return out
+}
+
+func testCoversSymbol(testName, sym string) bool {
+	symLower := strings.ToLower(strings.TrimSpace(sym))
+	if symLower == "" {
+		return false
+	}
+	if strings.EqualFold(testName, sym) {
+		return true
+	}
+	for _, part := range splitIdent(testName) {
+		if strings.EqualFold(part, sym) {
+			return true
+		}
+	}
+	lowerName := strings.ToLower(testName)
+	if strings.Contains(lowerName, symLower) {
+		return true
+	}
+	for _, part := range strings.FieldsFunc(testName, func(r rune) bool {
+		return r == ' ' || r == '-' || r == '_' || r == '/'
+	}) {
+		if strings.EqualFold(part, sym) || strings.Contains(strings.ToLower(part), symLower) {
+			return true
+		}
+	}
+	return false
+}
+
+func splitIdent(s string) []string {
+	var parts []string
+	var cur strings.Builder
+	runes := []rune(s)
+	flush := func() {
+		if cur.Len() == 0 {
+			return
+		}
+		parts = append(parts, cur.String())
+		cur.Reset()
+	}
+	for i, r := range runes {
+		if r == '_' || r == '-' || r == ' ' {
+			flush()
+			continue
+		}
+		if i > 0 && unicode.IsUpper(r) {
+			prev := runes[i-1]
+			nextLower := i+1 < len(runes) && unicode.IsLower(runes[i+1])
+			if unicode.IsLower(prev) || (unicode.IsUpper(prev) && nextLower) {
+				flush()
+			}
+		}
+		cur.WriteRune(r)
+	}
+	flush()
+	return parts
 }
 
 func diffForFiles(diff string, allow map[string]bool) string {
@@ -363,8 +568,9 @@ func reviewQuality(ctx *FreshContext) []Finding {
 	return out
 }
 
+var qualityMarkerRe = regexp.MustCompile(`\b(TODO|FIXME|XXX|HACK)\b`)
+
 func reviewQualityTODO(ctx *FreshContext) []Finding {
-	re := regexp.MustCompile(`(?i)\b(TODO|FIXME)\b`)
 	var out []Finding
 	file := ""
 	seen := map[string]bool{}
@@ -376,7 +582,8 @@ func reviewQualityTODO(ctx *FreshContext) []Finding {
 		if !strings.HasPrefix(line, "+") || strings.HasPrefix(line, "+++") {
 			continue
 		}
-		if !re.MatchString(line) {
+		content := line[1:]
+		if !qualityMarkerInComment(content) {
 			continue
 		}
 		id := "quality-todo-" + file
@@ -385,13 +592,42 @@ func reviewQualityTODO(ctx *FreshContext) []Finding {
 		}
 		seen[id] = true
 		out = append(out, Finding{
-			ID: id, Severity: SeverityWarning, Category: "quality",
-			Message:  "TODO/FIXME adicionado no diff",
+			ID: id, Severity: SeverityWarning, Category: "quality", Role: "quality",
+			Message:  "TODO/FIXME/XXX/HACK adicionado em comentário no diff",
 			File:     file,
 			Reviewer: ctx.Reviewer, Agreement: 1,
 		})
 	}
 	return out
+}
+
+func qualityMarkerInComment(content string) bool {
+	if !qualityMarkerRe.MatchString(content) {
+		return false
+	}
+	trimmed := strings.TrimSpace(content)
+	switch {
+	case strings.HasPrefix(trimmed, "//"),
+		strings.HasPrefix(trimmed, "#"),
+		strings.HasPrefix(trimmed, "/*"),
+		strings.HasPrefix(trimmed, "*"),
+		strings.HasPrefix(trimmed, "<!--"),
+		strings.HasPrefix(trimmed, "{/*"):
+		return qualityMarkerRe.MatchString(trimmed)
+	}
+	if idx := strings.Index(content, "//"); idx >= 0 {
+		return qualityMarkerRe.MatchString(content[idx:])
+	}
+	if idx := strings.Index(content, "/*"); idx >= 0 {
+		return qualityMarkerRe.MatchString(content[idx:])
+	}
+	if idx := strings.Index(content, "#"); idx >= 0 {
+		before := strings.TrimSpace(content[:idx])
+		if before == "" || !strings.ContainsAny(before, `"'`) {
+			return qualityMarkerRe.MatchString(content[idx:])
+		}
+	}
+	return false
 }
 
 var addedFuncRe = regexp.MustCompile(`(?i)^\+\s*(?:export\s+)?(?:async\s+)?(?:pub(?:\([^)]*\))?\s+)?(?:func|function|def|fn)\s+`)
@@ -412,7 +648,7 @@ func reviewQualityLargeFuncs(ctx *FreshContext) []Finding {
 		if !emitted[id] {
 			emitted[id] = true
 			out = append(out, Finding{
-				ID: "quality-large-func", Severity: SeverityWarning, Category: "quality",
+				ID: "quality-large-func", Severity: SeverityWarning, Category: "quality", Role: "quality",
 				Message:  fmt.Sprintf("função adicionada muito grande (%d linhas +)", added),
 				File:     file,
 				Reviewer: ctx.Reviewer, Agreement: 1,
@@ -463,10 +699,116 @@ func reviewQualityMissingTests(ctx *FreshContext) []Finding {
 		return nil
 	}
 	return []Finding{{
-		ID: "quality-no-tests", Severity: SeverityWarning, Category: "quality",
+		ID: "quality-no-tests", Severity: SeverityWarning, Category: "quality", Role: "quality",
 		Message:  "código fonte alterado sem mudança em testes",
 		Reviewer: ctx.Reviewer, Agreement: 1,
 	}}
+}
+
+func addedSourceDiffLines(diff string) []string {
+	var lines []string
+	file := ""
+	for _, line := range strings.Split(diff, "\n") {
+		if strings.HasPrefix(line, "diff --git ") {
+			file = diffPath(line)
+			continue
+		}
+		if !strings.HasPrefix(line, "+") || strings.HasPrefix(line, "+++") {
+			continue
+		}
+		if file != "" && !(isSourceFile(file) || isTestFile(file)) {
+			continue
+		}
+		lines = append(lines, line[1:])
+	}
+	return lines
+}
+
+func suggestsAddedLineViolation(rule string, added []string) (hit bool, evidence string) {
+	if len(added) == 0 {
+		return false, ""
+	}
+	ruleLower := strings.ToLower(rule)
+	joinedLower := strings.ToLower(strings.Join(added, "\n"))
+
+	if strings.Contains(ruleLower, "console.log") && strings.Contains(joinedLower, "console.log") {
+		return true, "linha adicionada contém console.log"
+	}
+	if forbidsComments(ruleLower) {
+		for _, line := range added {
+			if looksLikeCodeComment(line) {
+				return true, "linha adicionada parece comentário: " + strings.TrimSpace(line)
+			}
+		}
+	}
+	for _, tok := range forbiddenCodeTokens(rule) {
+		if tok == "" {
+			continue
+		}
+		if strings.Contains(joinedLower, strings.ToLower(tok)) {
+			return true, "linha adicionada contém " + tok
+		}
+	}
+	return false, ""
+}
+
+func forbidsComments(ruleLower string) bool {
+	hasComment := strings.Contains(ruleLower, "coment") || strings.Contains(ruleLower, "comment")
+	if !hasComment {
+		return false
+	}
+	return strings.Contains(ruleLower, "nunca") ||
+		strings.Contains(ruleLower, "never") ||
+		strings.Contains(ruleLower, "proib") ||
+		strings.Contains(ruleLower, "forbid") ||
+		strings.Contains(ruleLower, "sem ") ||
+		strings.Contains(ruleLower, "não ") ||
+		strings.Contains(ruleLower, "nao ") ||
+		strings.Contains(ruleLower, "no ")
+}
+
+func looksLikeCodeComment(line string) bool {
+	trimmed := strings.TrimSpace(line)
+	if trimmed == "" {
+		return false
+	}
+	switch {
+	case strings.HasPrefix(trimmed, "//"),
+		strings.HasPrefix(trimmed, "#"),
+		strings.HasPrefix(trimmed, "/*"),
+		strings.HasPrefix(trimmed, "*"),
+		strings.HasPrefix(trimmed, "<!--"),
+		strings.HasPrefix(trimmed, "{/*"):
+		return true
+	default:
+		return false
+	}
+}
+
+func forbiddenCodeTokens(rule string) []string {
+	var out []string
+	seen := map[string]bool{}
+	add := func(tok string) {
+		tok = strings.TrimSpace(tok)
+		if tok == "" || seen[tok] {
+			return
+		}
+		seen[tok] = true
+		out = append(out, tok)
+	}
+	for _, m := range regexp.MustCompile("`([^`]+)`").FindAllStringSubmatch(rule, -1) {
+		add(m[1])
+	}
+	for _, m := range regexp.MustCompile(`"([^"]+)"`).FindAllStringSubmatch(rule, -1) {
+		add(m[1])
+	}
+	lower := strings.ToLower(rule)
+	for _, marker := range []string{"console.log", "console.warn", "console.error", "t.skip", "it.skip", "xpath", "__eq__"} {
+		if strings.Contains(lower, marker) {
+			add(marker)
+		}
+	}
+	return out
 }
 
 func isTestFile(path string) bool {
@@ -501,14 +843,15 @@ func isSourceFile(path string) bool {
 }
 
 func DetectDrift(ticket *TicketScope, changed []string, actualBase string) *DriftReport {
-	rep := &DriftReport{ActualBase: actualBase}
+	rep := &DriftReport{
+		ActualBase:   actualBase,
+		OutOfScope:   []string{},
+		ForbiddenHit: []string{},
+	}
 	if ticket == nil {
 		return rep
 	}
 	rep.DeclaredBase = ticket.BaseCommit
-	if ticket.BaseCommit != "" && actualBase != "" && ticket.BaseCommit != actualBase {
-		rep.BaseMismatch = true
-	}
 	for _, f := range changed {
 		if len(ticket.Scope) > 0 && !inScope(f, ticket.Scope) {
 			rep.OutOfScope = append(rep.OutOfScope, f)
@@ -520,27 +863,54 @@ func DetectDrift(ticket *TicketScope, changed []string, actualBase string) *Drif
 	return rep
 }
 
-func reconcileDriftBase(repo string, drift *DriftReport) {
-	if drift == nil || repo == "" || drift.DeclaredBase == "" || drift.ActualBase == "" {
+func enrichDriftBase(repo string, drift *DriftReport, head string) {
+	if drift == nil || repo == "" {
 		return
 	}
-	declared, errD := resolveGitRef(repo, drift.DeclaredBase)
-	actual, errA := resolveGitRef(repo, drift.ActualBase)
-	if errD != nil || errA != nil {
+	if drift.ActualBase != "" {
+		if actual, err := resolveGitRef(repo, drift.ActualBase); err == nil {
+			drift.ActualBase = actual
+		}
+	}
+	if drift.DeclaredBase != "" {
+		if declared, err := resolveGitRef(repo, drift.DeclaredBase); err == nil {
+			drift.DeclaredBase = declared
+		}
+	}
+	if drift.ActualBase != "" && head != "" {
+		if mb, err := gitMergeBase(repo, drift.ActualBase, head); err == nil {
+			drift.MergeBase = mb
+		}
+	}
+	check := drift.DeclaredBase
+	if check == "" {
+		check = drift.ActualBase
+	}
+	if check == "" || head == "" {
 		return
 	}
-	drift.ActualBase = actual
-	drift.BaseMismatch = declared != actual
+	drift.BaseMismatch = !gitIsAncestor(repo, check, head)
 }
 
 func resolveGitRef(repo, ref string) (string, error) {
-	cmd := exec.Command("git", "rev-parse", "--verify", ref) //nolint:gosec // refs do operador/ticket
-	cmd.Dir = repo
-	out, err := cmd.Output()
+	out, err := git.Output(repo, "rev-parse", "--verify", ref)
 	if err != nil {
 		return "", err
 	}
 	return strings.TrimSpace(string(out)), nil
+}
+
+func gitMergeBase(repo, a, b string) (string, error) {
+	out, err := git.Output(repo, "merge-base", a, b)
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
+func gitIsAncestor(repo, ancestor, head string) bool {
+	_, err := git.Output(repo, "merge-base", "--is-ancestor", ancestor, head)
+	return err == nil
 }
 
 func LoadTicket(path string) (*TicketScope, error) {
@@ -862,12 +1232,32 @@ func loadInvariants(repo string) ([]mem.Invariant, error) {
 	return mem.NewStore(dir).List("", false)
 }
 
+func resolveChanged(cfg *Config) ([]string, error) {
+	if cfg.Shared != nil && cfg.Shared.HasChanged {
+		return cfg.Shared.Changed, nil
+	}
+	return listChangedFiles(cfg.RepoDir, cfg.BaseRef, cfg.HeadRef)
+}
+
+func resolveDiff(cfg *Config) (string, error) {
+	if cfg.Shared != nil && cfg.Shared.HasDiff {
+		return cfg.Shared.Diff, nil
+	}
+	return gitDiff(cfg.RepoDir, cfg.BaseRef, cfg.HeadRef)
+}
+
+func resolveInvariants(cfg *Config) []mem.Invariant {
+	if cfg.Shared != nil && cfg.Shared.HasInvariants {
+		return cfg.Shared.Invariants
+	}
+	invariants, _ := loadInvariants(cfg.RepoDir)
+	return invariants
+}
+
 func listChangedFiles(repo, base, head string) ([]string, error) {
-	cmd := exec.Command("git", "diff", "--name-only", base+".."+head) //nolint:gosec // refs do operador
-	cmd.Dir = repo
-	out, err := cmd.Output()
+	out, err := git.Output(repo, "diff", "--name-only", base+"..."+head)
 	if err != nil {
-		return nil, fmt.Errorf("git diff: %w", err)
+		return nil, err
 	}
 	var files []string
 	for _, line := range strings.Split(string(out), "\n") {
@@ -880,11 +1270,9 @@ func listChangedFiles(repo, base, head string) ([]string, error) {
 }
 
 func gitDiff(repo, base, head string) (string, error) {
-	cmd := exec.Command("git", "diff", base+".."+head) //nolint:gosec // refs do operador
-	cmd.Dir = repo
-	out, err := cmd.Output()
+	out, err := git.Output(repo, "diff", base+"..."+head)
 	if err != nil {
-		return "", fmt.Errorf("git diff: %w", err)
+		return "", err
 	}
 	return string(out), nil
 }
@@ -892,19 +1280,37 @@ func gitDiff(repo, base, head string) (string, error) {
 func aggregateFindings(all []Finding) []Finding {
 	type key struct{ id, file, msg string }
 	counts := map[key]Finding{}
-	for _, f := range all {
+	roles := map[key]map[string]bool{}
+	for i := range all {
+		normalizeFinding(&all[i])
+		f := &all[i]
 		k := key{f.ID, f.File, f.Message}
+		if roles[k] == nil {
+			roles[k] = map[string]bool{}
+		}
+		roles[k][f.Role] = true
 		cur, ok := counts[k]
 		if !ok {
-			counts[k] = f
+			cp := *f
+			cp.Agreement = len(roles[k])
+			counts[k] = cp
 			continue
 		}
-		cur.Agreement++
+		cur.Agreement = len(roles[k])
+		if cur.Role == "" {
+			cur.Role = f.Role
+		}
+		if cur.Criterion == "" {
+			cur.Criterion = f.Criterion
+		}
+		if cur.Evidence == "" {
+			cur.Evidence = f.Evidence
+		}
 		counts[k] = cur
 	}
 	out := make([]Finding, 0, len(counts))
-	for _, f := range counts {
-		out = append(out, f)
+	for k := range counts {
+		out = append(out, counts[k])
 	}
 	return out
 }

@@ -24,6 +24,7 @@ func TestDefaultHasCLIParityTools(t *testing.T) {
 		"tb_review",
 		"tb_drift",
 		"tb_guard_check",
+		"tb_stack",
 		"tb_graph_impact",
 	}
 	names := map[string]bool{}
@@ -123,6 +124,36 @@ func TestMemRetireAndCheckTool(t *testing.T) {
 	}
 }
 
+func TestMemAllBoolAndLegacyString(t *testing.T) {
+	dir := memToolDir(t)
+	id := memToolAdd(t, dir, map[string]any{
+		"rule":     "nunca tocar secrets/",
+		"category": "security",
+	})
+	res, err := Default().Call(context.Background(), "tb_mem_retire", map[string]any{"cwd": dir, "id": id})
+	if err != nil || res.IsError {
+		t.Fatalf("tb_mem_retire: %v %v", err, res)
+	}
+	res, err = Default().Call(context.Background(), "tb_mem_list", map[string]any{"cwd": dir, "all": true})
+	if err != nil || res.IsError || !strings.Contains(res.Content[0].Text, id) {
+		t.Fatalf("tb_mem_list all=true: %v %v", err, res)
+	}
+	res, err = Default().Call(context.Background(), "tb_mem_list", map[string]any{"cwd": dir, "all": "true"})
+	if err != nil || res.IsError || !strings.Contains(res.Content[0].Text, id) {
+		t.Fatalf("tb_mem_list all=\"true\" legado: %v %v", err, res)
+	}
+	res, err = Default().Call(context.Background(), "tb_mem_search", map[string]any{
+		"cwd": dir, "query": "secrets", "all": true,
+	})
+	if err != nil || res.IsError || !strings.Contains(res.Content[0].Text, id) {
+		t.Fatalf("tb_mem_search all=true: %v %v", err, res)
+	}
+	res, err = Default().Call(context.Background(), "tb_mem_check", map[string]any{"cwd": dir, "all": "false"})
+	if err != nil || res.IsError {
+		t.Fatalf("tb_mem_check all=\"false\": %v %v", err, res)
+	}
+}
+
 func TestVerifyRunTool(t *testing.T) {
 	dir := gitRepo(t)
 	res, err := Default().Call(context.Background(), "tb_verify_run", map[string]any{
@@ -199,6 +230,42 @@ scope:
 	if !strings.Contains(res.Content[0].Text, "out_of_scope") &&
 		!strings.Contains(res.Content[0].Text, "base_mismatch") {
 		t.Fatalf("esperava drift report, got: %s", res.Content[0].Text)
+	}
+}
+
+func TestStackTool(t *testing.T) {
+	dir := gitRepo(t)
+	writeFile(t, filepath.Join(dir, "a.go"), "package a\n")
+	git(t, dir, "add", "-A")
+	git(t, dir, "commit", "-m", "init")
+	writeFile(t, filepath.Join(dir, "a.go"), "package a\nfunc X() {}\n")
+	writeFile(t, filepath.Join(dir, "rd.md"), `---
+title: add
+scope:
+  - a.go
+  - rd.md
+---
+`)
+	git(t, dir, "add", "-A")
+	git(t, dir, "commit", "-m", "change")
+
+	res, err := Default().Call(context.Background(), "tb_stack", map[string]any{
+		"cwd":      dir,
+		"base":     "HEAD~1",
+		"head":     "HEAD",
+		"ops":      []any{"guard", "drift"},
+		"ticket":   filepath.Join(dir, "rd.md"),
+		"test_cmd": "true",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.IsError {
+		t.Fatalf("tb_stack: %s", res.Content[0].Text)
+	}
+	if !strings.Contains(res.Content[0].Text, `"steps"`) ||
+		!strings.Contains(res.Content[0].Text, `"total_duration_ms"`) {
+		t.Fatalf("esperava JSON agregado: %s", res.Content[0].Text)
 	}
 }
 

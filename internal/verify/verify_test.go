@@ -36,6 +36,90 @@ func TestRunPass(t *testing.T) {
 	if res.Verdict != VerdictPass {
 		t.Fatalf("veredicto %s", res.Verdict)
 	}
+	if res.HeadSHA == "" {
+		t.Fatal("expected head_sha in result")
+	}
+	if res.WorkDir != dir {
+		t.Fatalf("workdir=%q want repo %q when head == HEAD", res.WorkDir, dir)
+	}
+}
+
+func TestRunOnHeadWorktreeWhenHeadDiffers(t *testing.T) {
+	if testing.Short() {
+		t.Skip()
+	}
+	dir := t.TempDir()
+	_ = os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module demo\ngo 1.22\n"), 0o644)
+	_ = os.WriteFile(filepath.Join(dir, "demo.go"), []byte("package demo\nfunc Add(a, b int) int { return a + b }\n"), 0o644)
+	_ = os.WriteFile(filepath.Join(dir, "demo_test.go"), []byte("package demo\nimport \"testing\"\nfunc TestAdd(t *testing.T) {\n\tif Add(1, 2) != 3 { t.Fatal() }\n}\n"), 0o644)
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "a@b.c")
+	runGit(t, dir, "config", "user.name", "t")
+	runGit(t, dir, "add", "-A")
+	runGit(t, dir, "commit", "-m", "base")
+	base := gitRev(t, dir)
+
+	_ = os.WriteFile(filepath.Join(dir, "marker_test.go"), []byte("package demo\nimport \"testing\"\nfunc TestMarkerOnlyOnHead(t *testing.T) {\n\tt.Fatal(\"marker: only on head\")\n}\n"), 0o644)
+	runGit(t, dir, "add", "-A")
+	runGit(t, dir, "commit", "-m", "head-with-failing-marker")
+	head := gitRev(t, dir)
+
+	runGit(t, dir, "checkout", "-q", base)
+
+	cfg := DefaultConfig(dir)
+	cfg.BaseRef = base
+	cfg.HeadRef = head
+	cfg.Timeout = time.Minute
+	cfg.MaxIterations = 1
+	cfg.VisibleTest = "go test ./..."
+
+	res, err := Run(context.Background(), &cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Verdict == VerdictPass {
+		t.Fatalf("verify must fail when head has a failing test absent from the current worktree; got PASS (workdir=%q head_sha=%q)", res.WorkDir, res.HeadSHA)
+	}
+	if res.HeadSHA != head {
+		t.Fatalf("head_sha=%q want %q", res.HeadSHA, head)
+	}
+	if res.WorkDir == "" || res.WorkDir == dir {
+		t.Fatalf("expected detached head workdir different from repo %q, got %q", dir, res.WorkDir)
+	}
+	if _, err := os.Stat(res.WorkDir); !os.IsNotExist(err) {
+		t.Fatalf("detached worktree should be removed after verify, path=%q err=%v", res.WorkDir, err)
+	}
+}
+
+func TestRunDirtyHeadWarnsButUsesRepo(t *testing.T) {
+	dir := t.TempDir()
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "a@b.c")
+	runGit(t, dir, "config", "user.name", "t")
+	runGit(t, dir, "commit", "--allow-empty", "-m", "c")
+	_ = os.WriteFile(filepath.Join(dir, "dirty.txt"), []byte("uncommitted\n"), 0o644)
+
+	cfg := DefaultConfig(dir)
+	cfg.BaseRef = "HEAD"
+	cfg.HeadRef = "HEAD"
+	cfg.Timeout = 30 * time.Second
+	cfg.MaxIterations = 1
+	cfg.VisibleTest = "true"
+
+	res, err := Run(context.Background(), &cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Verdict != VerdictPass {
+		t.Fatalf("veredicto %s", res.Verdict)
+	}
+	if res.WorkDir != dir {
+		t.Fatalf("workdir=%q want %q", res.WorkDir, dir)
+	}
+	head := gitRev(t, dir)
+	if res.HeadSHA != head {
+		t.Fatalf("head_sha=%q want %q", res.HeadSHA, head)
+	}
 }
 
 func TestDefaultHiddenTestCmd(t *testing.T) {
@@ -73,7 +157,7 @@ func TestHiddenTestCmdRunsWithoutHiddenDir(t *testing.T) {
 	if !res.HiddenAvailable {
 		t.Fatal("expected hidden suite available when hidden_test_cmd is set without tests/hidden/")
 	}
-	if res.HiddenPassed {
+	if res.HiddenPassed == nil || *res.HiddenPassed {
 		t.Fatal("expected hidden cmd false to fail")
 	}
 	if res.Verdict == VerdictPass {
@@ -103,7 +187,7 @@ func TestHiddenTestCmdPassWithoutHiddenDir(t *testing.T) {
 	if !res.HiddenAvailable {
 		t.Fatal("expected hidden suite available when hidden_test_cmd is set without tests/hidden/")
 	}
-	if !res.HiddenPassed {
+	if res.HiddenPassed == nil || !*res.HiddenPassed {
 		t.Fatal("expected hidden cmd true to pass")
 	}
 	if res.Verdict != VerdictPass {
@@ -132,6 +216,9 @@ func TestHiddenSkippedWithoutDirOrCmd(t *testing.T) {
 	}
 	if res.HiddenAvailable {
 		t.Fatal("expected hidden suite unavailable without tests/hidden/ and without hidden_test_cmd")
+	}
+	if res.HiddenPassed != nil {
+		t.Fatalf("hidden_passed should be null when suite absent, got %v", *res.HiddenPassed)
 	}
 	if res.Verdict != VerdictPass {
 		t.Fatalf("veredicto %s", res.Verdict)
@@ -165,7 +252,7 @@ func TestHiddenDefaultGoCmdWhenDirExists(t *testing.T) {
 	if !res.HiddenAvailable {
 		t.Fatal("expected hidden suite when tests/hidden/ exists")
 	}
-	if res.HiddenPassed {
+	if res.HiddenPassed == nil || *res.HiddenPassed {
 		t.Fatal("default go hidden cmd should fail on empty/non-Go suite")
 	}
 	if res.Verdict == VerdictPass {
@@ -201,7 +288,7 @@ func TestHiddenTestCmdConfigurableNonGo(t *testing.T) {
 	if !res.HiddenAvailable {
 		t.Fatal("expected hidden suite available")
 	}
-	if !res.HiddenPassed {
+	if res.HiddenPassed == nil || !*res.HiddenPassed {
 		t.Fatal("expected hidden suite to pass with custom cmd")
 	}
 	if res.Verdict != VerdictPass {
@@ -382,7 +469,7 @@ func TestHiddenTestCmdDefaultFailsNonGoSuite(t *testing.T) {
 	if !res.HiddenAvailable {
 		t.Fatal("expected hidden suite available")
 	}
-	if res.HiddenPassed {
+	if res.HiddenPassed == nil || *res.HiddenPassed {
 		t.Fatal("default go hidden cmd should fail on non-Go suite")
 	}
 	if res.Verdict == VerdictPass {
@@ -577,6 +664,9 @@ func TestRunFailFastMissingCommand(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error when test_cmd binary is missing")
 	}
+	if !IsMissingCommand(err) {
+		t.Fatalf("expected MissingCommandError, got %T %v", err, err)
+	}
 	if !strings.Contains(err.Error(), "não encontrado") {
 		t.Fatalf("error should mention missing command, got %v", err)
 	}
@@ -589,7 +679,13 @@ func TestRunFailFastMissingCommand(t *testing.T) {
 	if want := fmt.Sprintf(errMissingCmdFmt, cfg.VisibleTest, "verify.test_cmd"); err.Error() != want {
 		t.Fatalf("error=%q want %q", err.Error(), want)
 	}
-	if res != nil && res.Iterations > 1 {
+	if res == nil {
+		t.Fatal("missing command must return Result with error envelope")
+	}
+	if res.Error == "" || res.Verdict != VerdictFail {
+		t.Fatalf("result must carry FAIL + error, got verdict=%s error=%q", res.Verdict, res.Error)
+	}
+	if res.Iterations > 1 {
 		t.Fatalf("missing command must fail-fast without retries, iterations=%d", res.Iterations)
 	}
 }

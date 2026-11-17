@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -18,6 +19,8 @@ var (
 	cfgFile    string
 	jsonOutput bool
 	verbose    bool
+	envAllow   []string
+	envPass    []string
 )
 
 func main() {
@@ -30,15 +33,17 @@ func main() {
 var rootCmd = &cobra.Command{
 	Use:   "tb",
 	Short: "Toolbelt - Kit de ferramentas para agentes de código IA",
+	//nolint:misspell // pt-BR: persistente
 	Long: `Toolbelt (tb) é um kit de ferramentas para melhorar agentes de código IA.
 
-Inclui sandbox seguro, verificação adversarial, memória persistent,
+Inclui sandbox seguro, verificação adversarial, memória persistente,
 grafo de dependências, roteamento multi-agente e benchmark.
 
 Exemplo:
   tb init                    Inicializa configuração local
   tb bench run               Executa benchmark baseline
-  tb version                 Mostra versão`,
+  tb version                 Mostra versão
+  tb --version               Mostra versão (flag global)`,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 		cmd.SilenceUsage = true
 
@@ -61,6 +66,12 @@ func init() {
 	rootCmd.PersistentFlags().StringVarP(&cfgFile, "config", "c", "", "arquivo de configuração")
 	rootCmd.PersistentFlags().BoolVar(&jsonOutput, "json", false, "saída em JSON")
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "saída verbose")
+	rootCmd.PersistentFlags().StringArrayVar(&envAllow, "env", nil, "permite variável de ambiente no filho (repetível; não contorna bloqueio de segredos)")
+	rootCmd.PersistentFlags().StringArrayVar(&envPass, "pass-env", nil, "opt-in explícito para passar segredo (*TOKEN*/SECRET/KEY/PASSWORD) ao filho")
+
+	rootCmd.Version = version.Get().String()
+	rootCmd.SetVersionTemplate("{{.Version}}\n")
+	rootCmd.InitDefaultVersionFlag()
 
 	rootCmd.AddCommand(versionCmd)
 	rootCmd.AddCommand(initCmd)
@@ -74,6 +85,7 @@ func init() {
 	rootCmd.AddCommand(graphCmd)
 	rootCmd.AddCommand(reviewCmd)
 	rootCmd.AddCommand(driftCmd)
+	rootCmd.AddCommand(stackCmd)
 	rootCmd.AddCommand(routerCmd)
 	rootCmd.AddCommand(mcpCmd)
 }
@@ -161,6 +173,26 @@ Exemplo:
 			return fmt.Errorf("initializing config: %w", err)
 		}
 
+		var docs *config.AgentDocsResult
+		var excludePath string
+		if !global && repoRoot != "" {
+			excludePath, err = config.EnsureLocalGitExclude(repoRoot)
+			if err != nil {
+				return fmt.Errorf("atualizando .git/info/exclude: %w", err)
+			}
+			docs, err = config.HandleAgentDocs(repoRoot, dir, writeAgents)
+			if err != nil {
+				return fmt.Errorf("processando AGENTS.md/CLAUDE.md: %w", err)
+			}
+		}
+
+		if jsonOutput {
+			payload := buildInitJSON(dir, detected, docs)
+			enc := json.NewEncoder(os.Stdout)
+			enc.SetIndent("", "  ")
+			return enc.Encode(payload)
+		}
+
 		log.Info("configuração inicializada", "path", dir)
 		if detected.Cmd != "" {
 			log.Info("toolchain detectada", "test_cmd", detected.Cmd)
@@ -169,11 +201,13 @@ Exemplo:
 			log.Warn(detected.Warning)
 		}
 
-		if !global && repoRoot != "" {
-			docs, err := config.HandleAgentDocs(repoRoot, dir, writeAgents)
-			if err != nil {
-				return fmt.Errorf("processando AGENTS.md/CLAUDE.md: %w", err)
-			}
+		if excludePath != "" {
+			log.Info("estado local ignorado via .git/info/exclude",
+				"path", excludePath,
+				"patterns", strings.Join(config.LocalCacheExcludePatterns, ","))
+		}
+
+		if docs != nil {
 			if docs.Seeded {
 				log.Info("AGENTS.md semeado", "path", filepath.Join(repoRoot, config.AgentsMDName))
 			}
@@ -194,6 +228,47 @@ Exemplo:
 
 		return nil
 	},
+}
+
+func buildInitJSON(dir string, detected config.DetectedCmd, docs *config.AgentDocsResult) map[string]any {
+	payload := map[string]any{
+		"path": dir,
+	}
+	if fileCfg, err := config.LoadFile(filepath.Join(dir, config.DefaultConfigFile)); err == nil {
+		payload["test_cmd"] = fileCfg.Verify.TestCmd
+		if fileCfg.Verify.BuildCmd != "" {
+			payload["build_cmd"] = fileCfg.Verify.BuildCmd
+		}
+		if fileCfg.Verify.LintCmd != "" {
+			payload["lint_cmd"] = fileCfg.Verify.LintCmd
+		}
+		if fileCfg.Verify.HiddenTestCmd != "" {
+			payload["hidden_test_cmd"] = fileCfg.Verify.HiddenTestCmd
+		}
+	} else if detected.Cmd != "" {
+		payload["test_cmd"] = detected.Cmd
+	}
+	if detected.Warning != "" {
+		payload["warning"] = detected.Warning
+	}
+	if docs != nil {
+		sources := docs.Sources
+		if sources == nil {
+			sources = []string{}
+		}
+		agents := map[string]any{
+			"seeded":  docs.Seeded,
+			"sources": sources,
+		}
+		if len(docs.Hints) > 0 {
+			agents["hints"] = docs.Hints
+		}
+		if docs.Record != "" {
+			agents["record"] = docs.Record
+		}
+		payload["agents"] = agents
+	}
+	return payload
 }
 
 func init() {

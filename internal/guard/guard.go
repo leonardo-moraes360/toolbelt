@@ -13,6 +13,8 @@ import (
 	"strings"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/leonardo-moraes360/toolbelt/internal/git"
 )
 
 type ViolationType string
@@ -79,20 +81,28 @@ func NewChecker(repoDir string) *Checker {
 }
 
 func (c *Checker) Check(baseRef, headRef string) (*CheckResult, error) {
+	return c.CheckDiff(baseRef, headRef, "")
+}
+
+func (c *Checker) CheckDiff(baseRef, headRef, nameStatus string) (*CheckResult, error) {
 	paths, err := c.loadProtectedPaths(baseRef)
 	if err != nil {
 		return nil, err
 	}
 	c.protectedPaths = paths
 
-	diff, err := c.gitDiff(baseRef, headRef)
-	if err != nil {
-		return nil, err
+	diff := nameStatus
+	if diff == "" {
+		diff, err = c.gitDiff(baseRef, headRef)
+		if err != nil {
+			return nil, err
+		}
 	}
 	res := &CheckResult{
 		BaseRef:      baseRef,
 		HeadRef:      headRef,
 		RulesChecked: len(c.protectedPaths),
+		Violations:   []Violation{},
 	}
 	for _, cf := range parseDiff(diff) {
 		if cf.deleted && isTestFile(cf.path) {
@@ -187,17 +197,13 @@ type changed struct {
 }
 
 func (c *Checker) gitDiff(base, head string) (string, error) {
-	cmd := exec.Command("git", "diff", "--name-status", base+".."+head) //nolint:gosec // refs validados pelo operador
-	cmd.Dir = c.repoDir
-	out, err := cmd.Output()
+	out, err := git.Output(c.repoDir, "diff", "--name-status", base+".."+head)
 	return string(out), err
 }
 
 func (c *Checker) gitShow(ref, path string) (string, error) {
 	spec := ref + ":" + filepath.ToSlash(path)
-	cmd := exec.Command("git", "show", spec) //nolint:gosec // refs validados pelo operador
-	cmd.Dir = c.repoDir
-	out, err := cmd.Output()
+	out, err := git.Output(c.repoDir, "show", spec)
 	if err != nil {
 		return "", err
 	}
@@ -205,15 +211,33 @@ func (c *Checker) gitShow(ref, path string) (string, error) {
 }
 
 func isMissingGitObject(err error) bool {
-	var ee *exec.ExitError
-	if !errors.As(err, &ee) {
+	msg := gitErrLower(err)
+	if msg == "" {
 		return false
 	}
-	msg := strings.ToLower(string(ee.Stderr))
+	if strings.Contains(msg, "unknown revision") ||
+		strings.Contains(msg, "invalid object name") ||
+		strings.Contains(msg, "bad revision") ||
+		strings.Contains(msg, "needed a single revision") ||
+		strings.Contains(msg, "ambiguous argument") {
+		return false
+	}
 	return strings.Contains(msg, "does not exist") ||
 		strings.Contains(msg, "exists on disk") ||
 		strings.Contains(msg, "bad object") ||
 		strings.Contains(msg, "path not in")
+}
+
+func gitErrLower(err error) string {
+	var ge *git.Error
+	if errors.As(err, &ge) {
+		return strings.ToLower(ge.Stderr)
+	}
+	var ee *exec.ExitError
+	if errors.As(err, &ee) {
+		return strings.ToLower(string(ee.Stderr))
+	}
+	return ""
 }
 
 func parseDiff(diff string) []changed {
