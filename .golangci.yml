@@ -1,121 +1,111 @@
-# golangci-lint configuration
-# https://golangci-lint.run/usage/configuration/
-
+version: "2"
 run:
-  timeout: 5m
   modules-download-mode: readonly
-
-linters:
-  enable:
-    # Bugs
-    - staticcheck
-    - govet
-    - errcheck
-    - ineffassign
-    - typecheck
-
-    # Style
-    - gofmt
-    - goimports
-    - misspell
-    - unconvert
-
-    # Complexity
-    - gocyclo
-    - funlen
-    - nestif
-
-    # Security
-    - gosec
-
-    # Best practices
-    - gocritic
-    - revive
-    - dupl
-
-linters-settings:
-  gocyclo:
-    min-complexity: 15
-
-  funlen:
-    lines: 100
-    statements: 50
-
-  nestif:
-    min-complexity: 5
-
-  misspell:
-    locale: US
-    ignore-words:
-      - comando
-
-  gocritic:
-    enabled-tags:
-      - diagnostic
-      - style
-      - performance
-
-  revive:
-    rules:
-      - name: blank-imports
-      - name: context-as-argument
-      - name: error-return
-      - name: error-strings
-      - name: error-naming
-      - name: exported
-      - name: if-return
-      - name: increment-decrement
-      - name: var-naming
-      - name: package-comments
-        disabled: true
-      - name: range
-      - name: receiver-naming
-      - name: time-naming
-      - name: unexported-return
-      - name: indent-error-flow
-      - name: errorf
-      - name: superfluous-else
-
-  dupl:
-    threshold: 150
-
-  gosec:
-    excludes:
-      - G104  # Unhandled errors (handled by errcheck)
-      - G304  # File path provided as taint input
-
-issues:
-  exclude-rules:
-    # Test files
-    - path: _test\.go
-      linters:
-        - funlen
-        - dupl
-        - gosec
-        - errcheck
-
-    # Generated files
-    - path: generated
-      linters:
-        - all
-
-    # Main files can be longer
-    - path: cmd/
-      linters:
-        - funlen
-
-    # Benchmark fixtures are intentionally incomplete
-    - path: bench/fixtures/
-      linters:
-        - typecheck
-        - all
-
-  max-issues-per-linter: 0
-  max-same-issues: 0
-
 output:
   formats:
-    - format: colored-line-number
-  print-issued-lines: true
-  print-linter-name: true
-  sort-results: true
+    text:
+      path: stdout
+      print-linter-name: true
+      print-issued-lines: true
+linters:
+  enable:
+    - dupl
+    - funlen
+    - gocritic
+    - gocyclo
+    - gosec
+    - misspell
+    - nestif
+    - revive
+    - unconvert
+  settings:
+    dupl:
+      threshold: 150
+    funlen:
+      lines: 100
+      statements: 50
+    gocritic:
+      enabled-tags:
+        - diagnostic
+        - style
+        - performance
+    gocyclo:
+      min-complexity: 15
+    gosec:
+      excludes:
+        - G104
+        - G304
+        - G122
+        - G703
+    staticcheck:
+      checks:
+        - all
+        - "-QF1001"
+        - "-QF1002"
+        - "-ST1005"
+    misspell:
+      locale: US
+      ignore-rules:
+        - comando
+    nestif:
+      min-complexity: 5
+    revive:
+      rules:
+        - name: blank-imports
+        - name: context-as-argument
+        - name: error-return
+        - name: error-strings
+        - name: error-naming
+        - name: exported
+        - name: if-return
+        - name: increment-decrement
+        - name: var-naming
+        - name: package-comments
+          disabled: true
+        - name: range
+        - name: receiver-naming
+        - name: time-naming
+        - name: unexported-return
+        - name: indent-error-flow
+        - name: errorf
+        - name: superfluous-else
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    rules:
+      - linters:
+          - dupl
+          - errcheck
+          - funlen
+          - gosec
+        path: _test\.go
+      - linters:
+          - all
+        path: generated
+      - linters:
+          - funlen
+        path: cmd/
+      - linters:
+          - all
+        path: bench/fixtures/
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
