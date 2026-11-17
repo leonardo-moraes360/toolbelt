@@ -610,7 +610,8 @@ Flags:
   --head <ref>           Ref head compartilhada (default: HEAD)
   --fail-fast            Para na primeira etapa que falhar
   --ticket <path>        Ticket/rd.md (review/drift/verify; default: rd.md)
-  --approved-sha <sha>   SHA aprovado (review/drift)
+  --approved-sha <sha>   SHA aprovado; patch-id verbatim (review/drift)
+  --require-approved-sha Falha se --approved-sha estiver ausente (ou `review.require_approved_sha`)
   --warn-only            guard: exit 0 mesmo com SeverityError
   --test-cmd <cmd>       verify: testes visíveis
   --hidden-test-cmd <cmd> verify: testes ocultos
@@ -668,7 +669,8 @@ Flags:
 Por default, exit ≠ 0 quando há `SeverityError` (comportamento estrito).
 `--strict` é **deprecated** (alias sem efeito: o default já falha em
 `SeverityError`); prefira omitir a flag ou usar `--warn-only` para opt-out.
-No modo texto limpo imprime `guard: ok (N regras, 0 violações)`.
+No modo texto limpo imprime `guard: ok (N regras, 0 violações)` (`N` = regras
+válidas da base + defaults).
 
 **Exemplos:**
 
@@ -695,22 +697,30 @@ tb review [ticket] [flags]
 Flags:
   --base <ref>          Commit base (default: HEAD~1 ou base_commit do ticket)
   --head <ref>          Commit head (default: HEAD)
-  --approved-sha <sha>  SHA aprovado; compara `git patch-id --stable` de base..approved vs base..head
-  --ticket <path>       Ticket/rd.md (default: rd.md)
-  --reviewers <n>       Máximo de goldfish distintos (default: 3; não clona)
-  --standards <stds>    Papéis: scope,quality,acceptance (default)
-  --output <path>       Relatório JSON (sem shorthand `-o`; use `--output`)
-  --json                Saída em JSON (flag global)
+  --approved-sha <sha>       SHA aprovado; compara `git patch-id --verbatim` de base..approved vs base..head
+  --require-approved-sha     Falha se `--approved-sha` estiver ausente (ou `review.require_approved_sha` na config)
+  --ticket <path>            Ticket/rd.md (default: rd.md)
+  --reviewers <n>            Máximo de goldfish distintos (default: 3; não clona)
+  --standards <stds>         Papéis: scope,quality,acceptance (default)
+  --output <path>            Relatório JSON (sem shorthand `-o`; use `--output`)
+  --json                     Saída em JSON (flag global)
 ```
 
 Também reporta drift de escopo e commit base. Isolamento fresco é obrigatório.
 `tb review -o …` é rejeitado (`unknown shorthand flag: 'o'`); use `--output`.
 
-Com `--approved-sha`, o JSON inclui `pinned_approval` (`approved_sha`, `patch_id`,
-`head_patch_id`, `match` e, se divergir, `range_diff`). Patch diferente do aprovado
+Base e head são resolvidos para SHA **uma vez** no início do fluxo (anti-TOCTOU) e
+esse SHA pinado é usado em todo o restante.
+
+O JSON sempre inclui `pinned_approval`. Sem `--approved-sha`:
+`{"checked": false}`. Com a flag: `checked`, `approved_sha`, `patch_id`,
+`head_patch_id`, `match` e, se divergir, `range_diff`. A comparação usa
+`git patch-id --verbatim` (sensível a whitespace). Patch diferente do aprovado
 imprime um resumo de `git range-diff` e sai com código ≠ 0. Se `--approved-sha`
 coincidir com a base (intervalo `base..approved` vazio), a CLI **não** despeja o
 usage do `git range-diff` — mostra mensagem clara sobre o intervalo inválido.
+Com `--require-approved-sha` (ou `review.require_approved_sha: true` em
+`.toolbelt/config.yaml`), a ausência de `--approved-sha` é erro.
 
 O ticket/rd.md aceita frontmatter YAML ou Markdown: seção `## Scope` / `## Escopo`
 (ou `Scope:` / `Escopo:`) e `## Forbidden` / `## Proibido` (ou `Forbidden:` /
@@ -804,14 +814,16 @@ tb drift [ticket] [flags]
 Flags:
   --base <ref>          Commit base (default: HEAD~1 ou base_commit do ticket)
   --head <ref>          Commit head (default: HEAD)
-  --approved-sha <sha>  SHA aprovado; compara `git patch-id --stable` de base...approved vs base...head
-  --ticket <path>       Ticket/rd.md (default: rd.md)
-  --output <path>       Saída JSON (sem shorthand `-o`)
-  --json                Saída em JSON (flag global)
+  --approved-sha <sha>       SHA aprovado; compara `git patch-id --verbatim` de base..approved vs base..head
+  --require-approved-sha     Falha se `--approved-sha` estiver ausente (ou `review.require_approved_sha`)
+  --ticket <path>            Ticket/rd.md (default: rd.md)
+  --output <path>            Saída JSON (sem shorthand `-o`)
+  --json                     Saída em JSON (flag global)
 ```
 
-Com `--approved-sha`, o JSON de drift inclui `pinned_approval` (mesmo formato do
-`tb review`). Divergência de patch-id sai com código ≠ 0 e mostra `git range-diff`.
+O JSON de drift inclui `pinned_approval` no mesmo formato do `tb review`
+(`checked: false` sem a flag; patch-id verbatim com a flag). Divergência sai
+com código ≠ 0 e mostra `git range-diff`. Base/head são pinados a SHA no início.
 `--approved-sha` igual à base segue a mesma mensagem clara do `tb review` (sem
 dump de usage).
 
@@ -961,8 +973,8 @@ de **abortar antes de build/test** depende da origem do `protected_path`:
 
 | Origem | Sem `--ticket` | Com `--ticket` e path no Scope | Com `--ticket` e path fora do Scope |
 |--------|----------------|--------------------------------|-------------------------------------|
-| Defaults embutidos (`tests/hidden/*`, `benchmarks/*`, `.toolbelt/thresholds.yaml`) | **aborta** (FAIL, 0 iterações) | **aborta** | **aborta** |
-| `protected_paths` de `.toolbelt/guard.yaml` (custom) | reporta como **warning** e **continua** build/test | reporta warning (exceção de Scope) e **continua** | **aborta** |
+| Defaults embutidos (`tests/hidden/*`, `benchmarks/*`, `.toolbelt/thresholds.yaml`, `.toolbelt/guard.yaml`) | **aborta** (FAIL, 0 iterações) | **aborta** | **aborta** |
+| `protected_paths` de `.toolbelt/guard.yaml` na **base** (custom) | reporta como **warning** e **continua** build/test | reporta warning (exceção de Scope) e **continua** | **aborta** |
 
 `tb guard check` (e o alias deprecated `--strict`) trata violações custom como
 `SeverityError` e falha o exit code por default; use `--warn-only` para opt-out.
@@ -1115,7 +1127,8 @@ Aceita o intervalo posicional `base..head` (forma clássica) ou as flags `--base
 Por default, exit ≠ 0 quando há `SeverityError` (CI-safe). `--strict` está
 **deprecated** (substituído pelo default estrito + `--warn-only`). No modo texto
 sem violações imprime `guard: ok (N regras, 0 violações)` (`N` = paths protegidos
-carregados: defaults + `.toolbelt/guard.yaml`).
+válidos carregados: defaults + `.toolbelt/guard.yaml` da **base**; padrões
+inválidos são ignorados e não entram em `rules_checked`).
 
 **Exemplos:**
 
@@ -1138,7 +1151,21 @@ tb guard check main..HEAD --json
 
 **Manifesto de paths protegidos (`.toolbelt/guard.yaml`):**
 
-O guard carrega `protected_paths` de `.toolbelt/guard.yaml` (quando presente) e **une** aos defaults embutidos (`tests/hidden/*`, `benchmarks/*`, `.toolbelt/thresholds.yaml`). Cada entrada pode ser uma string (`lib/help.js`) ou um objeto com `pattern`. Entrada com barra final (`secrets/`) protege o diretório e todos os filhos (prefixo). `secrets/*` continua válido para um nível via glob. Sem o arquivo, só os defaults valem. Violações ganham `source: default` (anti-cheat embutido) ou `source: custom` (YAML). Em `tb verify run`, só `default` (e custom fora do Scope do `--ticket`) abortam o loop; custom no mandate é reportado e o verify segue — ver seção verify acima.
+O guard lê `protected_paths` de `.toolbelt/guard.yaml` **na ref base**
+(`git show base:.toolbelt/guard.yaml`) e **une** aos defaults embutidos
+(`tests/hidden/*`, `benchmarks/*`, `.toolbelt/thresholds.yaml`,
+`.toolbelt/guard.yaml`). Qualquer alteração em `.toolbelt/guard.yaml` no diff
+é violação. YAML malformado na base falha **fechado** (exit ≠ 0, erro claro).
+Matching de paths é **case-insensitive** e honra globs (`*`, `?`, `**`).
+Renames (`R*`) checam origem e destino. A varredura anti-trapaça usa o
+conteúdo do diff/`git show head:path` (não o working tree) e cobre Go e
+JS/TS (`it.skip` / `describe.skip` / `test.skip` / `xit` / `.only` /
+asserções triviais como `expect(true).toBe(true)`). Cada entrada do YAML pode
+ser string (`lib/help.js`) ou objeto com `pattern`. Barra final (`secrets/`)
+protege o diretório e filhos. Sem o arquivo na base, só os defaults valem.
+Violações ganham `source: default` ou `source: custom`. Em `tb verify run`,
+só `default` (e custom fora do Scope do `--ticket`) abortam o loop; custom no
+mandate é reportado e o verify segue — ver seção verify acima.
 
 ```yaml
 # .toolbelt/guard.yaml
@@ -1743,8 +1770,8 @@ Transporte unix/tcp e flags `--socket`/`--port`/`--tls-*` são planejados; hoje 
 | `tb_run` | — | `sh -c` com timeout; env filtrado; args `env`/`pass_env` (arrays) |
 | `tb_mem_add` / `tb_mem_list` / `tb_mem_show` / `tb_mem_edit` / `tb_mem_retire` / `tb_mem_search` / `tb_mem_check` / `tb_mem_init` | `tb mem …` | arg opcional `cwd`; `ref`/`all` (boolean; strings legadas ok) onde aplicável |
 | `tb_verify_run` | `tb verify run` | `ruler=tests\|visual`; args espelham flags + `env`/`pass_env` |
-| `tb_review` | `tb review` | ticket/base/head/approved_sha/reviewers/standards |
-| `tb_drift` | `tb drift` | retorna `{drift, has_drift, pinned_approval}` |
+| `tb_review` | `tb review` | ticket/base/head/approved_sha/require_approved_sha/reviewers/standards |
+| `tb_drift` | `tb drift` | retorna `{drift, has_drift, pinned_approval}` (`checked` explícito) |
 | `tb_guard_check` | `tb guard check` | `base`/`head` ou `range=A..B`; `strict_fail` por default em SeverityError; `warn_only=true` opt-out; `strict` deprecated (boolean) |
 | `tb_stack` | `tb stack` | `ops` (array), `base`/`head`, `fail_fast` (boolean), `env`/`pass_env`; retorna JSON agregado |
 | `tb_graph_search` / `tb_graph_callers` / `tb_graph_deps` / `tb_graph_impact` / `tb_graph_index` | `tb graph …` | chamada requer `TB_GRAPH=on`; `depth`/`limit` integer; `transitive` boolean |
@@ -1797,10 +1824,34 @@ Isolamento Landlock no Linux (`check` / `run`). Não cria worktrees — use `tb 
 
 ```bash
 tb sandbox check
-tb sandbox run <command> [args...] [--workdir <path>] [--timeout <dur>]
+tb sandbox run <command> [args...] [flags]
 ```
 
-`--timeout` default `30s`. Sem `--workdir`, usa o cwd. Com `--json`, `sandbox check` emite `os`/`arch`/`landlock`/`version`/`error`; `sandbox run` emite o `Result` em snake_case (`exit_code`, `timed_out`, `duration_ns`, …). Se o filho sai ≠ 0 sem timeout, `tb` propaga esse exit code.
+**Flags de `tb sandbox run`:**
+
+| Flag | Default | Descrição |
+|------|---------|-----------|
+| `--workdir <path>` | cwd | Diretório de trabalho (escrita permitida) |
+| `--timeout <dur>` | `30s` | Timeout do processo |
+| `--allow-unsandboxed` | `false` | Opt-in explícito para rodar **sem** Landlock |
+
+Comportamento **fail-closed**: se o kernel não tiver Landlock (ou a aplicação do ruleset falhar), `tb sandbox run` **recusa** executar e devolve erro claro pedindo `--allow-unsandboxed`. Não há fallback silencioso para execução sem isolamento.
+
+No Linux com Landlock, a escrita fica restrita ao `--workdir` e ao diretório temporário do sistema (`os.TempDir()`, tipicamente `/tmp`) quando este não é ancestral do workdir. Paths de sistema necessários à execução (`/bin`, `/usr`, `/lib`, `/etc`, `/dev`, `/proc`, …) entram somente leitura. O ruleset é aplicado no processo filho (re-exec + `PR_SET_NO_NEW_PRIVS` + `landlock_restrict_self`) **antes** do `exec` do comando.
+
+```bash
+tb sandbox check
+# Landlock: true
+# ABI: 6
+
+tb sandbox run --workdir /tmp/job sh -c 'echo ok > out.txt'
+# escrita fora do workdir → Permission denied
+
+# Sem Landlock (ou para CI sem LSM): opt-in explícito
+tb sandbox run --allow-unsandboxed echo hello
+```
+
+Com `--json`, `sandbox check` emite `os`/`arch`/`landlock`/`version`/`error`; `sandbox run` emite o `Result` em snake_case (`exit_code`, `timed_out`, `duration_ns`, `sandboxed`, …). Se o filho sai ≠ 0 sem timeout, `tb` propaga esse exit code.
 
 ---
 

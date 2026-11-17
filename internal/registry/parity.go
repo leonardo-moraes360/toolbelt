@@ -193,12 +193,13 @@ func registerReviewTools() {
 		InputSchema: &InputSchema{
 			Type: "object",
 			Properties: map[string]Property{
-				"cwd":          {Type: "string", Description: "Diretório do repositório"},
-				"ticket":       {Type: "string", Description: "Caminho do ticket/rd.md", Default: "rd.md"},
-				"base":         {Type: "string", Description: "Ref base", Default: "HEAD~1"},
-				"head":         {Type: "string", Description: "Ref head", Default: "HEAD"},
-				"approved_sha": {Type: "string", Description: "SHA aprovado para comparar patch-id estável com o head"},
-				"reviewers":    {Type: "integer", Description: "Máximo de goldfish distintos", Default: 3},
+				"cwd":                  {Type: "string", Description: "Diretório do repositório"},
+				"ticket":               {Type: "string", Description: "Caminho do ticket/rd.md", Default: "rd.md"},
+				"base":                 {Type: "string", Description: "Ref base", Default: "HEAD~1"},
+				"head":                 {Type: "string", Description: "Ref head", Default: "HEAD"},
+				"approved_sha":         {Type: "string", Description: "SHA aprovado; compara patch-id verbatim (sensível a whitespace) com o head"},
+				"require_approved_sha": {Type: "boolean", Description: "Falha se approved_sha estiver ausente", Default: false},
+				"reviewers":            {Type: "integer", Description: "Máximo de goldfish distintos", Default: 3},
 				"standards": {
 					Type:        "array",
 					Description: "Papéis: scope,quality,acceptance (aceita CSV legado)",
@@ -215,11 +216,12 @@ func registerReviewTools() {
 		InputSchema: &InputSchema{
 			Type: "object",
 			Properties: map[string]Property{
-				"cwd":          {Type: "string", Description: "Diretório do repositório"},
-				"ticket":       {Type: "string", Description: "Caminho do ticket/rd.md", Default: "rd.md"},
-				"base":         {Type: "string", Description: "Ref base", Default: "HEAD~1"},
-				"head":         {Type: "string", Description: "Ref head", Default: "HEAD"},
-				"approved_sha": {Type: "string", Description: "SHA aprovado para comparar patch-id estável com o head"},
+				"cwd":                  {Type: "string", Description: "Diretório do repositório"},
+				"ticket":               {Type: "string", Description: "Caminho do ticket/rd.md", Default: "rd.md"},
+				"base":                 {Type: "string", Description: "Ref base", Default: "HEAD~1"},
+				"head":                 {Type: "string", Description: "Ref head", Default: "HEAD"},
+				"approved_sha":         {Type: "string", Description: "SHA aprovado; compara patch-id verbatim (sensível a whitespace) com o head"},
+				"require_approved_sha": {Type: "boolean", Description: "Falha se approved_sha estiver ausente", Default: false},
 			},
 		},
 		Handler: handleDrift,
@@ -257,23 +259,24 @@ func registerStackTools() {
 					Description: "Operações na ordem: verify, review, drift, guard",
 					Items:       &Property{Type: "string"},
 				},
-				"cwd":             {Type: "string", Description: "Diretório do repositório"},
-				"base":            {Type: "string", Description: "Ref base", Default: "HEAD~1"},
-				"head":            {Type: "string", Description: "Ref head", Default: "HEAD"},
-				"fail_fast":       {Type: "boolean", Description: "Para na primeira etapa que falhar", Default: false},
-				"ticket":          {Type: "string", Description: "Caminho do ticket/rd.md", Default: "rd.md"},
-				"approved_sha":    {Type: "string", Description: "SHA aprovado (review/drift)"},
-				"warn_only":       {Type: "boolean", Description: "guard: não marca falha em SeverityError", Default: false},
-				"test_cmd":        {Type: "string", Description: "verify: testes visíveis"},
-				"hidden_test_cmd": {Type: "string", Description: "verify: testes ocultos"},
-				"build_cmd":       {Type: "string", Description: "verify: comando de build (vazio para pular)"},
-				"lint_cmd":        {Type: "string", Description: "verify: comando de lint (vazio para pular)"},
-				"no_build":        {Type: "boolean", Description: "verify: pula build_cmd", Default: false},
-				"no_lint":         {Type: "boolean", Description: "verify: pula lint_cmd", Default: false},
-				"dry_run":         {Type: "boolean", Description: "verify: mostra o plano sem executar", Default: false},
-				"max_iter":        {Type: "integer", Description: "verify: máximo de iterações", Default: 0},
-				"timeout":         {Type: "string", Description: "verify: timeout", Default: "10m"},
-				"reviewers":       {Type: "integer", Description: "review: máximo de goldfish", Default: 0},
+				"cwd":                  {Type: "string", Description: "Diretório do repositório"},
+				"base":                 {Type: "string", Description: "Ref base", Default: "HEAD~1"},
+				"head":                 {Type: "string", Description: "Ref head", Default: "HEAD"},
+				"fail_fast":            {Type: "boolean", Description: "Para na primeira etapa que falhar", Default: false},
+				"ticket":               {Type: "string", Description: "Caminho do ticket/rd.md", Default: "rd.md"},
+				"approved_sha":         {Type: "string", Description: "SHA aprovado; patch-id verbatim (review/drift)"},
+				"require_approved_sha": {Type: "boolean", Description: "Falha se approved_sha estiver ausente", Default: false},
+				"warn_only":            {Type: "boolean", Description: "guard: não marca falha em SeverityError", Default: false},
+				"test_cmd":             {Type: "string", Description: "verify: testes visíveis"},
+				"hidden_test_cmd":      {Type: "string", Description: "verify: testes ocultos"},
+				"build_cmd":            {Type: "string", Description: "verify: comando de build (vazio para pular)"},
+				"lint_cmd":             {Type: "string", Description: "verify: comando de lint (vazio para pular)"},
+				"no_build":             {Type: "boolean", Description: "verify: pula build_cmd", Default: false},
+				"no_lint":              {Type: "boolean", Description: "verify: pula lint_cmd", Default: false},
+				"dry_run":              {Type: "boolean", Description: "verify: mostra o plano sem executar", Default: false},
+				"max_iter":             {Type: "integer", Description: "verify: máximo de iterações", Default: 0},
+				"timeout":              {Type: "string", Description: "verify: timeout", Default: "10m"},
+				"reviewers":            {Type: "integer", Description: "review: máximo de goldfish", Default: 0},
 				"standards": {
 					Type:        "array",
 					Description: "review: papéis scope/quality/acceptance",
@@ -572,6 +575,7 @@ func driftConfigFromArgs(args map[string]any) (*review.Config, error) {
 	cfg.BaseExplicit = baseSet
 	cfg.HeadRef = head
 	cfg.ApprovedSHA = StringArg(args, "approved_sha")
+	cfg.RequireApprovedSHA = requireApprovedSHAArg(args)
 	cfg.TicketPath = ticketPath
 	cfg.Reviewers = 1
 	cfg.Standards = []string{"scope"}
@@ -582,7 +586,7 @@ func driftHasProblems(rep *review.Report) bool {
 	if rep == nil {
 		return false
 	}
-	if rep.PinnedApproval != nil && !rep.PinnedApproval.Match {
+	if rep.PinnedApproval.Diverged() {
 		return true
 	}
 	d := rep.Drift
@@ -603,6 +607,7 @@ func reviewConfigFromArgs(args map[string]any) (*review.Config, error) {
 		cfg.HeadRef = v
 	}
 	cfg.ApprovedSHA = StringArg(args, "approved_sha")
+	cfg.RequireApprovedSHA = requireApprovedSHAArg(args)
 	ticket := StringArg(args, "ticket")
 	if ticket == "" {
 		ticket = "rd.md"
@@ -616,6 +621,17 @@ func reviewConfigFromArgs(args map[string]any) (*review.Config, error) {
 	}
 	cfg.Standards = StringSliceArg(args, "standards", []string{"scope", "quality", "acceptance"})
 	return &cfg, nil
+}
+
+func requireApprovedSHAArg(args map[string]any) bool {
+	if BoolArg(args, "require_approved_sha", false) {
+		return true
+	}
+	fileCfg, err := config.Load()
+	if err != nil {
+		return false
+	}
+	return fileCfg.Review.RequireApprovedSHA
 }
 
 func splitCSVArg(s string) []string {
@@ -716,29 +732,30 @@ func handleStack(ctx context.Context, args map[string]any) (any, error) {
 		ticket = filepath.Join(cwd, ticket)
 	}
 	opts := &stack.Options{
-		RepoDir:       cwd,
-		Base:          base,
-		Head:          head,
-		Ops:           ops,
-		FailFast:      BoolArg(args, "fail_fast", false),
-		Ticket:        ticket,
-		ApprovedSHA:   StringArg(args, "approved_sha"),
-		WarnOnly:      BoolArg(args, "warn_only", false),
-		TestCmd:       StringArg(args, "test_cmd"),
-		HiddenTestCmd: StringArg(args, "hidden_test_cmd"),
-		BuildCmd:      StringArg(args, "build_cmd"),
-		LintCmd:       StringArg(args, "lint_cmd"),
-		BuildCmdSet:   HasArg(args, "build_cmd"),
-		LintCmdSet:    HasArg(args, "lint_cmd"),
-		NoBuild:       BoolArg(args, "no_build", false),
-		NoLint:        BoolArg(args, "no_lint", false),
-		DryRun:        BoolArg(args, "dry_run", false),
-		MaxIter:       IntArg(args, "max_iter", 0),
-		Timeout:       timeout,
-		Reviewers:     IntArg(args, "reviewers", 0),
-		Standards:     StringSliceArg(args, "standards", nil),
-		EnvAllow:      StringSliceArg(args, "env", nil),
-		EnvPass:       StringSliceArg(args, "pass_env", nil),
+		RepoDir:            cwd,
+		Base:               base,
+		Head:               head,
+		Ops:                ops,
+		FailFast:           BoolArg(args, "fail_fast", false),
+		Ticket:             ticket,
+		ApprovedSHA:        StringArg(args, "approved_sha"),
+		RequireApprovedSHA: requireApprovedSHAArg(args),
+		WarnOnly:           BoolArg(args, "warn_only", false),
+		TestCmd:            StringArg(args, "test_cmd"),
+		HiddenTestCmd:      StringArg(args, "hidden_test_cmd"),
+		BuildCmd:           StringArg(args, "build_cmd"),
+		LintCmd:            StringArg(args, "lint_cmd"),
+		BuildCmdSet:        HasArg(args, "build_cmd"),
+		LintCmdSet:         HasArg(args, "lint_cmd"),
+		NoBuild:            BoolArg(args, "no_build", false),
+		NoLint:             BoolArg(args, "no_lint", false),
+		DryRun:             BoolArg(args, "dry_run", false),
+		MaxIter:            IntArg(args, "max_iter", 0),
+		Timeout:            timeout,
+		Reviewers:          IntArg(args, "reviewers", 0),
+		Standards:          StringSliceArg(args, "standards", nil),
+		EnvAllow:           StringSliceArg(args, "env", nil),
+		EnvPass:            StringSliceArg(args, "pass_env", nil),
 	}
 	return stack.Run(ctx, opts)
 }
