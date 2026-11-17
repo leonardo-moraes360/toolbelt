@@ -94,6 +94,7 @@ budget:
 rewake_after: 10m
 timeout: 30s             # por despertar
 pass_env: []             # variáveis liberadas ao filho, por nome (inclusive segredos)
+secret_files: []         # arquivos KEY=VALOR (absolutos, regulares, 0600) cujos valores o audit redige; ausente = tb bus run não abre
 sandbox:
   read: []               # caminhos absolutos extras, somente leitura
   write: []              # caminhos absolutos extras, leitura e escrita
@@ -167,7 +168,7 @@ Outros vendors entram como novos presets do mesmo adapter quando tiverem modo he
 
 ## Auditoria
 
-`<privado>/run/<canal>/<nome>.jsonl` (`0600`), uma linha por evento: `wake_start`, `wake_ok`, `wake_attempt_failed`, `wake_failed`, `wake_unread`, `wake_budget_exceeded`, `session_reset`, `channel_expired`, `channel_reopened`, `error`. Com o canal expirado o harness não acorda ninguém (o agente não conseguiria responder): registra `channel_expired` uma vez (na primeira mensagem que acordaria) e segue esperando, rechecando a cada 5s; com `--once`, sai com erro; `tb bus channel extend` reabre o canal sem reiniciar o harness (`channel_reopened`). Config inválida não gera evento: `tb bus run` falha ao abrir. Cada linha tem `seq`s envolvidos, duração e código de saída; nunca payload, token ou valor de `pass_env`.
+`<privado>/run/<canal>/<nome>.jsonl` (`0600`), uma linha por evento: `wake_start`, `wake_ok`, `wake_attempt_failed`, `wake_failed`, `wake_unread`, `wake_budget_exceeded`, `session_reset`, `channel_expired`, `channel_reopened`, `error`. Com o canal expirado o harness não acorda ninguém (o agente não conseguiria responder): registra `channel_expired` uma vez (na primeira mensagem que acordaria) e segue esperando, rechecando a cada 5s; com `--once`, sai com erro; `tb bus channel extend` reabre o canal sem reiniciar o harness (`channel_reopened`). Config inválida não gera evento: `tb bus run` falha ao abrir. Cada linha tem `seq`s envolvidos, duração e código de saída; nunca payload, token ou valor de `pass_env`. O `detail` (saída do filho, erros) é redigido antes de gravar: valores de `pass_env`, de variáveis de segredo do ambiente do harness (`*TOKEN*`, `*SECRET*`, `*KEY*`, `*PASSWORD*`) e de `secret_files` (o valor inteiro, cada sufixo após espaço e cada palavra como o sh a separaria, ex.: `Bearer X` e `X`; mínimo 6 caracteres, 4 em `pass_env`), redigidos antes de qualquer corte; depois cabeçalhos de credencial (`Authorization`, `X-Api-Key`, `Cookie`), `nome_de_segredo=valor` (inclusive chave JSON e esquema `Bearer`), credencial em URL (userinfo e `?token=`), JWT e sequências ≥ 32 caracteres de `[A-Za-z0-9_-+/=]` com letras e dígitos (hashes hex também; UUIDs e caminhos absolutos ficam). Valores são lidos ao abrir: segredo trocado exige reiniciar o harness. Ainda pode vazar: segredo curto ou em forma de UUID que o filho lê de um arquivo fora de `secret_files` e imprime sem rótulo; liste o arquivo.
 
 ## Fora deste corte
 

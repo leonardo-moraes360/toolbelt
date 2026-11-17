@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/leonardo-moraes360/toolbelt/internal/bus"
@@ -41,6 +40,7 @@ type Harness struct {
 	base     string // <privado>/run/<canal>/<nome>
 	agentDir string // <privado>/sessions/<canal>/<nome> (token + mcp.json)
 	st       State
+	redactor *redactor
 	unlock   func()
 	now      func() time.Time
 
@@ -99,6 +99,9 @@ func (h *Harness) init() error {
 		return err
 	}
 	h.member = m
+	if h.redactor, err = newRedactor(h.cfg); err != nil {
+		return err
+	}
 	dir, err := RunDir(h.root, m.Channel)
 	if err != nil {
 		return err
@@ -172,11 +175,7 @@ func (h *Harness) Member() bus.Member { return h.member }
 
 func (h *Harness) audit(ev *Event) {
 	ev.Time = h.now().UTC()
-	for _, name := range h.cfg.PassEnv {
-		if v := os.Getenv(name); len(v) >= 4 {
-			ev.Detail = strings.ReplaceAll(ev.Detail, v, "[REDACTED]")
-		}
-	}
+	ev.Detail = h.redactor.redact(ev.Detail)
 	_ = auditLog{path: h.base + ".jsonl"}.write(ev)
 }
 

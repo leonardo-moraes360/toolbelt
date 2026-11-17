@@ -22,6 +22,7 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ### Corrigido
 - Sandbox Landlock: libera leitura do diretório alvo do symlink de `/etc/resolv.conf` (ex.: `/run/systemd/resolve`); antes, filhos com rede não resolviam DNS
+- `tb bus run`: `detail` do audit (stdout/stderr do filho) é redigido por valores conhecidos (`pass_env`, variáveis de segredo do harness, novo `secret_files`) e padrões genéricos (cabeçalhos de credencial, `segredo=valor`, credencial em URL, tokens longos); antes só `pass_env` e os padrões do `mem`
 - `tb bus run`: com o canal expirado, suspende despertares e audita `channel_expired` uma vez (antes seguia calado); retoma ao `extend` (`channel_reopened`)
 
 ## [0.0.4] - 2026-11-17

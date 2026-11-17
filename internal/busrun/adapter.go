@@ -196,14 +196,16 @@ func (a claudeAdapter) Wake(ctx context.Context, p *Packet, st *State) (Outcome,
 		}
 	}
 	out.Session = lastSessionID(out.Output)
-	out.Output = resultSummary(out.Output, out.ExitCode)
+	out.Output = resultSummary(out.Output, out.ExitCode, a.h.redactor.redact)
 	return out, nil
 }
 
 // resultSummary reduz o stream-json a um resumo sem conteúdo: o stream traz
 // tool_results (payloads lidos com recv) e a resposta do modelo, que não podem
 // ir para a auditoria.
-func resultSummary(output string, exit int) string {
+// red é aplicado antes de cada corte: um segredo partido ao meio não casaria
+// mais com o valor conhecido.
+func resultSummary(output string, exit int, red func(string) string) string {
 	var res struct {
 		Type    string `json:"type"`
 		Subtype string `json:"subtype"`
@@ -223,13 +225,13 @@ func resultSummary(output string, exit int) string {
 		}
 	}
 	if !found {
-		return fmt.Sprintf("sem evento result (exit %d): %s", exit, plainTail(output, 1024))
+		return fmt.Sprintf("sem evento result (exit %d): %s", exit, plainTail(output, 1024, red))
 	}
 	summary := fmt.Sprintf("result subtype=%s is_error=%t turns=%d", res.Subtype, res.IsError, res.Turns)
 	if res.IsError && res.Turns <= 1 {
 		// Erro antes de o modelo trabalhar (auth, rede, cota): o texto é a
 		// mensagem do CLI, não conteúdo de mensagem.
-		summary += ": " + truncate(res.Result, 300)
+		summary += ": " + truncate(red(res.Result), 300)
 	}
 	return summary
 }
@@ -263,14 +265,14 @@ func truncate(s string, n int) string {
 
 // plainTail devolve o final das linhas que não são eventos JSON (mensagens de
 // erro do CLI). Eventos do stream, que podem trazer payloads, ficam de fora.
-func plainTail(output string, limit int) string {
+func plainTail(output string, limit int, red func(string) string) string {
 	var keep []string
 	for _, line := range strings.Split(output, "\n") {
 		t := strings.TrimSpace(line)
 		if t == "" || (strings.HasPrefix(t, "{") && json.Valid([]byte(t))) {
 			continue
 		}
-		keep = append(keep, t)
+		keep = append(keep, red(t)) // por linha: padrões ancorados em ^ valem em cada uma
 	}
 	out := strings.Join(keep, " | ")
 	if len(out) > limit {

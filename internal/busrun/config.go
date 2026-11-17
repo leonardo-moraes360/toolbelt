@@ -28,6 +28,7 @@ type Config struct {
 	RewakeAfter time.Duration `yaml:"rewake_after"`
 	Timeout     time.Duration `yaml:"timeout"`
 	PassEnv     []string      `yaml:"pass_env"`
+	SecretFiles []string      `yaml:"secret_files"` // KEY=VALOR cujos valores o audit redige
 	Sandbox     SandboxPaths  `yaml:"sandbox"`
 	Exec        ExecConfig    `yaml:"exec"`
 	Harness     HarnessConfig `yaml:"harness"`
@@ -169,10 +170,11 @@ func (c *Config) Validate() error {
 	if c.Budget.MaxWakes < 1 || c.Budget.Per <= 0 || c.RewakeAfter <= 0 || c.Timeout <= 0 {
 		return errors.New("budget.max_wakes, budget.per, rewake_after e timeout precisam ser positivos")
 	}
-	for _, p := range append(append([]string{}, c.Sandbox.Read...), c.Sandbox.Write...) {
-		if !filepath.IsAbs(p) {
-			return fmt.Errorf("sandbox: caminho %q precisa ser absoluto", p)
-		}
+	if err := absPaths("secret_files", c.SecretFiles); err != nil {
+		return err
+	}
+	if err := absPaths("sandbox", append(append([]string{}, c.Sandbox.Read...), c.Sandbox.Write...)); err != nil {
+		return err
 	}
 	switch c.Adapter {
 	case AdapterExec:
@@ -183,6 +185,15 @@ func (c *Config) Validate() error {
 		return c.Harness.validate()
 	default:
 		return fmt.Errorf("adapter %q inválido (use exec ou harness)", c.Adapter)
+	}
+	return nil
+}
+
+func absPaths(field string, paths []string) error {
+	for _, p := range paths {
+		if !filepath.IsAbs(p) {
+			return fmt.Errorf("%s: caminho %q precisa ser absoluto", field, p)
+		}
 	}
 	return nil
 }

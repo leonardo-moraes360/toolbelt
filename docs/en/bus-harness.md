@@ -94,6 +94,7 @@ budget:
 rewake_after: 10m
 timeout: 30s             # per wake
 pass_env: []             # variables released to the child, by name (secrets included)
+secret_files: []         # KEY=VALUE files (absolute, regular, 0600) whose values the audit redacts; missing = tb bus run does not open
 sandbox:
   read: []               # extra absolute paths, read-only
   write: []              # extra absolute paths, read-write
@@ -167,7 +168,7 @@ Other vendors come in as new presets of the same adapter once they have a headle
 
 ## Audit
 
-`<private>/run/<channel>/<name>.jsonl` (`0600`), one line per event: `wake_start`, `wake_ok`, `wake_attempt_failed`, `wake_failed`, `wake_unread`, `wake_budget_exceeded`, `session_reset`, `channel_expired`, `channel_reopened`, `error`. While the channel is expired the harness wakes nobody (the agent could not reply): it logs `channel_expired` once (on the first message that would wake) and keeps waiting, rechecking every 5s; with `--once`, it exits with an error; `tb bus channel extend` reopens the channel without restarting the harness (`channel_reopened`). An invalid config produces no event: `tb bus run` fails to open. Each line has the `seq`s involved, duration and exit code; never a payload, token or `pass_env` value.
+`<private>/run/<channel>/<name>.jsonl` (`0600`), one line per event: `wake_start`, `wake_ok`, `wake_attempt_failed`, `wake_failed`, `wake_unread`, `wake_budget_exceeded`, `session_reset`, `channel_expired`, `channel_reopened`, `error`. While the channel is expired the harness wakes nobody (the agent could not reply): it logs `channel_expired` once (on the first message that would wake) and keeps waiting, rechecking every 5s; with `--once`, it exits with an error; `tb bus channel extend` reopens the channel without restarting the harness (`channel_reopened`). An invalid config produces no event: `tb bus run` fails to open. Each line has the `seq`s involved, duration and exit code; never a payload, token or `pass_env` value. The `detail` (child output, errors) is redacted before writing: values of `pass_env`, of secret variables in the harness environment (`*TOKEN*`, `*SECRET*`, `*KEY*`, `*PASSWORD*`) and of `secret_files` (the whole value, each suffix after a space and each word as sh would split it, e.g. `Bearer X` and `X`; at least 6 characters, 4 for `pass_env`), redacted before any cut; then credential headers (`Authorization`, `X-Api-Key`, `Cookie`), `secret_name=value` (JSON keys and a `Bearer` scheme included), credentials in URLs (userinfo and `?token=`), JWTs and sequences of ≥ 32 `[A-Za-z0-9_-+/=]` characters mixing letters and digits (hex hashes too; UUIDs and absolute paths stay). Values are read on open: a rotated secret requires restarting the harness. Can still leak: a short or UUID-shaped secret the child reads from a file outside `secret_files` and prints without a label; list the file.
 
 ## Out of this cut
 
