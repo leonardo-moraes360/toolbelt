@@ -661,7 +661,8 @@ Flags:
 Por default, exit ≠ 0 quando há `SeverityError` (comportamento estrito).
 `--strict` é **deprecated** (alias sem efeito: o default já falha em
 `SeverityError`); prefira omitir a flag ou usar `--warn-only` para opt-out.
-No modo texto limpo imprime `guard: ok (N regras, 0 violações)`.
+No modo texto limpo imprime `guard: ok (N regras, 0 violações)` (`N` = regras
+válidas da base + defaults).
 
 **Exemplos:**
 
@@ -940,8 +941,8 @@ de **abortar antes de build/test** depende da origem do `protected_path`:
 
 | Origem | Sem `--ticket` | Com `--ticket` e path no Scope | Com `--ticket` e path fora do Scope |
 |--------|----------------|--------------------------------|-------------------------------------|
-| Defaults embutidos (`tests/hidden/*`, `benchmarks/*`, `.toolbelt/thresholds.yaml`) | **aborta** (FAIL, 0 iterações) | **aborta** | **aborta** |
-| `protected_paths` de `.toolbelt/guard.yaml` (custom) | reporta como **warning** e **continua** build/test | reporta warning (exceção de Scope) e **continua** | **aborta** |
+| Defaults embutidos (`tests/hidden/*`, `benchmarks/*`, `.toolbelt/thresholds.yaml`, `.toolbelt/guard.yaml`) | **aborta** (FAIL, 0 iterações) | **aborta** | **aborta** |
+| `protected_paths` de `.toolbelt/guard.yaml` na **base** (custom) | reporta como **warning** e **continua** build/test | reporta warning (exceção de Scope) e **continua** | **aborta** |
 
 `tb guard check` (e o alias deprecated `--strict`) trata violações custom como
 `SeverityError` e falha o exit code por default; use `--warn-only` para opt-out.
@@ -1089,7 +1090,8 @@ Aceita o intervalo posicional `base..head` (forma clássica) ou as flags `--base
 Por default, exit ≠ 0 quando há `SeverityError` (CI-safe). `--strict` está
 **deprecated** (substituído pelo default estrito + `--warn-only`). No modo texto
 sem violações imprime `guard: ok (N regras, 0 violações)` (`N` = paths protegidos
-carregados: defaults + `.toolbelt/guard.yaml`).
+válidos carregados: defaults + `.toolbelt/guard.yaml` da **base**; padrões
+inválidos são ignorados e não entram em `rules_checked`).
 
 **Exemplos:**
 
@@ -1112,7 +1114,21 @@ tb guard check main..HEAD --json
 
 **Manifesto de paths protegidos (`.toolbelt/guard.yaml`):**
 
-O guard carrega `protected_paths` de `.toolbelt/guard.yaml` (quando presente) e **une** aos defaults embutidos (`tests/hidden/*`, `benchmarks/*`, `.toolbelt/thresholds.yaml`). Cada entrada pode ser uma string (`lib/help.js`) ou um objeto com `pattern`. Entrada com barra final (`secrets/`) protege o diretório e todos os filhos (prefixo). `secrets/*` continua válido para um nível via glob. Sem o arquivo, só os defaults valem. Violações ganham `source: default` (anti-cheat embutido) ou `source: custom` (YAML). Em `tb verify run`, só `default` (e custom fora do Scope do `--ticket`) abortam o loop; custom no mandate é reportado e o verify segue — ver seção verify acima.
+O guard lê `protected_paths` de `.toolbelt/guard.yaml` **na ref base**
+(`git show base:.toolbelt/guard.yaml`) e **une** aos defaults embutidos
+(`tests/hidden/*`, `benchmarks/*`, `.toolbelt/thresholds.yaml`,
+`.toolbelt/guard.yaml`). Qualquer alteração em `.toolbelt/guard.yaml` no diff
+é violação. YAML malformado na base falha **fechado** (exit ≠ 0, erro claro).
+Matching de paths é **case-insensitive** e honra globs (`*`, `?`, `**`).
+Renames (`R*`) checam origem e destino. A varredura anti-trapaça usa o
+conteúdo do diff/`git show head:path` (não o working tree) e cobre Go e
+JS/TS (`it.skip` / `describe.skip` / `test.skip` / `xit` / `.only` /
+asserções triviais como `expect(true).toBe(true)`). Cada entrada do YAML pode
+ser string (`lib/help.js`) ou objeto com `pattern`. Barra final (`secrets/`)
+protege o diretório e filhos. Sem o arquivo na base, só os defaults valem.
+Violações ganham `source: default` ou `source: custom`. Em `tb verify run`,
+só `default` (e custom fora do Scope do `--ticket`) abortam o loop; custom no
+mandate é reportado e o verify segue — ver seção verify acima.
 
 ```yaml
 # .toolbelt/guard.yaml

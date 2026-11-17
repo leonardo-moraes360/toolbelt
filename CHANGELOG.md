@@ -132,6 +132,13 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 - `tb review`: goldfish distintos por papel (`scope`, `quality`, `acceptance`) em vez do mesmo checker clonado N vezes; `--reviewers` só limita papéis; qualidade cobre TODO/FIXME, funções grandes e código sem testes; aceite exige evidência em testes/arquivos de código
 
 ### Corrigido
+- `tb guard check`: renames (`R*`) checam origem e destino; matching de
+  `protected_paths` é case-insensitive; globs com `**` funcionam; regras
+  inválidas não entram em `rules_checked`; config lida da **base**
+  (`git show base:.toolbelt/guard.yaml`) e alteração nesse arquivo é
+  violação; YAML malformado falha fechado (exit ≠ 0); varredura usa o
+  diff/`git show head:path` (não o working tree); detecção de enfraquecimento
+  de testes JS/TS (`skip`/`only`/`xit`/asserções triviais)
 - Descrição longa do CLI: completa o adjetivo em pt-BR (`persistent` → `persistente`)
 - `docs/cli.md` alinhado à CLI real: remove `graph callers --file`; `router` documentado como stub; seções planejadas (`proc`/`agent`/`watchdog`/`merge`) marcadas; `init`/`sandbox`/`workspace`, mem show/edit/retire/search, guard `--warn-only`, review standards e códigos de saída conferidos contra `--help`/MCP
 - Teste `TestDocsCLIExamplesMatchCobra` extrai `tb …` de `docs/cli.md` e valida subcomandos/flags na árvore Cobra

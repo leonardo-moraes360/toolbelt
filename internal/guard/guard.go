@@ -2,10 +2,12 @@ package guard
 
 import (
 	"bufio"
+	"errors"
+	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
-	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -71,56 +73,11 @@ var defaultProtectedPaths = []string{
 	"tests/hidden/*",
 	"benchmarks/*",
 	".toolbelt/thresholds.yaml",
+	".toolbelt/guard.yaml",
 }
 
 func NewChecker(repoDir string) *Checker {
-	return &Checker{
-		repoDir:        repoDir,
-		protectedPaths: loadProtectedPaths(repoDir),
-	}
-}
-
-func loadProtectedPaths(repoDir string) []protectedEntry {
-	paths := make([]protectedEntry, 0, len(defaultProtectedPaths))
-	seen := make(map[string]struct{}, len(defaultProtectedPaths))
-	for _, p := range defaultProtectedPaths {
-		seen[p] = struct{}{}
-		paths = append(paths, protectedEntry{pattern: p})
-	}
-	data, err := os.ReadFile(filepath.Join(repoDir, ".toolbelt", "guard.yaml"))
-	if err != nil {
-		return paths
-	}
-	var raw struct {
-		ProtectedPaths []any `yaml:"protected_paths"`
-	}
-	if err := yaml.Unmarshal(data, &raw); err != nil {
-		return paths
-	}
-	for _, item := range raw.ProtectedPaths {
-		pattern := protectedPattern(item)
-		if pattern == "" {
-			continue
-		}
-		if _, ok := seen[pattern]; ok {
-			continue
-		}
-		seen[pattern] = struct{}{}
-		paths = append(paths, protectedEntry{pattern: pattern, custom: true})
-	}
-	return paths
-}
-
-func protectedPattern(item any) string {
-	switch v := item.(type) {
-	case string:
-		return strings.TrimSpace(v)
-	case map[string]any:
-		if p, ok := v["pattern"].(string); ok {
-			return strings.TrimSpace(p)
-		}
-	}
-	return ""
+	return &Checker{repoDir: repoDir}
 }
 
 func (c *Checker) Check(baseRef, headRef string) (*CheckResult, error) {
@@ -128,9 +85,14 @@ func (c *Checker) Check(baseRef, headRef string) (*CheckResult, error) {
 }
 
 func (c *Checker) CheckDiff(baseRef, headRef, nameStatus string) (*CheckResult, error) {
+	paths, err := c.loadProtectedPaths(baseRef)
+	if err != nil {
+		return nil, err
+	}
+	c.protectedPaths = paths
+
 	diff := nameStatus
 	if diff == "" {
-		var err error
 		diff, err = c.gitDiff(baseRef, headRef)
 		if err != nil {
 			return nil, err
@@ -161,13 +123,72 @@ func (c *Checker) CheckDiff(baseRef, headRef, nameStatus string) (*CheckResult, 
 		if cf.deleted {
 			continue
 		}
-		full := filepath.Join(c.repoDir, cf.path)
-		if _, statErr := os.Stat(full); statErr != nil {
+		content, showErr := c.gitShow(headRef, cf.path)
+		if showErr != nil {
 			continue
 		}
-		res.Violations = append(res.Violations, c.scanFile(full, cf.path)...)
+		res.Violations = append(res.Violations, c.scanContent(content, cf.path)...)
 	}
 	return res, nil
+}
+
+func (c *Checker) loadProtectedPaths(baseRef string) ([]protectedEntry, error) {
+	paths := make([]protectedEntry, 0, len(defaultProtectedPaths))
+	seen := make(map[string]struct{}, len(defaultProtectedPaths))
+	for _, p := range defaultProtectedPaths {
+		if !validProtectedPattern(p) {
+			continue
+		}
+		seen[strings.ToLower(p)] = struct{}{}
+		paths = append(paths, protectedEntry{pattern: p})
+	}
+	data, err := c.gitShow(baseRef, ".toolbelt/guard.yaml")
+	if err != nil {
+		if isMissingGitObject(err) {
+			return paths, nil
+		}
+		return nil, fmt.Errorf("lendo .toolbelt/guard.yaml da base %s: %w", baseRef, err)
+	}
+	var raw struct {
+		ProtectedPaths []any `yaml:"protected_paths"`
+	}
+	if err := yaml.Unmarshal([]byte(data), &raw); err != nil {
+		return nil, fmt.Errorf("guard.yaml malformado na base %s: %w", baseRef, err)
+	}
+	for _, item := range raw.ProtectedPaths {
+		pattern := protectedPattern(item)
+		if pattern == "" || !validProtectedPattern(pattern) {
+			continue
+		}
+		key := strings.ToLower(pattern)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		paths = append(paths, protectedEntry{pattern: pattern, custom: true})
+	}
+	return paths, nil
+}
+
+func protectedPattern(item any) string {
+	switch v := item.(type) {
+	case string:
+		return strings.TrimSpace(v)
+	case map[string]any:
+		if p, ok := v["pattern"].(string); ok {
+			return strings.TrimSpace(p)
+		}
+	}
+	return ""
+}
+
+func validProtectedPattern(pattern string) bool {
+	pattern = filepath.ToSlash(strings.TrimSpace(pattern))
+	if pattern == "" {
+		return false
+	}
+	_, err := compileGlob(pattern)
+	return err == nil
 }
 
 type changed struct {
@@ -180,19 +201,69 @@ func (c *Checker) gitDiff(base, head string) (string, error) {
 	return string(out), err
 }
 
+func (c *Checker) gitShow(ref, path string) (string, error) {
+	spec := ref + ":" + filepath.ToSlash(path)
+	out, err := git.Output(c.repoDir, "show", spec)
+	if err != nil {
+		return "", err
+	}
+	return string(out), nil
+}
+
+func isMissingGitObject(err error) bool {
+	msg := gitErrLower(err)
+	if msg == "" {
+		return false
+	}
+	if strings.Contains(msg, "unknown revision") ||
+		strings.Contains(msg, "invalid object name") ||
+		strings.Contains(msg, "bad revision") ||
+		strings.Contains(msg, "needed a single revision") ||
+		strings.Contains(msg, "ambiguous argument") {
+		return false
+	}
+	return strings.Contains(msg, "does not exist") ||
+		strings.Contains(msg, "exists on disk") ||
+		strings.Contains(msg, "bad object") ||
+		strings.Contains(msg, "path not in")
+}
+
+func gitErrLower(err error) string {
+	var ge *git.Error
+	if errors.As(err, &ge) {
+		return strings.ToLower(ge.Stderr)
+	}
+	var ee *exec.ExitError
+	if errors.As(err, &ee) {
+		return strings.ToLower(string(ee.Stderr))
+	}
+	return ""
+}
+
 func parseDiff(diff string) []changed {
 	var out []changed
 	s := bufio.NewScanner(strings.NewReader(diff))
 	for s.Scan() {
 		line := s.Text()
-		if len(line) < 2 {
+		parts := strings.Split(line, "\t")
+		if len(parts) < 2 {
 			continue
 		}
-		ch := changed{path: strings.TrimSpace(line[1:])}
-		if line[0] == 'D' {
-			ch.deleted = true
+		status := parts[0]
+		switch {
+		case strings.HasPrefix(status, "R") || strings.HasPrefix(status, "C"):
+			if len(parts) < 3 {
+				continue
+			}
+			out = append(out,
+				changed{path: parts[1], deleted: true},
+				changed{path: parts[2]},
+			)
+		case status == "D":
+			out = append(out, changed{path: parts[1], deleted: true})
+		default:
+			out = append(out, changed{path: parts[1]})
 		}
-		out = append(out, ch)
 	}
 	return out
 }
@@ -200,7 +271,20 @@ func parseDiff(diff string) []changed {
 func isTestFile(path string) bool {
 	b := filepath.Base(path)
 	p := filepath.ToSlash(path)
-	return strings.HasSuffix(b, "_test.go") || strings.Contains(p, "/tests/") || strings.Contains(p, "/test/")
+	return strings.HasSuffix(b, "_test.go") ||
+		strings.Contains(p, "/tests/") ||
+		strings.Contains(p, "/test/") ||
+		isJSTestPath(p)
+}
+
+func isJSTestPath(path string) bool {
+	b := strings.ToLower(filepath.Base(path))
+	return strings.Contains(b, ".test.") ||
+		strings.Contains(b, ".spec.") ||
+		strings.HasSuffix(b, "_test.js") ||
+		strings.HasSuffix(b, "_test.ts") ||
+		strings.HasSuffix(b, "_test.jsx") ||
+		strings.HasSuffix(b, "_test.tsx")
 }
 
 func (c *Checker) protectedMatch(path string) (protectedEntry, bool) {
@@ -218,33 +302,94 @@ func matchProtectedPattern(pattern, path string) bool {
 	if pattern == "" {
 		return false
 	}
-	if ok, _ := filepath.Match(pattern, path); ok {
-		return true
+	re, err := compileGlob(pattern)
+	if err != nil {
+		return false
 	}
-	if strings.HasSuffix(pattern, "/") {
-		dir := strings.TrimSuffix(pattern, "/")
-		return path == dir || strings.HasPrefix(path, pattern)
-	}
-	if strings.HasSuffix(pattern, "/*") {
-		prefix := strings.TrimSuffix(pattern, "/*")
-		return path == prefix || strings.HasPrefix(path, prefix+"/")
-	}
-	return false
+	return re.MatchString(path)
 }
 
-func (c *Checker) scanFile(full, rel string) []Violation {
-	switch filepath.Ext(full) {
+func compileGlob(pattern string) (*regexp.Regexp, error) {
+	pattern = filepath.ToSlash(strings.TrimSpace(pattern))
+	if pattern == "" {
+		return nil, fmt.Errorf("padrão vazio")
+	}
+	if strings.HasSuffix(pattern, "/") {
+		return dirPrefixRegexp(strings.TrimSuffix(pattern, "/"))
+	}
+	if strings.HasSuffix(pattern, "/*") {
+		return dirPrefixRegexp(strings.TrimSuffix(pattern, "/*"))
+	}
+	re, err := globToRegexp(pattern)
+	if err != nil {
+		return nil, err
+	}
+	return regexp.Compile(re)
+}
+
+func dirPrefixRegexp(prefix string) (*regexp.Regexp, error) {
+	return regexp.Compile("(?i)^" + regexp.QuoteMeta(prefix) + "(/.*)?$")
+}
+
+func globToRegexp(pattern string) (string, error) {
+	var b strings.Builder
+	b.WriteString("(?i)^")
+	for i := 0; i < len(pattern); {
+		n, piece, err := nextGlobPiece(pattern, i)
+		if err != nil {
+			return "", err
+		}
+		b.WriteString(piece)
+		i = n
+	}
+	b.WriteString("$")
+	return b.String(), nil
+}
+
+func nextGlobPiece(pattern string, i int) (next int, piece string, err error) {
+	if i+1 < len(pattern) && pattern[i] == '*' && pattern[i+1] == '*' {
+		if i+2 < len(pattern) && pattern[i+2] == '/' {
+			return i + 3, "(.*/)?", nil
+		}
+		return i + 2, ".*", nil
+	}
+	switch pattern[i] {
+	case '*':
+		return i + 1, "[^/]*", nil
+	case '?':
+		return i + 1, "[^/]", nil
+	case '[':
+		j := i + 1
+		if j < len(pattern) && (pattern[j] == '!' || pattern[j] == '^') {
+			j++
+		}
+		for j < len(pattern) && pattern[j] != ']' {
+			j++
+		}
+		if j >= len(pattern) {
+			return 0, "", fmt.Errorf("classe de caracteres sem fechamento")
+		}
+		return j + 1, pattern[i : j+1], nil
+	default:
+		return i + 1, regexp.QuoteMeta(string(pattern[i])), nil
+	}
+}
+
+func (c *Checker) scanContent(content, rel string) []Violation {
+	switch strings.ToLower(filepath.Ext(rel)) {
 	case ".go":
-		return c.scanGo(full, rel)
+		return c.scanGo(content, rel)
+	case ".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs":
+		return scanJS(content, rel)
 	default:
 		return nil
 	}
 }
 
-func (c *Checker) scanGo(full, rel string) []Violation {
+func (c *Checker) scanGo(content, rel string) []Violation {
 	var v []Violation
 	fset := token.NewFileSet()
-	node, err := parser.ParseFile(fset, full, nil, 0)
+	node, err := parser.ParseFile(fset, rel, content, 0)
 	if err != nil {
 		return v
 	}
@@ -262,8 +407,7 @@ func (c *Checker) scanGo(full, rel string) []Violation {
 		}
 		return true
 	})
-	data, _ := os.ReadFile(full)
-	v = append(v, scanEnv(string(data), rel)...)
+	v = append(v, scanEnv(content, rel)...)
 	return v
 }
 
@@ -285,4 +429,59 @@ func scanEnv(content, rel string) []Violation {
 		}
 	}
 	return v
+}
+
+var (
+	jsSkipRes = []*regexp.Regexp{
+		regexp.MustCompile(`(?i)\b(describe|it|test)\s*\.\s*skip\b`),
+		regexp.MustCompile(`(?i)\bxit\b`),
+		regexp.MustCompile(`(?i)\b(describe|it|test)\s*\.\s*only\b`),
+	}
+	jsTrivialRes = []*regexp.Regexp{
+		regexp.MustCompile(`(?i)expect\s*\(\s*true\s*\)\s*\.\s*toBe\s*\(\s*true\s*\)`),
+		regexp.MustCompile(`(?i)expect\s*\(\s*false\s*\)\s*\.\s*toBe\s*\(\s*false\s*\)`),
+		regexp.MustCompile(`(?i)expect\s*\(\s*true\s*\)\s*\.\s*toBeTruthy\s*\(`),
+		regexp.MustCompile(`(?i)expect\s*\(\s*false\s*\)\s*\.\s*toBeFalsy\s*\(`),
+		regexp.MustCompile(`(?i)expect\s*\(\s*(\d+)\s*\)\s*\.\s*toBe\s*\(\s*(\d+)\s*\)`),
+		regexp.MustCompile(`(?i)expect\s*\(\s*(['"].*?['"])\s*\)\s*\.\s*toBe\s*\(\s*(['"].*?['"])\s*\)`),
+	}
+)
+
+func scanJS(content, rel string) []Violation {
+	var v []Violation
+	for i, line := range strings.Split(content, "\n") {
+		trimmed := strings.TrimSpace(line)
+		for _, re := range jsSkipRes {
+			if re.MatchString(line) {
+				v = append(v, Violation{
+					Type: ViolationTestSkip, File: rel, Line: i + 1,
+					Message: "teste JS/TS enfraquecido (skip/only)", Severity: SeverityWarning,
+					Context: trimmed,
+				})
+				break
+			}
+		}
+		if trivialJSAssert(line) {
+			v = append(v, Violation{
+				Type: ViolationTrivialAssert, File: rel, Line: i + 1,
+				Message: "asserção trivial JS/TS", Severity: SeverityError,
+				Context: trimmed,
+			})
+		}
+	}
+	return v
+}
+
+func trivialJSAssert(line string) bool {
+	for _, re := range jsTrivialRes {
+		m := re.FindStringSubmatch(line)
+		if m == nil {
+			continue
+		}
+		if len(m) >= 3 && m[1] != "" && m[2] != "" && m[1] != m[2] {
+			continue
+		}
+		return true
+	}
+	return false
 }
