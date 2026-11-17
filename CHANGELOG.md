@@ -74,6 +74,11 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 - Stack/verify respeitam overrides de comando: `--test-cmd` + `--no-build`/`--no-lint` (ou `--build-cmd`/`--lint-cmd` vazios) pulam o `build_cmd`/`lint_cmd` do config
 - `tests/hidden/` sem toolchain aplicável deixa de forçar `go test` (marca `hidden_available: false`); detecta Go/Python/JS quando há suíte
 - Build/lint bem-sucedidos são cacheados na mesma execução; falha determinística de build/lint não entra no retry de `--max-iter`
+- Refs de `--base`/`--head`/`--approved-sha` (CLI e MCP em guard/drift/review/verify/stack)
+  rejeitam valores que começam com `-`, resolvem via
+  `git rev-parse --verify --end-of-options <ref>^{commit}` e usam o SHA daí em
+  diante; chamadas `git` passam `--end-of-options` onde aplicável. SHA de 40 hex
+  inexistente agora falha com erro claro (`ref inexistente ou inválida`)
 - `tb review` / `tb drift` / `tb stack`: `--approved-sha` compara
   `approved_base..approved` vs `head_base..head` (não a mesma `--base` nos dois
   lados); default das bases via `git merge-base`; nova flag `--approved-base`;
