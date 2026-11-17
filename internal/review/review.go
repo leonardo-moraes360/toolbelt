@@ -54,15 +54,16 @@ type Shared struct {
 }
 
 type Config struct {
-	RepoDir      string
-	BaseRef      string
-	HeadRef      string
-	ApprovedSHA  string
-	TicketPath   string
-	Reviewers    int
-	Standards    []string
-	Shared       *Shared
-	BaseExplicit bool
+	RepoDir            string
+	BaseRef            string
+	HeadRef            string
+	ApprovedSHA        string
+	RequireApprovedSHA bool
+	TicketPath         string
+	Reviewers          int
+	Standards          []string
+	Shared             *Shared
+	BaseExplicit       bool
 }
 
 type Report struct {
@@ -112,8 +113,9 @@ func Run(cfg *Config) (*Report, error) {
 	if err != nil {
 		return nil, err
 	}
-	if !cfg.BaseExplicit && ticket != nil && ticket.BaseCommit != "" && cfg.BaseRef == "HEAD~1" {
-		cfg.BaseRef = ticket.BaseCommit
+	applyTicketBaseRef(cfg, ticket)
+	if err := pinGitRefs(cfg); err != nil {
+		return nil, err
 	}
 
 	changed, err := resolveChanged(cfg)
@@ -140,16 +142,37 @@ func Run(cfg *Config) (*Report, error) {
 	enrichDriftBase(cfg.RepoDir, drift, cfg.HeadRef)
 	report.Drift = drift
 
+	if err := attachPinnedApproval(cfg, report, drift); err != nil {
+		return nil, err
+	}
+
+	report.Findings = aggregateFindings(collectGoldfishFindings(roster, ticket, diff, changed, invariants))
+	return report, nil
+}
+
+func applyTicketBaseRef(cfg *Config, ticket *TicketScope) {
+	if cfg.BaseExplicit || ticket == nil || ticket.BaseCommit == "" || cfg.BaseRef != "HEAD~1" {
+		return
+	}
+	cfg.BaseRef = ticket.BaseCommit
+}
+
+func attachPinnedApproval(cfg *Config, report *Report, drift *DriftReport) error {
+	if cfg.RequireApprovedSHA && strings.TrimSpace(cfg.ApprovedSHA) == "" {
+		return fmt.Errorf("approved-sha obrigatório (require_approved_sha)")
+	}
 	pinned, err := CheckPinnedApproval(cfg.RepoDir, cfg.BaseRef, cfg.ApprovedSHA, cfg.HeadRef)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	report.PinnedApproval = pinned
 	if drift != nil {
 		drift.PinnedApproval = pinned
 	}
+	return nil
+}
 
-	// Cada goldfish tem um papel distinto e recebe só ticket + diff + invariantes.
+func collectGoldfishFindings(roster []reviewerRole, ticket *TicketScope, diff string, changed []string, invariants []mem.Invariant) []Finding {
 	var all []Finding
 	for _, role := range roster {
 		ctx := FreshContext{
@@ -162,8 +185,7 @@ func Run(cfg *Config) (*Report, error) {
 		}
 		all = append(all, Fresh(&ctx)...)
 	}
-	report.Findings = aggregateFindings(all)
-	return report, nil
+	return all
 }
 
 func buildReviewerRoster(standards []string, limit int) []reviewerRole {
@@ -1233,6 +1255,20 @@ func pathMarkerHit(file, marker string) bool {
 func loadInvariants(repo string) ([]mem.Invariant, error) {
 	dir := mem.LocateRepoToolbeltDir(repo)
 	return mem.NewStore(dir).List("", false)
+}
+
+func pinGitRefs(cfg *Config) error {
+	base, err := resolveGitRef(cfg.RepoDir, cfg.BaseRef)
+	if err != nil {
+		return fmt.Errorf("base: %w", err)
+	}
+	head, err := resolveGitRef(cfg.RepoDir, cfg.HeadRef)
+	if err != nil {
+		return fmt.Errorf("head: %w", err)
+	}
+	cfg.BaseRef = base
+	cfg.HeadRef = head
+	return nil
 }
 
 func resolveChanged(cfg *Config) ([]string, error) {

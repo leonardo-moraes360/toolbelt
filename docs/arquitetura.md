@@ -1133,7 +1133,7 @@ graph LR
 
 **Paths protegidos** (defaults embutidos + opcional `.toolbelt/guard.yaml`):
 
-Defaults: `tests/hidden/*`, `benchmarks/*`, `.toolbelt/thresholds.yaml`. Entradas em `protected_paths` do YAML (string ou `pattern`) são unidas a esses defaults; arquivo ausente não remove os defaults. Padrão com barra final (`secrets/`) é tratado como prefixo de diretório (protege filhos).
+Defaults: `tests/hidden/*`, `benchmarks/*`, `.toolbelt/thresholds.yaml`, `.toolbelt/guard.yaml`. Entradas em `protected_paths` do YAML na **base** (string ou `pattern`) são unidas a esses defaults; arquivo ausente não remove os defaults. Matching case-insensitive com globs (`**`); YAML malformado falha fechado. Padrão com barra final (`secrets/`) é tratado como prefixo de diretório (protege filhos).
 
 ```yaml
 protected_paths:
