@@ -102,14 +102,14 @@ func (s *Store) Explain(query string, limit int) ([]Explanation, error) {
 		}
 		if ex, ok := want[e.SourceID]; ok {
 			if n, ok := byID[e.TargetID]; ok {
-				ex.Outgoing = append(ex.Outgoing, neighborOf(n, e, DirOut))
+				ex.Outgoing = append(ex.Outgoing, neighborOf(&n, e, DirOut))
 			} else if e.Type == EdgeCalls {
 				ex.UnresolvedOut++
 			}
 		}
 		if ex, ok := want[e.TargetID]; ok {
 			if n, ok := byID[e.SourceID]; ok {
-				ex.Incoming = append(ex.Incoming, neighborOf(n, e, DirIn))
+				ex.Incoming = append(ex.Incoming, neighborOf(&n, e, DirIn))
 			}
 		}
 	}
@@ -130,8 +130,8 @@ func (s *Store) Explain(query string, limit int) ([]Explanation, error) {
 	return out, nil
 }
 
-func neighborOf(n Node, e *Edge, d Direction) Neighbor {
-	return Neighbor{Node: n, Edge: e.Type, Direction: d, Source: e.Source, Confidence: e.Confidence}
+func neighborOf(n *Node, e *Edge, d Direction) Neighbor {
+	return Neighbor{Node: *n, Edge: e.Type, Direction: d, Source: e.Source, Confidence: e.Confidence}
 }
 
 func sortNeighbors(ns []Neighbor) {
@@ -155,16 +155,17 @@ func sortNeighbors(ns []Neighbor) {
 func uniqueNeighbors(ns []Neighbor) []Neighbor {
 	sortNeighbors(ns)
 	out := ns[:0]
-	for _, n := range ns {
+	for i := range ns {
+		n := &ns[i]
 		if last := len(out) - 1; last >= 0 && out[last].Edge == n.Edge && out[last].Node.ID == n.Node.ID {
 			continue // sorted: first of the run has the best confidence
 		}
-		out = append(out, n)
+		out = append(out, *n)
 	}
 	return out
 }
 
-func capNeighbors(ns []Neighbor) ([]Neighbor, int) {
+func capNeighbors(ns []Neighbor) (kept []Neighbor, truncated int) {
 	if len(ns) <= MaxExplainNeighbors {
 		return ns, 0
 	}

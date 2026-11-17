@@ -232,8 +232,8 @@ func Scale(v, f int) int { return v * f }
 
 func pathIDs(steps []PathStep) []string {
 	out := make([]string, len(steps))
-	for i, st := range steps {
-		out[i] = st.Node.ID
+	for i := range steps {
+		out[i] = steps[i].Node.ID
 	}
 	return out
 }
@@ -287,8 +287,7 @@ func TestResolvePrecedenceExactIDOverTitle(t *testing.T) {
 		t.Fatalf("exact ID should win over title, got %+v", ex)
 	}
 	// Without an ID match, every exact-title match is returned, sorted.
-	ex, err = s.Explain("func:z", 0)
-	if !errors.Is(err, ErrNodeNotFound) {
+	if _, err = s.Explain("func:z", 0); !errors.Is(err, ErrNodeNotFound) {
 		t.Fatalf("err = %v", err)
 	}
 	s2 := exploreStore([]Node{fn("func:y.Run", "Run"), fn("func:x.Run", "Run")}, nil)

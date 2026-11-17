@@ -221,7 +221,8 @@ var graphExplainCmd = &cobra.Command{
 }
 
 func printNeighbors(ns []graph.Neighbor, truncated int, arrow string) {
-	for _, n := range ns {
+	for i := range ns {
+		n := &ns[i]
 		fmt.Printf("    %s %-9s %-40s %s %.2f\n", arrow, n.Edge, n.Node.ID, n.Source, n.Confidence)
 	}
 	if truncated > 0 {
