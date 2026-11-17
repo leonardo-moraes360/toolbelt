@@ -1,3 +1,5 @@
+🇧🇷 Português | [🇺🇸 English](../en/campo/ripgrep.md)
+
 # Campo: BurntSushi/ripgrep
 
 Estudo de campo do `tb` (grupo: sem instrumentação de agente de IA), clone local apenas — sem push/issue/PR/comentário no upstream.

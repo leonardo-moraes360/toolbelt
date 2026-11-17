@@ -1,3 +1,5 @@
+🇧🇷 Português | [🇺🇸 English](en/identidade-visual.md)
+
 # Identidade Visual do Toolbelt
 
 <p align="center">

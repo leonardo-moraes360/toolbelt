@@ -346,6 +346,58 @@ func TestGuardCheckToolStrictFailDefault(t *testing.T) {
 	}
 }
 
+func TestGuardCheckToolRejectsOptionInjection(t *testing.T) {
+	dir := gitRepo(t)
+	git(t, dir, "commit", "--allow-empty", "-m", "two")
+	outDir := t.TempDir()
+	injected := filepath.Join(outDir, "pwned")
+	res, err := Default().Call(context.Background(), "tb_guard_check", map[string]any{
+		"cwd":  dir,
+		"base": "--output=" + injected,
+		"head": "HEAD",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.IsError {
+		t.Fatalf("MCP deveria rejeitar injeção: %s", res.Content[0].Text)
+	}
+	if !strings.Contains(res.Content[0].Text, "inválida") && !strings.Contains(res.Content[0].Text, "-") {
+		t.Fatalf("mensagem: %s", res.Content[0].Text)
+	}
+	if _, statErr := os.Stat(injected + "..HEAD"); statErr == nil {
+		t.Fatal("MCP não deveria criar arquivo via --output")
+	}
+}
+
+func TestReviewToolRejectsMissingApprovedSHA(t *testing.T) {
+	dir := gitRepo(t)
+	writeFile(t, filepath.Join(dir, "a.go"), "package a\n")
+	git(t, dir, "add", "-A")
+	git(t, dir, "commit", "-m", "base")
+	writeFile(t, filepath.Join(dir, "rd.md"), "---\ntitle: t\nscope:\n  - a.go\n---\n")
+	git(t, dir, "add", "-A")
+	git(t, dir, "commit", "-m", "head")
+	res, err := Default().Call(context.Background(), "tb_review", map[string]any{
+		"cwd":          dir,
+		"base":         "HEAD~1",
+		"head":         "HEAD",
+		"ticket":       "rd.md",
+		"approved_sha": "ffffffffffffffffffffffffffffffffffffffff",
+		"reviewers":    1,
+		"standards":    []any{"scope"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.IsError {
+		t.Fatalf("approved_sha inexistente deveria falhar: %s", res.Content[0].Text)
+	}
+	if !strings.Contains(res.Content[0].Text, "inexistente") {
+		t.Fatalf("erro claro esperado: %s", res.Content[0].Text)
+	}
+}
+
 func TestMemImmutableRequiresForceMCP(t *testing.T) {
 	dir := memToolDir(t)
 	id := memToolAdd(t, dir, map[string]any{

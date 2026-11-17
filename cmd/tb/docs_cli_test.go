@@ -15,43 +15,92 @@ import (
 
 func TestDocsCLIExamplesMatchCobra(t *testing.T) {
 	root := findModuleRoot(t)
-	docPath := filepath.Join(root, "docs", "cli.md")
-	raw, err := os.ReadFile(docPath)
-	if err != nil {
-		t.Fatalf("reading %s: %v", docPath, err)
-	}
+	for _, rel := range []string{
+		filepath.Join("docs", "cli.md"),
+		filepath.Join("docs", "en", "cli.md"),
+	} {
+		rel := rel
+		t.Run(rel, func(t *testing.T) {
+			docPath := filepath.Join(root, rel)
+			raw, err := os.ReadFile(docPath)
+			if err != nil {
+				t.Fatalf("reading %s: %v", docPath, err)
+			}
 
-	examples := extractDocsCLIExamples(string(raw))
-	if len(examples) == 0 {
-		t.Fatal("no tb examples extracted from docs/cli.md")
-	}
+			examples := extractDocsCLIExamples(string(raw))
+			if len(examples) == 0 {
+				t.Fatalf("no tb examples extracted from %s", rel)
+			}
 
-	var checked int
-	for _, ex := range examples {
-		ok, err := validateDocsCLIExample(rootCmd, ex)
-		if !ok {
-			continue
-		}
-		checked++
+			var checked int
+			for _, ex := range examples {
+				ok, err := validateDocsCLIExample(rootCmd, ex)
+				if !ok {
+					continue
+				}
+				checked++
+				if err != nil {
+					t.Errorf("%s:%d: %s\n  %v", rel, ex.line, ex.raw, err)
+				}
+			}
+			if checked == 0 {
+				t.Fatalf("no implemented tb examples to validate in %s", rel)
+			}
+		})
+	}
+}
+
+func TestDocsEnglishMirrorComplete(t *testing.T) {
+	root := findModuleRoot(t)
+	docsRoot := filepath.Join(root, "docs")
+	enRoot := filepath.Join(docsRoot, "en")
+	var missing []string
+	err := filepath.Walk(docsRoot, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
-			t.Errorf("docs/cli.md:%d: %s\n  %v", ex.line, ex.raw, err)
+			return err
 		}
+		if info.IsDir() {
+			if path == enRoot {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if filepath.Ext(path) != ".md" {
+			return nil
+		}
+		rel, err := filepath.Rel(docsRoot, path)
+		if err != nil {
+			return err
+		}
+		if _, err := os.Stat(filepath.Join(enRoot, rel)); err != nil {
+			missing = append(missing, rel)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
-	if checked == 0 {
-		t.Fatal("no implemented tb examples to validate")
+	if len(missing) > 0 {
+		t.Fatalf("docs without English mirror under docs/en/: %v", missing)
 	}
 }
 
 func TestDocsDescribeRealLocalWorkflow(t *testing.T) {
 	root := findModuleRoot(t)
 	cli := mustReadFile(t, filepath.Join(root, "docs", "cli.md"))
+	cliEN := mustReadFile(t, filepath.Join(root, "docs", "en", "cli.md"))
 	readme := mustReadFile(t, filepath.Join(root, "README.md"))
+	readmeEN := mustReadFile(t, filepath.Join(root, "README.en.md"))
 	changelog := mustReadFile(t, filepath.Join(root, "CHANGELOG.md"))
 
 	assertDocsDriftIsScopeNotVault(t, cli)
+	assertDocsDriftIsScopeNotVault(t, cliEN)
 	assertDocsLocalTicketWorkflow(t, cli+"\n"+readme)
+	assertDocsLocalTicketWorkflow(t, cliEN+"\n"+readmeEN)
 	assertDocsJavascriptCoversTypeScript(t, cli)
+	assertDocsJavascriptCoversTypeScript(t, cliEN)
 	assertDocsGuardStrictDeprecated(t, cli, changelog)
+	assertDocsGuardStrictDeprecated(t, cliEN, changelog)
 }
 
 func mustReadFile(t *testing.T, path string) string {
@@ -80,7 +129,9 @@ func assertDocsLocalTicketWorkflow(t *testing.T, docs string) {
 	t.Helper()
 	localOK := strings.Contains(strings.ToLower(docs), "100% local") ||
 		strings.Contains(docs, "não fala com o GitHub") ||
-		strings.Contains(docs, "nao fala com o GitHub")
+		strings.Contains(docs, "nao fala com o GitHub") ||
+		strings.Contains(strings.ToLower(docs), "does not talk to github") ||
+		strings.Contains(strings.ToLower(docs), "doesn't talk to github")
 	if !localOK {
 		t.Error("docs devem deixar claro que o tb não fala com o GitHub (100% local)")
 	}
@@ -95,6 +146,8 @@ func assertDocsJavascriptCoversTypeScript(t *testing.T, cli string) {
 	covers := strings.Contains(cli, "cobre TypeScript") ||
 		strings.Contains(cli, "inclui TypeScript") ||
 		strings.Contains(cli, "também TypeScript") ||
+		strings.Contains(cli, "covers TypeScript") ||
+		strings.Contains(cli, "includes TypeScript") ||
 		strings.Contains(cli, "TypeScript (ts/tsx)")
 	if !strings.Contains(cli, "TypeScript") || !covers {
 		t.Error("docs/cli.md deve deixar explícito que a linguagem javascript cobre TypeScript (ts/tsx)")

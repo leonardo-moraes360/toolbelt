@@ -1,3 +1,5 @@
+🇧🇷 Português | [🇺🇸 English](../en/adr/003-sqlite-fts5-grafo.md)
+
 # ADR-003: SQLite + FTS5 como Grafo e Índice de Memória
 
 ## Status

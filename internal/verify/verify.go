@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/leonardo-moraes360/toolbelt/internal/execenv"
+	"github.com/leonardo-moraes360/toolbelt/internal/gitref"
 	"github.com/leonardo-moraes360/toolbelt/internal/guard"
 	"github.com/leonardo-moraes360/toolbelt/internal/log"
 	"github.com/leonardo-moraes360/toolbelt/internal/review"
@@ -99,13 +100,14 @@ func Run(ctx context.Context, cfg *Config) (*Result, error) {
 	if cfg.MaxIterations == 0 {
 		cfg.MaxIterations = 3
 	}
-	res := &Result{Verdict: VerdictFail, WorkDir: cfg.RepoDir}
-
-	headSHA, err := gitRevParse(cfg.RepoDir, cfg.HeadRef)
+	base, head, err := gitref.ResolvePair(cfg.RepoDir, cfg.BaseRef, cfg.HeadRef)
 	if err != nil {
-		return nil, fmt.Errorf("resolver --head %q: %w", cfg.HeadRef, err)
+		return nil, err
 	}
-	res.HeadSHA = headSHA
+	cfg.BaseRef = base
+	cfg.HeadRef = head
+	headSHA := head
+	res := &Result{Verdict: VerdictFail, WorkDir: cfg.RepoDir, HeadSHA: headSHA}
 
 	abort, err := applyGuard(cfg, res)
 	if err != nil {

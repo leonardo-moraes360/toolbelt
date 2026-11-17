@@ -1,3 +1,5 @@
+🇧🇷 Português | [🇺🇸 English](../../en/campo/rodada2/jq.md)
+
 # Estudo de campo (rodada 2): jqlang/jq
 
 Grupo: without existing AI-agent instrumentation.  

@@ -1,3 +1,5 @@
+🇧🇷 Português | [🇺🇸 English](SECURITY.en.md)
+
 # Política de Segurança
 
 ## Versões Suportadas

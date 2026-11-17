@@ -1,3 +1,5 @@
+🇧🇷 Português | [🇺🇸 English](../en/campo/jq.md)
+
 # Estudo de campo: jqlang/jq
 
 Grupo: sem instrumentação de agente de IA.  

@@ -1,3 +1,5 @@
+🇧🇷 Português | [🇺🇸 English](en/verificacao-visual.md)
+
 # Verificação Visual (Ruler `visual`)
 
 Este documento especifica o ruler de verificação visual para o sistema `tb verify`. É uma instância do padrão de verificação adversarial aplicado a interfaces de usuário.

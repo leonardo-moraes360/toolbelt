@@ -9,6 +9,7 @@ import (
 	"unicode"
 
 	"github.com/leonardo-moraes360/toolbelt/internal/git"
+	"github.com/leonardo-moraes360/toolbelt/internal/gitref"
 	"github.com/leonardo-moraes360/toolbelt/internal/mem"
 	"gopkg.in/yaml.v3"
 )
@@ -916,11 +917,7 @@ func enrichDriftBase(repo string, drift *DriftReport, head string) {
 }
 
 func resolveGitRef(repo, ref string) (string, error) {
-	out, err := git.Output(repo, "rev-parse", "--verify", ref)
-	if err != nil {
-		return "", err
-	}
-	return strings.TrimSpace(string(out)), nil
+	return gitref.Resolve(repo, ref)
 }
 
 func gitMergeBase(repo, a, b string) (string, error) {
@@ -1295,7 +1292,7 @@ func resolveInvariants(cfg *Config) []mem.Invariant {
 }
 
 func listChangedFiles(repo, base, head string) ([]string, error) {
-	out, err := git.Output(repo, "diff", "--name-only", base+"..."+head)
+	out, err := git.Output(repo, "diff", "--name-only", "--end-of-options", base+"..."+head)
 	if err != nil {
 		return nil, err
 	}
@@ -1310,7 +1307,7 @@ func listChangedFiles(repo, base, head string) ([]string, error) {
 }
 
 func gitDiff(repo, base, head string) (string, error) {
-	out, err := git.Output(repo, "diff", base+"..."+head)
+	out, err := git.Output(repo, "diff", "--end-of-options", base+"..."+head)
 	if err != nil {
 		return "", err
 	}

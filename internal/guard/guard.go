@@ -12,6 +12,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/leonardo-moraes360/toolbelt/internal/gitref"
 	"gopkg.in/yaml.v3"
 
 	"github.com/leonardo-moraes360/toolbelt/internal/git"
@@ -85,7 +86,11 @@ func (c *Checker) Check(baseRef, headRef string) (*CheckResult, error) {
 }
 
 func (c *Checker) CheckDiff(baseRef, headRef, nameStatus string) (*CheckResult, error) {
-	paths, err := c.loadProtectedPaths(baseRef)
+	base, head, err := gitref.ResolvePair(c.repoDir, baseRef, headRef)
+	if err != nil {
+		return nil, err
+	}
+	paths, err := c.loadProtectedPaths(base)
 	if err != nil {
 		return nil, err
 	}
@@ -93,14 +98,14 @@ func (c *Checker) CheckDiff(baseRef, headRef, nameStatus string) (*CheckResult, 
 
 	diff := nameStatus
 	if diff == "" {
-		diff, err = c.gitDiff(baseRef, headRef)
+		diff, err = c.gitDiff(base, head)
 		if err != nil {
 			return nil, err
 		}
 	}
 	res := &CheckResult{
-		BaseRef:      baseRef,
-		HeadRef:      headRef,
+		BaseRef:      base,
+		HeadRef:      head,
 		RulesChecked: len(c.protectedPaths),
 		Violations:   []Violation{},
 	}
@@ -123,7 +128,7 @@ func (c *Checker) CheckDiff(baseRef, headRef, nameStatus string) (*CheckResult, 
 		if cf.deleted {
 			continue
 		}
-		content, showErr := c.gitShow(headRef, cf.path)
+		content, showErr := c.gitShow(head, cf.path)
 		if showErr != nil {
 			continue
 		}
@@ -197,7 +202,7 @@ type changed struct {
 }
 
 func (c *Checker) gitDiff(base, head string) (string, error) {
-	out, err := git.Output(c.repoDir, "diff", "--name-status", base+".."+head)
+	out, err := git.Output(c.repoDir, "diff", "--name-status", "--end-of-options", base+".."+head)
 	return string(out), err
 }
 

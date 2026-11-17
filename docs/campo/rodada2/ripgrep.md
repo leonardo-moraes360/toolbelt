@@ -1,3 +1,5 @@
+🇧🇷 Português | [🇺🇸 English](../../en/campo/rodada2/ripgrep.md)
+
 # Campo rodada 2: BurntSushi/ripgrep
 
 Estudo de campo ROUND 2 do `tb` (grupo: **without existing AI-agent instrumentation**). Clone local apenas — sem push/issue/PR/comentário no upstream.
