@@ -1123,3 +1123,59 @@ experiment:
 ```
 
 **Status**: pending proposal
+
+---
+
+## Microbenchmark: `tb stack` (real binary)
+
+Measure wall-clock of the **binary** (`go build -o tb ./cmd/tb`), not only in-process `testing.B`.
+The stack already reuses diff/index/memory; parallelization (`--jobs`) covers
+read-only steps (`guard`/`drift`/`review`). `verify` stays isolated.
+
+### Methodology
+
+- ≥ 7 runs; report the mean
+- Compare: `tb stack …` vs a sequence of standalone commands
+- Variants: `guard+drift+review` and `verify+guard+drift+review` (`--test-cmd true --max-iter 1`)
+- Fixtures: the toolbelt repository and a fixture with hundreds of changed files
+- Controls: `--jobs 1` (internal serial) vs default (CPU count)
+
+### Observed profile (Prepare)
+
+| Phase | Small fixture | Large fixture (~500 files) |
+|------|-----------------|------------------------------|
+| Startup (`tb version`) | ~3 ms | ~3 ms |
+| Unified `git diff` | ~1.4 ms | ~32 ms |
+| `git diff --name-status` + `--name-only` | ~2.5 ms | ~5.5 ms |
+| 3× git in parallel | ~1.6 ms | ~31 ms (dominated by unified) |
+
+The in-process gain (parallel stack vs `--jobs 1` ~2.6×; vs 3× standalone `Run` ~7×)
+overestimates the real-binary gain, because startup (~3 ms) and the unified
+`git diff` dominate.
+
+### Results (real binary, mean of 7 runs)
+
+| Scenario | Before (serial stack) | After (parallel) | Standalone sequence | Speedup stack÷seq |
+|---------|----------------------|-------------------|------------------|-------------------|
+| toolbelt `guard+drift+review` | 10 ms | 5 ms | 15 ms | 3.00× |
+| toolbelt `verify+…` | 10 ms | 5 ms | 19 ms | 3.80× |
+| large fixture `guard+drift+review` | 60 ms | 36 ms | 80 ms | 2.22× |
+| large fixture `verify+…` | 74 ms | 44 ms | 93 ms | 2.11× |
+| large + `--jobs 1` | — | 47 ms | 84 ms | 1.79× (Prepare parallel only) |
+
+On the large fixture, parallelizing steps + git in Prepare cut ~40% of stack
+wall-clock (60→36 ms). `--jobs 1` keeps Prepare parallel and serves as the serial
+control for steps.
+
+### How to run
+
+```bash
+go build -o /tmp/tb ./cmd/tb
+/tmp/tb stack guard drift review --ticket rd.md
+# vs sequence:
+/tmp/tb guard check --json
+/tmp/tb drift --ticket rd.md --json
+/tmp/tb review --ticket rd.md --json
+```
+
+**Status**: measured during `--jobs` development (see Unreleased CHANGELOG)

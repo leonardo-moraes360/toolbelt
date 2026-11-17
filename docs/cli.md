@@ -607,9 +607,11 @@ tb agent reject action-124 --reason "Não autorizado para rede externa"
 
 Executa `verify`, `review`, `drift` e/ou `guard` numa única invocação, compartilhando
 o trabalho caro (diff unificado, índice de arquivos alterados, memória/invariantes e
-config). A ordem dos argumentos é a ordem de execução. A saída é sempre um JSON
-agregado (`ok`, `steps`, `total_duration_ms`); o exit code do processo é ≠ 0 se
-qualquer etapa falhar (mesma semântica de cada comando avulso). Durações são
+config). Etapas somente leitura e independentes (`guard`, `drift`, `review`) rodam em
+paralelo (errgroup + `--jobs`); `verify` (build/test) fica serial/isolado. A saída JSON
+preserva a ordem pedida nos argumentos, independente da ordem de término. A saída é
+sempre um JSON agregado (`ok`, `steps`, `total_duration_ms`); o exit code do processo
+é ≠ 0 se qualquer etapa falhar (mesma semântica de cada comando avulso). Durações são
 `float` em milissegundos (com fração sub-ms). Erros de preparação ou de uma
 operação aparecem em `steps[].error` dentro do JSON (não só no stderr).
 
@@ -622,7 +624,8 @@ tb stack <op> [<op>...] [flags]
 Flags:
   --base <ref>           Ref base compartilhada (default: HEAD~1; validada/resolvida)
   --head <ref>           Ref head compartilhada (default: HEAD; validada/resolvida)
-  --fail-fast            Para na primeira etapa que falhar
+  --fail-fast            Cancela as demais etapas via context na primeira falha
+  --jobs <n>             Limite de concorrência (default: nº de CPUs, máx. 32; 1 = serial)
   --ticket <path>        Ticket/rd.md (review/drift/verify; default: rd.md)
   --approved-sha <sha>   SHA aprovado; patch-id verbatim (review/drift; validado/resolvido)
   --approved-base <ref>  Base do range aprovado (default: merge-base(approved, base); validada/resolvida)
@@ -653,19 +656,23 @@ Ticket inexistente ou ilegível (arquivo/ID apontado por `--ticket`) faz as etap
 
 ```bash
 tb stack verify review drift guard
+tb stack guard drift review --jobs 4
 tb stack guard drift --fail-fast
 tb stack review drift --base HEAD~1 --head HEAD --ticket rd.md
 tb stack verify guard --test-cmd "true" --max-iter 1
+tb stack guard drift review --jobs 1
 tb stack verify --test-cmd "pnpm test" --no-build --no-lint --max-iter 1
 tb stack verify --dry-run --test-cmd "go test ./..."
 tb stack verify --test-cmd "true" --env APP_ENV --pass-env GITHUB_TOKEN
 ```
 
 Cada item de `steps` traz `op`, `ok`, `exit_code`, `duration_ms`, `reason`/`error`
-(quando a etapa falha) e `result` (o JSON que o comando avulso produziria). O
-`verify` empilhado usa o mesmo `--base`/`--head` do contexto compartilhado: se o
-head divergir do `HEAD` do worktree, build/lint/test rodam num worktree detach
-temporário (ver `tb verify`); o `result` do passo inclui `head_sha` e `workdir`.
+(quando a etapa falha) e `result` (o JSON que o comando avulso produziria). No
+`Prepare`, chamadas git independentes (`diff` / `name-status` / `name-only`) e carga
+de invariantes também rodam em paralelo. O `verify` empilhado usa o mesmo
+`--base`/`--head` do contexto compartilhado: se o head divergir do `HEAD` do
+worktree, build/lint/test rodam num worktree detach temporário (ver `tb verify`); o
+`result` do passo inclui `head_sha` e `workdir`.
 
 ---
 
@@ -1814,7 +1821,7 @@ Transporte unix/tcp e flags `--socket`/`--port`/`--tls-*` são planejados; hoje 
 | `tb_review` | `tb review` | ticket/base/head/approved_sha/approved_base/require_approved_sha/reviewers/standards |
 | `tb_drift` | `tb drift` | retorna `{drift, has_drift, pinned_approval}` (`checked` explícito); `approved_sha`/`approved_base` |
 | `tb_guard_check` | `tb guard check` | `base`/`head` ou `range=A..B`; `strict_fail` por default em SeverityError; `warn_only=true` opt-out; `strict` deprecated (boolean) |
-| `tb_stack` | `tb stack` | `ops` (array), `base`/`head`, `fail_fast` (boolean), `approved_sha`/`approved_base`/`require_approved_sha`, `env`/`pass_env`; retorna JSON agregado |
+| `tb_stack` | `tb stack` | `ops` (array), `base`/`head`, `fail_fast` (boolean), `jobs` (integer), `approved_sha`/`approved_base`/`require_approved_sha`, `env`/`pass_env`; retorna JSON agregado |
 | `tb_graph_search` / `tb_graph_callers` / `tb_graph_deps` / `tb_graph_impact` / `tb_graph_index` | `tb graph …` | chamada requer `TB_GRAPH=on`; `depth`/`limit` integer; `transitive` boolean |
 
 Schemas tipam `depth`/`limit`/`reviewers`/`max_iter` como integer, `strict`/`warn_only`/`transitive`/`skip_unavailable`/`all` (mem) como boolean, `threshold` como number e `standards` como array de strings; valores string legados ainda são aceitos. Relatórios de verify/review/drift/guard voltam como JSON no `content` (sem código de saída de processo). Listas vazias usam `[]`; `hidden_passed` é `null` se a suíte oculta não se aplica.

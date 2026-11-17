@@ -10,6 +10,8 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 ### Adicionado
 - `tb verify run` / `tb stack`: flags `--build-cmd`, `--lint-cmd`, `--no-build`, `--no-lint` e `--dry-run` (plano com `dir`/`commands` sem executar); MCP `tb_verify_run` / `tb_stack` com os mesmos campos
 - JSON de verify e de cada etapa do stack expõem `reason`/`error` no ESCALATE/FAIL (não só DEBUG no stderr)
+- `tb stack --jobs N`: concorrência para etapas somente leitura (`guard`/`drift`/`review`);
+  default = nº de CPUs (máx. 32); `--jobs 1` força serial; MCP `tb_stack` aceita `jobs`
 - Release: SBOM (syft via `sboms:` no GoReleaser), assinatura keyless cosign do `checksums.txt` (OIDC GitHub) e atestação de proveniência SLSA (`actions/attest-build-provenance`)
 - CI: job `govulncheck` em todo push/PR
 - Espelho completo da documentação em inglês (`README.en.md`, `*.en.md` na raiz,
@@ -36,6 +38,9 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
   `created`/`count`/`invariants`
 
 ### Mudanças
+- `tb stack`: etapas `guard`/`drift`/`review` rodam em paralelo (errgroup); `verify` permanece
+  isolado; JSON preserva a ordem pedida; `--fail-fast` cancela as demais via context;
+  `Prepare` paraleliza git/IO independentes
 - Instalação por binário no README exige `cosign verify-blob` + `sha256sum -c` (remove `curl | tar` e a menção ao Homebrew sem tap)
 - Go atualizado para `1.27.4` (`go.mod`, workflows CI/Release); golangci-lint no CI passa a v2.15.0 (compatível com Go 1.27)
 - `docs/release.md` documenta SBOM, assinatura, atestação e validação local com `--skip=sign`

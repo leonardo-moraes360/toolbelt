@@ -607,7 +607,10 @@ tb agent reject action-124 --reason "Não autorizado para rede externa"
 
 Runs `verify`, `review`, `drift`, and/or `guard` in a single invocation, sharing
 expensive work (unified diff, changed-file index, memory/invariants, and
-config). Argument order is execution order. Output is always aggregated JSON
+config). Independent read-only steps (`guard`, `drift`, `review`) run in
+parallel (errgroup + `--jobs`); `verify` (build/test) stays serial/isolated.
+JSON output preserves the order requested in the arguments, regardless of
+completion order. Output is always aggregated JSON
 (`ok`, `steps`, `total_duration_ms`); the process exit code is ≠ 0 if
 any step fails (same semantics as each standalone command). Durations are
 `float` milliseconds (with sub-ms fraction). Preparation or operation errors
@@ -620,21 +623,23 @@ verification/review operations with shared context.
 tb stack <op> [<op>...] [flags]
 
 Flags:
-  --base <ref>           Ref base compartilhada (default: HEAD~1)
-  --head <ref>           Ref head compartilhada (default: HEAD)
-  --fail-fast            Para na primeira etapa que falhar
+  --base <ref>           Shared base ref (default: HEAD~1; validated/resolved)
+  --head <ref>           Shared head ref (default: HEAD; validated/resolved)
+  --fail-fast            Cancel remaining steps via context on the first failure
+  --jobs <n>             Concurrency limit (default: CPU count, max 32; 1 = serial)
   --ticket <path>        Ticket/rd.md (review/drift/verify; default: rd.md)
-  --approved-sha <sha>   SHA aprovado; patch-id verbatim (review/drift)
-  --require-approved-sha Falha se --approved-sha estiver ausente (ou `review.require_approved_sha`)
-  --warn-only            guard: exit 0 mesmo com SeverityError
-  --test-cmd <cmd>       verify: testes visíveis
-  --hidden-test-cmd <cmd> verify: testes ocultos
-  --max-iter <n>         verify: máximo de iterações
+  --approved-sha <sha>   Approved SHA; verbatim patch-id (review/drift; validated/resolved)
+  --approved-base <ref>  Base of the approved range (default: merge-base(approved, base); validated/resolved)
+  --require-approved-sha Fail if --approved-sha is missing (or `review.require_approved_sha`)
+  --warn-only            guard: exit 0 even with SeverityError
+  --test-cmd <cmd>       verify: visible tests
+  --hidden-test-cmd <cmd> verify: hidden tests
+  --max-iter <n>         verify: max iterations
   --timeout <duration>   verify: timeout (default: 10m)
-  --reviewers <n>        review: máximo de goldfish
-  --standards <csv>      review: papéis (scope,quality,acceptance)
-  --env <KEY>            (global) allowlist extra para o verify empilhado
-  --pass-env <KEY>       (global) opt-in explícito de segredo para o verify
+  --reviewers <n>        review: max goldfish
+  --standards <csv>      review: roles (scope,quality,acceptance)
+  --env <KEY>            (global) extra allowlist for stacked verify
+  --pass-env <KEY>       (global) explicit secret opt-in for verify
 ```
 
 With no operation, or an unknown operation, exits with a short error listing the valid
@@ -647,17 +652,21 @@ A missing or unreadable ticket (file/ID pointed to by `--ticket`) makes the
 
 ```bash
 tb stack verify review drift guard
+tb stack guard drift review --jobs 4
 tb stack guard drift --fail-fast
 tb stack review drift --base HEAD~1 --head HEAD --ticket rd.md
 tb stack verify guard --test-cmd "true" --max-iter 1
+tb stack guard drift review --jobs 1
 tb stack verify --test-cmd "true" --env APP_ENV --pass-env GITHUB_TOKEN
 ```
 
 Each `steps` item carries `op`, `ok`, `exit_code`, `duration_ms`, `result` (the JSON
-the standalone command would produce) and, on failure, `error`. Stacked `verify` uses the
-same shared `--base`/`--head`: if head diverges from the worktree `HEAD`,
-build/lint/test run in a temporary detached worktree (see `tb verify`);
-the step `result` includes `head_sha` and `workdir`.
+the standalone command would produce) and, on failure, `error`. In `Prepare`,
+independent git calls (`diff` / `name-status` / `name-only`) and invariant loading
+also run in parallel. Stacked `verify` uses the same shared `--base`/`--head`:
+if head diverges from the worktree `HEAD`, build/lint/test run in a temporary
+detached worktree (see `tb verify`); the step `result` includes `head_sha` and
+`workdir`.
 
 ---
 
@@ -1772,7 +1781,7 @@ Unix/tcp transport and `--socket`/`--port`/`--tls-*` flags are planned; today on
 | `tb_review` | `tb review` | ticket/base/head/approved_sha/require_approved_sha/reviewers/standards |
 | `tb_drift` | `tb drift` | returns `{drift, has_drift, pinned_approval}` (`checked` explicit) |
 | `tb_guard_check` | `tb guard check` | `base`/`head` or `range=A..B`; `strict_fail` by default on SeverityError; `warn_only=true` opt-out; `strict` deprecated (boolean) |
-| `tb_stack` | `tb stack` | `ops` (array), `base`/`head`, `fail_fast` (boolean), `env`/`pass_env`; returns aggregated JSON |
+| `tb_stack` | `tb stack` | `ops` (array), `base`/`head`, `fail_fast` (boolean), `jobs` (integer), `approved_sha`/`approved_base`/`require_approved_sha`, `env`/`pass_env`; returns aggregated JSON |
 | `tb_graph_search` / `tb_graph_callers` / `tb_graph_deps` / `tb_graph_impact` / `tb_graph_index` | `tb graph …` | call requires `TB_GRAPH=on`; `depth`/`limit` integer; `transitive` boolean |
 
 Schemas type `depth`/`limit`/`reviewers`/`max_iter` as integer, `strict`/`warn_only`/`transitive`/`skip_unavailable`/`all` (mem) as boolean, `threshold` as number, and `standards` as a string array; legacy string values are still accepted. verify/review/drift/guard reports come back as JSON in `content` (without a process exit code). Empty lists use `[]`; `hidden_passed` is `null` if the hidden suite does not apply.

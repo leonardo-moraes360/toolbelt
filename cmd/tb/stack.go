@@ -22,8 +22,10 @@ Não é stack de branches (como Graphite ou git-stack): só orquestra verify,
 review, drift e/ou guard na ordem dada.
 
 Operações: verify, review, drift, guard.
-Por padrão roda todas; --fail-fast para na primeira falha.
-A saída é sempre um único JSON agregado.
+Etapas somente leitura (guard, drift, review) rodam em paralelo; verify fica isolado
+(build/test). A saída JSON preserva a ordem pedida. --jobs N limita a concorrência
+(default = nº de CPUs, máx. 32; --jobs 1 = serial). --fail-fast cancela as demais
+via context. A saída é sempre um único JSON agregado.
 Sem operação, sai com erro curto listando as ops válidas (sem dump de Usage).`,
 	RunE: runStack,
 }
@@ -31,7 +33,8 @@ Sem operação, sai com erro curto listando as ops válidas (sem dump de Usage).
 func init() {
 	stackCmd.Flags().String("base", "HEAD~1", "ref base compartilhada")
 	stackCmd.Flags().String("head", "HEAD", "ref head compartilhada")
-	stackCmd.Flags().Bool("fail-fast", false, "para na primeira etapa que falhar")
+	stackCmd.Flags().Bool("fail-fast", false, "cancela as demais etapas na primeira falha")
+	stackCmd.Flags().Int("jobs", 0, "limite de concorrência (0=nº de CPUs, máx. 32; 1=serial)")
 	stackCmd.Flags().String("ticket", "rd.md", "caminho do ticket/rd.md (review/drift/verify)")
 	stackCmd.Flags().String("approved-sha", "", "SHA aprovado; patch-id verbatim (review/drift)")
 	stackCmd.Flags().String("approved-base", "", "base do range aprovado; default: merge-base(approved, base)")
@@ -79,6 +82,7 @@ func runStack(cmd *cobra.Command, args []string) error {
 	base, _ := cmd.Flags().GetString("base")
 	head, _ := cmd.Flags().GetString("head")
 	failFast, _ := cmd.Flags().GetBool("fail-fast")
+	jobs, _ := cmd.Flags().GetInt("jobs")
 	ticket, _ := cmd.Flags().GetString("ticket")
 	approved, _ := cmd.Flags().GetString("approved-sha")
 	approvedBase, _ := cmd.Flags().GetString("approved-base")
@@ -100,6 +104,7 @@ func runStack(cmd *cobra.Command, args []string) error {
 		Head:               head,
 		Ops:                ops,
 		FailFast:           failFast,
+		Jobs:               jobs,
 		Ticket:             ticket,
 		ApprovedSHA:        approved,
 		ApprovedBase:       approvedBase,

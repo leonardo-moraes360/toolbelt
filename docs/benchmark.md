@@ -1123,3 +1123,59 @@ experiment:
 ```
 
 **Status**: proposta pendente
+
+---
+
+## Microbenchmark: `tb stack` (binário real)
+
+Medir wall-clock do **binário** (`go build -o tb ./cmd/tb`), não só `testing.B` in-process.
+O stack já reutiliza diff/índice/memória; a paralelização (`--jobs`) cobre etapas
+somente leitura (`guard`/`drift`/`review`). `verify` permanece isolado.
+
+### Metodologia
+
+- ≥ 7 corridas; reportar média
+- Comparar: `tb stack …` vs sequência de comandos avulsos
+- Variantes: `guard+drift+review` e `verify+guard+drift+review` (`--test-cmd true --max-iter 1`)
+- Fixtures: repositório do toolbelt e fixture com centenas de arquivos alterados
+- Controles: `--jobs 1` (serial interno) vs default (nº de CPUs)
+
+### Perfil observado (Prepare)
+
+| Fase | Fixture pequena | Fixture grande (~500 arquivos) |
+|------|-----------------|--------------------------------|
+| Startup (`tb version`) | ~3 ms | ~3 ms |
+| `git diff` unificado | ~1.4 ms | ~32 ms |
+| `git diff --name-status` + `--name-only` | ~2.5 ms | ~5.5 ms |
+| 3× git em paralelo | ~1.6 ms | ~31 ms (dominado pelo unified) |
+
+O ganho in-process (stack paralelo vs `--jobs 1` ~2.6×; vs 3× `Run` avulsos ~7×)
+superestima o ganho no binário real, porque o startup (~3 ms) e o `git diff`
+unificado dominam.
+
+### Resultados (binário real, média de 7 corridas)
+
+| Cenário | Antes (serial stack) | Depois (paralelo) | Sequência avulsa | Speedup stack÷seq |
+|---------|----------------------|-------------------|------------------|-------------------|
+| toolbelt `guard+drift+review` | 10 ms | 5 ms | 15 ms | 3.00× |
+| toolbelt `verify+…` | 10 ms | 5 ms | 19 ms | 3.80× |
+| fixture grande `guard+drift+review` | 60 ms | 36 ms | 80 ms | 2.22× |
+| fixture grande `verify+…` | 74 ms | 44 ms | 93 ms | 2.11× |
+| grande + `--jobs 1` | — | 47 ms | 84 ms | 1.79× (só Prepare paralelo) |
+
+Na fixture grande, paralelizar etapas + git no Prepare cortou ~40% do wall-clock
+do stack (60→36 ms). O `--jobs 1` mantém o Prepare paralelo e serve de controle serial
+das etapas.
+
+### Como rodar
+
+```bash
+go build -o /tmp/tb ./cmd/tb
+/tmp/tb stack guard drift review --ticket rd.md
+# vs sequência:
+/tmp/tb guard check --json
+/tmp/tb drift --ticket rd.md --json
+/tmp/tb review --ticket rd.md --json
+```
+
+**Status**: medido no desenvolvimento de `--jobs` (ver CHANGELOG Não Lançado)
