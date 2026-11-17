@@ -95,17 +95,31 @@ Public landing: [https://leonardo-moraes360.github.io/toolbelt/](https://leonard
 
 ### Binaries (GitHub Releases)
 
-Download the archive from the [Releases page](https://github.com/leonardo-moraes360/toolbelt/releases) for your OS/arch (`linux`, `darwin`, or `windows` × `amd64`/`arm64`), extract it, and put `tb` on your `PATH`:
+Download the archive from the [Releases page](https://github.com/leonardo-moraes360/toolbelt/releases) for your OS/arch (`linux`, `darwin`, or `windows` × `amd64`/`arm64`), verify checksum and signature, extract it, and put `tb` on your `PATH`. Requires [`cosign`](https://docs.sigstore.dev/cosign/system_config/installation/).
 
 ```bash
-# Example (Linux amd64, adjust tag/archive)
-curl -sL "https://github.com/leonardo-moraes360/toolbelt/releases/download/v0.0.1/toolbelt_0.0.1_linux_amd64.tar.gz" \
-  | tar -xz tb
+# Example (Linux amd64) — adjust VERSION/ASSET to the desired release
+VERSION=v0.0.2
+ASSET=toolbelt_0.0.2_linux_amd64.tar.gz
+BASE="https://github.com/leonardo-moraes360/toolbelt/releases/download/${VERSION}"
+
+curl -sLO "${BASE}/${ASSET}"
+curl -sLO "${BASE}/checksums.txt"
+curl -sLO "${BASE}/checksums.txt.sigstore.json"
+
+cosign verify-blob \
+  --certificate-identity "https://github.com/leonardo-moraes360/toolbelt/.github/workflows/release.yml@refs/tags/${VERSION}" \
+  --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+  --bundle checksums.txt.sigstore.json \
+  checksums.txt
+
+sha256sum -c --ignore-missing checksums.txt
+tar -xzf "${ASSET}" tb
 sudo mv tb /usr/local/bin/
 tb version
 ```
 
-Verify integrity with `checksums.txt` from the same release.
+Each archive also publishes an SBOM (`.sbom.json`) and the workflow attaches an SLSA provenance attestation (verify with `gh attestation verify`).
 
 ### Via Go
 
@@ -114,12 +128,6 @@ go install github.com/leonardo-moraes360/toolbelt/cmd/tb@latest
 ```
 
 > `go install` uses the default embedded version (`dev`) unless the tag/module injects ldflags. Prefer the Release binary if you need the tag version.
-
-### Via Homebrew (coming soon)
-
-```bash
-brew install leonardo-moraes360/tap/toolbelt
-```
 
 ### Local build
 

@@ -411,7 +411,10 @@ tb mem add <regra> [flags]
 Flags:
   --category <cat>    Categoria: anti_cheat|mandate|security (default: anti_cheat)
   --ref <path>        Vínculo com ADR/decisions.md (ex: docs/adr/0001.md)
+  --immutable         Marca como imutável (default: mutável)
 ```
+
+**Immutability default:** new invariants start **mutable**. Use `--immutable` (CLI) or `immutable: true` (MCP) to protect them. `tb mem init` writes the anti-cheat set already with `immutable: true`. Category `anti_cheat` and `immutable: true` require `--force --reason` for `edit`/`retire`.
 
 Invalid category or `--ref` outside the ADR/decisions format exits ≠ 0 with the list
 of valid values (`anti_cheat, mandate, security`; refs like
@@ -431,8 +434,8 @@ tb mem check [--expect-sha <sha>] [--all]
 
 ```bash
 tb mem show <id>
-tb mem edit <id> [--category <cat>] [--rule <texto>] [--ref <path>]
-tb mem retire <id>
+tb mem edit <id> [--category <cat>] [--rule <texto>] [--ref <path>] [--force] [--reason <motivo>]
+tb mem retire <id> [--force] [--reason <motivo>]
 ```
 
 **`tb mem init`:** creates the default anti-cheat set and prints the path + the
@@ -449,12 +452,19 @@ Flags:
   --all               Inclui invariantes aposentadas
 ```
 
+`mem check` **fails closed**: missing/unreadable/corrupt file, divergent SHA, missing IDs, or non-evaluable rule (empty id/category/rule) → exit ≠ 0. Does not auto-create defaults (use `tb mem init`).
+
+**Redaction:** `show`/`list`/`search` (text and `--json`) and equivalent MCP payloads mask common patterns (`ghp_`/`gho_`/`github_pat_`, `AKIA…`, PEM private key, `Bearer`, `xox*`, `*_TOKEN=`) with `[REDACTED]`.
+
+**History:** forced changes to protected invariants are append-only in `.toolbelt/invariants_history.jsonl` (who, when, reason, previous value).
+
 **Examples:**
 
 ```bash
 # Adicionar invariante (argumento posicional obrigatório)
 tb mem add "Não modificar tests/hidden/**"
 tb mem add --category security --ref docs/adr/0005.md "Não relaxar thresholds sem revisão"
+tb mem add --immutable --category mandate "Escopo fixo do ticket"
 
 # Listar / buscar / exibir / editar / aposentar
 tb mem list
@@ -464,14 +474,16 @@ tb mem search thresholds
 tb mem search autenticacao   # encontra "autenticação"
 tb mem show inv-123
 tb mem edit inv-123 --ref docs/decisions/auth.md --rule "Escopo via ticket"
+tb mem edit inv-123 --rule "nova" --force --reason "incidente"
 tb mem retire inv-123
+tb mem retire inv-123 --force --reason "substituída por ADR"
 tb mem check
 tb mem init
 tb mem init --json
 ```
 
 > Soft-retire keeps the entry in the YAML; `list`/`search`/`check` omit retired unless `--all`.
-> Vault flags `--type`/`--title` **do not exist** — `tb mem add` accepts a positional rule, `--category`, and `--ref`.
+> Vault flags `--type`/`--title` **do not exist** — `tb mem add` accepts a positional rule, `--category`, `--ref`, and `--immutable`.
 > `tb mem init --json` returns `{path, created, count, invariants}`; empty lists come out as `[]`.
 
 ---
