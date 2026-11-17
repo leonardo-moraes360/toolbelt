@@ -58,24 +58,25 @@ func ParseOps(names []string) ([]Op, error) {
 }
 
 type Options struct {
-	RepoDir       string
-	Base          string
-	Head          string
-	Ops           []Op
-	FailFast      bool
-	Ticket        string
-	ApprovedSHA   string
-	WarnOnly      bool
-	TestCmd       string
-	HiddenTestCmd string
-	MaxIter       int
-	Timeout       time.Duration
-	Reviewers     int
-	Standards     []string
-	LoadGraph     bool
-	Loaders       *Loaders
-	EnvAllow      []string
-	EnvPass       []string
+	RepoDir            string
+	Base               string
+	Head               string
+	Ops                []Op
+	FailFast           bool
+	Ticket             string
+	ApprovedSHA        string
+	RequireApprovedSHA bool
+	WarnOnly           bool
+	TestCmd            string
+	HiddenTestCmd      string
+	MaxIter            int
+	Timeout            time.Duration
+	Reviewers          int
+	Standards          []string
+	LoadGraph          bool
+	Loaders            *Loaders
+	EnvAllow           []string
+	EnvPass            []string
 }
 
 type Loaders struct {
@@ -183,22 +184,20 @@ func Run(ctx context.Context, opts *Options) (*Result, error) {
 }
 
 func Prepare(opts *Options) (*Shared, error) {
-	repo := opts.RepoDir
-	if repo == "" {
-		cwd, err := os.Getwd()
-		if err != nil {
-			return nil, err
-		}
-		repo = cwd
+	repo, err := resolveRepoDir(opts.RepoDir)
+	if err != nil {
+		return nil, err
 	}
 	base, head, err := resolveStackRefs(repo, opts)
 	if err != nil {
 		return nil, err
 	}
+
 	loaders := opts.Loaders
 	if loaders == nil {
 		loaders = defaultLoaders()
 	}
+
 	shared := &Shared{RepoDir: repo, Base: base, Head: head}
 	if fileCfg, err := config.Load(); err == nil {
 		shared.FileConfig = fileCfg
@@ -206,10 +205,25 @@ func Prepare(opts *Options) (*Shared, error) {
 	if err := loadSharedGit(shared, loaders); err != nil {
 		return nil, err
 	}
-	if err := loadSharedExtras(opts, shared, loaders); err != nil {
+	if err := loadSharedMem(shared, loaders); err != nil {
 		return nil, err
 	}
+	if opts.LoadGraph || graph.Enabled() {
+		idx, gErr := loaders.GraphIndex(shared.RepoDir)
+		if gErr != nil {
+			return nil, gErr
+		}
+		shared.GraphIndex = idx
+		shared.GraphLoads++
+	}
 	return shared, nil
+}
+
+func resolveRepoDir(repo string) (string, error) {
+	if repo != "" {
+		return repo, nil
+	}
+	return os.Getwd()
 }
 
 func resolveStackRefs(repo string, opts *Options) (base, head string, err error) {
@@ -260,22 +274,13 @@ func loadSharedGit(shared *Shared, loaders *Loaders) error {
 	return nil
 }
 
-func loadSharedExtras(opts *Options, shared *Shared, loaders *Loaders) error {
+func loadSharedMem(shared *Shared, loaders *Loaders) error {
 	invariants, err := loaders.Invariants(shared.RepoDir)
 	if err != nil {
 		return err
 	}
 	shared.Invariants = invariants
 	shared.MemLoads++
-
-	if opts.LoadGraph || graph.Enabled() {
-		idx, gErr := loaders.GraphIndex(shared.RepoDir)
-		if gErr != nil {
-			return gErr
-		}
-		shared.GraphIndex = idx
-		shared.GraphLoads++
-	}
 	return nil
 }
 
@@ -406,6 +411,7 @@ func runReview(opts *Options, shared *Shared) (StepResult, error) {
 	cfg.BaseExplicit = true
 	cfg.HeadRef = shared.Head
 	cfg.ApprovedSHA = opts.ApprovedSHA
+	cfg.RequireApprovedSHA = opts.RequireApprovedSHA
 	cfg.TicketPath = resolveTicket(shared.RepoDir, ticketOrDefault(opts.Ticket))
 	if opts.Reviewers > 0 {
 		cfg.Reviewers = opts.Reviewers
@@ -433,6 +439,7 @@ func runDrift(opts *Options, shared *Shared) (StepResult, error) {
 	cfg.BaseExplicit = true
 	cfg.HeadRef = shared.Head
 	cfg.ApprovedSHA = opts.ApprovedSHA
+	cfg.RequireApprovedSHA = opts.RequireApprovedSHA
 	cfg.TicketPath = ticketPath
 	cfg.Reviewers = 1
 	cfg.Standards = []string{"scope"}
@@ -478,7 +485,7 @@ func reviewOK(rep *review.Report) bool {
 	if rep == nil || !rep.FreshOK {
 		return false
 	}
-	if rep.PinnedApproval != nil && !rep.PinnedApproval.Match {
+	if pinnedApprovalMismatch(rep.PinnedApproval) {
 		return false
 	}
 	if rep.Drift != nil && (len(rep.Drift.OutOfScope) > 0 || len(rep.Drift.ForbiddenHit) > 0 || rep.Drift.BaseMismatch) {
@@ -497,10 +504,14 @@ func driftOK(drift *review.DriftReport) bool {
 	if drift == nil {
 		return true
 	}
-	if drift.PinnedApproval != nil && !drift.PinnedApproval.Match {
+	if pinnedApprovalMismatch(drift.PinnedApproval) {
 		return false
 	}
 	return len(drift.OutOfScope) == 0 && len(drift.ForbiddenHit) == 0 && !drift.BaseMismatch
+}
+
+func pinnedApprovalMismatch(p *review.PinnedApproval) bool {
+	return p.Diverged()
 }
 
 func hasStrictError(violations []guard.Violation) bool {
