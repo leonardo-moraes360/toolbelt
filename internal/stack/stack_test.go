@@ -43,15 +43,31 @@ func TestParseOpsOrder(t *testing.T) {
 	}
 }
 
+func TestParseOpsEmptyListsValidOps(t *testing.T) {
+	_, err := ParseOps(nil)
+	if err == nil {
+		t.Fatal("esperava erro sem operações")
+	}
+	msg := err.Error()
+	for _, op := range []string{"verify", "review", "drift", "guard"} {
+		if !strings.Contains(msg, op) {
+			t.Fatalf("mensagem deveria listar %q: %v", op, err)
+		}
+	}
+	if strings.Contains(msg, "Usage") {
+		t.Fatalf("não deve citar Usage: %v", err)
+	}
+}
+
 func TestStackAggregateJSONAndOrder(t *testing.T) {
 	dir := gitRepo(t)
 	writeFile(t, filepath.Join(dir, "a.go"), "package a\n")
-	git(t, dir, "add", "-A")
-	git(t, dir, "commit", "-m", "base")
+	runGit(t, dir, "add", "-A")
+	runGit(t, dir, "commit", "-m", "base")
 	writeFile(t, filepath.Join(dir, "a.go"), "package a\nfunc X() {}\n")
 	writeFile(t, filepath.Join(dir, "rd.md"), "---\ntitle: t\nscope:\n  - a.go\n  - rd.md\n---\n")
-	git(t, dir, "add", "-A")
-	git(t, dir, "commit", "-m", "head")
+	runGit(t, dir, "add", "-A")
+	runGit(t, dir, "commit", "-m", "head")
 
 	res, err := Run(context.Background(), &Options{
 		RepoDir: dir,
@@ -105,12 +121,12 @@ func TestStackFailFast(t *testing.T) {
 		t.Fatal(err)
 	}
 	writeFile(t, filepath.Join(hidden, "sentinel.txt"), "ok\n")
-	git(t, dir, "add", "-A")
-	git(t, dir, "commit", "-m", "base")
+	runGit(t, dir, "add", "-A")
+	runGit(t, dir, "commit", "-m", "base")
 	writeFile(t, filepath.Join(hidden, "sentinel.txt"), "changed\n")
 	writeFile(t, filepath.Join(dir, "rd.md"), "---\ntitle: t\nscope:\n  - tests/\n---\n")
-	git(t, dir, "add", "-A")
-	git(t, dir, "commit", "-m", "touch protected")
+	runGit(t, dir, "add", "-A")
+	runGit(t, dir, "commit", "-m", "touch protected")
 
 	res, err := Run(context.Background(), &Options{
 		RepoDir:  dir,
@@ -155,12 +171,12 @@ func TestStackFailFast(t *testing.T) {
 func TestSharedDiffAndIndexOnce(t *testing.T) {
 	dir := gitRepo(t)
 	writeFile(t, filepath.Join(dir, "a.go"), "package a\n")
-	git(t, dir, "add", "-A")
-	git(t, dir, "commit", "-m", "base")
+	runGit(t, dir, "add", "-A")
+	runGit(t, dir, "commit", "-m", "base")
 	writeFile(t, filepath.Join(dir, "a.go"), "package a\nfunc Y() {}\n")
 	writeFile(t, filepath.Join(dir, "rd.md"), "---\ntitle: t\nscope:\n  - a.go\n  - rd.md\n---\n")
-	git(t, dir, "add", "-A")
-	git(t, dir, "commit", "-m", "head")
+	runGit(t, dir, "add", "-A")
+	runGit(t, dir, "commit", "-m", "head")
 
 	var diffCalls, indexCalls, memCalls, nameCalls int
 	loaders := &Loaders{
@@ -225,6 +241,155 @@ func TestRunUnknownOp(t *testing.T) {
 	}
 }
 
+func TestStackPrepareErrorInsideStep(t *testing.T) {
+	dir := gitRepo(t)
+	res, err := Run(context.Background(), &Options{
+		RepoDir: dir,
+		Base:    "DOES-NOT-EXIST",
+		Head:    "HEAD",
+		Ops:     []Op{OpGuard, OpDrift},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.OK {
+		t.Fatal("esperava falha")
+	}
+	if len(res.Steps) != 1 {
+		t.Fatalf("steps=%d want 1", len(res.Steps))
+	}
+	if res.Steps[0].Error == "" {
+		t.Fatalf("error deveria estar no step: %+v", res.Steps[0])
+	}
+	if res.Steps[0].Op != "guard" {
+		t.Fatalf("op=%s", res.Steps[0].Op)
+	}
+	raw, err := json.Marshal(res)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		t.Fatal(err)
+	}
+	steps, _ := payload["steps"].([]any)
+	first, _ := steps[0].(map[string]any)
+	if first["error"] == nil || first["error"] == "" {
+		t.Fatalf("JSON sem error no step: %s", raw)
+	}
+}
+
+func TestStackVerifyRunsOnHeadWorktree(t *testing.T) {
+	if testing.Short() {
+		t.Skip()
+	}
+	dir := gitRepo(t)
+	writeFile(t, filepath.Join(dir, "go.mod"), "module demo\ngo 1.22\n")
+	writeFile(t, filepath.Join(dir, "demo.go"), "package demo\nfunc Add(a, b int) int { return a + b }\n")
+	writeFile(t, filepath.Join(dir, "demo_test.go"), "package demo\nimport \"testing\"\nfunc TestAdd(t *testing.T) {\n\tif Add(1, 2) != 3 { t.Fatal() }\n}\n")
+	runGit(t, dir, "add", "-A")
+	runGit(t, dir, "commit", "-m", "base")
+	baseOut, err := exec.Command("git", "-C", dir, "rev-parse", "HEAD").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	base := strings.TrimSpace(string(baseOut))
+
+	writeFile(t, filepath.Join(dir, "marker_test.go"), "package demo\nimport \"testing\"\nfunc TestMarkerOnlyOnHead(t *testing.T) {\n\tt.Fatal(\"marker: only on head\")\n}\n")
+	runGit(t, dir, "add", "-A")
+	runGit(t, dir, "commit", "-m", "head-with-failing-marker")
+	headOut, err := exec.Command("git", "-C", dir, "rev-parse", "HEAD").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	head := strings.TrimSpace(string(headOut))
+	runGit(t, dir, "checkout", "-q", base)
+
+	res, err := Run(context.Background(), &Options{
+		RepoDir: dir,
+		Base:    base,
+		Head:    head,
+		Ops:     []Op{OpVerify},
+		TestCmd: "go test ./...",
+		MaxIter: 1,
+		Timeout: time.Minute,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.OK {
+		t.Fatal("stack verify must fail when head has a failing marker test absent from the current worktree")
+	}
+	if len(res.Steps) != 1 || res.Steps[0].Op != "verify" {
+		t.Fatalf("steps=%+v", res.Steps)
+	}
+	raw, err := json.Marshal(res.Steps[0].Result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		t.Fatal(err)
+	}
+	if payload["head_sha"] != head {
+		t.Fatalf("head_sha=%v want %s", payload["head_sha"], head)
+	}
+	workdir, _ := payload["workdir"].(string)
+	if workdir == "" || workdir == dir {
+		t.Fatalf("expected detached workdir, got %q", workdir)
+	}
+}
+
+func TestStackDurationMsIsFractionalFloat(t *testing.T) {
+	dir := gitRepo(t)
+	writeFile(t, filepath.Join(dir, "a.go"), "package a\n")
+	runGit(t, dir, "add", "-A")
+	runGit(t, dir, "commit", "-m", "base")
+	writeFile(t, filepath.Join(dir, "a.go"), "package a\nfunc X() {}\n")
+	runGit(t, dir, "add", "-A")
+	runGit(t, dir, "commit", "-m", "head")
+
+	res, err := Run(context.Background(), &Options{
+		RepoDir: dir,
+		Base:    "HEAD~1",
+		Head:    "HEAD",
+		Ops:     []Op{OpGuard},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := json.Marshal(res)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		t.Fatal(err)
+	}
+	total, ok := payload["total_duration_ms"].(float64)
+	if !ok {
+		t.Fatalf("total_duration_ms type %T in %s", payload["total_duration_ms"], raw)
+	}
+	if total <= 0 {
+		t.Fatalf("total_duration_ms=%v should keep sub-ms fraction (>0)", total)
+	}
+	steps, _ := payload["steps"].([]any)
+	first, _ := steps[0].(map[string]any)
+	stepDur, ok := first["duration_ms"].(float64)
+	if !ok {
+		t.Fatalf("duration_ms type %T", first["duration_ms"])
+	}
+	if stepDur <= 0 {
+		t.Fatalf("step duration_ms=%v want >0", stepDur)
+	}
+	if durationMillis(500*time.Microsecond) == 0 {
+		t.Fatal("durationMillis should not truncate sub-millisecond to 0")
+	}
+	if got := durationMillis(1500 * time.Microsecond); got < 1.4 || got > 1.6 {
+		t.Fatalf("durationMillis(1.5ms)=%v", got)
+	}
+}
+
 func BenchmarkStackVsSequential(b *testing.B) {
 	dir := gitRepoB(b)
 	writeFileB(b, filepath.Join(dir, "a.go"), "package a\n")
@@ -270,7 +435,7 @@ func BenchmarkStackVsSequential(b *testing.B) {
 
 func TestPrepareRejectsOptionInjection(t *testing.T) {
 	dir := gitRepo(t)
-	git(t, dir, "commit", "--allow-empty", "-m", "two")
+	runGit(t, dir, "commit", "--allow-empty", "-m", "two")
 	outDir := t.TempDir()
 	injected := filepath.Join(outDir, "pwned")
 	_, err := Prepare(&Options{
@@ -292,7 +457,7 @@ func TestPrepareRejectsOptionInjection(t *testing.T) {
 
 func TestPrepareRejectsMissingApprovedSHA(t *testing.T) {
 	dir := gitRepo(t)
-	git(t, dir, "commit", "--allow-empty", "-m", "two")
+	runGit(t, dir, "commit", "--allow-empty", "-m", "two")
 	_, err := Prepare(&Options{
 		RepoDir:     dir,
 		Base:        "HEAD~1",
@@ -311,14 +476,14 @@ func TestPrepareRejectsMissingApprovedSHA(t *testing.T) {
 func gitRepo(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
-	git(t, dir, "init")
-	git(t, dir, "config", "user.email", "t@t")
-	git(t, dir, "config", "user.name", "t")
-	git(t, dir, "commit", "--allow-empty", "-m", "root")
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "t@t")
+	runGit(t, dir, "config", "user.name", "t")
+	runGit(t, dir, "commit", "--allow-empty", "-m", "root")
 	return dir
 }
 
-func git(t *testing.T, dir string, args ...string) {
+func runGit(t *testing.T, dir string, args ...string) {
 	t.Helper()
 	cmd := exec.Command("git", args...)
 	cmd.Dir = dir

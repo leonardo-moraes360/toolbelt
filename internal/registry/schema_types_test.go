@@ -43,6 +43,15 @@ func TestMCPSchemaTypesAndGraphImpact(t *testing.T) {
 		{"tb_stack", "fail_fast", "boolean"},
 		{"tb_stack", "max_iter", "integer"},
 		{"tb_stack", "ops", "array"},
+		{"tb_mem_list", "all", "boolean"},
+		{"tb_mem_search", "all", "boolean"},
+		{"tb_mem_check", "all", "boolean"},
+		{"tb_run", "env", "array"},
+		{"tb_run", "pass_env", "array"},
+		{"tb_verify_run", "env", "array"},
+		{"tb_verify_run", "pass_env", "array"},
+		{"tb_stack", "env", "array"},
+		{"tb_stack", "pass_env", "array"},
 	}
 	for _, tc := range cases {
 		tool, ok := tools[tc.tool]
@@ -103,11 +112,14 @@ func TestGraphImpactToolAcceptsTypedAndLegacyArgs(t *testing.T) {
 	if res.IsError {
 		t.Fatalf("tb_graph_impact typed: %s", res.Content[0].Text)
 	}
-	var nodes []graph.Node
-	if err := json.Unmarshal([]byte(res.Content[0].Text), &nodes); err != nil {
+	var payload struct {
+		Stale bool         `json:"stale"`
+		Nodes []graph.Node `json:"nodes"`
+	}
+	if err := json.Unmarshal([]byte(res.Content[0].Text), &payload); err != nil {
 		t.Fatal(err)
 	}
-	if len(nodes) == 0 {
+	if len(payload.Nodes) == 0 {
 		t.Fatalf("esperava impacto tipado, got: %s", res.Content[0].Text)
 	}
 

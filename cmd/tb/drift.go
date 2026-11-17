@@ -13,8 +13,8 @@ import (
 var driftCmd = &cobra.Command{
 	Use:   "drift [ticket]",
 	Short: "Detecta drift de escopo e commit base",
-	Long: `Compara arquivos alterados em base..head com o scope declarado
-no ticket/rd.md e verifica divergência do commit base.`,
+	Long: `Compara arquivos alterados em base...head (three-dot / merge-base)
+com o scope declarado no ticket/rd.md e verifica se a base é ancestral do head.`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: runDrift,
 }
@@ -54,17 +54,19 @@ func driftConfigFromFlags(cmd *cobra.Command, args []string) (*review.Config, er
 	base, _ := cmd.Flags().GetString("base")
 	head, _ := cmd.Flags().GetString("head")
 	approved, _ := cmd.Flags().GetString("approved-sha")
+	baseSet := cmd.Flags().Changed("base")
 
 	ticket, err := review.LoadTicket(ticketPath)
 	if err != nil && !os.IsNotExist(err) {
 		return nil, err
 	}
-	if ticket != nil && ticket.BaseCommit != "" && base == "HEAD~1" {
+	if !baseSet && ticket != nil && ticket.BaseCommit != "" {
 		base = ticket.BaseCommit
 	}
 
 	cfg := review.DefaultConfig(cwd)
 	cfg.BaseRef = base
+	cfg.BaseExplicit = baseSet
 	cfg.HeadRef = head
 	cfg.ApprovedSHA = approved
 	cfg.TicketPath = ticketPath
@@ -99,9 +101,9 @@ func printDriftReport(drift *review.DriftReport) {
 		return
 	}
 	printPinnedApproval(drift.PinnedApproval)
-	fmt.Printf("Base: %s → %s\n", drift.DeclaredBase, drift.ActualBase)
+	fmt.Printf("Base: declared=%s actual=%s merge_base=%s\n", drift.DeclaredBase, drift.ActualBase, drift.MergeBase)
 	if drift.BaseMismatch {
-		fmt.Println("⚠ commit base diverge do declarado no ticket")
+		fmt.Println("⚠ base_commit/base não é ancestral do head (merge-base --is-ancestor)")
 	}
 	fmt.Printf("Fora do scope (%d):\n", len(drift.OutOfScope))
 	for _, f := range drift.OutOfScope {

@@ -136,3 +136,45 @@ func TestEditRequiresFields(t *testing.T) {
 		t.Fatal("get missing deveria falhar")
 	}
 }
+
+func TestAddRejectsInvalidCategoryAndRef(t *testing.T) {
+	dir := t.TempDir()
+	s := NewStore(dir)
+	if _, err := s.Add("bogus", "regra", ""); err == nil {
+		t.Fatal("categoria inválida deveria falhar")
+	}
+	if _, err := s.Add("security", "regra", "docs/readme.md"); err == nil {
+		t.Fatal("ref inválido deveria falhar")
+	}
+	if _, err := s.Add("security", "regra", "docs/adr/0005.md"); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSearchAccentInsensitive(t *testing.T) {
+	dir := t.TempDir()
+	s := NewStore(dir)
+	if _, err := s.Add("mandate", "Não altere autenticação", ""); err != nil {
+		t.Fatal(err)
+	}
+	hits, err := s.Search("autenticacao", false)
+	if err != nil || len(hits) != 1 {
+		t.Fatalf("search sem acento: %v %+v", err, hits)
+	}
+	hits, err = s.Search("NAO", false)
+	if err != nil || len(hits) != 1 {
+		t.Fatalf("search case+acento: %v %+v", err, hits)
+	}
+}
+
+func TestEnsureDefaultAntiCheatReportsCreated(t *testing.T) {
+	dir := t.TempDir()
+	first, err := EnsureDefaultAntiCheat(dir)
+	if err != nil || !first.Created || first.Count != 3 {
+		t.Fatalf("first: %+v err=%v", first, err)
+	}
+	second, err := EnsureDefaultAntiCheat(dir)
+	if err != nil || second.Created || second.Count != 3 {
+		t.Fatalf("second: %+v err=%v", second, err)
+	}
+}

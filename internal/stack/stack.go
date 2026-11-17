@@ -4,12 +4,12 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/leonardo-moraes360/toolbelt/internal/config"
+	"github.com/leonardo-moraes360/toolbelt/internal/git"
 	"github.com/leonardo-moraes360/toolbelt/internal/gitref"
 	"github.com/leonardo-moraes360/toolbelt/internal/graph"
 	"github.com/leonardo-moraes360/toolbelt/internal/guard"
@@ -44,7 +44,7 @@ func ParseOp(name string) (Op, error) {
 
 func ParseOps(names []string) ([]Op, error) {
 	if len(names) == 0 {
-		return nil, fmt.Errorf("informe ao menos uma operação")
+		return nil, fmt.Errorf("informe ao menos uma operação (verify, review, drift, guard)")
 	}
 	ops := make([]Op, 0, len(names))
 	for _, name := range names {
@@ -74,6 +74,8 @@ type Options struct {
 	Standards     []string
 	LoadGraph     bool
 	Loaders       *Loaders
+	EnvAllow      []string
+	EnvPass       []string
 }
 
 type Loaders struct {
@@ -104,17 +106,35 @@ type Shared struct {
 }
 
 type StepResult struct {
-	Op         string `json:"op"`
-	OK         bool   `json:"ok"`
-	ExitCode   int    `json:"exit_code"`
-	DurationMs int64  `json:"duration_ms"`
-	Result     any    `json:"result"`
+	Op         string  `json:"op"`
+	OK         bool    `json:"ok"`
+	ExitCode   int     `json:"exit_code"`
+	DurationMs float64 `json:"duration_ms"`
+	Error      string  `json:"error,omitempty"`
+	Result     any     `json:"result"`
 }
 
 type Result struct {
 	OK              bool         `json:"ok"`
 	Steps           []StepResult `json:"steps"`
-	TotalDurationMs int64        `json:"total_duration_ms"`
+	TotalDurationMs float64      `json:"total_duration_ms"`
+}
+
+func durationMillis(d time.Duration) float64 {
+	return float64(d) / float64(time.Millisecond)
+}
+
+func failedStep(op Op, err error) StepResult {
+	msg := "erro desconhecido"
+	if err != nil {
+		msg = err.Error()
+	}
+	return StepResult{
+		Op:       string(op),
+		OK:       false,
+		ExitCode: 1,
+		Error:    msg,
+	}
 }
 
 func Run(ctx context.Context, opts *Options) (*Result, error) {
@@ -130,25 +150,26 @@ func Run(ctx context.Context, opts *Options) (*Result, error) {
 		}
 	}
 
-	shared, err := Prepare(opts)
-	if err != nil {
-		return nil, err
-	}
-
 	out := &Result{OK: true, Steps: make([]StepResult, 0, len(opts.Ops))}
 	start := time.Now()
+
+	shared, err := Prepare(opts)
+	if err != nil {
+		step := failedStep(opts.Ops[0], err)
+		step.DurationMs = durationMillis(time.Since(start))
+		out.Steps = append(out.Steps, step)
+		out.OK = false
+		out.TotalDurationMs = step.DurationMs
+		return out, nil
+	}
+
 	for _, op := range opts.Ops {
 		stepStart := time.Now()
 		step, runErr := runOp(ctx, op, opts, shared)
 		if runErr != nil {
-			step = StepResult{
-				Op:       string(op),
-				OK:       false,
-				ExitCode: 1,
-				Result:   map[string]any{"error": runErr.Error()},
-			}
+			step = failedStep(op, runErr)
 		}
-		step.DurationMs = time.Since(stepStart).Milliseconds()
+		step.DurationMs = durationMillis(time.Since(stepStart))
 		out.Steps = append(out.Steps, step)
 		if !step.OK {
 			out.OK = false
@@ -157,7 +178,7 @@ func Run(ctx context.Context, opts *Options) (*Result, error) {
 			}
 		}
 	}
-	out.TotalDurationMs = time.Since(start).Milliseconds()
+	out.TotalDurationMs = durationMillis(time.Since(start))
 	return out, nil
 }
 
@@ -269,31 +290,25 @@ func defaultLoaders() *Loaders {
 }
 
 func gitUnifiedDiff(repo, base, head string) (string, error) {
-	cmd := exec.Command("git", "diff", "--end-of-options", base+".."+head) //nolint:gosec // refs resolvidas
-	cmd.Dir = repo
-	out, err := cmd.Output()
+	out, err := git.Output(repo, "diff", "--end-of-options", base+"..."+head)
 	if err != nil {
-		return "", fmt.Errorf("git diff: %w", err)
+		return "", err
 	}
 	return string(out), nil
 }
 
 func gitNameStatus(repo, base, head string) (string, error) {
-	cmd := exec.Command("git", "diff", "--name-status", "--end-of-options", base+".."+head) //nolint:gosec // refs resolvidas
-	cmd.Dir = repo
-	out, err := cmd.Output()
+	out, err := git.Output(repo, "diff", "--name-status", "--end-of-options", base+"..."+head)
 	if err != nil {
-		return "", fmt.Errorf("git diff --name-status: %w", err)
+		return "", err
 	}
 	return string(out), nil
 }
 
 func gitChangedFiles(repo, base, head string) ([]string, error) {
-	cmd := exec.Command("git", "diff", "--name-only", "--end-of-options", base+".."+head) //nolint:gosec // refs resolvidas
-	cmd.Dir = repo
-	out, err := cmd.Output()
+	out, err := git.Output(repo, "diff", "--name-only", "--end-of-options", base+"..."+head)
 	if err != nil {
-		return nil, fmt.Errorf("git diff --name-only: %w", err)
+		return nil, err
 	}
 	var files []string
 	for _, line := range strings.Split(string(out), "\n") {
@@ -367,6 +382,12 @@ func runVerify(ctx context.Context, opts *Options, shared *Shared) (StepResult, 
 	if opts.Ticket != "" {
 		cfg.TicketPath = resolveTicket(shared.RepoDir, opts.Ticket)
 	}
+	cfg.EnvAllow = append(cfg.EnvAllow, opts.EnvAllow...)
+	cfg.EnvPass = append(cfg.EnvPass, opts.EnvPass...)
+	if shared.FileConfig != nil {
+		cfg.EnvAllow = append(cfg.EnvAllow, shared.FileConfig.Env.Allow...)
+		cfg.EnvPass = append(cfg.EnvPass, shared.FileConfig.Env.Pass...)
+	}
 	res, err := verify.Run(ctx, &cfg)
 	if err != nil {
 		return StepResult{}, err
@@ -382,6 +403,7 @@ func runVerify(ctx context.Context, opts *Options, shared *Shared) (StepResult, 
 func runReview(opts *Options, shared *Shared) (StepResult, error) {
 	cfg := review.DefaultConfig(shared.RepoDir)
 	cfg.BaseRef = shared.Base
+	cfg.BaseExplicit = true
 	cfg.HeadRef = shared.Head
 	cfg.ApprovedSHA = opts.ApprovedSHA
 	cfg.TicketPath = resolveTicket(shared.RepoDir, ticketOrDefault(opts.Ticket))
@@ -408,6 +430,7 @@ func runDrift(opts *Options, shared *Shared) (StepResult, error) {
 	ticketPath := resolveTicket(shared.RepoDir, ticketOrDefault(opts.Ticket))
 	cfg := review.DefaultConfig(shared.RepoDir)
 	cfg.BaseRef = shared.Base
+	cfg.BaseExplicit = true
 	cfg.HeadRef = shared.Head
 	cfg.ApprovedSHA = opts.ApprovedSHA
 	cfg.TicketPath = ticketPath
@@ -461,7 +484,8 @@ func reviewOK(rep *review.Report) bool {
 	if rep.Drift != nil && (len(rep.Drift.OutOfScope) > 0 || len(rep.Drift.ForbiddenHit) > 0 || rep.Drift.BaseMismatch) {
 		return false
 	}
-	for _, f := range rep.Findings {
+	for i := range rep.Findings {
+		f := &rep.Findings[i]
 		if f.Severity == review.SeverityCritical || f.Severity == review.SeverityError {
 			return false
 		}

@@ -124,6 +124,36 @@ func TestMemRetireAndCheckTool(t *testing.T) {
 	}
 }
 
+func TestMemAllBoolAndLegacyString(t *testing.T) {
+	dir := memToolDir(t)
+	id := memToolAdd(t, dir, map[string]any{
+		"rule":     "nunca tocar secrets/",
+		"category": "security",
+	})
+	res, err := Default().Call(context.Background(), "tb_mem_retire", map[string]any{"cwd": dir, "id": id})
+	if err != nil || res.IsError {
+		t.Fatalf("tb_mem_retire: %v %v", err, res)
+	}
+	res, err = Default().Call(context.Background(), "tb_mem_list", map[string]any{"cwd": dir, "all": true})
+	if err != nil || res.IsError || !strings.Contains(res.Content[0].Text, id) {
+		t.Fatalf("tb_mem_list all=true: %v %v", err, res)
+	}
+	res, err = Default().Call(context.Background(), "tb_mem_list", map[string]any{"cwd": dir, "all": "true"})
+	if err != nil || res.IsError || !strings.Contains(res.Content[0].Text, id) {
+		t.Fatalf("tb_mem_list all=\"true\" legado: %v %v", err, res)
+	}
+	res, err = Default().Call(context.Background(), "tb_mem_search", map[string]any{
+		"cwd": dir, "query": "secrets", "all": true,
+	})
+	if err != nil || res.IsError || !strings.Contains(res.Content[0].Text, id) {
+		t.Fatalf("tb_mem_search all=true: %v %v", err, res)
+	}
+	res, err = Default().Call(context.Background(), "tb_mem_check", map[string]any{"cwd": dir, "all": "false"})
+	if err != nil || res.IsError {
+		t.Fatalf("tb_mem_check all=\"false\": %v %v", err, res)
+	}
+}
+
 func TestVerifyRunTool(t *testing.T) {
 	dir := gitRepo(t)
 	res, err := Default().Call(context.Background(), "tb_verify_run", map[string]any{

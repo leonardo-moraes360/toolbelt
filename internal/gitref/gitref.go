@@ -2,9 +2,10 @@ package gitref
 
 import (
 	"fmt"
-	"os/exec"
 	"strings"
 	"unicode"
+
+	"github.com/leonardo-moraes360/toolbelt/internal/git"
 )
 
 func Validate(ref string) error {
@@ -26,15 +27,9 @@ func Resolve(repo, ref string) (string, error) {
 	if err := Validate(ref); err != nil {
 		return "", err
 	}
-	cmd := exec.Command("git", "rev-parse", "--verify", "--end-of-options", ref+"^{commit}") //nolint:gosec // ref validada
-	cmd.Dir = repo
-	out, err := cmd.CombinedOutput()
+	out, err := git.Output(repo, "rev-parse", "--verify", "--end-of-options", ref+"^{commit}")
 	if err != nil {
-		msg := strings.TrimSpace(string(out))
-		if msg == "" {
-			msg = err.Error()
-		}
-		return "", fmt.Errorf("ref inexistente ou inválida %q: %s", ref, msg)
+		return "", fmt.Errorf("ref inexistente ou inválida %q: %w", ref, err)
 	}
 	sha := strings.TrimSpace(string(out))
 	if sha == "" {

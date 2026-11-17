@@ -43,6 +43,31 @@ func graphStore() (*graph.Store, error) {
 	return s, nil
 }
 
+func graphStoreFresh() (*graph.Store, error) {
+	s, err := graphStore()
+	if err != nil {
+		return nil, err
+	}
+	opts := graphBuildOptions()
+	indexOnChange := true
+	if cfg, err := config.Load(); err == nil {
+		indexOnChange = cfg.Graph.IndexOnChange
+	}
+	refreshed, err := s.EnsureFresh(".", &opts, indexOnChange)
+	if err != nil {
+		return nil, err
+	}
+	if !jsonOutput {
+		switch {
+		case refreshed:
+			fmt.Fprintln(os.Stderr, "grafo reindexado (estava desatualizado)")
+		case s.Stale():
+			fmt.Fprintln(os.Stderr, "aviso: grafo desatualizado; rode tb graph rebuild")
+		}
+	}
+	return s, nil
+}
+
 var graphIndexCmd = &cobra.Command{
 	Use:   "index [path]",
 	Short: "Indexa código sob demanda",
@@ -60,8 +85,9 @@ var graphIndexCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		s.SetStale(false)
 		if jsonOutput {
-			return json.NewEncoder(os.Stdout).Encode(s.Stats())
+			return json.NewEncoder(os.Stdout).Encode(graphStatsPayload(s))
 		}
 		fmt.Printf("grafo indexado: %d nós, %d arestas → %s\n", len(idx.Nodes), len(idx.Edges), s.Path())
 		return nil
@@ -80,12 +106,12 @@ var graphSearchCmd = &cobra.Command{
 	Args:  cobra.MinimumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		limit, _ := cmd.Flags().GetInt("limit")
-		s, err := graphStore()
+		s, err := graphStoreFresh()
 		if err != nil {
 			return err
 		}
 		hits := s.Search(args[0], limit)
-		return printNodes(hits)
+		return printGraphNodes(s, hits)
 	},
 }
 
@@ -98,7 +124,7 @@ var graphCallersCmd = &cobra.Command{
 		if fn == "" {
 			return fmt.Errorf("--function é obrigatório")
 		}
-		s, err := graphStore()
+		s, err := graphStoreFresh()
 		if err != nil {
 			return err
 		}
@@ -108,7 +134,7 @@ var graphCallersCmd = &cobra.Command{
 				return reason
 			}
 		}
-		return printNodes(nodes)
+		return printGraphNodes(s, nodes)
 	},
 }
 
@@ -126,11 +152,11 @@ var graphDepsCmd = &cobra.Command{
 		if target == "" {
 			return fmt.Errorf("--module ou --file é obrigatório")
 		}
-		s, err := graphStore()
+		s, err := graphStoreFresh()
 		if err != nil {
 			return err
 		}
-		return printNodes(s.Deps(target, transitive))
+		return printGraphNodes(s, s.Deps(target, transitive))
 	},
 }
 
@@ -143,7 +169,7 @@ var graphImpactCmd = &cobra.Command{
 		if file == "" {
 			return fmt.Errorf("--file é obrigatório")
 		}
-		s, err := graphStore()
+		s, err := graphStoreFresh()
 		if err != nil {
 			return err
 		}
@@ -153,7 +179,7 @@ var graphImpactCmd = &cobra.Command{
 				return reason
 			}
 		}
-		return printNodes(nodes)
+		return printGraphNodes(s, nodes)
 	},
 }
 
@@ -161,15 +187,17 @@ var graphStatsCmd = &cobra.Command{
 	Use:   "stats",
 	Short: "Estatísticas do grafo",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		s, err := graphStore()
+		s, err := graphStoreFresh()
 		if err != nil {
 			return err
 		}
-		stats := s.Stats()
 		if jsonOutput {
-			return json.NewEncoder(os.Stdout).Encode(stats)
+			return json.NewEncoder(os.Stdout).Encode(graphStatsPayload(s))
 		}
-		for k, v := range stats {
+		if s.Stale() {
+			fmt.Println("stale: true")
+		}
+		for k, v := range s.Stats() {
 			fmt.Printf("%s: %d\n", k, v)
 		}
 		return nil
@@ -208,9 +236,20 @@ func graphBuildOptions() graph.BuildOptions {
 	return opts
 }
 
-func printNodes(nodes []graph.Node) error {
+func graphStatsPayload(s *graph.Store) map[string]any {
+	out := map[string]any{"stale": s.Stale()}
+	for k, v := range s.Stats() {
+		out[k] = v
+	}
+	return out
+}
+
+func printGraphNodes(s *graph.Store, nodes []graph.Node) error {
 	if jsonOutput {
-		return json.NewEncoder(os.Stdout).Encode(nodes)
+		return json.NewEncoder(os.Stdout).Encode(map[string]any{
+			"stale": s.Stale(),
+			"nodes": nodes,
+		})
 	}
 	if len(nodes) == 0 {
 		fmt.Println("(vazio)")
