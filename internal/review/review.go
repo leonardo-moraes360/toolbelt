@@ -111,7 +111,7 @@ func Run(cfg *Config) (*Report, error) {
 	if cfg.Reviewers <= 0 {
 		cfg.Reviewers = 3
 	}
-	ticket, err := loadTicketOptional(cfg.TicketPath)
+	ticket, err := LoadTicket(cfg.TicketPath)
 	if err != nil {
 		return nil, err
 	}
@@ -150,14 +150,6 @@ func Run(cfg *Config) (*Report, error) {
 
 	report.Findings = aggregateFindings(collectGoldfishFindings(roster, ticket, diff, changed, invariants))
 	return report, nil
-}
-
-func loadTicketOptional(path string) (*TicketScope, error) {
-	ticket, err := LoadTicket(path)
-	if err != nil && !os.IsNotExist(err) {
-		return nil, err
-	}
-	return ticket, nil
 }
 
 func applyTicketBaseRef(cfg *Config, ticket *TicketScope) {
@@ -944,12 +936,15 @@ func gitIsAncestor(repo, ancestor, head string) bool {
 func LoadTicket(path string) (*TicketScope, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, err
+		if os.IsNotExist(err) {
+			return nil, fmt.Errorf("ticket não encontrado: %s", path)
+		}
+		return nil, fmt.Errorf("ticket ilegível (%s): %w", path, err)
 	}
 	text := string(data)
 	ticket, ok, err := parseTicketFrontmatter(text)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("ticket inválido (%s): %w", path, err)
 	}
 	if ok {
 		return ticket, nil

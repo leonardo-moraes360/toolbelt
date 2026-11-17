@@ -639,6 +639,9 @@ Flags:
 
 With no operation, or an unknown operation, exits with a short error listing the valid
 ops (`verify`, `review`, `drift`, `guard`) — no `Usage` dump.
+A missing or unreadable ticket (file/ID pointed to by `--ticket`) makes the
+`review`/`drift` steps fail with exit ≠ 0 and a message citing the path looked up
+(same semantics as `tb review` / `tb drift` / MCP).
 
 **Examples:**
 
@@ -712,6 +715,10 @@ Flags:
   --output <path>            Relatório JSON (sem shorthand `-o`; use `--output`)
   --json                     Saída em JSON (flag global)
 ```
+
+A missing or unreadable ticket exits with code ≠ 0 and message
+`ticket não encontrado: <path>` / `ticket ilegível (<path>): …`
+(CLI, MCP `tb_review`, and `tb stack`/`tb_stack`).
 
 Also reports scope and base-commit drift. Fresh isolation is mandatory.
 `tb review -o …` is rejected (`unknown shorthand flag: 'o'`); use `--output`.
@@ -827,6 +834,10 @@ Flags:
   --output <path>            Saída JSON (sem shorthand `-o`)
   --json                     Saída em JSON (flag global)
 ```
+
+A missing or unreadable ticket exits with code ≠ 0 and message
+`ticket não encontrado: <path>` / `ticket ilegível (<path>): …`
+(CLI, MCP `tb_drift`, and `tb stack`/`tb_stack`).
 
 The drift JSON includes `pinned_approval` in the same format as `tb review`
 (`checked: false` without the flag; verbatim patch-id with the flag). Divergence exits

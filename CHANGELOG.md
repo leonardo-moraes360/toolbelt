@@ -74,6 +74,10 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
   estrito e por `--warn-only`); remove o exemplo invocável com `--strict`
 
 ### Corrigido
+- `tb review` / `tb drift` / `tb stack` (e MCP `tb_review` / `tb_drift` / `tb_stack`):
+  ticket inexistente ou ilegível (`--ticket` / `ticket`) passa a falhar com exit ≠ 0
+  e mensagem clara citando o caminho procurado (`ticket não encontrado: …` /
+  `ticket ilegível (…): …`), em vez de seguir com exit 0
 - Refs de `--base`/`--head`/`--approved-sha` (CLI e MCP em guard/drift/review/verify/stack)
   rejeitam valores que começam com `-`, resolvem via
   `git rev-parse --verify --end-of-options <ref>^{commit}` e usam o SHA daí em

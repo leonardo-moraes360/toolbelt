@@ -579,7 +579,7 @@ func driftConfigFromArgs(args map[string]any) (*review.Config, error) {
 		head = "HEAD"
 	}
 	ticket, err := review.LoadTicket(ticketPath)
-	if err != nil && !os.IsNotExist(err) {
+	if err != nil {
 		return nil, err
 	}
 	if !baseSet && ticket != nil && ticket.BaseCommit != "" {
