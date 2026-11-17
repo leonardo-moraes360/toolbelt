@@ -253,7 +253,11 @@ func prepareChildEnv(cfg *Config, command string, args []string) ([]string, erro
 	if err != nil {
 		return nil, err
 	}
-	env := append(os.Environ(),
+	base := os.Environ()
+	if cfg.Env != nil {
+		base = append([]string{}, cfg.Env...)
+	}
+	env := append(base,
 		envLandlockChild+"=1",
 		envLandlockPayload+"="+string(payload),
 	)

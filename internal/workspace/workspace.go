@@ -27,6 +27,44 @@ type Workspace struct {
 type Manager struct {
 	baseDir string
 	repoDir string
+	// gitArgs são opções "-c" prefixadas a todo git de Create/Remove (ver
+	// SetGitArgs); run, quando não nil, executa esses comandos (ver SetRunner).
+	gitArgs []string
+	run     func(*exec.Cmd) ([]byte, error)
+}
+
+// SetGitArgs define argumentos globais do git (ex.: "-c", "core.hooksPath=/dev/null")
+// inseridos antes do subcomando em Create/Remove. Opcional e aditivo: sem
+// chamada, o comportamento é o anterior (config do usuário integral, hooks
+// inclusive). O router o usa para que worktrees criados por ele nunca rodem
+// hooks/fsmonitor do usuário.
+func (m *Manager) SetGitArgs(args ...string) { m.gitArgs = append([]string(nil), args...) }
+
+// SetRunner substitui a execução dos comandos git de Create/Remove (devolve a
+// saída combinada). Permite ao chamador rastrear os processos-filho (o router os
+// registra para que nunca sejam confundidos com descendentes escapados).
+func (m *Manager) SetRunner(fn func(*exec.Cmd) ([]byte, error)) { m.run = fn }
+
+func (m *Manager) combined(cmd *exec.Cmd) ([]byte, error) {
+	if m.run != nil {
+		return m.run(cmd)
+	}
+	return cmd.CombinedOutput()
+}
+
+func (m *Manager) gitCmd(dir string, args ...string) *exec.Cmd {
+	full := append(append([]string(nil), m.gitArgs...), args...)
+	cmd := exec.Command("git", full...) //nolint:gosec // argumentos controlados pelo workspace manager
+	cmd.Dir = dir
+	return cmd
+}
+
+func (m *Manager) head(dir string) (string, error) {
+	out, err := m.combined(m.gitCmd(dir, "rev-parse", "HEAD"))
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(out)), nil
 }
 
 func NewManager(repoDir string) (*Manager, error) {
@@ -50,12 +88,11 @@ func (m *Manager) Create(id, baseRef string, scope Scope) (*Workspace, error) {
 		return nil, fmt.Errorf("workspace %s já existe", id)
 	}
 	branch := "tb-workspace/" + id
-	cmd := exec.Command("git", "worktree", "add", "-b", branch, path, baseRef)
-	cmd.Dir = m.repoDir
-	if out, err := cmd.CombinedOutput(); err != nil {
+	cmd := m.gitCmd(m.repoDir, "worktree", "add", "-b", branch, path, baseRef)
+	if out, err := m.combined(cmd); err != nil {
 		return nil, fmt.Errorf("%s: %w", string(out), err)
 	}
-	hash, _ := gitHEAD(path)
+	hash, _ := m.head(path)
 	if scope.BaseCommit == "" {
 		scope.BaseCommit = hash
 	}
@@ -88,12 +125,11 @@ func (m *Manager) List() ([]*Workspace, error) {
 
 func (m *Manager) Remove(id string) error {
 	path := filepath.Join(m.baseDir, id)
-	cmd := exec.Command("git", "worktree", "remove", "--force", path)
-	cmd.Dir = m.repoDir
-	if out, err := cmd.CombinedOutput(); err != nil {
+	cmd := m.gitCmd(m.repoDir, "worktree", "remove", "--force", path)
+	if out, err := m.combined(cmd); err != nil {
 		return fmt.Errorf("%s: %w", string(out), err)
 	}
-	_ = exec.Command("git", "-C", m.repoDir, "branch", "-D", "tb-workspace/"+id).Run() //nolint:gosec // id validado pelo operador
+	_, _ = m.combined(m.gitCmd(m.repoDir, "branch", "-D", "tb-workspace/"+id))
 	return nil
 }
 

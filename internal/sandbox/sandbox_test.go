@@ -2,9 +2,11 @@ package sandbox
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 )
@@ -121,5 +123,77 @@ func TestSandboxBlocksWriteOutsideWorkdir(t *testing.T) {
 	}
 	if _, statErr := os.Stat(inside); statErr != nil {
 		t.Fatalf("arquivo no workdir ausente: %v", statErr)
+	}
+}
+
+func TestSandboxEnvAndCancelKillsProcessGroup(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("grupos de processo não suportados")
+	}
+	dir := t.TempDir()
+	sb, err := New(Config{
+		WorkDir: dir, AllowUnsandboxed: true, ProcessGroup: true,
+		Env: []string{"PATH=" + os.Getenv("PATH"), "SO_ESTA=sim"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("NAO_HERDAR", "x")
+	res, err := sb.Run(context.Background(), "sh", "-c", "echo $SO_ESTA${NAO_HERDAR}")
+	if err != nil || res.Output != "sim\n" {
+		t.Fatalf("env explícito não aplicado: %q %v", res.Output, err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		time.Sleep(150 * time.Millisecond)
+		cancel()
+	}()
+	start := time.Now()
+	// o neto (sleep) segura o pipe de saída; o grupo inteiro precisa morrer
+	res, err = sb.Run(ctx, "sh", "-c", "sleep 30 & sleep 30")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.Canceled || res.TimedOut || res.ExitCode != -1 {
+		t.Fatalf("esperava Canceled: %+v", res)
+	}
+	if time.Since(start) > 10*time.Second {
+		t.Fatal("cancelamento não matou o grupo de processos")
+	}
+}
+
+// Finding 7: o fail-closed é exercitado em qualquer host (inclusive CI com
+// Landlock) simulando a sonda "indisponível".
+func TestNewFailClosedWithSimulatedNoLandlock(t *testing.T) {
+	restore := OverrideLandlockProbe(func() (bool, int, error) { return false, 0, errors.New("simulado: sem Landlock") })
+	defer restore()
+	work := t.TempDir()
+	if _, err := New(Config{WorkDir: work}); err == nil {
+		t.Fatal("New deveria recusar sem Landlock e sem AllowUnsandboxed")
+	} else if !strings.Contains(err.Error(), "--allow-unsandboxed") {
+		t.Fatalf("erro deveria orientar o opt-in explícito: %v", err)
+	}
+	sb, err := New(Config{WorkDir: work, AllowUnsandboxed: true})
+	if err != nil {
+		t.Fatalf("opt-in explícito deveria permitir: %v", err)
+	}
+	if sb.landlockOK {
+		t.Fatal("não deveria marcar landlockOK")
+	}
+	res, err := sb.Run(context.Background(), "echo", "ok")
+	if err != nil || res.Sandboxed || res.ExitCode != 0 {
+		t.Fatalf("res=%+v err=%v", res, err)
+	}
+}
+
+func TestOverrideLandlockProbeRestores(t *testing.T) {
+	restore := OverrideLandlockProbe(func() (bool, int, error) { return false, 0, errors.New("x") })
+	restore()
+	if runtime.GOOS == "linux" && kernelLandlockPresent() {
+		sb, err := New(Config{WorkDir: t.TempDir()})
+		if err != nil || !sb.landlockOK {
+			t.Fatalf("sonda real não restaurada: %v", err)
+		}
 	}
 }

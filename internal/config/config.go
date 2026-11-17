@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -47,6 +48,9 @@ type Config struct {
 
 	// Env configura a allowlist de variáveis passadas a filhos (sh -c).
 	Env EnvConfig `yaml:"env"`
+
+	// Router configura o scheduler de tickets (tb router run).
+	Router RouterConfig `yaml:"router"`
 }
 
 // Defaults são valores padrão para commands.
@@ -117,6 +121,84 @@ type EnvConfig struct {
 	Pass  []string `yaml:"pass"`
 }
 
+// RouterConfig configura tb router / tb watchdog.
+type RouterConfig struct {
+	MaxWorkers     int                  `yaml:"max_workers" json:"max_workers"`
+	Strategy       string               `yaml:"strategy" json:"strategy"`
+	AgentCmd       []string             `yaml:"agent_cmd" json:"agent_cmd"`
+	DirectDelivery RouterDirectDelivery `yaml:"direct_delivery" json:"direct_delivery"`
+	Timeouts       RouterTimeouts       `yaml:"timeouts" json:"timeouts"`
+	Retry          RouterRetry          `yaml:"retry" json:"retry"`
+	SlowThreshold  float64              `yaml:"slow_threshold" json:"slow_threshold"`
+}
+
+// RouterDirectDelivery configura a entrega direta (afinidade ticket -> worker).
+type RouterDirectDelivery struct {
+	Enabled                   bool   `yaml:"enabled" json:"enabled"`
+	SubscriptionTTL           string `yaml:"subscription_ttl" json:"subscription_ttl"`
+	MaxSubscriptionsPerWorker int    `yaml:"max_subscriptions_per_worker" json:"max_subscriptions_per_worker"`
+}
+
+// RouterTimeouts limita a duração por ticket e a execução global do router.
+type RouterTimeouts struct {
+	PerTicket string `yaml:"per_ticket" json:"per_ticket"`
+	Global    string `yaml:"global" json:"global"`
+}
+
+// RouterRetry controla re-tentativas após falha de worker.
+type RouterRetry struct {
+	MaxAttempts int `yaml:"max_attempts" json:"max_attempts"`
+}
+
+// DefaultRouterConfig devolve os padrões do router.
+func DefaultRouterConfig() RouterConfig {
+	return RouterConfig{
+		MaxWorkers: 3,
+		Strategy:   "dependency",
+		AgentCmd:   []string{},
+		DirectDelivery: RouterDirectDelivery{
+			Enabled:                   true,
+			SubscriptionTTL:           "30m",
+			MaxSubscriptionsPerWorker: 5,
+		},
+		Timeouts:      RouterTimeouts{PerTicket: "10m", Global: "1h"},
+		Retry:         RouterRetry{MaxAttempts: 2},
+		SlowThreshold: 0.8,
+	}
+}
+
+// Validate checa os valores do router (strategy, durações, limites).
+func (r RouterConfig) Validate() error {
+	if r.MaxWorkers < 1 {
+		return fmt.Errorf("router.max_workers deve ser >= 1 (atual %d)", r.MaxWorkers)
+	}
+	switch r.Strategy {
+	case "", "fifo", "priority", "dependency":
+	default:
+		return fmt.Errorf("router.strategy inválida %q (use fifo, priority ou dependency)", r.Strategy)
+	}
+	for name, v := range map[string]string{
+		"router.direct_delivery.subscription_ttl": r.DirectDelivery.SubscriptionTTL,
+		"router.timeouts.per_ticket":              r.Timeouts.PerTicket,
+		"router.timeouts.global":                  r.Timeouts.Global,
+	} {
+		d, err := time.ParseDuration(v)
+		if err != nil || d <= 0 {
+			return fmt.Errorf("%s inválido %q (ex.: 10m)", name, v)
+		}
+	}
+	if r.DirectDelivery.MaxSubscriptionsPerWorker < 1 {
+		return fmt.Errorf("router.direct_delivery.max_subscriptions_per_worker deve ser >= 1")
+	}
+	if r.Retry.MaxAttempts < 1 {
+		return fmt.Errorf("router.retry.max_attempts deve ser >= 1")
+	}
+	if r.SlowThreshold <= 0 || r.SlowThreshold > 1 {
+		return fmt.Errorf("router.slow_threshold deve estar em (0, 1] (atual %v)", r.SlowThreshold)
+	}
+	return nil
+}
+
 // DefaultConfig retorna a configuração padrão.
 func DefaultConfig() *Config {
 	return &Config{
@@ -166,6 +248,7 @@ func DefaultConfig() *Config {
 			TestCmd:       "go test ./...",
 			HiddenTestCmd: "",
 		},
+		Router: DefaultRouterConfig(),
 	}
 }
 
