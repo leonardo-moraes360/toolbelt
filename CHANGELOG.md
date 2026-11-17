@@ -8,6 +8,8 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 ## [Não Lançado]
 
 ### Adicionado
+- `tb sandbox run --allow-unsandboxed`: opt-in explícito para executar sem isolamento Landlock
+- Teste de integração que tenta escrever fora do workdir (pula se o kernel não tiver Landlock)
 - Grafo TS/JS: fingerprint no `graph.json` e detecção de índice desatualizado;
   com `graph.index_on_change: true` (default) `search`/`callers`/`deps`/`impact`/`stats`
   reindexam automaticamente; com `false`, avisam na saída e expõem `stale: true` no JSON
@@ -56,6 +58,7 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
   estrito e por `--warn-only`); remove o exemplo invocável com `--strict`
 
 ### Corrigido
+- **Sandbox Landlock (fail-closed):** probe de ABI usa `LANDLOCK_CREATE_RULESET_VERSION` (antes `flags=0` → `EFAULT` e falso “sem Landlock”); `PR_SET_NO_NEW_PRIVS` antes de `landlock_restrict_self`; rights FS completos por ABI (incl. truncate/make_*); ruleset aplicado no filho via re-exec antes do `exec` do comando; erros de ruleset não são mais engolidos; sem Landlock a execução recusa com erro claro (use `--allow-unsandboxed`)
 - `tb review` (goldfish): detecta só `TODO`/`FIXME`/`XXX`/`HACK` como palavra
   inteira em maiúsculas em comentários (ignora “todo” em português)
 - `tb review` acceptance: cada achado liga `criterion` + `evidence` do diff;

@@ -28,7 +28,12 @@ var sandboxRunCmd = &cobra.Command{
 			workdir, _ = os.Getwd()
 		}
 		timeout, _ := time.ParseDuration(mustStringFlag(cmd, "timeout", "30s"))
-		cfg := sandbox.Config{WorkDir: workdir, Timeout: timeout}
+		allowUnsandboxed, _ := cmd.Flags().GetBool("allow-unsandboxed")
+		cfg := sandbox.Config{
+			WorkDir:          workdir,
+			Timeout:          timeout,
+			AllowUnsandboxed: allowUnsandboxed,
+		}
 		sb, err := sandbox.New(cfg)
 		if err != nil {
 			return err
@@ -60,11 +65,19 @@ var sandboxCheckCmd = &cobra.Command{
 			if err != nil {
 				info["error"] = err.Error()
 			}
+		} else {
+			info["landlock"] = false
 		}
 		if jsonOutput {
 			return json.NewEncoder(os.Stdout).Encode(info)
 		}
 		fmt.Printf("Landlock: %v\n", info["landlock"])
+		if ver, ok := info["version"]; ok {
+			fmt.Printf("ABI: %v\n", ver)
+		}
+		if errMsg, ok := info["error"]; ok {
+			fmt.Printf("Erro: %v\n", errMsg)
+		}
 		return nil
 	},
 }
@@ -72,6 +85,7 @@ var sandboxCheckCmd = &cobra.Command{
 func init() {
 	sandboxRunCmd.Flags().String("workdir", "", "diretório de trabalho")
 	sandboxRunCmd.Flags().String("timeout", "30s", "timeout")
+	sandboxRunCmd.Flags().Bool("allow-unsandboxed", false, "opt-in explícito para executar sem isolamento Landlock")
 	sandboxCmd.AddCommand(sandboxRunCmd)
 	sandboxCmd.AddCommand(sandboxCheckCmd)
 }
