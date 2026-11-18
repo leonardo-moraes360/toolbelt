@@ -4,7 +4,7 @@
 
 ## Status
 
-proposed. Não passa a `accepted` antes do spike R0 da [spec](../specs/egm-nativo.md).
+proposed. Não passa a `accepted` antes do spike R0 da [spec do núcleo](../specs/egm-nativo.md).
 
 ## Contexto
 
@@ -31,111 +31,177 @@ Problemas da Opção A do ADR-007 (chamar as skills do EGM via MCP ou plugin):
 
 ## Decisão
 
-Reimplementar o EGM **nativamente** (Opção B do ADR-007) como o grupo `tb egm`:
+Reimplementar o EGM **nativamente** (Opção B do ADR-007) como o grupo `tb egm`, dividindo a responsabilidade assim:
 
 - **o tb** monta o prompt, isola e executa os goldfish, valida, casa os findings, guarda o estado e decide a convergência;
 - **o LLM** só lê e julga.
 
+A Fase A tem duas specs:
+- **[Núcleo](../specs/egm-nativo.md)** (Fase A): isolamento, revisão, loop, resolve e árbitro, mais as defesas contra **conteúdo de terceiros** (repositório clonado, arquivo baixado, o próprio documento revisado). O núcleo parte de um elephant honesto, mas desleixado.
+- **[Trust](../specs/egm-trust.md)** (Fase A.2, depois do spike R0): defesas contra **fraude ativa** do elephant como o mesmo usuário.
+
+Essa divisão veio depois de 8 rodadas de revisão de uma spec única. Os findings anti-fraude cresciam a cada rodada, inclusive sobre as próprias defesas, e impediam a convergência do restante.
+
 ### 1. Goldfish é um processo isolado e sem ferramentas
 
-Cada goldfish é um processo **one-shot**, sem estado, iniciado a partir de `egm.agent_cmd` com `sandbox.New`. Ele **não** herda o `router.agent_cmd`, que segue outro contrato: agente escritor, com o ticket passado por env. Para cada processo:
+Cada goldfish é um processo **one-shot**, sem estado, iniciado a partir de `egm.agent_cmd` com `sandbox.New`. Ele **não** herda o `router.agent_cmd`, que tem outro contrato: agente escritor, com o ticket passado por env.
 
-- **Sem nenhuma ferramenta.** Leitura, escrita e execução ficam desligadas pelos flags do perfil de vendor. Todo o conteúdo vai no prompt, por **stdin**, e os findings voltam por **stdout**, num canal separado do stderr. `bypassPermissions` e equivalentes são recusados, como no ADR-013.
-- **Sandbox.** O sandbox ganha um modo com workdir só-leitura, `TMPDIR` privado (em vez do `/tmp` compartilhado), HOME próprio, stdin e stdout separados. Com esses campos zerados, o comportamento atual não muda.
-- **HOME descartável.** É um diretório `0700` fora do repositório, apagado no fim, de modo que o `CLAUDE.md`, as memórias e os settings globais do vendor não chegam ao goldfish. A autenticação segue esta ordem de preferência, definida no spike: API key via `env.pass` do perfil, depois diretório de config do vendor apontado para o HOME descartável, e só por último a cópia de um arquivo de credencial.
-- **Fontes e redação.** Entram só arquivos versionados, com uma deny-list de segredos (dotenv, chaves, certificados, arquivos ignorados pelo git) e redação ampliada que preserva a contagem de linhas.
-- **Registro.** O pacote (prompt, fontes, nonce e hashes) fica persistido em `.toolbelt/egm/<slug>/round-<n>/` para auditoria.
+- **Sem nenhuma ferramenta.** As flags do perfil de vendor desligam todas as ferramentas.
+  - O prompt entra por **stdin**, e os findings saem por **stdout**, separado do stderr.
+  - A cada execução, o tb confere no envelope de saída que nenhuma ferramenta foi usada.
+  - `bypassPermissions` e equivalentes são recusados, como no ADR-013.
+- **Sandbox.**
+  - **Novos modos:** workdir só-leitura, `TMPDIR` privado, HOME e `PATH` próprios, stdin e stdout separados. Com esses campos zerados, nada muda.
+  - **Workdir:** é o pacote do goldfish, fora do repositório.
+  - **Leituras de sistema:** as que já existiam (`/etc`, `/proc`…) continuam liberadas. Ler o environ de outro processo passa pela checagem de ptrace, que a Landlock restringe fora do domínio; o spike confirma. A ausência de ferramentas é uma segunda barreira.
+- **Env mínimo.** O env é montado do zero. Variáveis que injetam código no runtime (`NODE_OPTIONS`, `PYTHONPATH`, `LD_*`…) são recusadas.
+- **HOME descartável.** Diretório `0700` fora do repositório, apagado no fim. Assim o `CLAUDE.md`, as memórias e os settings globais do vendor não chegam ao goldfish. A autenticação segue esta ordem de preferência, definida no spike:
+  1. API key via `egm.env.pass`;
+  2. diretório de config do vendor dentro do HOME descartável;
+  3. cópia de arquivo de credencial, só como último recurso.
 
-### 2. O documento revisado é dado não confiável, e o autor é quem passa pelo gate
+### 2. Conteúdo de terceiros não executa nada nem vaza nada
 
-O documento é escrito pelo próprio elephant, que é justamente o agente sendo avaliado. Por isso a injeção mais provável vem do próprio documento. As mitigações:
+- **Chaves de execução e segredo** (agente, `PATH`, env, HOME, vendor…) vêm **só** da config de usuário. Se aparecerem no `.toolbelt/config.yaml` de um repositório, são ignoradas com aviso.
+- **Chaves de limite** (orçamento, rodadas, paralelismo, timeout, tamanhos) só podem ser **baixadas** pelo repositório, e as **de política** (rodadas limpas, atestação, matching, cobertura) só podem ser **endurecidas**. Assim, um repositório não consegue gastar créditos, travar a execução nem afrouxar a revisão.
+- **A config do repositório** é lida com leitor próprio: arquivo regular, sem symlink no caminho, até 64 KiB.
+- **Git endurecido e restrito.**
+  - **Lista fechada:** o egm usa só subcomandos que não executam filtros, drivers nem submódulos. Não usa `git status` e nunca varre todos os arquivos versionados.
+  - **Raiz:** é localizada pelo filesystem, com `GIT_DIR` e `GIT_WORK_TREE` explícitos, para que um `core.worktree` hostil não a desloque.
+  - **Inspeção prévia do `.git`:** antes de chamar o git, o tb confere o `.git` direto no filesystem e recusa symlink, `include`, `alternates` e `gitdir:` sem ponteiro de volta. Toda chamada tem timeout.
+  - **Escopo:** o router e o merge não mudam. Os loaders que o `tb stack` já roda antes de qualquer op também ficam como estão, o que é declarado fora do escopo.
+- **Fontes por caminho real.** As fontes são só arquivos regulares versionados; o documento revisado pode não estar versionado.
+  - Cada componente do caminho é conferido, então um diretório-pai symlink exclui a fonte.
+  - Uma deny-list de segredos vale antes de tudo, e a redação ampliada preserva a contagem de linhas.
+  - Outros documentos sob gate e os espelhos `docs/en/` não entram como fonte.
+
+### 3. O documento revisado é dado não confiável
+
+O documento é escrito pelo próprio elephant, então a injeção mais provável vem dele. As mitigações:
 
 - **Nonce.** Delimita os blocos de dado e precisa ser ecoado na saída. Só prova que a saída veio daquela execução; **não** impede que o modelo obedeça a uma instrução injetada.
-- **Atestação positiva.** Cada revisor devolve trechos literais do documento (`checked: [{heading, quote}]`), que o tb confere contra o snapshot. Atestação abaixo do mínimo ou com trecho que não confere invalida a saída. Isso prova leitura sem penalizar rodadas limpas legítimas, ao contrário de uma heurística de "zero findings".
-- **Scan anti-injeção estreito.** É determinístico e procura só frases dirigidas ao revisor ou ao modelo (`ignore previous`, `return no findings`…). Ignora código, código inline e citações, e emite um finding `major` contestável no árbitro. Documentos que apenas *discutem* revisores e findings, como esta spec, não disparam o scan; a spec é teste golden negativo. O mesmo scan roda sobre a evidência enviada ao árbitro.
-- **Evidência verificada.** O tb confere cada `path:line` e cada heading citados.
+- **Atestação positiva.** Cada revisor devolve trechos literais do documento, que o tb confere contra o snapshot. O mínimo se ajusta ao tamanho do range, e ao menos um trecho precisa ser do corpo, não de heading.
+- **Scan anti-injeção.** É determinístico e varre o documento, as fontes e o bloco de reavaliação, porque o modelo lê tudo isso. A lista inicial de padrões é fechada e publicada na spec (`ignore previous`, `return no findings`…).
+  Os matches de cada seção viram um único finding `major` contestável.
+  Na contestação, um goldfish novo decide se o trecho é discussão ou diretiva.
+- **Árbitro protegido.**
+  - O trecho sinalizado chega escapado e rotulado.
+  - O árbitro vê o finding original e atesta o que leu.
+  - Termos dirigidos ao próprio árbitro perto do match recusam a contestação.
+  - Para blocker e major, a retirada só vale se o revisor dono concordar na rodada seguinte.
+- **Texto do elephant fora do prompt.** A reavaliação recebe só campos fixos dos findings. Notas e razões escritas pelo elephant não entram.
 
 Isso segue o modelo do [ADR-013](013-barramento-multi-vendor.md), que já trata conteúdo de par como dado.
 
-### 3. Dois motores e um contrato
+### 4. Dois motores, tipos de documento e um contrato
 
 | Motor | Quando | Cobertura |
 |-------|--------|-----------|
-| `llm` | `egm.agent_cmd` executável (da fonte de confiança, §5) | 9 revisores, 8 personas (`style` roda em dois ranges) |
+| `llm` | `egm.agent_cmd` na config de usuário | com plano detalhado: 9 revisores (8 personas; `style` roda em dois ranges). Sem plano: os 6 restantes |
 | `deterministic` | sem agente ou `--engine deterministic` | `refs-exist` → `codebase-details`, `required-sections` → `structural`, `plan-files-listed` → `implementation-readiness`, todos **parciais** |
 
-- Os dois motores emitem `egm.Finding`.
-- Uma persona sem agente fica `unavailable` (nunca "zero findings") e a cobertura é declarada.
-- Os checkers determinísticos usam os helpers de links, paths e símbolos de `internal/graph/index_docs.go`, que passam a ser exportados.
+- Os checkers e o scan rodam **nos dois motores**, com severidade definida.
+- Uma persona sem agente fica `unavailable`, nunca vira "zero findings".
+- O tipo (`spec` ou `adr`, por glob) define o standard estrutural. A presença do plano detalhado define os revisores obrigatórios.
+- Uma spec sem plano chega no máximo a `PASS_PARTIAL`. Um ADR pode chegar a `PASS`.
 - `review.Finding`, `tb review` e `tb drift` **não mudam**.
 
-### 4. Estado e convergência fora do LLM
+### 5. Estado e convergência fora do LLM, ligados ao conteúdo
 
-`.toolbelt/egm/<slug>/state.json` guarda os registros de rodada (hash do documento e das fontes, commit, motor, revisores, hash do argv e do binário) e as linhagens de finding com ID estável (`F-<k>`). O snapshot do documento de cada rodada fica em `round-<n>/target.md`.
+O estado fica fora de qualquer worktree (`<state>/egm/<repo-id>/<slug>/`). É gravado de forma atômica, com lock liberado pelo kernel, e guarda:
 
-- **Reavaliação pelo revisor dono.** Cada linhagem tem um único revisor dono, que a recebe de volta a cada rodada e responde `still_holds`. Omitir uma linhagem invalida a saída. Assim o fechamento não depende da sorte de o modelo "esquecer" um problema. Linhagens de checkers determinísticos e do scan fecham ou reabrem pela re-execução do checker. Findings novos são casados com as linhagens pela localização (diff entre snapshots) e pela similaridade de texto, com limiares calibrados no spike.
-- **Rodada limpa.** Nenhum blocker/major em `open`, `reopened`, `contest_pending` ou `escalated`, e nenhum revisor `not_run`.
-- **Convergência.** São necessárias 2 rodadas limpas seguidas, com teto de 5.
-- **Vereditos.**
-  - `IN_PROGRESS` enquanto o loop roda.
-  - `PASS` só com cobertura completa e sem nenhuma válvula de escape.
-  - `PASS_PARTIAL` quando há persona `unavailable` ou `skipped`, revisores restringidos, settle forçado, `--restart` ou rodadas além do teto. O `tb stack` ganha o estado WARN para esse caso e lista o que foi forçado; `--strict` ou `egm.require_full_coverage` o transformam em falha.
-  - `FAIL` quando bate o teto sem convergir.
-  - Reduzir a cobertura entre rodadas é recusado, salvo com `--narrow --reason` e confirmação humana.
+- rodadas, com hashes do documento e das fontes;
+- linhagens de finding com ID estável (`F-<k>`);
+- **registros de convergência por conteúdo exato**.
 
-### 5. Fronteira de confiança: o elephant tem shell
+Criar e remover worktrees não afeta o estado.
 
-O elephant roda como o mesmo usuário e pode escrever no repositório. Sem proteção, bastaria apontar `egm.agent_cmd` para um script falso, baixar `clean_rounds` ou editar `state.json`. Por isso:
+- **Reavaliação pelo revisor dono.** Cada linhagem tem um único dono: o revisor da ocorrência de maior severidade, preferindo quem vê o código.
+  - O dono recebe a linhagem de volta a cada rodada e responde `still_holds`. Omitir uma linhagem invalida a saída.
+  - Se o dono não roda mais, a linhagem passa para outro revisor que cubra o trecho; sem nenhum, vai para o `zoom-out`.
+  - Um finding novo com severidade maior que uma linhagem já recusada ou encerrada vira linhagem nova, em vez de ser absorvido.
+  - Linhagens de checkers fecham ou reabrem pela re-execução do checker.
+- **Rodada limpa.** Nenhum blocker ou major aberto, contestado ou escalado, nenhum `fixed` sem confirmação e nenhum revisor obrigatório `not_run`.
+- **Convergência.**
+  - São 2 rodadas limpas seguidas **sobre o mesmo conteúdo**, com teto de 5 por ciclo.
+  - Convergir grava um registro para aquele conteúdo e encerra o ciclo.
+  - Depois do teto, `loop next` exige `--past-cap`, que libera até 3 rodadas extras e rebaixa o ciclo.
+- **Rebaixamentos de dois tipos.**
+  - Os **de linhagem** (settle forçado, `--decline` de major) persistem enquanto a linhagem estiver naquele status. Uma edição seguida de nova convergência não os apaga. Eles só saem com `--fix` sobre uma correção real, confirmada pelo revisor dono.
+  - Os **de ciclo** (rodadas extras, `--restart`, cobertura parcial…) valem só para a convergência daquele ciclo.
+- **Vereditos**, avaliados em ordem fixa sobre o conteúdo do worktree ou, no gate, do commit:
+  - `NO_STATE`;
+  - `PASS`: registro para este conteúdo e esta política, sem nenhum rebaixamento e sem nenhum blocker/major aberto;
+  - `PASS_PARTIAL`: registro com rebaixamento. O `tb stack` ganha o estado WARN para esse caso, e `--strict` ou `egm.require_full_coverage` o tornam falha;
+  - `FAIL`: o ciclo bateu o teto sem rodadas extras, ou esgotou as extras;
+  - `STALE`: há registro só para outro conteúdo ou para outra política, ou há linhagem bloqueante (blocker ou major aberto) sobre um conteúdo já convergido;
+  - `IN_PROGRESS`.
 
-- **Chaves sensíveis** (`agent_cmd`, `vendor`, `tools_disabled`, `clean_rounds`, `match`, `require_full_coverage`…) só são lidas da config de usuário fora do repositório (`$XDG_CONFIG_HOME/tb/egm.yaml`) ou de `.toolbelt/config.yaml` no ref de confiança, via `git show`, como o `guard` já faz com `guard.yaml`. Um valor divergente no worktree é ignorado com aviso. `.toolbelt/config.yaml` entra nos protected paths do `guard`.
-- **Registros encadeados com HMAC.** Cada rodada e cada transição levam um HMAC-SHA256 encadeado, com chave em `$XDG_STATE_HOME/tb/egm.key`, e vão também para um `audit.jsonl` append-only. O `status` e o `tb stack` recalculam o veredito a partir desses registros, não do `state.json` agregado.
-- **Confirmação humana.** As válvulas de escape (`--force-settle`, `--restart`, `--narrow`, `--past-cap`) exigem que o usuário digite a confirmação num TTY interativo. São recusadas sem TTY e pelo MCP.
-- **Limite declarado.** Quem tem shell como o mesmo usuário pode ler a chave HMAC, editar a config de usuário ou forjar um TTY. A Fase A torna a fraude **evidente e cara, não impossível**. Tokens de capacidade ([ADR-005](005-anti-trapaca.md) §4), que ainda não existem no código, e a execução sob outro usuário ficam para depois. Contra commit malicioso no ref de confiança, valem o CI e o review humano.
+### 6. Atalhos desleixados não chegam a `PASS`
 
-### 6. O elephant não se aprova sozinho
-
-- **`--fix` exige mudança.** Para um blocker/major, só vale se o documento ou alguma fonte citada pela linhagem mudou desde a rodada de origem, e a reavaliação do revisor dono confirma ou reabre. Isso impede marcar como corrigido sem editar e repetir rodadas até a amostragem esquecer o finding, sem travar correções legítimas feitas no código ou em outra seção.
-- **Contestação vai a um árbitro.** No máximo **uma** por linhagem, decidida por um goldfish **árbitro** novo. A evidência precisa ser uma das fontes da linhagem, estar versionada e inalterada, e é lida do `HEAD`, dentro de blocos de dado e depois do scan anti-injeção.
-  - Se o árbitro retira o finding, ele vira `settled`.
-  - Se o árbitro mantém, o finding volta a `open`, e a partir daí só sai por correção (com reavaliação), por `still_holds: false` do revisor dono ou por settle forçado.
-- **`--dup-of` não pode baixar severidade.** A fusão preserva a maior severidade e o status mais restritivo, e não vale para linhagens já contestadas.
-- **Histórico não se apaga.** `--restart` abre uma nova série de rodadas sobre o estado existente, mantendo linhagens e contestações, e rebaixa o veredito. Um documento renomeado exige `--adopt` do path antigo.
-- **Settle forçado é humano.** `--force-settle --reason` exige confirmação humana, fica registrado e rebaixa o veredito para `PASS_PARTIAL`.
+- **`--fix` exige mudança real.** Só vale se, desde a última abertura da linhagem, um diff que não seja só de espaços tocou as linhas do finding ou as linhas citadas de uma fonte. Correções em outro trecho fecham pela reavaliação do dono.
+- **Contestação vai a um árbitro.** No máximo **uma** por linhagem, decidida por um goldfish **árbitro** novo, rodado no próximo `loop next`.
+  - **Evidência:** precisa estar entre as fontes citadas e verificadas da linhagem, e passa de novo pelas regras de fonte.
+  - **Sem agente:** não há contestação.
+  - **Árbitro falhando:** depois de duas falhas seguidas do árbitro, a linhagem é escalada.
+  - **Desistir:** quem contestou pode desistir com `--fix`.
+  - **Se o árbitro retira** um `nit` ou um finding de checker, ele vira `settled`.
+  - **Se o árbitro retira** um blocker ou major, o finding vira `fixed`, e o dono confirma ou reabre.
+  - **Se o árbitro mantém**, o finding volta a `open`.
+- **Severidade não some por casamento.** Um finding novo mais grave que uma linhagem já encerrada vira linhagem nova.
+- **`--decline` não serve para fugir.** Vale para `nit`. Para `major`, rebaixa o veredito. Para `blocker`, não existe.
+- **O gate avalia o commit.** O op `egm` do `tb stack` verifica os documentos sob gate tocados no range do stack, pelo conteúdo em `head`, e não pelo worktree. Uma seleção vazia gera aviso. A escolha do range por ref de confiança fica na spec de trust.
 
 ### 7. Gates viram transições explícitas
 
-As perguntas interativas do upstream viram subcomandos idempotentes do `tb egm resolve`, com uma tabela de transições explícita. O elephant pergunta ao usuário e registra a resposta. O tb nunca edita o documento nem altera severidade.
+As perguntas interativas do upstream viram subcomandos idempotentes do `tb egm resolve`, com tabela de transições explícita. O elephant pergunta ao usuário e registra a resposta. O tb nunca edita o documento nem altera severidade.
 
 ### 8. Escopo e rede
 
-- **Esta decisão e a [spec da Fase A](../specs/egm-nativo.md)** cobrem `review`, `loop next`, `resolve` e `status` com o preset `consolidated`, o perfil `claude` e um perfil `custom` com declaração explícita de "sem ferramentas", as personas embutidas (texto próprio, sem cópia do upstream) e as MCP tools `tb_egm_*`.
+- **Núcleo (Fase A).**
+  - **Comandos:** `review`, `loop next`, `resolve` e `status`, para specs e ADRs.
+  - **Preset e perfis:** o preset `consolidated`, o perfil `claude` e um perfil `custom` com declaração explícita de "sem ferramentas".
+  - **Personas:** embutidas, com texto próprio, sem cópia do upstream.
+  - **MCP:** as tools `tb_egm_*`.
+- **Trust (Fase A.2):** ver a [spec](../specs/egm-trust.md).
 - **Specs seguintes:**
   - **Fase B:** `drift-report` e `bootstrap`.
-  - **Fase C:** `draft` e `brainstorm`; presets `staged`, `feature` e `implementation`; personas customizadas por path; perfil `codex`; churn; adaptador `review.Finding` → `egm.Finding`.
-- **Rede.** O `tb` continua sem falar com a rede. Quem fala com o provedor é o processo do agente. Sem agente, tudo funciona 100% offline.
-- **Relação com o ADR-013.** Os goldfish são workers one-shot, não agentes do barramento. Um futuro papel `reviewer` no `tb bus` poderá consumir `egm.Finding`.
-- **Localização dos docs.** Os documentos de design deste repositório ficam em `docs/specs/`.
+  - **Fase C:** `draft` e `brainstorm`, outros presets, personas customizadas por path, perfil `codex`, override de agente por revisor, verificação de símbolos no grafo, churn e o adaptador `review.Finding` → `egm.Finding`.
+- **Rede.** O `tb` continua sem falar com a rede. Quem fala com o provedor é o processo do agente. Sem agente, tudo é 100% offline.
+- **Relação com o ADR-013.** Os goldfish são workers one-shot, não agentes do barramento.
+- **Localização dos docs.** As specs ficam em `docs/specs/` e os ADRs em `docs/adr/`.
 
 ## Consequências
 
 ### Positivas
 
-- O isolamento é garantido por processo, sandbox, HOME descartável e ausência de ferramentas, sem depender do harness.
-- O loop resiste às formas óbvias de autoaprovação: loteria, re-sorteio do árbitro, rebaixamento por `--dup-of`, injeção pelo próprio documento, gate sem LLM, config adulterada, estado editado à mão e `--restart`.
-- Os findings estruturados alimentam `tb stack` e MCP, e a convergência é reprodutível.
-- Há fallback offline com cobertura declarada.
+- O isolamento é garantido por processo, sandbox, HOME descartável, env mínimo e ausência de ferramentas verificada, sem depender do harness.
+- Rodar o `tb egm` sobre um repositório de terceiros ou um arquivo baixado não executa nada e não vaza segredo, nem por config, nem por symlink, nem por config de git.
+- Atalhos desleixados não viram `PASS`:
+  - `--fix` sem corrigir;
+  - convergência sobre textos diferentes;
+  - re-sorteio do árbitro;
+  - severidade nova absorvida por linhagem encerrada;
+  - edição depois do `PASS`;
+  - settle forçado "lavado" por uma edição.
+- O veredito vale para um conteúdo exato e sobrevive a worktrees.
+- A spec do núcleo ficou implementável e revisável. A parte de fraude ativa amadurece separada, com dados do spike.
 
 ### Negativas
 
 - Mexer no `internal/sandbox`, um componente crítico de segurança.
+- O egm ganha um endurecimento de git próprio. O router e o merge ficam com os deles, e a unificação fica para a spec de trust.
 - **Credenciais do vendor:**
   - a cópia de arquivo, se for a forma escolhida, cria uma janela curta de exposição local;
   - um refresh de token dentro do HOME descartável pode invalidar a credencial real, o que precisa ser testado no spike;
-  - no macOS, a credencial fica no Keychain, o que é uma limitação declarada.
-- O scan anti-injeção é heurístico. Uma injeção sutil que o scan não pega e que todos os revisores obedecem, ainda produzindo atestações válidas, continua sendo risco residual.
-- A proteção contra o próprio elephant é evidência de adulteração, não impedimento: um processo do mesmo usuário pode ler a chave HMAC ou forjar um TTY.
-- **Custo:** cerca de 9 execuções de agente por rodada, limitado por um orçamento contado em tempo real.
-- Os perfis de vendor dependem de flags de CLIs de terceiros que mudam com o tempo.
+  - no macOS, a credencial fica no Keychain, uma limitação declarada.
+- O scan anti-injeção é heurístico, então uma injeção sutil obedecida por todos os revisores continua sendo risco residual.
+- **Na Fase A, um agente que frauda ativamente como o mesmo usuário consegue chegar a `PASS`.** O núcleo não promete nada contra isso, e o gate é local.
+- Se o spike mostrar que a Landlock não bloqueia `/proc/<pid>/environ` de outro processo, a proteção do environ do tb passa a depender só de o vendor respeitar "sem ferramentas", o que o tb verifica no envelope.
+- Tocar um documento sob gate exige revisá-lo, inclusive ADRs antigos.
+- A convergência com 9 revisores não determinísticos pode ser rara; o spike mede isso antes da implementação.
+- **Custo:** cerca de 9 execuções de agente por rodada, limitadas por orçamento.
+- Os perfis de vendor dependem de flags e envelopes de CLIs de terceiros, que mudam.
 - Há personas próprias para manter.
 
 ## Alternativas Consideradas
@@ -152,24 +218,28 @@ As perguntas interativas do upstream viram subcomandos idempotentes do `tb egm r
 
 ### Allowlist só-leitura do HOME real
 
-- É mais simples.
 - **Não escolhida**: o `CLAUDE.md` global e as memórias do vendor contaminam o goldfish.
 
 ### Goldfish fora do sandbox (`--allow-unsandboxed`)
 
 - **Não escolhida**: viola o sandbox fail-closed.
 
-### Só o humano libera uma contestação
+### Uma spec única com núcleo e anti-fraude
 
-- **Não escolhida**: cria um gargalo humano. O árbitro fresco, com uma contestação por linhagem, preserva implementador ≠ avaliador.
+- **Tentada e abandonada** depois de 8 rodadas de revisão sem nenhuma rodada limpa. Cada rodada achava ataques novos de quem tem shell como o mesmo usuário, inclusive contra as defesas recém-adicionadas, e um blocker veio de uma correção da rodada anterior.
 
-### Extrair um executor comum do router
+### Unificar o endurecimento de git de router, merge e egm agora
 
-- **Não escolhida**: o executor do router é quase todo específico de ticket (workspace, escapes, commit). O `sandbox.Config` já é o caminho comum de spawn.
+- **Não escolhida para a Fase A**: a união das listas muda o comportamento do merge, que deixaria de ver gitlinks na checagem de caminhos sensíveis, e quebra o env do router.
+
+### Detectar renomeação e cópia por impressão de conteúdo
+
+- **Não escolhida**: um documento renomeado ou copiado começa sem estado e precisa convergir do zero. A detecção não protegia nenhum `PASS`.
 
 ## Referências
 
-- [Spec: EGM nativo, Fase A](../specs/egm-nativo.md)
+- [Spec: EGM nativo, Fase A, núcleo](../specs/egm-nativo.md)
+- [Spec: EGM trust, Fase A.2](../specs/egm-trust.md)
 - [ADR-004: Sandbox](004-sandbox-isolamento.md)
 - [ADR-005: Anti-trapaça](005-anti-trapaca.md)
 - [ADR-007: Inspiração Elephant-Goldfish](007-inspiracao-elephant-goldfish.md)

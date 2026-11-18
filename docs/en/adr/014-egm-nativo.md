@@ -4,7 +4,7 @@
 
 ## Status
 
-proposed. It does not move to `accepted` before the R0 spike of the [spec](../specs/egm-nativo.md).
+proposed. It does not move to `accepted` before the R0 spike of the [core spec](../specs/egm-nativo.md).
 
 ## Context
 
@@ -31,76 +31,126 @@ Problems with ADR-007's Option A (calling the EGM skills via MCP or plugin):
 
 ## Decision
 
-Reimplement EGM **natively** (ADR-007's Option B) as the `tb egm` group:
+Reimplement EGM **natively** (ADR-007's Option B) as the `tb egm` group, splitting responsibility like this:
 
-- **tb** builds the prompt, isolates and runs the goldfish, validates, matches findings, keeps the state and decides convergence;
+- **tb** builds the prompt, isolates and runs the goldfish, validates, matches the findings, keeps the state and decides convergence;
 - **the LLM** only reads and judges.
+
+Phase A has two specs:
+- **[Core](../specs/egm-nativo.md)** (Phase A): isolation, review, loop, resolve and arbiter, plus the defenses against **third-party content** (cloned repository, downloaded file, the reviewed document itself). The core assumes an honest but sloppy elephant.
+- **[Trust](../specs/egm-trust.md)** (Phase A.2, after the R0 spike): defenses against **active fraud** by the elephant as the same user.
+
+This split came after 8 review rounds of a single spec. The anti-fraud findings grew every round, including about the defenses themselves, and kept the rest from converging.
 
 ### 1. A goldfish is an isolated process with no tools
 
-Each goldfish is a **one-shot**, stateless process, started from `egm.agent_cmd` with `sandbox.New`. It does **not** inherit `router.agent_cmd`, which follows a different contract: a writer agent, with the ticket passed via env. For each process:
+Each goldfish is a **one-shot**, stateless process, started from `egm.agent_cmd` with `sandbox.New`. It does **not** inherit `router.agent_cmd`, which has a different contract: a writer agent, with the ticket passed via env.
 
-- **No tools at all.** Reading, writing and execution are turned off by the vendor profile's flags. All content goes in the prompt, via **stdin**, and findings come back via **stdout**, on a channel separate from stderr. `bypassPermissions` and equivalents are refused, as in ADR-013.
-- **Sandbox.** The sandbox gains a mode with a read-only workdir, a private `TMPDIR` (instead of the shared `/tmp`), its own HOME, and separate stdin and stdout. With these fields zeroed, current behavior does not change.
-- **Disposable HOME.** It is a `0700` directory outside the repository, deleted at the end, so the vendor's `CLAUDE.md`, memories and global settings never reach the goldfish. Authentication follows this order of preference, settled in the spike: API key via the profile's `env.pass`, then the vendor's config directory pointed at the disposable HOME, and only as a last resort copying a credential file.
-- **Sources and redaction.** Only versioned files go in, with a secrets deny-list (dotenv, keys, certificates, git-ignored files) and extended redaction that preserves the line count.
-- **Record.** The packet (prompt, sources, nonce and hashes) is persisted in `.toolbelt/egm/<slug>/round-<n>/` for auditing.
+- **No tools at all.** The vendor profile's flags turn off every tool.
+  - The prompt goes in via **stdin**, and the findings come out via **stdout**, separate from stderr.
+  - On every run, tb checks in the output envelope that no tool was used.
+  - `bypassPermissions` and equivalents are refused, as in ADR-013.
+- **Sandbox.**
+  - **New modes:** read-only workdir, private `TMPDIR`, its own HOME and `PATH`, separate stdin and stdout. With these fields zeroed, nothing changes.
+  - **Workdir:** it is the goldfish's packet, outside the repository.
+  - **System reads:** the existing ones (`/etc`, `/proc`…) stay allowed. Reading another process's environ goes through the ptrace check, which Landlock restricts outside the domain; the spike confirms this. The absence of tools is a second barrier.
+- **Minimal env.** The env is built from scratch. Variables that inject code into the runtime (`NODE_OPTIONS`, `PYTHONPATH`, `LD_*`…) are refused.
+- **Disposable HOME.** A `0700` directory outside the repository, deleted at the end. That way, the vendor's `CLAUDE.md`, memories and global settings never reach the goldfish. Authentication follows this order of preference, settled in the spike:
+  1. API key via `egm.env.pass`;
+  2. the vendor's config directory inside the disposable HOME;
+  3. copying a credential file, only as a last resort.
 
-### 2. The reviewed document is untrusted data, and the author is the one going through the gate
+### 2. Third-party content executes nothing and leaks nothing
 
-The document is written by the elephant itself, which is precisely the agent being evaluated. So the most likely injection comes from the document itself. The mitigations:
+- **Execution and secret keys** (agent, `PATH`, env, HOME, vendor…) come **only** from the user config. If they appear in a repository's `.toolbelt/config.yaml`, they are ignored with a warning.
+- **Limit keys** (budget, rounds, parallelism, timeout, sizes) can only be **lowered** by the repository, and **policy keys** (clean rounds, attestation, matching, coverage) can only be **hardened**. That way, a repository cannot burn credits, hang the run nor loosen the review.
+- **The repository config** is read with a dedicated reader: regular file, no symlink in the path, up to 64 KiB.
+- **Hardened and restricted git.**
+  - **Closed list:** egm only uses subcommands that run no filters, drivers or submodules. It does not use `git status` and never sweeps all versioned files.
+  - **Root:** it is located through the filesystem, with explicit `GIT_DIR` and `GIT_WORK_TREE`, so a hostile `core.worktree` cannot displace it.
+  - **Prior inspection of `.git`:** before calling git, tb checks `.git` directly in the filesystem and refuses a symlink, `include`, `alternates` and a `gitdir:` without a back-pointer. Every call has a timeout.
+  - **Scope:** the router and merge do not change. The loaders that `tb stack` already runs before any op also stay as they are, which is declared out of scope.
+- **Sources by real path.** Sources are only regular versioned files; the reviewed document may be unversioned.
+  - Every path component is checked, so a symlinked parent directory excludes the source.
+  - A secrets deny-list applies before anything else, and the extended redaction preserves the line count.
+  - Other gated documents and the `docs/en/` mirrors do not go in as sources.
+
+### 3. The reviewed document is untrusted data
+
+The document is written by the elephant itself, so the most likely injection comes from it. The mitigations:
 
 - **Nonce.** It delimits the data blocks and must be echoed in the output. It only proves the output came from that run; it does **not** prevent the model from obeying an injected instruction.
-- **Positive attestation.** Each reviewer returns literal excerpts from the document (`checked: [{heading, quote}]`), which tb checks against the snapshot. An attestation below the minimum or with an excerpt that does not match invalidates the output. This proves reading without penalizing legitimate clean rounds, unlike a "zero findings" heuristic.
-- **Narrow anti-injection scan.** It is deterministic and looks only for phrases directed at the reviewer or the model (`ignore previous`, `return no findings`…). It ignores code, inline code and quotes, and emits a `major` finding contestable before the arbiter. Documents that merely *discuss* reviewers and findings, like this spec, do not trigger the scan; the spec is a negative golden test. The same scan runs over the evidence sent to the arbiter.
-- **Verified evidence.** tb checks every cited `path:line` and heading.
+- **Positive attestation.** Each reviewer returns literal excerpts from the document, which tb checks against the snapshot. The minimum adjusts to the size of the range, and at least one excerpt must come from the body, not from a heading.
+- **Anti-injection scan.** It is deterministic and sweeps the document, the sources and the re-evaluation block, because the model reads all of that. The initial pattern list is closed and published in the spec (`ignore previous`, `return no findings`…).
+  Each section's matches become a single contestable `major` finding.
+  On contest, a new goldfish decides whether the excerpt is discussion or directive.
+- **Protected arbiter.**
+  - The flagged excerpt arrives escaped and labeled.
+  - The arbiter sees the original finding and attests what it read.
+  - Terms directed at the arbiter itself near the match refuse the contest.
+  - For blocker and major, the withdrawal only counts if the owning reviewer agrees in the next round.
+- **Elephant text kept out of the prompt.** The re-evaluation receives only fixed fields from the findings. Notes and reasons written by the elephant do not go in.
 
 This follows the model of [ADR-013](013-barramento-multi-vendor.md), which already treats peer content as data.
 
-### 3. Two engines and one contract
+### 4. Two engines, document types and one contract
 
 | Engine | When | Coverage |
 |--------|------|----------|
-| `llm` | executable `egm.agent_cmd` (from the trust source, §5) | 9 reviewers, 8 personas (`style` runs over two ranges) |
+| `llm` | `egm.agent_cmd` in the user config | with a detailed plan: 9 reviewers (8 personas; `style` runs over two ranges). Without a plan: the remaining 6 |
 | `deterministic` | no agent or `--engine deterministic` | `refs-exist` → `codebase-details`, `required-sections` → `structural`, `plan-files-listed` → `implementation-readiness`, all **partial** |
 
-- Both engines emit `egm.Finding`.
-- A persona with no agent is `unavailable` (never "zero findings") and the coverage is declared.
-- The deterministic checkers use the link, path and symbol helpers from `internal/graph/index_docs.go`, which become exported.
+- The checkers and the scan run **in both engines**, with a defined severity.
+- A persona with no agent is `unavailable`, never "zero findings".
+- The type (`spec` or `adr`, by glob) determines the structural standard. The presence of the detailed plan determines the required reviewers.
+- A spec without a plan reaches at most `PASS_PARTIAL`. An ADR can reach `PASS`.
 - `review.Finding`, `tb review` and `tb drift` **do not change**.
 
-### 4. State and convergence outside the LLM
+### 5. State and convergence outside the LLM, tied to content
 
-`.toolbelt/egm/<slug>/state.json` stores the round records (document and source hashes, commit, engine, reviewers, argv and binary hashes) and the finding lineages with a stable ID (`F-<k>`). Each round's document snapshot is kept in `round-<n>/target.md`.
+The state lives outside any worktree (`<state>/egm/<repo-id>/<slug>/`). It is written atomically, with a lock released by the kernel, and stores:
 
-- **Re-evaluation by the owning reviewer.** Each lineage has a single owning reviewer, which gets it back every round and answers `still_holds`. Omitting a lineage invalidates the output. That way closing does not depend on the luck of the model "forgetting" a problem. Lineages from deterministic checkers and from the scan close or reopen by re-running the checker. New findings are matched to lineages by location (diff between snapshots) and by text similarity, with thresholds calibrated in the spike.
-- **Clean round.** No blocker/major in `open`, `reopened`, `contest_pending` or `escalated`, and no reviewer `not_run`.
-- **Convergence.** 2 consecutive clean rounds are required, with a cap of 5.
-- **Verdicts.**
-  - `IN_PROGRESS` while the loop runs.
-  - `PASS` only with full coverage and no escape hatch at all.
-  - `PASS_PARTIAL` when there is an `unavailable` or `skipped` persona, restricted reviewers, a forced settle, `--restart` or rounds past the cap. `tb stack` gains the WARN state for this case and lists what was forced; `--strict` or `egm.require_full_coverage` turn it into a failure.
-  - `FAIL` when it hits the cap without converging.
-  - Reducing coverage between rounds is refused, except with `--narrow --reason` and human confirmation.
+- rounds, with the document and source hashes;
+- finding lineages with a stable ID (`F-<k>`);
+- **convergence records per exact content**.
 
-### 5. Trust boundary: the elephant has a shell
+Creating and removing worktrees does not affect the state.
 
-The elephant runs as the same user and can write to the repository. Without protection, it would be enough to point `egm.agent_cmd` at a fake script, lower `clean_rounds` or edit `state.json`. Therefore:
+- **Re-evaluation by the owning reviewer.** Each lineage has a single owner: the reviewer of the highest-severity occurrence, preferring one that sees the code.
+  - The owner gets the lineage back every round and answers `still_holds`. Omitting a lineage invalidates the output.
+  - If the owner no longer runs, the lineage passes to another reviewer that covers the excerpt; with none, it goes to `zoom-out`.
+  - A new finding with a higher severity than an already declined or closed lineage becomes a new lineage, instead of being absorbed.
+  - Checker lineages close or reopen by re-running the checker.
+- **Clean round.** No blocker or major open, contested or escalated, no unconfirmed `fixed` and no required reviewer `not_run`.
+- **Convergence.**
+  - It takes 2 consecutive clean rounds **over the same content**, with a cap of 5 per cycle.
+  - Converging writes a record for that content and closes the cycle.
+  - After the cap, `loop next` requires `--past-cap`, which allows up to 3 extra rounds and downgrades the cycle.
+- **Two kinds of downgrades.**
+  - **Lineage downgrades** (forced settle, `--decline` of a major) persist while the lineage stays in that status. An edit followed by a new convergence does not erase them. They only go away with `--fix` over a real fix, confirmed by the owning reviewer.
+  - **Cycle downgrades** (extra rounds, `--restart`, partial coverage…) apply only to that cycle's convergence.
+- **Verdicts**, evaluated in a fixed order over the worktree content or, in the gate, over the commit's content:
+  - `NO_STATE`;
+  - `PASS`: a record for this content and this policy, with no downgrade at all and no open blocker/major;
+  - `PASS_PARTIAL`: a record with a downgrade. `tb stack` gains the WARN state for this case, and `--strict` or `egm.require_full_coverage` turn it into a failure;
+  - `FAIL`: the cycle hit the cap without extra rounds, or used up the extras;
+  - `STALE`: there is a record only for another content or for another policy, or there is a blocking lineage (open blocker or major) over an already converged content;
+  - `IN_PROGRESS`.
 
-- **Sensitive keys** (`agent_cmd`, `vendor`, `tools_disabled`, `clean_rounds`, `match`, `require_full_coverage`…) are only read from the user config outside the repository (`$XDG_CONFIG_HOME/tb/egm.yaml`) or from `.toolbelt/config.yaml` at the trust ref, via `git show`, as `guard` already does with `guard.yaml`. A diverging value in the worktree is ignored with a warning. `.toolbelt/config.yaml` joins `guard`'s protected paths.
-- **HMAC-chained records.** Each round and each transition carry a chained HMAC-SHA256, keyed from `$XDG_STATE_HOME/tb/egm.key`, and also go to an append-only `audit.jsonl`. `status` and `tb stack` recompute the verdict from these records, not from the aggregated `state.json`.
-- **Human confirmation.** The escape hatches (`--force-settle`, `--restart`, `--narrow`, `--past-cap`) require the user to type the confirmation in an interactive TTY. They are refused without a TTY and via MCP.
-- **Declared limit.** Anyone with a shell as the same user can read the HMAC key, edit the user config or forge a TTY. Phase A makes fraud **evident and expensive, not impossible**. Capability tokens ([ADR-005](005-anti-trapaca.md) §4), which do not exist in the code yet, and running as a different user are left for later. Against a malicious commit on the trust ref, CI and human review apply.
+### 6. Sloppy shortcuts do not reach `PASS`
 
-### 6. The elephant does not approve itself
-
-- **`--fix` requires a change.** For a blocker/major, it is only valid if the document or some source cited by the lineage changed since the origin round, and the owning reviewer's re-evaluation confirms or reopens. This prevents marking something as fixed without editing it and repeating rounds until sampling forgets the finding, without blocking legitimate fixes made in the code or in another section.
-- **A contest goes to an arbiter.** At most **one** per lineage, decided by a new **arbiter** goldfish. The evidence must be one of the lineage's sources, versioned and unchanged, and it is read from `HEAD`, inside data blocks and after the anti-injection scan.
-  - If the arbiter withdraws the finding, it becomes `settled`.
-  - If the arbiter upholds it, the finding goes back to `open`, and from then on it only leaves via a fix (with re-evaluation), via `still_holds: false` from the owning reviewer, or via a forced settle.
-- **`--dup-of` cannot lower severity.** The merge keeps the highest severity and the most restrictive status, and does not apply to lineages already contested.
-- **History is not erased.** `--restart` opens a new series of rounds on top of the existing state, keeping lineages and contests, and downgrades the verdict. A renamed document requires `--adopt` of the old path.
-- **A forced settle is human.** `--force-settle --reason` requires human confirmation, is recorded and downgrades the verdict to `PASS_PARTIAL`.
+- **`--fix` requires a real change.** It only counts if, since the lineage was last opened, a diff that is not whitespace-only touched the finding's lines or the cited lines of a source. Fixes elsewhere close through the owner's re-evaluation.
+- **A contest goes to an arbiter.** At most **one** per lineage, decided by a new **arbiter** goldfish, run on the next `loop next`.
+  - **Evidence:** it must be among the lineage's cited and verified sources, and it goes through the source rules again.
+  - **No agent:** there is no contest.
+  - **Failing arbiter:** after two consecutive arbiter failures, the lineage is escalated.
+  - **Giving up:** whoever contested can give up with `--fix`.
+  - **If the arbiter withdraws** a `nit` or a checker finding, it becomes `settled`.
+  - **If the arbiter withdraws** a blocker or major, the finding becomes `fixed`, and the owner confirms or reopens it.
+  - **If the arbiter upholds**, the finding goes back to `open`.
+- **Severity does not vanish through matching.** A new finding more severe than an already closed lineage becomes a new lineage.
+- **`--decline` is no escape hatch.** It applies to `nit`. For `major`, it downgrades the verdict. For `blocker`, it does not exist.
+- **The gate evaluates the commit.** The `egm` op of `tb stack` checks the gated documents touched in the stack range, by their content at `head`, not by the worktree. An empty selection produces a warning. Choosing the range by trust ref is left to the trust spec.
 
 ### 7. Gates become explicit transitions
 
@@ -108,34 +158,50 @@ The upstream's interactive questions become idempotent subcommands of `tb egm re
 
 ### 8. Scope and network
 
-- **This decision and the [Phase A spec](../specs/egm-nativo.md)** cover `review`, `loop next`, `resolve` and `status` with the `consolidated` preset, the `claude` profile and a `custom` profile with an explicit "no tools" declaration, the built-in personas (original text, no copy from upstream) and the `tb_egm_*` MCP tools.
-- **Follow-up specs:**
+- **Core (Phase A).**
+  - **Commands:** `review`, `loop next`, `resolve` and `status`, for specs and ADRs.
+  - **Preset and profiles:** the `consolidated` preset, the `claude` profile and a `custom` profile with an explicit "no tools" declaration.
+  - **Personas:** embedded, with original text, not copied from upstream.
+  - **MCP:** the `tb_egm_*` tools.
+- **Trust (Phase A.2):** see the [spec](../specs/egm-trust.md).
+- **Following specs:**
   - **Phase B:** `drift-report` and `bootstrap`.
-  - **Phase C:** `draft` and `brainstorm`; `staged`, `feature` and `implementation` presets; per-path custom personas; `codex` profile; churn; `review.Finding` → `egm.Finding` adapter.
-- **Network.** `tb` still does not talk to the network. The agent process is what talks to the provider. With no agent, everything works 100% offline.
-- **Relation to ADR-013.** Goldfish are one-shot workers, not bus agents. A future `reviewer` role in `tb bus` may consume `egm.Finding`.
-- **Docs location.** This repository's design documents live in `docs/specs/`.
+  - **Phase C:** `draft` and `brainstorm`, other presets, custom personas by path, `codex` profile, per-reviewer agent override, symbol verification in the graph, churn and the `review.Finding` → `egm.Finding` adapter.
+- **Network.** `tb` still does not talk to the network. The agent process is what talks to the provider. With no agent, everything is 100% offline.
+- **Relation to ADR-013.** The goldfish are one-shot workers, not bus agents.
+- **Docs location.** Specs live in `docs/specs/` and ADRs in `docs/adr/`.
 
 ## Consequences
 
 ### Positive
 
-- Isolation is guaranteed by process, sandbox, disposable HOME and absence of tools, without depending on the harness.
-- The loop resists the obvious forms of self-approval: lottery, re-rolling the arbiter, downgrading via `--dup-of`, injection through the document itself, a gate with no LLM, tampered config, hand-edited state and `--restart`.
-- Structured findings feed `tb stack` and MCP, and convergence is reproducible.
-- There is an offline fallback with declared coverage.
+- Isolation is guaranteed by process, sandbox, disposable HOME, minimal env and verified absence of tools, without depending on the harness.
+- Running `tb egm` over a third-party repository or a downloaded file executes nothing and leaks no secret, whether through config, symlink or git config.
+- Sloppy shortcuts do not become `PASS`:
+  - `--fix` without fixing;
+  - convergence over different texts;
+  - re-rolling the arbiter;
+  - new severity absorbed by a closed lineage;
+  - editing after `PASS`;
+  - a forced settle "laundered" by an edit.
+- The verdict holds for an exact content and survives worktrees.
+- The core spec became implementable and reviewable. The active-fraud part matures separately, with data from the spike.
 
 ### Negative
 
-- It touches `internal/sandbox`, a security-critical component.
+- Touching `internal/sandbox`, a security-critical component.
+- egm gets its own git hardening. The router and merge keep theirs, and unification is left to the trust spec.
 - **Vendor credentials:**
-  - copying a file, if that is the chosen form, creates a short local exposure window;
+  - copying the file, if that is the chosen form, creates a short local exposure window;
   - a token refresh inside the disposable HOME may invalidate the real credential, which must be tested in the spike;
-  - on macOS, the credential lives in the Keychain, which is a declared limitation.
-- The anti-injection scan is heuristic. A subtle injection the scan misses and that every reviewer obeys, while still producing valid attestations, remains a residual risk.
-- Protection against the elephant itself is tamper evidence, not prevention: a process of the same user can read the HMAC key or forge a TTY.
-- **Cost:** about 9 agent runs per round, bounded by a budget counted in real time.
-- Vendor profiles depend on third-party CLI flags that change over time.
+  - on macOS, the credential lives in the Keychain, a declared limitation.
+- The anti-injection scan is heuristic, so a subtle injection obeyed by every reviewer remains a residual risk.
+- **In Phase A, an agent that actively commits fraud as the same user can reach `PASS`.** The core promises nothing against this, and the gate is local.
+- If the spike shows that Landlock does not block `/proc/<pid>/environ` of another process, protecting tb's environ comes to depend only on the vendor honoring "no tools", which tb checks in the envelope.
+- Touching a gated document requires reviewing it, old ADRs included.
+- Convergence with 9 non-deterministic reviewers may be rare; the spike measures this before implementation.
+- **Cost:** about 9 agent runs per round, limited by budget.
+- Vendor profiles depend on flags and envelopes of third-party CLIs, which change.
 - There are in-house personas to maintain.
 
 ## Alternatives Considered
@@ -145,31 +211,35 @@ The upstream's interactive questions become idempotent subcommands of `tb egm re
 - Reuses the ready-made upstream.
 - **Not chosen** because of problems 1 to 4 in the Context.
 
-### Just harden the current heuristics
+### Only harden the current heuristics
 
 - Zero LLM cost.
 - **Not chosen**: it does not review documents, and the user asked for the full EGM.
 
 ### Read-only allowlist of the real HOME
 
-- It is simpler.
 - **Not chosen**: the global `CLAUDE.md` and the vendor's memories contaminate the goldfish.
 
 ### Goldfish outside the sandbox (`--allow-unsandboxed`)
 
 - **Not chosen**: it violates the fail-closed sandbox.
 
-### Only a human can clear a contest
+### A single spec with core and anti-fraud
 
-- **Not chosen**: it creates a human bottleneck. The fresh arbiter, with one contest per lineage, preserves implementer ≠ evaluator.
+- **Tried and abandoned** after 8 review rounds without a single clean round. Every round found new attacks by someone with a shell as the same user, including against the freshly added defenses, and one blocker came from a fix made in the previous round.
 
-### Extract a common executor from the router
+### Unify the git hardening of router, merge and egm now
 
-- **Not chosen**: the router's executor is almost entirely ticket-specific (workspace, escapes, commit). `sandbox.Config` is already the common spawn path.
+- **Not chosen for Phase A**: the union of the lists changes merge's behavior, which would stop seeing gitlinks in the sensitive-path check, and breaks the router's env.
+
+### Detect rename and copy by content fingerprint
+
+- **Not chosen**: a renamed or copied document starts with no state and must converge from scratch. Detection did not protect any `PASS`.
 
 ## References
 
-- [Spec: Native EGM, Phase A](../specs/egm-nativo.md)
+- [Spec: native EGM, Phase A, core](../specs/egm-nativo.md)
+- [Spec: EGM trust, Phase A.2](../specs/egm-trust.md)
 - [ADR-004: Sandbox](004-sandbox-isolamento.md)
 - [ADR-005: Anti-cheating](005-anti-trapaca.md)
 - [ADR-007: Elephant-Goldfish inspiration](007-inspiracao-elephant-goldfish.md)
