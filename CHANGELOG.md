@@ -21,6 +21,7 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 - `tb bus channel extend <canal> --ttl D`: redefine a expiração do canal (`0` = sem expiração) e reabre canal expirado mantendo sessões e histórico
 - `tb graph explain <nó>` e `tb graph path <origem> <destino>` (MCP `tb_graph_explain`, `tb_graph_path`): vizinhança de um nó com proveniência e menor caminho entre dois nós, reimplementando as consultas do Graphify sem LLM; arestas `calls` &lt; 0.6 e alvos sem nó no índice ficam de fora
 - ADR-014: Graphify — reimplementar, não integrar (fecha a questão aberta do ADR-006; docs de arquitetura deixam de citar tree-sitter como implementado)
+- `tb graph search` (MCP `tb_graph_search`): ranking em Go puro — título exato, depois matches por substring (o que a busca antiga trazia), depois só termos; BM25 sobre título/path/pacote dentro de cada faixa, com quebra de camelCase/`snake_case` e consulta multi-termo
 
 ### Corrigido
 - Sandbox Landlock: libera leitura do diretório alvo do symlink de `/etc/resolv.conf` (ex.: `/run/systemd/resolve`); antes, filhos com rede não resolviam DNS
