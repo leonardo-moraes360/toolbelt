@@ -1,185 +1,185 @@
-🇧🇷 Português | [🇺🇸 English](../en/campo/crush.md)
+🇺🇸 English | [🇧🇷 Português](../pt-BR/campo/crush.md)
 
-# Campo: charmbracelet/crush
+# Field: charmbracelet/crush
 
-Estudo de campo do `tb` (toolbelt @ `c8aae04`) usando o repositório público third-party **charmbracelet/crush** apenas em clone local (`/tmp/target/crush`). Sem push, issues, PRs ou comentários no upstream.
+Field study of `tb` (toolbelt @ `c8aae04`) using the public third-party repository **charmbracelet/crush** only as a local clone (`/tmp/target/crush`). No push, issues, PRs, or comments upstream.
 
-## Repositório
+## Repository
 
-| Campo | Valor |
+| Field | Value |
 |-------|-------|
-| Nome | [charmbracelet/crush](https://github.com/charmbracelet/crush) |
-| Linguagem | Go (`go 1.27.4` no `go.mod`) |
-| Tamanho (clone shallow) | ~25 MiB disco; **904** arquivos `.go`; ~**204 480** LOC Go |
-| Instrumentação AI existente | `AGENTS.md` (raiz); `internal/ui/AGENTS.md`; `internal/cmd/stats/AGENTS.md`; `internal/oauth/callback/AGENTS.md`; `.agents/skills/` (`builtin-skills`, `shell-builtins`); `crush.json`; schema/docs de skills/hooks |
-| Toolchain | **Parcialmente configurada** |
+| Name | [charmbracelet/crush](https://github.com/charmbracelet/crush) |
+| Language | Go (`go 1.27.4` in `go.mod`) |
+| Size (shallow clone) | ~25 MiB disk; **904** `.go` files; ~**204 480** Go LOC |
+| Existing AI instrumentation | `AGENTS.md` (root); `internal/ui/AGENTS.md`; `internal/cmd/stats/AGENTS.md`; `internal/oauth/callback/AGENTS.md`; `.agents/skills/` (`builtin-skills`, `shell-builtins`); `crush.json`; skills/hooks schema/docs |
+| Toolchain | **Partially configured** |
 
-Toolchain neste VM:
+Toolchain on this VM:
 
-- `GOTOOLCHAIN=go1.27.4` baixou e compilou o binário (`go build .` OK, ~1 m26 s na primeira vez).
+- `GOTOOLCHAIN=go1.27.4` downloaded and compiled the binary (`go build .` OK, ~1 m26 s the first time).
 - `go test ./internal/filepathext` OK; `go test ./internal/skills` OK.
-- `task` instalado via `go install`; `task lint:log` OK após o fix.
-- **Não instalados**: `golangci-lint`, `gofumpt` (lint completo `task lint` / `task fmt` não rodados).
-- Suite completa `go test ./...` / `task test` **não** foi executada end-to-end (custo alto; fora do escopo mínimo da tarefa escolhida).
+- `task` installed via `go install`; `task lint:log` OK after the fix.
+- **Not installed**: `golangci-lint`, `gofumpt` (full lint `task lint` / `task fmt` not run).
+- Full suite `go test ./...` / `task test` was **not** run end-to-end (high cost; outside the minimum scope of the chosen task).
 
-## Tarefa escolhida
+## Chosen task
 
-| Campo | Valor |
+| Field | Value |
 |-------|-------|
-| O quê | Fechar buraco no `scripts/check_log_capitalization.sh`: o grep só pegava `slog.Info/Error/...("msg")` e **não** `slog.*Context(ctx, "msg")`, apesar de `AGENTS.md` exigir capitalização e `task lint:log` depender desse script. |
-| Por quê | Lacuna real e pequena, com repro local e auto-teste; alinhada à instrumentação AI do repo; maintainer-plausível (fortalece lint já documentado). |
-| Issue | Sem issue dedicada; motivada por `AGENTS.md` § Build/Test/Lint + script existente. Issues lidas (#3366, #3389, #254, etc.) eram grandes demais ou Windows-específicas. |
-| Completada? | **Sim**, no clone local (branch `campo-local-log-lint`, commit `1f2974c`). **Não** enviada ao upstream (proibido). |
-| Checks nativos | `./scripts/check_log_capitalization.sh` → exit 0; `./scripts/check_log_capitalization_test.sh` → OK; `task lint:log` → exit 0; `go build .` → exit 0. `golangci-lint` / `task test` não rodados. |
+| What | Close a hole in `scripts/check_log_capitalization.sh`: the grep only matched `slog.Info/Error/...("msg")` and **not** `slog.*Context(ctx, "msg")`, even though `AGENTS.md` requires capitalization and `task lint:log` depends on that script. |
+| Why | Real and small gap, with local repro and self-test; aligned with the repo’s AI instrumentation; maintainer-plausible (strengthens already-documented lint). |
+| Issue | No dedicated issue; motivated by `AGENTS.md` § Build/Test/Lint + existing script. Issues read (#3366, #3389, #254, etc.) were too large or Windows-specific. |
+| Completed? | **Yes**, on the local clone (branch `campo-local-log-lint`, commit `1f2974c`). **Not** sent upstream (forbidden). |
+| Native checks | `./scripts/check_log_capitalization.sh` → exit 0; `./scripts/check_log_capitalization_test.sh` → OK; `task lint:log` → exit 0; `go build .` → exit 0. `golangci-lint` / `task test` not run. |
 
-Detalhe da implementação: regex em duas alternativas — clássica `slog.(Error\|Info\|Warn\|Debug\|…)\(["'][a-z]` e Context `slog.(Error\|Info\|Warn\|Debug)Context\([^,]+,[[:space:]]*["'][a-z]`. Primeira tentativa (só acrescentar `*Context` na lista de nomes) **falhou** porque a mensagem não é o 1º argumento; segunda tentativa gerou falsos positivos; terceira passou o self-test.
+Implementation detail: regex with two alternatives — classic `slog.(Error\|Info\|Warn\|Debug\|…)\(["'][a-z]` and Context `slog.(Error\|Info\|Warn\|Debug)Context\([^,]+,[[:space:]]*["'][a-z]`. First attempt (only adding `*Context` to the name list) **failed** because the message is not the 1st argument; second attempt produced false positives; third passed the self-test.
 
-## Uso do tb por comando
+## tb usage by command
 
-| comando | resultado | ajudou/atrapalhou/neutro | evidência |
-|---------|-----------|--------------------------|-----------|
-| `tb version` (make build) | OK; `toolbelt c8aae04` | neutro | `2026-11-15T20:47:28Z`; commit/built preenchidos via ldflags |
-| `tb version` (sem ldflags) | `0.1.0-dev`, commit/built `unknown` | atrapalhou | `/tmp/tb-nolflags version` |
-| `tb init` | criou `.toolbelt/` + `config.yaml` mode **0600** | ajudou (bootstrap) / atrapalhou (perms) | `stat` → `600 .toolbelt/config.yaml` |
-| `tb mem init` | `invariants.yaml` 0600 + 3 regras anti-cheat | ajudou | inclui `NUNCA modifique arquivos em tests/hidden/` |
-| `tb mem add <regra>` | OK posicional | ajudou | `inv-…` adicionada |
-| `tb mem add --type/--title` (docs) | **unknown flag: --type** | atrapalhou | divergência docs/cli.md vs CLI |
-| `tb mem list` / `check` | OK; retenção 1.00 | neutro | 4 invariantes no fim |
-| `tb graph --enable index .` | 5136 nós, 38724 arestas, ~0,21 s | ajudou | indexou Go + markdown (AGENTS.md) |
-| `tb graph stats/search` | OK; achou scripts e seções AGENTS.md | ajudou | search `AGENTS`, `check_log` |
-| `tb graph impact` sem `--file` | exit 1 `--file é obrigatório` | atrapalhou | UX sem default no diff atual |
-| `tb graph impact --file scripts/check_log_capitalization.sh` | `(vazio)` | neutro | shell script sem arestas úteis |
-| `tb graph deps --file …` | `(vazio)` | neutro | idem |
-| Ticket/`rd.md` + Scope | YAML frontmatter funciona; `## Scope` bullets **não** parseados | atrapalhou (UX) | `scope-missing` no review com markdown headings |
-| `tb drift` (YAML scope literal) | OK, sem out_of_scope | ajudou | `rd.md` frontmatter |
-| `tb drift` com `scripts/*.sh` (YAML) | OK (glob via `filepath.Match`) | ajudou | globs **funcionam** no matcher |
-| `tb review` | findings vazios com ticket YAML correto | ajudou | fresh_context true, 3 goldfish |
-| `tb review` em commit `tests/hidden/` | critical em invariante hidden | atrapalhou (FP no caso “criar hidden”) | exit 1 + guard protected_path |
-| `tb guard check` no diff do fix | violations null | ajudou | JSON limpo |
-| `tb guard` + `.toolbelt/guard.yaml` custom | **ignorado** | atrapalhou | protegemos `scripts/check_log_capitalization_test.sh` no yaml; alteração não flagada |
-| `tb guard` em `.toolbelt/thresholds.yaml` | protected_path error (hardcoded) | ajudou (anti-cheat) / atrapalhou (inflexível) | |
-| `tb verify run` (test_cmd=self-test) | PASS, 1 iter, ~0,03 s | ajudou | visible_passed true; hidden_available false |
-| `tb verify` após touch thresholds | FAIL imediato; **testes não rodaram** | atrapalhou | iterations=0 |
-| `tb verify --ruler visual` (sem manifesto) | PASS, `skipped: true` | neutro | skip_reason manifesto ausente |
-| `tb verify --ruler visual` (manifesto sem refs) | PASS, **`skipped: false`**, screen `skipped: true` | atrapalhou | falso “não skipped” no relatório raiz |
-| `verify.build_cmd` / `lint_cmd` no config | **não consumidos** pelo `tb verify` | atrapalhou | só `TestCmd`/`HiddenTestCmd` no código |
-| `tb bench run` sem `--agent` com `default_agent` setado | exit 1 obrigatório `--agent` ou `--fake` | atrapalhou | default_agent ignorado |
-| `tb bench run --fake` | OK 33,3% nas fixtures do toolbelt | ajudou | **não** exigiu `--fake-config` |
-| `tb bench compare --fake` A/B | OK | ajudou | |
-| `tb bench compare --agent …` | unknown flag `--agent` | atrapalhou | confirmado |
-| `tb mcp` tools/list + tools/call | OK; `tb_version` respondeu | ajudou | stdio JSON-RPC |
+| command | result | helped/hindered/neutral | evidence |
+|---------|--------|-------------------------|----------|
+| `tb version` (make build) | OK; `toolbelt c8aae04` | neutral | `2026-11-15T20:47:28Z`; commit/built filled via ldflags |
+| `tb version` (without ldflags) | `0.1.0-dev`, commit/built `unknown` | hindered | `/tmp/tb-nolflags version` |
+| `tb init` | created `.toolbelt/` + `config.yaml` mode **0600** | helped (bootstrap) / hindered (perms) | `stat` → `600 .toolbelt/config.yaml` |
+| `tb mem init` | `invariants.yaml` 0600 + 3 anti-cheat rules | helped | includes `NUNCA modifique arquivos em tests/hidden/` |
+| `tb mem add <regra>` | OK positional | helped | `inv-…` added |
+| `tb mem add --type/--title` (docs) | **unknown flag: --type** | hindered | docs/cli.md vs CLI divergence |
+| `tb mem list` / `check` | OK; retention 1.00 | neutral | 4 invariants at the end |
+| `tb graph --enable index .` | 5136 nodes, 38724 edges, ~0.21 s | helped | indexed Go + markdown (AGENTS.md) |
+| `tb graph stats/search` | OK; found scripts and AGENTS.md sections | helped | search `AGENTS`, `check_log` |
+| `tb graph impact` without `--file` | exit 1 `--file é obrigatório` | hindered | UX without default on current diff |
+| `tb graph impact --file scripts/check_log_capitalization.sh` | `(vazio)` | neutral | shell script without useful edges |
+| `tb graph deps --file …` | `(vazio)` | neutral | same |
+| Ticket/`rd.md` + Scope | YAML frontmatter works; `## Scope` bullets **not** parsed | hindered (UX) | `scope-missing` on review with markdown headings |
+| `tb drift` (literal YAML scope) | OK, no out_of_scope | helped | `rd.md` frontmatter |
+| `tb drift` with `scripts/*.sh` (YAML) | OK (glob via `filepath.Match`) | helped | globs **work** in the matcher |
+| `tb review` | empty findings with correct YAML ticket | helped | fresh_context true, 3 goldfish |
+| `tb review` on `tests/hidden/` commit | critical on hidden invariant | hindered (FP in the “create hidden” case) | exit 1 + guard protected_path |
+| `tb guard check` on fix diff | violations null | helped | clean JSON |
+| `tb guard` + custom `.toolbelt/guard.yaml` | **ignored** | hindered | we protected `scripts/check_log_capitalization_test.sh` in yaml; change not flagged |
+| `tb guard` on `.toolbelt/thresholds.yaml` | protected_path error (hardcoded) | helped (anti-cheat) / hindered (inflexible) | |
+| `tb verify run` (test_cmd=self-test) | PASS, 1 iter, ~0.03 s | helped | visible_passed true; hidden_available false |
+| `tb verify` after touching thresholds | FAIL immediately; **tests did not run** | hindered | iterations=0 |
+| `tb verify --ruler visual` (no manifesto) | PASS, `skipped: true` | neutral | skip_reason missing manifesto |
+| `tb verify --ruler visual` (manifesto without refs) | PASS, **`skipped: false`**, screen `skipped: true` | hindered | false “not skipped” in root report |
+| `verify.build_cmd` / `lint_cmd` in config | **not consumed** by `tb verify` | hindered | only `TestCmd`/`HiddenTestCmd` in code |
+| `tb bench run` without `--agent` with `default_agent` set | exit 1 requires `--agent` or `--fake` | hindered | default_agent ignored |
+| `tb bench run --fake` | OK 33.3% on toolbelt fixtures | helped | **did not** require `--fake-config` |
+| `tb bench compare --fake` A/B | OK | helped | |
+| `tb bench compare --agent …` | unknown flag `--agent` | hindered | confirmed |
+| `tb mcp` tools/list + tools/call | OK; `tb_version` responded | helped | stdio JSON-RPC |
 
-## Problemas conhecidos
+## Known problems
 
-| problema | confirmado/refutado/não testado | evidência |
-|----------|--------------------------------|-----------|
-| `bench compare` lacks `--agent` | **confirmado** | `Error: unknown flag: --agent`; help sem a flag |
-| `guard.yaml` ignored | **confirmado** | yaml protegia o test script; `guard check` no diff do fix → `violations: null`; só paths hardcoded em `internal/guard/guard.go` |
-| outdated CLI docs | **confirmado** | `docs/cli.md` mostra `tb mem add --type/--title`; CLI real é `tb mem add <regra>`; README ainda diz “Fase 0” enquanto roadmap lista Fase 2 |
-| version shows `unknown` | **confirmado (parcial)** | sem ldflags: version `0.1.0-dev`, **commit/built = unknown**; com `make build`: ok |
-| config files created 0600 | **confirmado** | `config.yaml` e `invariants.yaml` → mode 600 |
-| visual ruler reports `skipped=false` when skipping | **confirmado** | com `screens.yaml` e ref ausente: top-level `"skipped": false` mas screen `"skipped": true` |
-| `default_agent` ignored | **confirmado** | config `default_agent: echo AGENT-RAN {prompt}` + `tb bench run -r 1` → `--agent ou --fake é obrigatório` |
-| guard aborts verify when diff touches hardcoded config path | **confirmado** | diff em `.toolbelt/thresholds.yaml` → verify FAIL, iterations 0, testes não executados |
-| default fake agent needs `--fake-config` | **refutado** | `tb bench run --fake` sem `--fake-config` concluiu com sucesso; flag só altera comando se fornecida |
-| `mem add` positional | **confirmado** | usage `tb mem add <regra>`; `--type` unknown |
-| Drift/Scope need literal paths (no globs) | **refutado (matcher); confirmado (UX markdown)** | YAML `scripts/*.sh` casa via `filepath.Match`; bullets sob `## Scope` **não** são lidos (só `Scope:` same-line ou frontmatter YAML) |
-| `graph impact` needs `--file` | **confirmado** | `--file é obrigatório` |
-| review false positives on the tests/hidden invariant | **confirmado** | commit só com `tests/hidden/ok.go` → finding critical + exit 1 |
-| verify runs only partial checks and misses build errors | **confirmado** | config aceita mentalmente `build_cmd`/`lint_cmd` mas `cmd/tb/verify.go` só aplica `TestCmd`/`HiddenTestCmd`; build quebrado não seria exercido pelo verify padrão |
-| tb does not push agent toward completing the whole task | **confirmado (neste estudo)** | 1ª “correção” do regex não detectava Context (self-test falhou / context_exit=0); tb não bloqueou o fluxo até eu rodar o self-test de propósito; review/drift não cobram acceptance checkboxes |
+| problem | confirmed/refuted/not tested | evidence |
+|---------|------------------------------|----------|
+| `bench compare` lacks `--agent` | **confirmed** | `Error: unknown flag: --agent`; help without the flag |
+| `guard.yaml` ignored | **confirmed** | yaml protected the test script; `guard check` on fix diff → `violations: null`; only hardcoded paths in `internal/guard/guard.go` |
+| outdated CLI docs | **confirmed** | `docs/cli.md` shows `tb mem add --type/--title`; real CLI is `tb mem add <regra>`; README still says “Fase 0” while roadmap lists Fase 2 |
+| version shows `unknown` | **confirmed (partial)** | without ldflags: version `0.1.0-dev`, **commit/built = unknown**; with `make build`: ok |
+| config files created 0600 | **confirmed** | `config.yaml` and `invariants.yaml` → mode 600 |
+| visual ruler reports `skipped=false` when skipping | **confirmed** | with `screens.yaml` and missing ref: top-level `"skipped": false` but screen `"skipped": true` |
+| `default_agent` ignored | **confirmed** | config `default_agent: echo AGENT-RAN {prompt}` + `tb bench run -r 1` → `--agent ou --fake é obrigatório` |
+| guard aborts verify when diff touches hardcoded config path | **confirmed** | diff on `.toolbelt/thresholds.yaml` → verify FAIL, iterations 0, tests not executed |
+| default fake agent needs `--fake-config` | **refuted** | `tb bench run --fake` without `--fake-config` completed successfully; flag only changes command if provided |
+| `mem add` positional | **confirmed** | usage `tb mem add <regra>`; `--type` unknown |
+| Drift/Scope need literal paths (no globs) | **refuted (matcher); confirmed (markdown UX)** | YAML `scripts/*.sh` matches via `filepath.Match`; bullets under `## Scope` are **not** read (only same-line `Scope:` or YAML frontmatter) |
+| `graph impact` needs `--file` | **confirmed** | `--file é obrigatório` |
+| review false positives on the tests/hidden invariant | **confirmed** | commit only with `tests/hidden/ok.go` → critical finding + exit 1 |
+| verify runs only partial checks and misses build errors | **confirmed** | config mentally accepts `build_cmd`/`lint_cmd` but `cmd/tb/verify.go` only applies `TestCmd`/`HiddenTestCmd`; broken build would not be exercised by default verify |
+| tb does not push agent toward completing the whole task | **confirmed (in this study)** | 1st regex “fix” did not detect Context (self-test failed / context_exit=0); tb did not block the flow until I deliberately ran the self-test; review/drift do not demand acceptance checkboxes |
 
-## Problemas novos
+## New problems
 
-### P1 — Parser de Scope ignora listas markdown sob heading
+### P1 — Scope parser ignores markdown lists under heading
 
-- **Repro**: `rd.md` com `## Scope` + bullets `- path`; `tb review` / `tb drift`.
-- **Expected**: scope preenchido a partir da lista.
-- **Actual**: `scope-missing` / scope vazio; drift não marca out_of_scope (porque `len(scope)==0` desativa a checagem).
+- **Repro**: `rd.md` with `## Scope` + bullets `- path`; `tb review` / `tb drift`.
+- **Expected**: scope filled from the list.
+- **Actual**: `scope-missing` / empty scope; drift does not mark out_of_scope (because `len(scope)==0` disables the check).
 
-### P1 — Relatório visual: `skipped=false` com todas as telas skipped
+### P1 — Visual report: `skipped=false` with all screens skipped
 
-- **Repro**: `.toolbelt/screens.yaml` sem `references`; `tb verify run --ruler visual --skip-unavailable --json`.
-- **Expected**: `skipped: true` no relatório raiz (ou verdict distinto).
-- **Actual**: `"skipped": false`, `"verdict": "PASS"`, screens com `skipped: true`.
+- **Repro**: `.toolbelt/screens.yaml` without `references`; `tb verify run --ruler visual --skip-unavailable --json`.
+- **Expected**: `skipped: true` in the root report (or a distinct verdict).
+- **Actual**: `"skipped": false`, `"verdict": "PASS"`, screens with `skipped: true`.
 
-### P2 — Primeira iteração do lint Context fácil de “passar” no verify se o test_cmd for fraco
+### P2 — First Context lint iteration easy to “pass” verify if test_cmd is weak
 
-- **Repro**: regex que só adiciona `*Context` ao grupo de nomes; `test_cmd` que só roda o script no tree limpo.
-- **Expected**: verify exigir regressão que falhe com Context lowercase.
-- **Actual**: tree limpo passa; buraco só aparece com fixture negativa (por isso o self-test foi essencial — tb não o exige).
+- **Repro**: regex that only adds `*Context` to the name group; `test_cmd` that only runs the script on a clean tree.
+- **Expected**: verify require a regression that fails with lowercase Context.
+- **Actual**: clean tree passes; hole only appears with a negative fixture (hence the self-test was essential — tb does not require it).
 
-### P2 — `graph impact`/`deps` inúteis para shell scripts
+### P2 — `graph impact`/`deps` useless for shell scripts
 
-- **Repro**: indexar crush; `impact --file scripts/check_log_capitalization.sh`.
-- **Expected**: pelo menos arestas doc/mention úteis ou mensagem clara “sem nós”.
-- **Actual**: `(vazio)` sem diagnóstico.
+- **Repro**: index crush; `impact --file scripts/check_log_capitalization.sh`.
+- **Expected**: at least useful doc/mention edges or a clear “no nodes” message.
+- **Actual**: `(vazio)` without diagnosis.
 
-### P3 — `guard.yaml` criado pelo usuário fica 0644 enquanto configs do tb são 0600
+### P3 — user-created `guard.yaml` is 0644 while tb configs are 0600
 
-- **Repro**: `cat > .toolbelt/guard.yaml`; comparar com `config.yaml`.
-- **Expected**: política de permissões documentada / uniforme.
-- **Actual**: mistura 0600 (tb) e 0644 (manual); yaml ainda assim ignorado.
+- **Repro**: `cat > .toolbelt/guard.yaml`; compare with `config.yaml`.
+- **Expected**: documented / uniform permission policy.
+- **Actual**: mix of 0600 (tb) and 0644 (manual); yaml still ignored.
 
-### P3 — MCP `tb_graph_*` listados sem deixar claro na tools/list que o grafo está off por padrão
+### P3 — MCP `tb_graph_*` listed without making clear in tools/list that the graph is off by default
 
-- Tools aparecem; CLI exige `--enable`/`TB_GRAPH=on`. Não exercitado call com grafo off além da listagem.
+- Tools appear; CLI requires `--enable`/`TB_GRAPH=on`. Call with graph off not exercised beyond listing.
 
-## O que o tb pegou e o que deixou passar
+## What tb caught and what it let slip
 
-**Pegou**
+**Caught**
 
-- Guard em path hardcoded `.toolbelt/thresholds.yaml` e `tests/hidden/*`.
-- Drift/review de scope quando o ticket YAML está correto.
-- Verify PASS no self-test do lint após o fix.
-- Graph indexou `AGENTS.md` e localizou os scripts tocados.
-- Visual skip quando não há manifesto (`skipped: true`).
+- Guard on hardcoded path `.toolbelt/thresholds.yaml` and `tests/hidden/*`.
+- Scope drift/review when the YAML ticket is correct.
+- Verify PASS on the lint self-test after the fix.
+- Graph indexed `AGENTS.md` and located the touched scripts.
+- Visual skip when there is no manifesto (`skipped: true`).
 
-**Deixou passar / não cobriu**
+**Let slip / did not cover**
 
-- Não leu `AGENTS.md` na hora do `init`/onboarding para sugerir `test_cmd`/`lint_cmd` reais (`task test`, `task lint:log`).
-- Não executou `build_cmd`/`lint_cmd` mesmo presentes no yaml editado.
-- Não impediu a 1ª correção incompleta do regex (faltou fixture negativa obrigatória).
-- `guard.yaml` custom ignorado → falsa sensação de política configurável.
-- Impacto de mudança em `.sh` vazio.
-- Relatório visual raiz mentiu `skipped=false` com skips por tela.
-- Não há `tb ticket` (Fase 3): “tickets with Scope” = arquivo `rd.md` manual.
+- Did not read `AGENTS.md` at `init`/onboarding time to suggest real `test_cmd`/`lint_cmd` (`task test`, `task lint:log`).
+- Did not execute `build_cmd`/`lint_cmd` even when present in the edited yaml.
+- Did not prevent the 1st incomplete regex fix (missing mandatory negative fixture).
+- Custom `guard.yaml` ignored → false sense of configurable policy.
+- Empty impact for `.sh` change.
+- Root visual report lied with `skipped=false` when screens skipped.
+- No `tb ticket` (Phase 3): “tickets with Scope” = manual `rd.md` file.
 
-Comparando com nativo: o self-test shell e `task lint:log` foram a fonte de verdade; o tb verify só foi tão bom quanto o `test_cmd` que eu configurei.
+Compared with native: the shell self-test and `task lint:log` were the source of truth; tb verify was only as good as the `test_cmd` I configured.
 
-## Interação com instrumentação existente / onboarding
+## Interaction with existing instrumentation / onboarding
 
-| Aspecto | Observação |
-|---------|------------|
-| `tb init` | Cria `.toolbelt/` paralelo; **não** importa `AGENTS.md`, `.agents/skills`, `Taskfile.yaml` nem `crush.json`. |
-| Duplicação | Invariantes genéricas do `mem init` vs regras já em `AGENTS.md` (capitalização de logs, CGO, testes). Conteúdo não sincronizado. |
-| Conflito | Invariante `tests/hidden/` do tb vs fluxo natural de adicionar suíte oculta no próprio harness do tb — review/guard punem o que o produto pede. |
-| Ignore | Regras ricas do crush (gofumpt, `task lint:log`, golden `-update`, mock providers) ficam só no AGENTS; agent com tb não é empurrado a lê-las. |
-| Graph | **Lê indiretamente**: indexa `AGENTS.md` e AGENTS aninhados como docs (seções/headings). Útil para search, não para onboarding normativo. |
-| O que o tb deveria importar | (1) comandos Build/Test/Lint do AGENTS/Taskfile → `verify.test_cmd` / lint; (2) proibições explícitas (“NUNCA…”, file perms octal, capitalização) → `invariants.yaml`; (3) paths de context files já listados pelo crush (`AGENTS.md`, `CRUSH.md`, …) → `mem`/`ctx`; (4) não sobrescrever skills `.agents/` — referenciar. |
+| Aspect | Observation |
+|--------|-------------|
+| `tb init` | Creates parallel `.toolbelt/`; **does not** import `AGENTS.md`, `.agents/skills`, `Taskfile.yaml`, or `crush.json`. |
+| Duplication | Generic `mem init` invariants vs rules already in `AGENTS.md` (log capitalization, CGO, tests). Content not synchronized. |
+| Conflict | tb `tests/hidden/` invariant vs natural flow of adding a hidden suite in tb’s own harness — review/guard punish what the product asks for. |
+| Ignore | Rich crush rules (gofumpt, `task lint:log`, golden `-update`, mock providers) stay only in AGENTS; agent with tb is not pushed to read them. |
+| Graph | **Reads indirectly**: indexes `AGENTS.md` and nested AGENTS as docs (sections/headings). Useful for search, not for normative onboarding. |
+| What tb should import | (1) Build/Test/Lint commands from AGENTS/Taskfile → `verify.test_cmd` / lint; (2) explicit prohibitions (“NUNCA…”, octal file perms, capitalization) → `invariants.yaml`; (3) context file paths already listed by crush (`AGENTS.md`, `CRUSH.md`, …) → `mem`/`ctx`; (4) do not overwrite `.agents/` skills — reference them. |
 
-## Sugestões de melhoria
+## Improvement suggestions
 
-1. **[P0][verify]** Honrar `build_cmd` e `lint_cmd` (ou documentar que não existem) e falhar se o config declarar chaves ignoradas.  
-2. **[P0][docs]** Alinhar `docs/cli.md` / README (`mem add`, fase do projeto, guard.yaml) com a CLI real.  
-3. **[P0][guard]** Carregar `.toolbelt/guard.yaml` ou remover a menção da docs; hoje é armadilha.  
-4. **[P1][review/drift]** Parsear listas markdown sob `## Scope` / `## Escopo`; avisar quando scope está vazio (em vez de desligar drift).  
-5. **[P1][verify/visual]** Propagar `skipped=true` no relatório raiz se todas as screens foram skipped.  
-6. **[P1][bench]** Respeitar `bench.default_agent`; adicionar `--agent` em `bench compare` ou documentar só `--fake`/JSONL.  
-7. **[P1][init/mem]** Onboarding: detectar `AGENTS.md` / Taskfile e pré-preencher verify + invariantes (grupo “já tem instrumentação AI”).  
-8. **[P2][graph]** Mensagem explícita quando impact/deps estão vazios; opcional indexação de scripts como “task” ligados a docs que os citam.  
-9. **[P2][verify]** Exigir ou gerar fixture negativa para rulers de lint (evita “PASS” com buraco residual).  
-10. **[P2][version]** `go build` sem ldflags não deveria reportar commit `unknown` sem aviso; ou embed via `debug.ReadBuildInfo`.  
-11. **[P3][config]** Revisar 0600 vs colaboração em `.toolbelt/` (gitignored?).
+1. **[P0][verify]** Honor `build_cmd` and `lint_cmd` (or document that they do not exist) and fail if the config declares ignored keys.  
+2. **[P0][docs]** Align `docs/cli.md` / README (`mem add`, project phase, guard.yaml) with the real CLI.  
+3. **[P0][guard]** Load `.toolbelt/guard.yaml` or remove the mention from docs; today it is a trap.  
+4. **[P1][review/drift]** Parse markdown lists under `## Scope` / `## Escopo`; warn when scope is empty (instead of disabling drift).  
+5. **[P1][verify/visual]** Propagate `skipped=true` in the root report if all screens were skipped.  
+6. **[P1][bench]** Respect `bench.default_agent`; add `--agent` to `bench compare` or document only `--fake`/JSONL.  
+7. **[P1][init/mem]** Onboarding: detect `AGENTS.md` / Taskfile and prefill verify + invariants (“already has AI instrumentation” group).  
+8. **[P2][graph]** Explicit message when impact/deps are empty; optional script indexing as “task” linked to docs that cite them.  
+9. **[P2][verify]** Require or generate a negative fixture for lint rulers (avoids “PASS” with residual hole).  
+10. **[P2][version]** `go build` without ldflags should not report commit `unknown` without warning; or embed via `debug.ReadBuildInfo`.  
+11. **[P3][config]** Revisit 0600 vs collaboration in `.toolbelt/` (gitignored?).
 
-## Métricas
+## Metrics
 
-| Métrica | Valor |
-|---------|-------|
-| Wall time (sessão instrumentada tb, evidence log) | ~**3 min** (`20:47:28Z` → `20:50:33Z`), excluindo download inicial Go 1.27 / build crush (~1 m26 s antes) |
-| Invocações tb nomeadas no log | **18** CMD tags + várias ad-hoc (init/mem/bench/mcp/version) ≈ **~30+** |
-| Falhas tb observadas (exit 1) | **10** ocorrências no evidence (inclui probes esperados: impact sem file, compare --agent, thresholds, review-hidden, etc.) |
-| Crashes tb | **0** |
+| Metric | Value |
+|--------|-------|
+| Wall time (instrumented tb session, evidence log) | ~**3 min** (`20:47:28Z` → `20:50:33Z`), excluding initial Go 1.27 download / crush build (~1 m26 s before) |
+| Named tb invocations in the log | **18** CMD tags + several ad-hoc (init/mem/bench/mcp/version) ≈ **~30+** |
+| Observed tb failures (exit 1) | **10** occurrences in evidence (includes expected probes: impact without file, compare --agent, thresholds, review-hidden, etc.) |
+| tb crashes | **0** |
 | MCP | tools/list + `tb_version` OK |
-| Alterações no repo toolbelt | **somente** este arquivo `docs/campo/crush.md` |
-| Alterações no crush | apenas locais em `/tmp/target/crush` (não push) |
+| Changes in toolbelt repo | **only** this file `docs/campo/crush.md` |
+| Changes in crush | only local in `/tmp/target/crush` (no push) |

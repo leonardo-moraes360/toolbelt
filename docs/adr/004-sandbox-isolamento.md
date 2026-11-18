@@ -1,44 +1,46 @@
-🇧🇷 Português | [🇺🇸 English](../en/adr/004-sandbox-isolamento.md)
+🇺🇸 English | [🇧🇷 Português](../pt-BR/adr/004-sandbox-isolamento.md)
 
-# ADR-004: Sandbox com bubblewrap + Landlock + seccomp
+# ADR-004: Sandbox with bubblewrap + Landlock + seccomp
 
 ## Status
 
 accepted
 
-## Contexto
+Implementation (v0.0.5): only the Landlock layer exists (`internal/sandbox`, fail-closed; outside Linux it returns `ErrUnsupported`). bubblewrap and seccomp are not implemented yet.
 
-Agentes de código executam comandos arbitrários fornecidos pelo modelo de linguagem. Precisamos de isolamento para:
+## Context
 
-1. **Prevenir danos**: limitar escrita ao diretório de trabalho
-2. **Bloquear exfiltração**: negar rede por padrão
-3. **Limitar recursos**: evitar fork bombs, memory exhaustion
-4. **Proteger testes**: garantir que arquivos de benchmark não sejam modificados
+Coding agents execute arbitrary commands supplied by the language model. We need isolation to:
 
-Requisitos:
-- Linux (ambiente primário de CI/dev)
-- Sem containers completos (overhead, complexidade)
-- Granularidade fina (arquivo, syscall)
-- Performance aceitável
+1. **Prevent damage**: limit writes to the working directory
+2. **Block exfiltration**: deny network by default
+3. **Limit resources**: avoid fork bombs, memory exhaustion
+4. **Protect tests**: ensure benchmark files are not modified
 
-## Decisão
+Requirements:
+- Linux (primary CI/dev environment)
+- No full containers (overhead, complexity)
+- Fine granularity (file, syscall)
+- Acceptable performance
 
-Stack de isolamento em camadas:
+## Decision
 
-1. **bubblewrap**: namespaces e bind-mounts
-2. **Landlock**: restrições de filesystem em runtime
-3. **seccomp**: filtro de syscalls
-4. **cgroups v2**: limites de CPU, RAM, tempo
+Layered isolation stack:
+
+1. **bubblewrap**: namespaces and bind-mounts
+2. **Landlock**: runtime filesystem restrictions
+3. **seccomp**: syscall filter
+4. **cgroups v2**: CPU, RAM, time limits
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                      Processo Isolado                           │
+│                      Isolated Process                           │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                 │
 │  ┌─────────────────────────────────────────────────────────┐   │
 │  │                    seccomp                              │   │
 │  │  Syscalls: read, write, open, ... (whitelist)           │   │
-│  │  Bloqueados: ptrace, mount, reboot, ...                 │   │
+│  │  Blocked: ptrace, mount, reboot, ...                    │   │
 │  └─────────────────────────────────────────────────────────┘   │
 │                              │                                  │
 │  ┌─────────────────────────────────────────────────────────┐   │
@@ -46,19 +48,19 @@ Stack de isolamento em camadas:
 │  │  /worktree: read+write                                  │   │
 │  │  /tests: read-only                                      │   │
 │  │  /tmp: read+write                                       │   │
-│  │  Resto: bloqueado                                       │   │
+│  │  Rest: blocked                                          │   │
 │  └─────────────────────────────────────────────────────────┘   │
 │                              │                                  │
 │  ┌─────────────────────────────────────────────────────────┐   │
 │  │                   bubblewrap                            │   │
 │  │  Namespaces: user, mount, net, pid                      │   │
 │  │  Bind-mounts: worktree, tools                           │   │
-│  │  Network: loopback only (ou whitelist)                  │   │
+│  │  Network: loopback only (or whitelist)                  │   │
 │  └─────────────────────────────────────────────────────────┘   │
 │                              │                                  │
 │  ┌─────────────────────────────────────────────────────────┐   │
 │  │                    cgroups v2                           │   │
-│  │  CPU: 100% (ou limitado)                                │   │
+│  │  CPU: 100% (or limited)                                 │   │
 │  │  Memory: 1GB max                                        │   │
 │  │  PIDs: 100 max                                          │   │
 │  │  Timeout: kill after N seconds                          │   │
@@ -67,82 +69,82 @@ Stack de isolamento em camadas:
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-### Responsabilidades por Camada
+### Responsibilities per Layer
 
-| Camada | Responsabilidade | Configurável |
-|--------|------------------|--------------|
-| bubblewrap | Namespaces, mounts, rede | --allow-net |
-| Landlock | Filesystem runtime | --allow-read, --allow-write |
-| seccomp | Syscalls | perfil por tipo de tarefa |
-| cgroups | Recursos | --cgroup-cpu, --cgroup-mem |
+| Layer | Responsibility | Configurable |
+|-------|----------------|--------------|
+| bubblewrap | Namespaces, mounts, network | --allow-net |
+| Landlock | Runtime filesystem | --allow-read, --allow-write |
+| seccomp | Syscalls | profile by task type |
+| cgroups | Resources | --cgroup-cpu, --cgroup-mem |
 
-## Consequências
+## Consequences
 
-### Positivas
+### Positive
 
-- **Defesa em profundidade**: várias camadas independentes
-- **Sem root**: bubblewrap funciona sem privilégios especiais
-- **Granular**: cada camada pode ser relaxada conforme necessário
-- **Baixo overhead**: não é container completo
-- **Linux mainstream**: tecnologias no kernel oficial
+- **Defense in depth**: several independent layers
+- **No root**: bubblewrap works without special privileges
+- **Granular**: each layer can be relaxed as needed
+- **Low overhead**: not a full container
+- **Mainstream Linux**: technologies in the official kernel
 
-### Negativas
+### Negative
 
-- **Linux only**: não funciona em macOS/Windows nativamente
-- **Complexidade**: múltiplas tecnologias para entender
-- **Debugging difícil**: erros de permissão podem ser obscuros
-- **Landlock recente**: kernel 5.13+, distribuições antigas não suportam
+- **Linux only**: does not work natively on macOS/Windows
+- **Complexity**: multiple technologies to understand
+- **Hard debugging**: permission errors can be obscure
+- **Recent Landlock**: kernel 5.13+, older distributions unsupported
 
-## Alternativas Consideradas
+## Alternatives Considered
 
 ### Docker/Containers
 
-**Por que considerado**:
-- Isolamento completo
-- Imagens reprodutíveis
-- Ecossistema maduro
+**Why considered**:
+- Complete isolation
+- Reproducible images
+- Mature ecosystem
 
-**Por que não escolhido**:
-- Overhead de startup
-- Complexidade de configuração
-- Requer daemon rodando
-- Overkill para execução de comandos simples
+**Why not chosen**:
+- Startup overhead
+- Configuration complexity
+- Requires a running daemon
+- Overkill for simple command execution
 
 ### gVisor
 
-**Por que considerado**:
-- Isolamento de kernel completo
-- Compatibilidade com containers
+**Why considered**:
+- Full kernel isolation
+- Container compatibility
 
-**Por que não escolhido**:
-- Performance overhead significativo
-- Complexidade de deploy
-- Overkill para nosso caso
+**Why not chosen**:
+- Significant performance overhead
+- Deploy complexity
+- Overkill for our case
 
-### Apenas namespaces (unshare)
+### Namespaces only (unshare)
 
-**Por que considerado**:
-- Simples, nativo
+**Why considered**:
+- Simple, native
 
-**Por que não escolhido**:
-- Granularidade insuficiente para filesystem
-- Sem filtro de syscalls
-- bubblewrap já faz isso melhor
+**Why not chosen**:
+- Insufficient filesystem granularity
+- No syscall filter
+- bubblewrap already does this better
 
 ### Firejail
 
-**Por que considerado**:
-- Fácil de usar
-- Perfis prontos
+**Why considered**:
+- Easy to use
+- Ready-made profiles
 
-**Por que não escolhido**:
-- Menos controle fino
-- Configuração menos programática
-- bubblewrap mais adequado para embedding
+**Why not chosen**:
+- Less fine-grained control
+- Less programmatic configuration
+- bubblewrap more suitable for embedding
 
-## Perfis de Sandbox
+## Sandbox Profiles
 
-### Perfil Restritivo (default)
+### Restrictive Profile (default)
 
 ```bash
 bwrap \
@@ -160,27 +162,27 @@ bwrap \
   -- $COMMAND
 ```
 
-### Perfil com Rede
+### Profile with Network
 
 ```bash
 bwrap \
   ... \
   --share-net \
   -- $COMMAND
-# + iptables/nftables para whitelist de hosts
+# + iptables/nftables for host whitelist
 ```
 
-### Perfil para Testes
+### Profile for Tests
 
 ```bash
 bwrap \
   ... \
-  --ro-bind $TESTS $TESTS \  # tests são read-only
+  --ro-bind $TESTS $TESTS \  # tests are read-only
   --ro-bind $BENCHMARKS $BENCHMARKS \
   -- $COMMAND
 ```
 
-## Integração com cgroups
+## Integration with cgroups
 
 ```go
 type ResourceLimits struct {
@@ -205,17 +207,17 @@ func (s *Sandbox) Run(cmd string, limits ResourceLimits) error {
 }
 ```
 
-## Fallback para macOS/Windows
+## Fallback for macOS/Windows
 
-Para desenvolvimento local em macOS/Windows:
+For local development on macOS/Windows:
 
-1. **Opção 1**: VM Linux via Lima/WSL2
-2. **Opção 2**: Container Docker como sandbox
-3. **Opção 3**: Sandbox "soft" (apenas cwd restrict, sem isolamento real)
+1. **Option 1**: Linux VM via Lima/WSL2
+2. **Option 2**: Docker container as sandbox
+3. **Option 3**: "Soft" sandbox (cwd restrict only, no real isolation)
 
-A opção 3 é aceitável para dev local, mas CI e produção devem usar Linux.
+Option 3 is acceptable for local dev, but CI and production must use Linux.
 
-## Referências
+## References
 
 - [bubblewrap](https://github.com/containers/bubblewrap)
 - [Landlock](https://landlock.io/)

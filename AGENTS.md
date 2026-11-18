@@ -2,18 +2,18 @@
 
 ## Toolbelt
 
-Este repositório pode usar [toolbelt](https://github.com/leonardo-moraes360/toolbelt) (`tb`) como harness para agentes.
+This repository can use [toolbelt](https://github.com/leonardo-moraes360/toolbelt) (`tb`) as a harness for agents.
 
-### Toolchain detectada
+### Detected toolchain
 
-- testes (`verify.test_cmd`): `go test ./...`
+- tests (`verify.test_cmd`): `go test ./...`
 - build (`verify.build_cmd`): `go build ./...`
-- lint (`verify.lint_cmd`): `golangci-lint run`
+- lint (`verify.lint_cmd`): `go vet ./...` (CI runs `golangci-lint`)
 
-### Uso do tb
+### Using tb
 
-- `tb verify` — roda test/build/lint configurados em `.toolbelt/config.yaml`
-- `tb guard check` — checagens anti-trapaça no diff
-- `tb mem` — invariantes fora da compactação do contexto
+- `tb verify` — runs the test/build/lint configured in `.toolbelt/config.yaml`
+- `tb guard check` — anti-cheat checks on the diff
+- `tb mem` — invariants outside context compaction
 
-Ajuste `verify.test_cmd` (e, se houver, `build_cmd`/`lint_cmd`) se a detecção estiver incorreta.
+Adjust `verify.test_cmd` (and, if present, `build_cmd`/`lint_cmd`) if detection is wrong.

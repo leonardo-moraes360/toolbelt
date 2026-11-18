@@ -1,142 +1,142 @@
-🇧🇷 Português | [🇺🇸 English](../../en/campo/rodada2/ollama.md)
+🇺🇸 English | [🇧🇷 Português](../../pt-BR/campo/rodada2/ollama.md)
 
-# Estudo de campo rodada 2: ollama/ollama
+# Field study round 2: ollama/ollama
 
-Estudo em 2026-11-16 com `tb` buildado de `main` (`make build` → `toolbelt a46c295`). Clone shallow local em `/tmp/target/ollama`. Grupo: **com instrumentação AI existente**. **Nenhuma interação** com o upstream (sem push, issue, PR ou comentário).
+Study on 2026-11-16 with `tb` built from `main` (`make build` → `toolbelt a46c295`). Local shallow clone at `/tmp/target/ollama`. Group: **with existing AI instrumentation**. **No interaction** with upstream (no push, issue, PR, or comment).
 
-## Repositório
+## Repository
 
-| Campo | Valor |
+| Field | Value |
 |-------|-------|
-| Nome | [ollama/ollama](https://github.com/ollama/ollama) |
-| Linguagem | Go (~1097 `.go`), UI TS, C/C++ nativo (llama/MLX) |
-| Tamanho | ~53 MiB shallow; 1657 arquivos (excl. `.git`); `go 1.26.10` no `go.mod` |
-| Instrumentação AI existente | `AGENTS.md` (cmake + `go build`/`go run`); `CLAUDE.md` aponta para `AGENTS.md`; docs de integrações em `docs/integrations/` |
-| Toolchain | **Parcial → melhor que a rodada 1.** `GOTOOLCHAIN=auto` → Go 1.26.10; `go test ./format/`, `go vet ./format/` e **`go build .` OK** (~51 s). CMake: `cmake` presente, mas configure falhou (`Ninja` ausente; `CMAKE_C_COMPILER`/`CXX` não setados no probe). `golangci-lint` ausente. GPU backends não tentados. |
+| Name | [ollama/ollama](https://github.com/ollama/ollama) |
+| Language | Go (~1097 `.go`), TS UI, native C/C++ (llama/MLX) |
+| Size | ~53 MiB shallow; 1657 files (excl. `.git`); `go 1.26.10` in `go.mod` |
+| Existing AI instrumentation | `AGENTS.md` (cmake + `go build`/`go run`); `CLAUDE.md` points to `AGENTS.md`; integration docs under `docs/integrations/` |
+| Toolchain | **Partial → better than round 1.** `GOTOOLCHAIN=auto` → Go 1.26.10; `go test ./format/`, `go vet ./format/`, and **`go build .` OK** (~51 s). CMake: `cmake` present, but configure failed (`Ninja` missing; `CMAKE_C_COMPILER`/`CXX` unset in the probe). `golangci-lint` missing. GPU backends not attempted. |
 
-## Tarefa escolhida
+## Chosen task
 
-| Campo | Valor |
+| Field | Value |
 |-------|-------|
-| O quê | Corrigir `HumanNumber` para não emitir `1000K` quando o arredondamento cruza a fronteira K→M (`999500` → `1M`). Ajuste em `format/format.go` + casos em `format/format_test.go`. |
-| Por quê | Bug aberto, puro Go, pacote pequeno com testes; escopo diferente da rodada 1. |
+| What | Fix `HumanNumber` so it does not emit `1000K` when rounding crosses the K→M boundary (`999500` → `1M`). Change in `format/format.go` + cases in `format/format_test.go`. |
+| Why | Open bug, pure Go, small package with tests; different scope from round 1. |
 | Issue | https://github.com/ollama/ollama/issues/19490 |
-| Completada? | **Sim, localmente** (commit `9ffcee3` só no clone). Não enviada ao upstream. |
-| Native test/lint/build | `go test ./format/ -count=1` PASS; `go vet ./format/` PASS; `go build .` PASS. CMake nativo completo **não** configurado (ninja). |
-| Rodada 1 (comparação) | Flag `verbose` ausente em `ollama launch` (issue #14654) em `cmd/`. |
+| Completed? | **Yes, locally** (commit `9ffcee3` only on the clone). Not sent upstream. |
+| Native test/lint/build | `go test ./format/ -count=1` PASS; `go vet ./format/` PASS; `go build .` PASS. Full native CMake **not** configured (ninja). |
+| Round 1 (comparison) | Missing `verbose` flag in `ollama launch` (issue #14654) under `cmd/`. |
 
-## Verificação das 12 correções
+## Verification of the 12 fixes
 
-| # | correção | funcionou/não funcionou/não testado/não se aplica | evidência |
-|---|----------|-----------------------------------------------------|-----------|
-| 1 | graph SkipDirs na raiz do walk | **funcionou** | `tb graph --enable index /tmp/target` → `8925 nós, 65764 arestas` (raiz `target` não zera o grafo); rebuild em `/tmp/target/ollama` → `8923` nós |
-| 2 | verify `hidden_test_cmd` sem `tests/hidden/` | **funcionou** | Sem dir `tests/hidden/`; `hidden_test_cmd='go test ./format/ -run HumanNumber -count=1'` → JSON `hidden_available: true`, `hidden_passed: true`, `verdict: PASS` |
-| 3 | guard `--strict --json` exit ≠ 0 | **funcionou** | Diff em `tests/hidden/x.go`: `--strict --json` → EXIT **1** e JSON com `protected_path`; idem para `.toolbelt/thresholds.yaml` |
-| 4 | guard lê `protected_paths` de `guard.yaml` | **funcionou** | `.toolbelt/guard.yaml` com `format/format.go` e `format/*` → violations nesses arquivos no diff do fix |
-| 5 | init detecção de toolchain | **funcionou** | `tb init` em repo com `go.mod` → `verify.test_cmd: go test ./...` (não default cego sem detecção) |
-| 6 | review `tests/hidden` por path | **funcionou** | Ticket só *menciona* `tests/hidden/**` sem tocar o dir → `findings: []` em `--standards invariants` |
-| 7 | bench `default_agent` e `compare --agent` | **funcionou** | `default_agent: echo AGENT_OK {prompt}` + `tb bench run -r 1` **sem** `--agent`/`--fake` → EXIT 0; `bench compare ... --agent 'echo COMPARE {prompt}'` → EXIT 0 |
-| 8 | review/drift `## Scope`/`## Escopo`, listas e `**` | **funcionou** | `## Scope` com bullets `` `format/**` `` → drift limpo; `## Escopo` + `format/**` OK; scope `cmd/**` → `out_of_scope: [format/...]` EXIT 1; `format/**/*.go` e `format/*.go` casam |
-| 9 | verify `build_cmd` e `lint_cmd` | **funcionou** | Config com `build_cmd=go build ./format/`, `lint_cmd=go vet ./format/` → `build_ran/passed: true`, `lint_ran/passed: true` no verify PASS |
-| 10 | init lê `AGENTS.md`/`CLAUDE.md` e `--write-agents` | **funcionou** | Init logou `sources=AGENTS.md,CLAUDE.md` e hints (`cmake`, `go build`, `go run . serve`); gravou `.toolbelt/agent_docs.yaml`; `--write-agents` não sobrescreveu `AGENTS.md` existente |
-| 11 | graph Python `calls` | **não se aplica** | Repo Go; não exercitado em `.py`. Em Go, `callers --function HumanNumber` retornou callers reais (`cmd.showInfo`, `server.GetModelInfo`, …) |
-| 12 | visual skipped agregado + docs CLI alinhados | **parcial** | Visual: `skipped: true`, `skip_reason: manifesto de telas ausente`. Docs: `tb serve`/`mem add` melhor documentados; ainda há exemplo `tb graph index --path` e menção a `--manifest` no guard enquanto a CLI de `guard check` só expõe `--strict` |
+| # | fix | worked / did not work / not tested / not applicable | evidence |
+|---|-----|-----------------------------------------------------|----------|
+| 1 | graph SkipDirs at walk root | **worked** | `tb graph --enable index /tmp/target` → `8925 nodes, 65764 edges` (root `target` does not zero the graph); rebuild under `/tmp/target/ollama` → `8923` nodes |
+| 2 | verify `hidden_test_cmd` without `tests/hidden/` | **worked** | No `tests/hidden/` dir; `hidden_test_cmd='go test ./format/ -run HumanNumber -count=1'` → JSON `hidden_available: true`, `hidden_passed: true`, `verdict: PASS` |
+| 3 | guard `--strict --json` exit ≠ 0 | **worked** | Diff touching `tests/hidden/x.go`: `--strict --json` → EXIT **1** and JSON with `protected_path`; same for `.toolbelt/thresholds.yaml` |
+| 4 | guard reads `protected_paths` from `guard.yaml` | **worked** | `.toolbelt/guard.yaml` with `format/format.go` and `format/*` → violations on those files in the fix diff |
+| 5 | init toolchain detection | **worked** | `tb init` in a repo with `go.mod` → `verify.test_cmd: go test ./...` (not a blind default without detection) |
+| 6 | review `tests/hidden` by path | **worked** | Ticket only *mentions* `tests/hidden/**` without touching the dir → `findings: []` under `--standards invariants` |
+| 7 | bench `default_agent` and `compare --agent` | **worked** | `default_agent: echo AGENT_OK {prompt}` + `tb bench run -r 1` **without** `--agent`/`--fake` → EXIT 0; `bench compare ... --agent 'echo COMPARE {prompt}'` → EXIT 0 |
+| 8 | review/drift `## Scope`/`## Escopo`, lists and `**` | **worked** | `## Scope` with bullets `` `format/**` `` → clean drift; `## Escopo` + `format/**` OK; scope `cmd/**` → `out_of_scope: [format/...]` EXIT 1; `format/**/*.go` and `format/*.go` match |
+| 9 | verify `build_cmd` and `lint_cmd` | **worked** | Config with `build_cmd=go build ./format/`, `lint_cmd=go vet ./format/` → `build_ran/passed: true`, `lint_ran/passed: true` on verify PASS |
+| 10 | init reads `AGENTS.md`/`CLAUDE.md` and `--write-agents` | **worked** | Init logged `sources=AGENTS.md,CLAUDE.md` and hints (`cmake`, `go build`, `go run . serve`); wrote `.toolbelt/agent_docs.yaml`; `--write-agents` did not overwrite existing `AGENTS.md` |
+| 11 | graph Python `calls` | **not applicable** | Go repo; not exercised on `.py`. In Go, `callers --function HumanNumber` returned real callers (`cmd.showInfo`, `server.GetModelInfo`, …) |
+| 12 | aggregated visual skipped + CLI docs aligned | **partial** | Visual: `skipped: true`, `skip_reason: manifesto de telas ausente`. Docs: `tb serve`/`mem add` better documented; still has example `tb graph index --path` and mentions `--manifest` for guard while `guard check` CLI only exposes `--strict` |
 
-## Uso do tb por comando
+## tb usage by command
 
-| comando | resultado | ajudou/atrapalhou/neutro | evidência |
-|---------|-----------|--------------------------|-----------|
-| `tb version` | OK `a46c295` | neutro | build com ldflags |
-| `tb init` / `--write-agents` | OK; toolchain Go + `agent_docs.yaml` | **ajudou** | hints do `AGENTS.md`; config `0600` |
-| `tb mem init/list/add/check` | OK | ajudou | invariantes anti-cheat + mandate de escopo |
-| `tb graph index/rebuild/search/impact/callers` | OK em escala (~9k nós) | **ajudou** | achou `HumanNumber`; impact/callers úteis; index `/tmp/target` OK |
-| `tb drift` | OK com `## Scope` | **ajudou** | limpo no mandate; EXIT 1 com scope errado |
-| `tb review` | OK + warnings completeness | atrapalhou (parcial) | 3 warnings de aceite apesar de teste `999500→1M` no diff |
-| `tb verify run` (tests + build/lint/hidden) | PASS | **ajudou** | `hidden_available: true` sem pasta `tests/hidden/` |
-| `tb verify --ruler visual` | PASS skipped | neutro | `skipped: true` |
-| `tb guard check` + `guard.yaml` | detecta custom + hardcoded | ajudou / atrapalhou | custom funciona; com yaml protegendo os arquivos da tarefa, **verify FAIL** `iterations: 0` |
-| `tb bench run` (default_agent) / `--fake` / `compare --agent` | OK | ajudou | fixtures do toolbelt (`bugfix-go`) |
-| `tb mcp` `tools/list` | OK | ajudou | version, echo, env, run, graph_* |
-| Checks nativos | test/vet/build Go OK | — | alinhados ao `verify` quando `test_cmd`/`build_cmd`/`lint_cmd` apontam a `./format/` |
+| command | result | helped / hindered / neutral | evidence |
+|---------|--------|-----------------------------|----------|
+| `tb version` | OK `a46c295` | neutral | build with ldflags |
+| `tb init` / `--write-agents` | OK; Go toolchain + `agent_docs.yaml` | **helped** | hints from `AGENTS.md`; config `0600` |
+| `tb mem init/list/add/check` | OK | helped | anti-cheat invariants + scope mandate |
+| `tb graph index/rebuild/search/impact/callers` | OK at scale (~9k nodes) | **helped** | found `HumanNumber`; useful impact/callers; index `/tmp/target` OK |
+| `tb drift` | OK with `## Scope` | **helped** | clean under the mandate; EXIT 1 with wrong scope |
+| `tb review` | OK + completeness warnings | hindered (partial) | 3 acceptance warnings despite `999500→1M` test in the diff |
+| `tb verify run` (tests + build/lint/hidden) | PASS | **helped** | `hidden_available: true` without a `tests/hidden/` folder |
+| `tb verify --ruler visual` | PASS skipped | neutral | `skipped: true` |
+| `tb guard check` + `guard.yaml` | detects custom + hardcoded | helped / hindered | custom works; with yaml protecting the task’s own files, **verify FAIL** `iterations: 0` |
+| `tb bench run` (default_agent) / `--fake` / `compare --agent` | OK | helped | toolbelt fixtures (`bugfix-go`) |
+| `tb mcp` `tools/list` | OK | helped | version, echo, env, run, graph_* |
+| Native checks | Go test/vet/build OK | — | aligned with `verify` when `test_cmd`/`build_cmd`/`lint_cmd` point at `./format/` |
 
-## Problemas que continuam
+## Problems that persist
 
-- **Review completeness com FP/ruído**: critérios de aceite marcados como “pouco evidenciados” mesmo com o caso `999500` e `TestHumanNumber` no diff (mesmo padrão da rodada 1).
-- **Configs `0600`**: `config.yaml` / `agent_docs.yaml` continuam mode `600`.
-- **CMake/ninja ainda fora do VM**: build nativo completo incompleto; `tb` não bloqueia “done” por isso (hints do AGENTS ajudam, mas não viram gate).
-- **Docs CLI ainda com resíduos**: exemplo `graph index --path`; `--manifest` descrito para guard sem flag na CLI.
-- **Verify aborta cedo em path protegido**: comportamento anti-cheat desejado nos hardcoded; agora também via `guard.yaml` — fácil falhar a verificação se o manifesto listar arquivos da própria tarefa.
+- **Noisy review completeness FPs**: acceptance criteria marked “little evidenced” even with the `999500` case and `TestHumanNumber` in the diff (same pattern as round 1).
+- **Mode `0600` configs**: `config.yaml` / `agent_docs.yaml` still mode `600`.
+- **CMake/ninja still outside the VM**: full native build incomplete; `tb` does not block “done” for that (AGENTS hints help, but are not a gate).
+- **CLI docs still have leftovers**: example `graph index --path`; `--manifest` described for guard without a CLI flag.
+- **Verify aborts early on protected path**: desired anti-cheat for hardcoded paths; now also via `guard.yaml` — easy to fail verification if the manifest lists the task’s own files.
 
-## Problemas novos
+## New problems
 
-1. **P2 — `guard.yaml` + verify: proteger o path da tarefa vira FAIL imediato**  
-   - Repro: `protected_paths: [format/format.go]`; `tb verify run` no commit que altera esse arquivo → `verdict: FAIL`, `iterations: 0`, sem rodar build/test.  
-   - Esperado: manifesto custom distinguir “não trapacear” vs “arquivos sensíveis permitidos no mandate”; ou warn em vez de abortar verify quando o path está no Scope.  
-   - Atual: qualquer `protected_path` error aborta verify.
+1. **P2 — `guard.yaml` + verify: protecting the task path becomes an immediate FAIL**  
+   - Repro: `protected_paths: [format/format.go]`; `tb verify run` on the commit that changes that file → `verdict: FAIL`, `iterations: 0`, without running build/test.  
+   - Expected: custom manifest distinguishes “do not cheat” vs “sensitive files allowed in the mandate”; or warn instead of aborting verify when the path is in Scope.  
+   - Actual: any `protected_path` error aborts verify.
 
-2. **P3 — Exemplo `tb graph index --path` ainda na docs**  
-   - Repro: `docs/cli.md` ~L284 mostra `--path`; CLI real usa argumento posicional.  
-   - Esperado: exemplos só com flags/args aceitos (correção #12 incompleta).
+2. **P3 — Example `tb graph index --path` still in docs**  
+   - Repro: `docs/cli.md` ~L284 shows `--path`; real CLI uses a positional argument.  
+   - Expected: examples only with accepted flags/args (fix #12 incomplete).
 
-3. **P3 — Docs citam `--manifest` no guard; CLI não tem a flag**  
-   - Repro: `tb guard check --help` só `--strict`; docs ainda falam `--manifest`.  
-   - Esperado: docs = CLI (carrega `.toolbelt/guard.yaml` implicitamente).
+3. **P3 — Docs cite `--manifest` for guard; CLI has no such flag**  
+   - Repro: `tb guard check --help` only `--strict`; docs still mention `--manifest`.  
+   - Expected: docs = CLI (loads `.toolbelt/guard.yaml` implicitly).
 
-## O que o tb pegou e o que deixou passar
+## What tb caught and what it let slip
 
-**Pegou**
-- Drift de escopo com `## Scope`/`## Escopo` e globs `**`.
-- Guard custom (`format/*`) e hardcoded (`tests/hidden`, `thresholds.yaml`) com `--strict --json` falhando o exit code.
-- Verify com `build_cmd`/`lint_cmd`/`hidden_test_cmd` configurados → PASS real no pacote `format`.
-- Grafo: search/impact/callers de `HumanNumber` após index em `/tmp/target`.
-- Onboarding: leitura de `AGENTS.md`/`CLAUDE.md` + hints de build.
+**Caught**
+- Scope drift with `## Scope`/`## Escopo` and `**` globs.
+- Custom guard (`format/*`) and hardcoded (`tests/hidden`, `thresholds.yaml`) with `--strict --json` failing the exit code.
+- Verify with configured `build_cmd`/`lint_cmd`/`hidden_test_cmd` → real PASS on the `format` package.
+- Graph: search/impact/callers for `HumanNumber` after indexing `/tmp/target`.
+- Onboarding: reading `AGENTS.md`/`CLAUDE.md` + build hints.
 
-**Deixou passar / enfraqueceu**
-- Review completeness ruidoso (não confirma aceite óbvio pelo diff de teste).
-- Não transformou hints do AGENTS (cmake/ninja) em `verify.build_cmd` nativo completo — só Go detectado.
-- Com `guard.yaml` mal calibrado, o próprio verify impede validar a tarefa (falso “anti-cheat” sobre o mandate).
-- Ruler visual sem manifesto → skip (esperado); zero sinal visual.
+**Let slip / weakened**
+- Noisy review completeness (does not confirm obvious acceptance from the test diff).
+- Did not turn AGENTS hints (cmake/ninja) into a full native `verify.build_cmd` — only Go detected.
+- With a poorly calibrated `guard.yaml`, verify itself blocks validating the task (false “anti-cheat” over the mandate).
+- Visual ruler without a manifest → skip (expected); zero visual signal.
 
-## Interação com instrumentação existente / onboarding
+## Interaction with existing instrumentation / onboarding
 
-- **`AGENTS.md` / `CLAUDE.md`**: `tb init` **leu** e registrou em `.toolbelt/agent_docs.yaml` com hints (`cmake -B build .`, `cmake --build`, `go build .`, `go run . serve`). Melhora clara vs rodada 1 (antes: zero leitura).
-- **`--write-agents`**: disponível; não sobrescreveu o `AGENTS.md` existente (correto).
-- **Duplicação**: invariantes `mem` genéricas vs regras de build do AGENTS ainda paralelas; hints não preencheram automaticamente `build_cmd` cmake.
-- **Onboarding**: melhor bootstrap (toolchain Go + agent docs). Ainda sem progress log / ticket gerado; `rd.md` manual.
+- **`AGENTS.md` / `CLAUDE.md`**: `tb init` **read** them and recorded `.toolbelt/agent_docs.yaml` with hints (`cmake -B build .`, `cmake --build`, `go build .`, `go run . serve`). Clear improvement vs round 1 (before: no read).
+- **`--write-agents`**: available; did not overwrite existing `AGENTS.md` (correct).
+- **Duplication**: generic `mem` invariants vs AGENTS build rules still run in parallel; hints did not auto-fill cmake `build_cmd`.
+- **Onboarding**: better bootstrap (Go toolchain + agent docs). Still no progress log / generated ticket; manual `rd.md`.
 
-## Comparação com a rodada 1
+## Comparison with round 1
 
-| Aspecto | Rodada 1 | Rodada 2 | Veredito |
-|---------|----------|----------|----------|
-| SkipDirs `/tmp/target` | risco de 0 nós | 8925 nós ao indexar `/tmp/target` | **melhor** |
-| `guard.yaml` | ignorado | lido e aplicado | **melhor** |
-| `--strict --json` | exit 0 com violação | exit 1 | **melhor** |
-| `default_agent` / `compare --agent` | quebrados | funcionam | **melhor** |
-| `## Scope` Markdown | frágil / YAML | headings + bullets + `**` OK | **melhor** |
-| `hidden_test_cmd` | gated por dir | roda sem dir | **melhor** |
-| `build_cmd`/`lint_cmd` | inertes | honrados | **melhor** |
-| AGENTS.md no init | ignorado | lido + hints | **melhor** |
-| Review completeness | ruído | ruído semelhante | **igual** |
-| Build nativo cmake | falhou | ainda incompleto (ninja); `go build .` agora OK | **parcialmente melhor** |
-| Tarefa | `cmd` verbose | `format` HumanNumber | diferente (como pedido) |
+| Aspect | Round 1 | Round 2 | Verdict |
+|--------|---------|---------|---------|
+| SkipDirs `/tmp/target` | risk of 0 nodes | 8925 nodes indexing `/tmp/target` | **better** |
+| `guard.yaml` | ignored | read and applied | **better** |
+| `--strict --json` | exit 0 with violation | exit 1 | **better** |
+| `default_agent` / `compare --agent` | broken | work | **better** |
+| `## Scope` Markdown | fragile / YAML | headings + bullets + `**` OK | **better** |
+| `hidden_test_cmd` | gated by dir | runs without dir | **better** |
+| `build_cmd`/`lint_cmd` | inert | honored | **better** |
+| AGENTS.md in init | ignored | read + hints | **better** |
+| Review completeness | noise | similar noise | **same** |
+| Native cmake build | failed | still incomplete (ninja); `go build .` now OK | **partially better** |
+| Task | `cmd` verbose | `format` HumanNumber | different (as requested) |
 
-No geral: **substancialmente melhor** nas 12 correções exercitáveis neste repo; lacunas restantes são review completeness, docs residuais e o footgun guard.yaml↔verify.
+Overall: **substantially better** on the 12 exercisable fixes in this repo; remaining gaps are review completeness, residual docs, and the guard.yaml↔verify footgun.
 
-## Sugestões de melhoria
+## Improvement suggestions
 
-1. **[P1][guard/verify]** Não abortar verify por `protected_paths` custom que estão no Scope do ticket (ou severidade warning + flag).  
-2. **[P1][review]** Completeness: tratar asserts/casos de teste no diff como evidência de aceite.  
-3. **[P2][init/verify]** Mapear hints de `AGENTS.md` → sugerir `build_cmd`/`lint_cmd` (cmake quando detectável).  
-4. **[P2][docs]** Remover `graph index --path` e `--manifest` órfão; só documentar o que a CLI aceita.  
-5. **[P3][config]** Mode menos restritivo para `agent_docs.yaml` não secreto.
+1. **[P1][guard/verify]** Do not abort verify for custom `protected_paths` that are in the ticket Scope (or warning severity + flag).  
+2. **[P1][review]** Completeness: treat asserts/test cases in the diff as acceptance evidence.  
+3. **[P2][init/verify]** Map `AGENTS.md` hints → suggest `build_cmd`/`lint_cmd` (cmake when detectable).  
+4. **[P2][docs]** Remove orphan `graph index --path` and `--manifest`; only document what the CLI accepts.  
+5. **[P3][config]** Less restrictive mode for non-secret `agent_docs.yaml`.
 
-## Métricas
+## Metrics
 
-| métrica | rodada 2 | rodada 1 (referência) |
-|---------|----------|------------------------|
-| Wall time da sessão de campo | ~8–12 min (inclui `go build .` ~51 s + download toolchain) | ~6–10 min |
-| Invocações `tb` (blocos de comando úteis) | ~30 (exclui 10 EXIT 127 de erro de harness no log) | 59 |
-| Falhas tb intencionais (exit ≠ 0) | 3+ (2× guard `--strict`, 1× drift scope errado; verify FAIL com guard.yaml também exit 1) | 13 |
-| Soma aproximada de WALLs tb (sem `go build` nativo) | ~5–6 s de comandos tb + verify/bench ~2 s | ~9,7 s |
-| Commits locais no clone ollama | 1 feature (`9ffcee3`) + probes descartados | feature + probes |
-| Artefato neste repo | apenas `docs/campo/rodada2/ollama.md` | `docs/campo/ollama.md` |
+| metric | round 2 | round 1 (reference) |
+|--------|---------|---------------------|
+| Field session wall time | ~8–12 min (includes `go build .` ~51 s + toolchain download) | ~6–10 min |
+| `tb` invocations (useful command blocks) | ~30 (excludes 10 EXIT 127 harness errors in the log) | 59 |
+| Intentional tb failures (exit ≠ 0) | 3+ (2× guard `--strict`, 1× wrong-scope drift; verify FAIL with guard.yaml also exit 1) | 13 |
+| Approx. sum of tb WALLs (without native `go build`) | ~5–6 s of tb commands + verify/bench ~2 s | ~9.7 s |
+| Local commits on the ollama clone | 1 feature (`9ffcee3`) + discarded probes | feature + probes |
+| Artifact in this repo | only `docs/campo/rodada2/ollama.md` | `docs/campo/ollama.md` |

@@ -1,70 +1,70 @@
-🇧🇷 Português | [🇺🇸 English](CONTRIBUTING.en.md)
+🇺🇸 English | [🇧🇷 Português](docs/pt-BR/CONTRIBUTING.md)
 
-# Contribuindo para o toolbelt
+# Contributing to toolbelt
 
-Obrigado pelo interesse em contribuir! Este documento explica como participar do desenvolvimento.
+Thanks for your interest in contributing! This document explains how to take part in development.
 
-## Status do Projeto
+## Project Status
 
-O toolbelt está em **fase de design**. Atualmente estamos definindo a arquitetura e documentação. Código de implementação ainda não foi iniciado.
+toolbelt is under active development, pre-1.0 (latest release: v0.0.5). What has shipped is in [CHANGELOG.md](CHANGELOG.md); decisions are in [docs/adr/](docs/adr/README.md).
 
-## Fluxo de Branches e PRs
+## Branch and PR Workflow
 
 ### Branches
 
 ```
-main                 # branch principal, sempre estável
-├── feature/*        # novas funcionalidades
-├── fix/*            # correções de bugs
-├── docs/*           # mudanças em documentação
-└── adr/*            # propostas de ADR
+main                 # main branch, always stable
+├── feature/*        # new features
+├── fix/*            # bug fixes
+├── docs/*           # documentation changes
+└── adr/*            # ADR proposals
 ```
 
-### Fluxo de Trabalho
+### Workflow
 
-1. Fork o repositório
-2. Crie um branch a partir de `main`:
+1. Fork the repository
+2. Create a branch from `main`:
    ```bash
    git checkout -b feature/minha-feature
    ```
-3. Faça suas mudanças
-4. Commit seguindo Conventional Commits
-5. Push para seu fork
-6. Abra um Pull Request para `main`
+3. Make your changes
+4. Commit following Conventional Commits
+5. Push to your fork
+6. Open a Pull Request against `main`
 
-### Revisão de PRs
+### PR Review
 
-- Todo PR precisa de pelo menos uma aprovação
-- CI deve passar (quando implementado)
-- PRs devem ser pequenos e focados
-- Descreva claramente o que o PR faz
+- Every PR needs at least one approval
+- CI must pass (once implemented)
+- PRs should be small and focused
+- Clearly describe what the PR does
 
 ## Conventional Commits
 
-Usamos [Conventional Commits](https://www.conventionalcommits.org/) para mensagens de commit:
+We use [Conventional Commits](https://www.conventionalcommits.org/) for commit messages:
 
 ```
-<tipo>[escopo opcional]: <descrição>
+<type>[optional scope]: <description>
 
-[corpo opcional]
+[optional body]
 
-[rodapé opcional]
+[optional footer]
 ```
 
-### Tipos
+### Types
 
-| Tipo | Descrição |
-|------|-----------|
-| `feat` | Nova funcionalidade |
-| `fix` | Correção de bug |
-| `docs` | Mudanças em documentação |
-| `style` | Formatação, sem mudança de código |
-| `refactor` | Refatoração sem mudança de comportamento |
-| `test` | Adição ou correção de testes |
-| `chore` | Manutenção, build, CI |
-| `adr` | Proposta ou atualização de ADR |
+| Type | Description |
+|------|-------------|
+| `feat` | New feature |
+| `fix` | Bug fix |
+| `docs` | Documentation changes |
+| `style` | Formatting, no code change |
+| `refactor` | Refactoring without behavior change |
+| `test` | Adding or fixing tests |
+| `chore` | Maintenance, build, CI |
+| `adr` | ADR proposal or update |
 
-### Exemplos
+### Examples
 
 ```bash
 feat(graph): add callers query
@@ -76,135 +76,129 @@ fix(sandbox): handle missing cgroup controller
 chore(ci): add golangci-lint workflow
 ```
 
-## Como Propor ADRs
+## How to Propose ADRs
 
-ADRs (Architecture Decision Records) documentam decisões técnicas importantes.
+ADRs (Architecture Decision Records) document important technical decisions.
 
-### Quando Criar um ADR
+### When to Create an ADR
 
-- Decisão que afeta múltiplos componentes
-- Trade-off significativo entre alternativas
-- Escolha de tecnologia ou biblioteca
-- Mudança de design arquitetural
+- Decision that affects multiple components
+- Significant trade-off between alternatives
+- Technology or library choice
+- Architectural design change
 
-### Processo
+### Process
 
-1. Crie o arquivo em `docs/adr/NNN-titulo.md`
-2. Use o template em [docs/adr/README.md](docs/adr/README.md)
-3. Status inicial: `proposed`
-4. Abra PR no branch `adr/NNN-titulo`
-5. Discussão no PR
-6. Após aprovação, mude status para `accepted`
+1. Create the file at `docs/adr/NNN-titulo.md`
+2. Use the template in [docs/adr/README.md](docs/adr/README.md)
+3. Initial status: `proposed`
+4. Open a PR on branch `adr/NNN-titulo`
+5. Discuss in the PR
+6. After approval, change status to `accepted`
 
-### Template Resumido
+### Short Template
 
 ```markdown
-# ADR-NNN: Título
+# ADR-NNN: Title
 
 ## Status
 proposed
 
-## Contexto
-Por que essa decisão é necessária?
+## Context
+Why is this decision needed?
 
-## Decisão
-O que foi decidido?
+## Decision
+What was decided?
 
-## Consequências
-Positivas e negativas.
+## Consequences
+Positive and negative.
 
-## Alternativas Consideradas
-O que mais foi avaliado?
+## Alternatives Considered
+What else was evaluated?
 ```
 
-## Setup de Desenvolvimento
+## Development Setup
 
-> ⚠️ **TBD**: O setup completo será documentado quando a implementação iniciar.
+### Requirements
 
-### Requisitos Planejados
+| Tool | Version | Use |
+|------|---------|-----|
+| Go | per `go.mod` (currently 1.27) | Binary compilation (`CGO_ENABLED=0`; SQLite via `modernc.org/sqlite`) |
+| golangci-lint | recent | Lint (`make lint`; CI runs it) |
+| Linux with Landlock | kernel ≥ 5.13 | Sandbox (fail-closed) |
 
-| Ferramenta | Versão | Uso |
-|------------|--------|-----|
-| Go | 1.22+ | Compilação do binário |
-| tree-sitter | latest | Parsing de código |
-| SQLite | 3.x | Armazenamento de grafo |
-| bubblewrap | latest | Sandbox (Linux) |
-
-### Build (quando disponível)
+### Build
 
 ```bash
-# Clonar
+# Clone
 git clone https://github.com/leonardo-moraes360/toolbelt.git
 cd toolbelt
 
-# Build
-go build -o tb ./cmd/tb
+# Build (produces bin/tb and bin/fake-agent)
+make build
 
-# Testes
-go test ./...
+# Tests
+make test
 
 # Lint
-golangci-lint run
+make lint
+
+# fmt + vet + lint + test
+make check
 ```
 
-### Estrutura de Diretórios Planejada
+### Directory Structure
 
 ```
 toolbelt/
 ├── cmd/
-│   └── tb/              # entrada do CLI
-├── internal/
-│   ├── graph/           # motor de grafo
-│   ├── mem/             # gerenciamento de memória
-│   ├── sandbox/         # isolamento
-│   ├── proc/            # gerenciamento de processos
-│   ├── agent/           # orquestração de agentes
-│   └── mcp/             # servidor MCP
-├── pkg/
-│   └── ...              # bibliotecas públicas
-├── docs/
-│   ├── arquitetura.md
-│   ├── cli.md
-│   ├── benchmark.md
-│   └── adr/
-└── tests/
-    ├── integration/
-    └── benchmark/
+│   ├── tb/              # CLI entrypoint (cobra)
+│   └── fake-agent/      # fake agent for the bench
+├── internal/            # bench bus busrun config execenv git gitref graph guard
+│                        # log mcp mem merge registry review router sandbox stack
+│                        # ticket verify version workspace
+├── bench/               # benchmark tasks, fixtures and A/B
+├── site/                # static site (GitHub Pages)
+└── docs/                # English; translations in docs/<language_code>/ (pt-BR)
+    ├── arquitetura.md
+    ├── cli.md
+    ├── benchmark.md
+    └── adr/
 ```
 
-## Estilo de Código
+## Code Style
 
 ### Go
 
-- Siga [Effective Go](https://golang.org/doc/effective_go)
+- Follow [Effective Go](https://golang.org/doc/effective_go)
 - Use `gofmt` / `goimports`
-- Lint com `golangci-lint`
-- Testes junto com código (`foo_test.go`)
+- Lint with `golangci-lint`
+- Tests alongside code (`foo_test.go`)
 
-### Documentação
+### Documentation
 
-- Markdown para docs
-- Português brasileiro é a **fonte de verdade**; espelho em inglês em `docs/en/` (e `*.en.md` na raiz)
-- Ao mudar docs em PT, atualize o par em inglês no mesmo PR (ver [docs/en/TRANSLATION.md](docs/en/TRANSLATION.md))
-- Inglês para código (nomes de variáveis, comentários técnicos)
-- Diagramas em Mermaid quando possível
+- Markdown for docs
+- English is the **source of truth**; only English docs live at the root. The Brazilian Portuguese translation lives under `docs/pt-BR/` (same relative path; root docs go straight under it)
+- When changing English docs, update the translation in the same PR (see [docs/TRANSLATION.md](docs/TRANSLATION.md))
+- English for code (variable names, technical comments)
+- Mermaid diagrams when possible
 
 ### Commits
 
-- Mensagens em inglês
-- Uma mudança lógica por commit
-- Commits pequenos e frequentes
+- Messages in English
+- One logical change per commit
+- Small, frequent commits
 
-## Comunicação
+## Communication
 
-- **Issues**: bugs, features, discussões
-- **PRs**: code review e discussão técnica
-- **Discussions** (se habilitado): perguntas gerais
+- **Issues**: bugs, features, discussions
+- **PRs**: code review and technical discussion
+- **Discussions** (if enabled): general questions
 
-## Código de Conduta
+## Code of Conduct
 
-Este projeto segue o [Contributor Covenant 2.1](CODE_OF_CONDUCT.md). Ao participar, você concorda em seguir suas diretrizes.
+This project follows the [Contributor Covenant 2.1](CODE_OF_CONDUCT.md). By participating, you agree to follow its guidelines.
 
-## Licença
+## License
 
-Ao contribuir, você concorda que suas contribuições serão licenciadas sob a mesma licença do projeto ([Apache 2.0](LICENSE)).
+By contributing, you agree that your contributions will be licensed under the same project license ([Apache 2.0](LICENSE)).

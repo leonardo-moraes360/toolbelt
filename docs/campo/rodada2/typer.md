@@ -1,165 +1,164 @@
-🇧🇷 Português | [🇺🇸 English](../../en/campo/rodada2/typer.md)
+🇺🇸 English | [🇧🇷 Português](../../pt-BR/campo/rodada2/typer.md)
 
-# Estudo de campo rodada 2: fastapi/typer
+# Field study round 2: fastapi/typer
 
-Grupo: without existing AI-agent instrumentation (sem instrumentação de agente de IA para contribuição no próprio repositório).  
-Binário: `/tmp/tb` (build `go build -o /tmp/tb ./cmd/tb` a partir de `main` @ `a46c295`).  
-Clone de trabalho: `/tmp/typer-r2`.  
-Data: 2026-11-16.
+Group: without existing AI-agent instrumentation (no AI agent instrumentation for contributing to the repository itself).  
+Binary: `/tmp/tb` (build `go build -o /tmp/tb ./cmd/tb` from `main` @ `a46c295`).  
+Working clone: `/tmp/typer-r2`.  
+Date: 2026-11-16.
 
-## Repositório
+## Repository
 
-| Campo | Valor |
+| Field | Value |
 |-------|-------|
-| Nome | [fastapi/typer](https://github.com/fastapi/typer) |
-| Linguagem | Python (≥3.10), CLI sobre Click vendido |
-| Tamanho | shallow clone ~5.1 MiB; **643** arquivos `.py`; **211** `tests/test_*.py` |
-| Instrumentação de IA | **Não há** `AGENTS.md`, `CLAUDE.md` nem `.cursorrules` na raiz. Existe `typer/.agents/skills/typer/SKILL.md` (skill para *consumidores* de Typer, não onboarding de contribuição). |
-| Toolchain | **Parcialmente configurada.** `pip install -e ".[standard]"` + `pytest`, `ruff`, `mypy`, `pytest-xdist`, `coverage`. `uv` **não** estava no PATH (há `uv.lock`). Docs MkDocs / `prek` / suíte completa CI **não** instalados. Smoke: testes ZDOTDIR + subset completion zsh OK; `ruff check` nos arquivos tocados OK. |
+| Name | [fastapi/typer](https://github.com/fastapi/typer) |
+| Language | Python (≥3.10), CLI over vendored Click |
+| Size | shallow clone ~5.1 MiB; **643** `.py` files; **211** `tests/test_*.py` |
+| AI instrumentation | **No** `AGENTS.md`, `CLAUDE.md`, or `.cursorrules` at the root. There is `typer/.agents/skills/typer/SKILL.md` (skill for Typer *consumers*, not contribution onboarding). |
+| Toolchain | **Partially configured.** `pip install -e ".[standard]"` + `pytest`, `ruff`, `mypy`, `pytest-xdist`, `coverage`. `uv` was **not** on PATH (there is `uv.lock`). MkDocs docs / `prek` / full CI suite **not** installed. Smoke: ZDOTDIR tests + zsh completion subset OK; `ruff check` on touched files OK. |
 
-## Tarefa escolhida
+## Chosen task
 
-| Campo | Valor |
+| Field | Value |
 |-------|-------|
-| O quê | Fazer `install_zsh` respeitar `ZDOTDIR` (quando válido) ao gravar `.zshrc`, em vez de sempre usar `$HOME/.zshrc`. |
-| Por quê | Bug real reportado; patch pequeno com testes unitários isolados (`tmp_path`), diferente da flakiness de `TMPDIR` da rodada 1. |
+| What | Make `install_zsh` respect `ZDOTDIR` (when valid) when writing `.zshrc`, instead of always using `$HOME/.zshrc`. |
+| Why | Real reported bug; small patch with isolated unit tests (`tmp_path`), different from round 1’s `TMPDIR` flakiness. |
 | Link | https://github.com/fastapi/typer/discussions/1757 |
-| Completa? | **Sim**, localmente: lógica em `typer/_completion_shared.py` + 2 testes em `tests/test_completion/test_completion_install.py`. |
-| Checks nativos | `pytest` dos 2 testes novos → PASS; `ruff check` nos tocados → PASS; subset `tests/test_completion/` (zsh/install) → 11 passed, 1 skipped. **Sem** push/PR/issue no upstream. |
-| Rodada 1 (comparação) | Flaky `tests/test_types_file.py::test_file_error` com `TMPDIR` longo (discussion #1984). |
+| Complete? | **Yes**, locally: logic in `typer/_completion_shared.py` + 2 tests in `tests/test_completion/test_completion_install.py`. |
+| Native checks | `pytest` of the 2 new tests → PASS; `ruff check` on touched files → PASS; `tests/test_completion/` subset (zsh/install) → 11 passed, 1 skipped. **No** push/PR/issue upstream. |
+| Round 1 (comparison) | Flaky `tests/test_types_file.py::test_file_error` with long `TMPDIR` (discussion #1984). |
 
-## Verificação das 12 correções
+## Verification of the 12 fixes
 
-| # | correção | resultado | evidência |
-|---|----------|-----------|-----------|
-| 1 | graph SkipDirs na raiz do walk | **funcionou** | Clone parcial em `/tmp/target` + `TB_GRAPH=on tb graph rebuild` → **626 nós / 1492 arestas** (rodada 1: 0 nós). |
-| 2 | verify `hidden_test_cmd` sem `tests/hidden/` | **funcionou** | `tests/hidden` inexistente; `tb verify run --json` → `hidden_available: true`, `hidden_passed: true` com `hidden_test_cmd: pytest …test_completion_source_zsh`. |
-| 3 | guard `--strict --json` exit ≠0 | **funcionou** | Com violação em `typer/colors.py`: sem `--strict` exit 0; com `--strict --json` **exit 1** + JSON de violations. |
-| 4 | guard lê `protected_paths` de `guard.yaml` | **funcionou** | `.toolbelt/guard.yaml` com `typer/colors.py`; diff tocando o arquivo → `protected_path` violation. |
-| 5 | init detecção de toolchain | **funcionou** (com ressalva) | `tb init` em typer → `verify.test_cmd: uv run pytest` (detectou `uv.lock`/`pyproject`). **Ressalva:** `uv` ausente no PATH → default quebrado até ajuste manual. |
-| 6 | review `tests/hidden` por path | **funcionou** | Comentário `# probe tests/hidden…` só no diff → `findings: []`. Toque real em `tests/hidden/secret_test.py` → finding **critical** da invariante. |
-| 7 | bench `default_agent` e `compare --agent` | **funcionou** | Sem `--agent`/`--fake`, `bench run` usou `echo-agent-SHOULD-BE-USED` (`agent_output`: `not found`, exit 127). `bench compare --agent echo-compare-agent …` rodou A/B. |
-| 8 | review/drift `## Scope`/`## Escopo`, listas, `**` | **funcionou** | Ticket com `## Escopo` + bullets + `tests/test_completion/**/*.py` manteve arquivos no escopo; ticket só com `typer/main.py` → drift; `tests/**/*.py` + `typer/**/*.py` manteve código, flagrou `rd.md`. |
-| 9 | verify `build_cmd` e `lint_cmd` | **funcionou** | JSON: `build_ran/passed: true`, `lint_ran/passed: true` antes dos testes. |
-| 10 | init lê AGENTS/CLAUDE e `--write-agents` | **funcionou** | Sem arquivos: log “nenhum AGENTS.md/CLAUDE.md…”. Com AGENTS.md sintético: `agent_docs.yaml` + hints. `--write-agents` semeia AGENTS.md; não sobrescreve existente. |
-| 11 | graph Python `calls` | **funcionou** | Stats: `edges_calls: 3827`. `graph callers --function install_zsh` retornou testes + arquivo; `impact --file typer/_completion_shared.py` não-vazio. |
-| 12 | verify visual skipped + docs CLI | **funcionou** | `--ruler visual` → `"skipped": true`, `"skip_reason": "manifesto de telas ausente"`. `docs/cli.md` e `docs/verificacao-visual.md` descrevem agregação top-level. |
+| # | fix | result | evidence |
+|---|-----|--------|----------|
+| 1 | graph SkipDirs at walk root | **worked** | Partial clone under `/tmp/target` + `TB_GRAPH=on tb graph rebuild` → **626 nodes / 1492 edges** (round 1: 0 nodes). |
+| 2 | verify `hidden_test_cmd` without `tests/hidden/` | **worked** | `tests/hidden` nonexistent; `tb verify run --json` → `hidden_available: true`, `hidden_passed: true` with `hidden_test_cmd: pytest …test_completion_source_zsh`. |
+| 3 | guard `--strict --json` exit ≠0 | **worked** | With violation on `typer/colors.py`: without `--strict` exit 0; with `--strict --json` **exit 1** + violations JSON. |
+| 4 | guard reads `protected_paths` from `guard.yaml` | **worked** | `.toolbelt/guard.yaml` with `typer/colors.py`; diff touching the file → `protected_path` violation. |
+| 5 | init toolchain detection | **worked** (with caveat) | `tb init` on typer → `verify.test_cmd: uv run pytest` (detected `uv.lock`/`pyproject`). **Caveat:** `uv` missing from PATH → broken default until manual fix. |
+| 6 | review `tests/hidden` by path | **worked** | Comment `# probe tests/hidden…` only in the diff → `findings: []`. Real touch of `tests/hidden/secret_test.py` → **critical** invariant finding. |
+| 7 | bench `default_agent` and `compare --agent` | **worked** | Without `--agent`/`--fake`, `bench run` used `echo-agent-SHOULD-BE-USED` (`agent_output`: `not found`, exit 127). `bench compare --agent echo-compare-agent …` ran A/B. |
+| 8 | review/drift `## Scope`/`## Escopo`, lists, `**` | **worked** | Ticket with `## Escopo` + bullets + `tests/test_completion/**/*.py` kept files in scope; ticket only with `typer/main.py` → drift; `tests/**/*.py` + `typer/**/*.py` kept code, flagged `rd.md`. |
+| 9 | verify `build_cmd` and `lint_cmd` | **worked** | JSON: `build_ran/passed: true`, `lint_ran/passed: true` before tests. |
+| 10 | init reads AGENTS/CLAUDE and `--write-agents` | **worked** | Without files: log “nenhum AGENTS.md/CLAUDE.md…”. With synthetic AGENTS.md: `agent_docs.yaml` + hints. `--write-agents` seeds AGENTS.md; does not overwrite existing. |
+| 11 | graph Python `calls` | **worked** | Stats: `edges_calls: 3827`. `graph callers --function install_zsh` returned tests + file; `impact --file typer/_completion_shared.py` non-empty. |
+| 12 | verify visual skipped + CLI docs | **worked** | `--ruler visual` → `"skipped": true`, `"skip_reason": "manifesto de telas ausente"`. `docs/cli.md` and `docs/verificacao-visual.md` describe top-level aggregation. |
 
-## Uso do tb por comando
+## tb usage by command
 
-| comando | resultado | ajudou/atrapalhou/neutro | evidência |
-|---------|-----------|--------------------------|-----------|
-| `tb init` | OK; detecta `uv run pytest`; avisa ausência de AGENTS | misto | WALL 0.005 s; default depende de `uv` ausente |
-| `tb init --write-agents` | Semeia AGENTS.md mínimo | ajudou | Probe em `/tmp/typer-agents-probe` |
-| `tb mem init/add/list/check` | OK; 3 defaults + 1 regra | ajudou (leve) | `mem check` retenção 1.00 |
-| `tb graph rebuild/stats/search/callers/impact` | 3054 nós / 9821 arestas; callers/impact úteis | **ajudou** | Contraste forte com rodada 1 (callers/impact vazios) |
-| ticket `rd.md` | Manual (`tb ticket` inexistente) | atrapalhou (leve) | Mesmo gap da r1; parser Markdown OK |
-| `tb verify run` | PASS com build+lint+test+hidden | ajudou | Após config manual de cmds |
-| `tb verify --ruler visual` | Skip gracioso `skipped=true` | neutro | Sem manifesto UI no Typer |
-| `tb review` | Fix limpo → `findings: []`; FP substring corrigido | ajudou | Probe path vs comentário |
-| `tb drift` | Escopo Markdown/`**` OK; escopo errado detecta | ajudou | EXIT 1 no ticket ruim |
-| `tb guard check` | YAML + `--strict --json` corretos | ajudou | Exit 1 com violação |
-| `tb bench` | Honra `default_agent`; `compare --agent` existe | misto | Precisa copiar `bench/tasks`; agent inexistente → 0% |
-| `tb mcp` | stdio OK; tools version/echo/env/run/graph_* | neutro | Sem mem/verify/review/drift/guard |
-| `tb version` | `0.1.0-dev`, commit/built `unknown` | neutro | Build sem ldflags |
+| command | result | helped / hindered / neutral | evidence |
+|---------|--------|-----------------------------|----------|
+| `tb init` | OK; detects `uv run pytest`; warns missing AGENTS | mixed | WALL 0.005 s; default depends on missing `uv` |
+| `tb init --write-agents` | Seeds minimal AGENTS.md | helped | Probe under `/tmp/typer-agents-probe` |
+| `tb mem init/add/list/check` | OK; 3 defaults + 1 rule | helped (light) | `mem check` retention 1.00 |
+| `tb graph rebuild/stats/search/callers/impact` | 3054 nodes / 9821 edges; useful callers/impact | **helped** | Strong contrast with round 1 (empty callers/impact) |
+| ticket `rd.md` | Manual (`tb ticket` nonexistent) | hindered (light) | Same gap as r1; Markdown parser OK |
+| `tb verify run` | PASS with build+lint+test+hidden | helped | After manual cmd config |
+| `tb verify --ruler visual` | Graceful skip `skipped=true` | neutral | No UI manifest in Typer |
+| `tb review` | Clean fix → `findings: []`; substring FP fixed | helped | Path vs comment probe |
+| `tb drift` | Markdown/`**` scope OK; wrong scope detects | helped | EXIT 1 on bad ticket |
+| `tb guard check` | YAML + `--strict --json` correct | helped | Exit 1 with violation |
+| `tb bench` | Honors `default_agent`; `compare --agent` exists | mixed | Needs copied `bench/tasks`; nonexistent agent → 0% |
+| `tb mcp` | stdio OK; tools version/echo/env/run/graph_* | neutral | No mem/verify/review/drift/guard |
+| `tb version` | `0.1.0-dev`, commit/built `unknown` | neutral | Build without ldflags |
 
-## Problemas que continuam
+## Problems that persist
 
-| problema (rodada 1) | status na rodada 2 | evidência |
-|---------------------|--------------------|-----------|
-| `version` → `unknown` sem ldflags | continua | `tb version --json` |
-| configs mode `0600` | continua | `stat` em `.toolbelt/config.yaml` |
-| MCP sem mem/verify/review/drift/guard | continua | `tools/list` |
-| `tb ticket` inexistente / ticket manual | continua | `unknown command` na r1; r2 criou `rd.md` à mão |
-| Init não preenche `lint_cmd`/`build_cmd` sozinho | continua (parcial) | Só `test_cmd` auto; lint/build exigiram YAML manual |
-| Bench sem tasks no alvo | continua | Precisou copiar `bench/tasks` do toolbelt |
-| Fake/`doc-function` pass@1=0% sem FilesToCreate | continua | `--fake` sucesso 0.0% |
-| Skill `.agents` de consumidor ignorada | continua | Init não lê `typer/.agents/skills/...` |
+| problem (round 1) | status in round 2 | evidence |
+|-------------------|-------------------|----------|
+| `version` → `unknown` without ldflags | persists | `tb version --json` |
+| configs mode `0600` | persists | `stat` on `.toolbelt/config.yaml` |
+| MCP without mem/verify/review/drift/guard | persists | `tools/list` |
+| Missing `tb ticket` / manual ticket | persists | `unknown command` in r1; r2 wrote `rd.md` by hand |
+| Init does not fill `lint_cmd`/`build_cmd` alone | persists (partial) | Only auto `test_cmd`; lint/build needed manual YAML |
+| Bench without tasks on the target | persists | Needed to copy `bench/tasks` from toolbelt |
+| Fake/`doc-function` pass@1=0% without FilesToCreate | persists | `--fake` success 0.0% |
+| Consumer `.agents` skill ignored | persists | Init does not read `typer/.agents/skills/...` |
 
-## Problemas novos
+## New problems
 
-### P2 — `tb init` escolhe `uv run pytest` sem `uv` no PATH
+### P2 — `tb init` chooses `uv run pytest` without `uv` on PATH
 
-- **Repro:** `tb init` num clone com `uv.lock` onde `uv` não está instalado; inspecionar `verify.test_cmd`.
-- **Esperado:** fallback para `pytest` / `python -m pytest` se `uv` não existir.
-- **Atual:** `test_cmd: uv run pytest` → verify default falharia (`uv: command not found`).
+- **Repro:** `tb init` on a clone with `uv.lock` where `uv` is not installed; inspect `verify.test_cmd`.
+- **Expected:** fallback to `pytest` / `python -m pytest` if `uv` does not exist.
+- **Actual:** `test_cmd: uv run pytest` → default verify would fail (`uv: command not found`).
 
-### P3 — Hints de AGENTS.md não viram `lint_cmd`/`build_cmd`
+### P3 — AGENTS.md hints do not become `lint_cmd`/`build_cmd`
 
-- **Repro:** `AGENTS.md` com “Lint with ruff…” / “Build: python -m build”; `tb init`.
-- **Esperado:** pelo menos sugerir ou preencher `lint_cmd`/`build_cmd`.
-- **Atual:** hints em `agent_docs.yaml`; `config.yaml` só mexe em `test_cmd`.
+- **Repro:** `AGENTS.md` with “Lint with ruff…” / “Build: python -m build”; `tb init`.
+- **Expected:** at least suggest or fill `lint_cmd`/`build_cmd`.
+- **Actual:** hints in `agent_docs.yaml`; `config.yaml` only changes `test_cmd`.
 
-### P3 — `default_agent` inválido falha opaco (exit 127, pass@1=0%)
+### P3 — Invalid `default_agent` fails opaquely (exit 127, pass@1=0%)
 
 - **Repro:** `bench.default_agent: echo-agent-SHOULD-BE-USED`; `tb bench run -r 1 --task doc-function`.
-- **Esperado:** erro claro “agent não encontrado” / exit ≠0 do comando bench.
-- **Atual:** bench exit 0, sucesso 0%, `agent_output` com `not found` no JSONL.
+- **Expected:** clear “agent not found” error / bench command exit ≠0.
+- **Actual:** bench exit 0, 0% success, `agent_output` with `not found` in the JSONL.
 
-## O que o tb pegou e o que deixou passar
+## What tb caught and what it let slip
 
-**Pegou**
-- Drift quando o escopo do ticket não cobria os arquivos alterados.
-- Guard em path customizado via `guard.yaml` + exit code com `--strict --json`.
-- Review: invariante `tests/hidden` só no path tocado; patch ZDOTDIR sem findings.
-- Grafo Python: localizou `install_zsh`, callers dos novos testes, impact do módulo.
-- Verify com build/lint/test/hidden configurados: PASS alinhado ao pytest/ruff nativos.
+**Caught**
+- Drift when the ticket scope did not cover the changed files.
+- Guard on a custom path via `guard.yaml` + exit code with `--strict --json`.
+- Review: `tests/hidden` invariant only on touched path; ZDOTDIR patch without findings.
+- Python graph: located `install_zsh`, callers of the new tests, module impact.
+- Verify with configured build/lint/test/hidden: PASS aligned with native pytest/ruff.
 
-**Deixou passar / não cobriu**
-- Não instalou/validou presença de `uv` ao sugerir `uv run pytest`.
-- Não configurou lint/build automaticamente.
-- Não leu a skill em `typer/.agents/skills/`.
-- MCP não expõe o fluxo de campo completo.
-- Não impede “tarefa incompleta” (ticket/progress) sozinho.
+**Let slip / did not cover**
+- Did not install/validate presence of `uv` when suggesting `uv run pytest`.
+- Did not configure lint/build automatically.
+- Did not read the skill under `typer/.agents/skills/`.
+- MCP does not expose the full field flow.
+- Does not block an “incomplete task” (ticket/progress) alone.
 
-**vs nativo:** pytest+ruff confirmaram o fix; `tb verify` espelhou após config manual. Default pós-`init` (`uv run pytest`) seria pior que o `pytest` direto neste VM.
+**vs native:** pytest+ruff confirmed the fix; `tb verify` mirrored after manual config. Post-`init` default (`uv run pytest`) would be worse than direct `pytest` on this VM.
 
-## Interação com instrumentação existente / onboarding
+## Interaction with existing instrumentation / onboarding
 
-- Grupo **sem** instrumentação de contribuição: sem AGENTS/CLAUDE na raiz.
-- Skill de consumidor em `typer/.agents/...` permanece irrelevante para o harness.
-- `tb init` agora: detecta Python/uv, avisa ausência de AGENTS, opcional `--write-agents`.
-- Ainda é preciso montar ticket `rd.md`, ajustar `lint_cmd`/`build_cmd`/`hidden_test_cmd`, e (neste ambiente) trocar `uv run` por `pytest`.
-- Melhor que a rodada 1, mas bootstrap ainda não é “zero-touch” para Python sem `uv`.
+- Group **without** contribution instrumentation: no AGENTS/CLAUDE at the root.
+- Consumer skill under `typer/.agents/...` remains irrelevant to the harness.
+- `tb init` now: detects Python/uv, warns missing AGENTS, optional `--write-agents`.
+- Still need to assemble ticket `rd.md`, adjust `lint_cmd`/`build_cmd`/`hidden_test_cmd`, and (in this environment) swap `uv run` for `pytest`.
+- Better than round 1, but bootstrap is still not “zero-touch” for Python without `uv`.
 
-## Comparação com a rodada 1
+## Comparison with round 1
 
-| Aspecto | Rodada 1 | Rodada 2 | Veredito |
-|---------|----------|----------|----------|
-| SkipDirs `/tmp/target` | 0 nós | 626 nós | **melhor** |
-| Python `calls` / callers | vazios p/ símbolo do patch | 3827 calls; callers de `install_zsh` OK | **melhor** |
-| hidden sem dir | `hidden_available: false` | `true` + comando rodou | **melhor** |
-| guard.yaml / `--strict --json` | ignorado / exit 0 | lê YAML / exit 1 | **melhor** |
-| init toolchain | `go test ./...` | `uv run pytest` | **melhor** (com P2 uv) |
-| review FP `tests/hidden` | critical em comentário | só em path | **melhor** |
-| bench default_agent / compare `--agent` | obrigava flags; compare sem `--agent` | honra config; flag existe | **melhor** |
-| Scope Markdown / `**` | frágil / parcial | `## Escopo` + `**` OK | **melhor** |
-| build/lint no verify | inexistentes | rodam quando configurados | **melhor** |
-| AGENTS / `--write-agents` | não lia/gerava | lê + semeia | **melhor** |
-| visual skipped agregação | ambíguo em alguns relatos | `skipped: true` + docs alinhados | **melhor** |
-| MCP cobertura | só graph/version/… | igual | **igual** |
-| Completar tarefa sozinho | fraco | ainda fraco | **igual** |
+| Aspect | Round 1 | Round 2 | Verdict |
+|--------|---------|---------|---------|
+| SkipDirs `/tmp/target` | 0 nodes | 626 nodes | **better** |
+| Python `calls` / callers | empty for patch symbol | 3827 calls; `install_zsh` callers OK | **better** |
+| hidden without dir | `hidden_available: false` | `true` + command ran | **better** |
+| guard.yaml / `--strict --json` | ignored / exit 0 | reads YAML / exit 1 | **better** |
+| init toolchain | `go test ./...` | `uv run pytest` | **better** (with uv P2) |
+| review FP `tests/hidden` | critical on comment | only on path | **better** |
+| bench default_agent / compare `--agent` | required flags; compare without `--agent` | honors config; flag exists | **better** |
+| Markdown Scope / `**` | fragile / partial | `## Escopo` + `**` OK | **better** |
+| build/lint in verify | nonexistent | run when configured | **better** |
+| AGENTS / `--write-agents` | did not read/generate | reads + seeds | **better** |
+| visual skipped aggregation | ambiguous in some reports | `skipped: true` + aligned docs | **better** |
+| MCP coverage | only graph/version/… | same | **same** |
+| Completing the task alone | weak | still weak | **same** |
 
-No conjunto: **claramente melhor** nas 12 correções; restam onboarding fino (uv), MCP e harness de completude.
+Overall: **clearly better** on the 12 fixes; remaining gaps are fine onboarding (uv), MCP, and completeness harness.
 
-## Sugestões de melhoria
+## Improvement suggestions
 
-1. **[P2][init]** Ao detectar `uv.lock`, checar se `uv` está no PATH; senão fallback `pytest` / `python -m pytest`.
-2. **[P2][init]** Preencher ou sugerir `lint_cmd`/`build_cmd` a partir de `pyproject`/hints (ex. `ruff check`).
-3. **[P2][mcp]** Expor tools de mem/verify/review/drift/guard.
-4. **[P3][bench]** Falhar o comando (exit ≠0) se o binário de `default_agent` não existir.
-5. **[P3][init]** Opcionalmente ler skills sob `.agents/` / `**/SKILL.md`, não só AGENTS/CLAUDE na raiz.
-6. **[P3][cli]** Template `tb ticket init` gerando `rd.md` com `## Escopo`.
+1. **[P2][init]** When detecting `uv.lock`, check whether `uv` is on PATH; otherwise fall back to `pytest` / `python -m pytest`.  
+2. **[P2][init]** Fill or suggest `lint_cmd`/`build_cmd` from `pyproject`/hints (e.g. `ruff check`).  
+3. **[P2][mcp]** Expose mem/verify/review/drift/guard tools.  
+4. **[P3][bench]** Fail the command (exit ≠0) if the `default_agent` binary does not exist.  
+5. **[P3][init]** Optionally read skills under `.agents/` / `**/SKILL.md`, not only root AGENTS/CLAUDE.  
+6. **[P3][cli]** `tb ticket init` template generating `rd.md` with `## Escopo`.
 
-## Métricas
+## Metrics
 
-| métrica | rodada 2 | rodada 1 (referência) |
-|---------|----------|------------------------|
-| Wall time somado dos cmds logados | ~8.1 s (37 invocações com timer) + ~6.3 s pytest nativo extra | ~8.9 s (79 invocações) |
-| Wall time aproximado da sessão | ~15–25 min (build, clone, toolchain, fix ZDOTDIR, probes das 12 correções) | ~15–20 min |
-| Invocações `tb` logadas | 37 (+ probes init auxiliares) | 79 |
-| Saídas ≠0 | 5 intencionais (review drift, drift bad, guard strict, bench sem tasks) | 20 |
-| Falhas inesperadas relevantes | default `uv run` sem `uv`; bench agent 127 | grafo `/tmp/target` vazio; hidden off; etc. |
+| metric | round 2 | round 1 (reference) |
+|--------|---------|---------------------|
+| Summed wall time of logged cmds | ~8.1 s (37 timed invocations) + ~6.3 s extra native pytest | ~8.9 s (79 invocations) |
+| Approx. session wall time | ~15–25 min (build, clone, toolchain, ZDOTDIR fix, probes of the 12 fixes) | ~15–20 min |
+| Logged `tb` invocations | 37 (+ auxiliary init probes) | 79 |
+| Non-zero exits | 5 intentional (review drift, bad drift, guard strict, bench without tasks) | 20 |
+| Relevant unexpected failures | default `uv run` without `uv`; bench agent 127 | empty `/tmp/target` graph; hidden off; etc. |
 | MCP | smoke OK | smoke OK |
-| Commits no alvo | 1 local (`fix: respect ZDOTDIR…`); **sem** push/PR/issue no fastapi/typer | 1 local; sem push |
-
+| Commits on target | 1 local (`fix: respect ZDOTDIR…`); **no** push/PR/issue on fastapi/typer | 1 local; no push |

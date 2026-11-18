@@ -1,49 +1,49 @@
-🇧🇷 Português | [🇺🇸 English](../en/adr/002-mcp-a2a-protocolos.md)
+🇺🇸 English | [🇧🇷 Português](../pt-BR/adr/002-mcp-a2a-protocolos.md)
 
-# ADR-002: MCP + A2A como Protocolos de Comunicação
+# ADR-002: MCP + A2A as Communication Protocols
 
 ## Status
 
 accepted
 
-## Contexto
+## Context
 
-O toolbelt precisa de protocolos de comunicação para dois cenários:
+toolbelt needs communication protocols for two scenarios:
 
-1. **Agente ↔ Ferramentas**: como o modelo de linguagem invoca ferramentas do toolbelt
-2. **Agente ↔ Agente**: como agentes na hierarquia (planner, supervisor, worker) se comunicam
+1. **Agent ↔ Tools**: how the language model invokes toolbelt tools
+2. **Agent ↔ Agent**: how agents in the hierarchy (planner, supervisor, worker) communicate
 
-Requisitos:
-- Padrão aberto, não proprietário
-- Suporte a múltiplos transportes (stdio, socket, HTTP)
-- Serialização simples (JSON)
-- Compatibilidade com ecossistema existente de IDEs e modelos
+Requirements:
+- Open standard, not proprietary
+- Support for multiple transports (stdio, socket, HTTP)
+- Simple serialization (JSON)
+- Compatibility with the existing IDE and model ecosystem
 
-## Decisão
+## Decision
 
-1. **MCP (Model Context Protocol)** para comunicação agente ↔ ferramentas
-2. **A2A (Agent-to-Agent)** para comunicação agente ↔ agente
-3. **JSON-RPC 2.0** como base comum para ambos
+1. **MCP (Model Context Protocol)** for agent ↔ tools communication
+2. **A2A (Agent-to-Agent)** for agent ↔ agent communication
+3. **JSON-RPC 2.0** as the common base for both
 
-### MCP para Ferramentas
+### MCP for Tools
 
-O `tb serve` expõe um servidor MCP que:
-- Lista ferramentas disponíveis (`tb_run`, `tb_graph_search`, etc.)
-- Recebe chamadas de ferramentas do modelo
-- Retorna resultados estruturados
-- Funciona via stdio (padrão) ou Unix socket
+`tb serve` exposes an MCP server that:
+- Lists available tools (`tb_run`, `tb_graph_search`, etc.)
+- Receives tool calls from the model
+- Returns structured results
+- Works via stdio (default) or Unix socket
 
-### A2A para Agentes
+### A2A for Agents
 
-Comunicação entre níveis da hierarquia:
-- Planner → Supervisor: delegação de tarefas
-- Supervisor → Worker: atribuição de trabalho
-- Worker → Supervisor: resultados e status
-- Qualquer → Qualquer: queries de coordenação
+Communication between hierarchy levels:
+- Planner → Supervisor: task delegation
+- Supervisor → Worker: work assignment
+- Worker → Supervisor: results and status
+- Any → Any: coordination queries
 
-### JSON-RPC 2.0 como Base
+### JSON-RPC 2.0 as Base
 
-Ambos os protocolos usam JSON-RPC 2.0:
+Both protocols use JSON-RPC 2.0:
 
 ```json
 {
@@ -57,69 +57,69 @@ Ambos os protocolos usam JSON-RPC 2.0:
 }
 ```
 
-## Consequências
+## Consequences
 
-### Positivas
+### Positive
 
-- **Interoperabilidade**: qualquer IDE/modelo com suporte MCP funciona
-- **Padrão aberto**: não dependemos de vendor específico
-- **Extensibilidade**: fácil adicionar novas ferramentas
-- **Debugging**: JSON legível, fácil de inspecionar
-- **Transportes flexíveis**: stdio para IDE, socket para processos internos
+- **Interoperability**: any IDE/model with MCP support works
+- **Open standard**: we do not depend on a specific vendor
+- **Extensibility**: easy to add new tools
+- **Debugging**: readable JSON, easy to inspect
+- **Flexible transports**: stdio for IDE, socket for internal processes
 
-### Negativas
+### Negative
 
-- **Overhead de serialização**: JSON não é o mais eficiente
-- **A2A ainda emergente**: protocolo do Google, pode evoluir
-- **Complexidade de gestão**: dois protocolos para manter
+- **Serialization overhead**: JSON is not the most efficient
+- **A2A still emerging**: Google protocol, may evolve
+- **Management complexity**: two protocols to maintain
 
-## Alternativas Consideradas
+## Alternatives Considered
 
 ### gRPC
 
-**Por que considerado**:
-- Alta performance (protobuf binário)
-- Streaming bidirecional
-- Geração de código
+**Why considered**:
+- High performance (binary protobuf)
+- Bidirectional streaming
+- Code generation
 
-**Por que não escolhido**:
-- Complexidade adicional (compilador protoc)
-- Não é padrão no ecossistema MCP
-- Overhead para mensagens pequenas
-- IDEs não suportam nativamente
+**Why not chosen**:
+- Additional complexity (protoc compiler)
+- Not standard in the MCP ecosystem
+- Overhead for small messages
+- IDEs do not support it natively
 
-### Protocolo Proprietário
+### Proprietary Protocol
 
-**Por que considerado**:
-- Controle total sobre design
-- Otimizado para nosso caso de uso
+**Why considered**:
+- Full control over design
+- Optimized for our use case
 
-**Por que não escolhido**:
-- Reinventar a roda
-- Sem suporte de ferramentas existentes
-- Barreira para contribuidores
+**Why not chosen**:
+- Reinventing the wheel
+- No support from existing tools
+- Barrier for contributors
 
-### Apenas MCP (sem A2A)
+### MCP Only (no A2A)
 
-**Por que considerado**:
-- Simplicidade (um protocolo só)
+**Why considered**:
+- Simplicity (one protocol only)
 
-**Por que não escolhido**:
-- MCP é otimizado para tool calling, não para coordenação de agentes
-- A2A tem primitivas específicas: task assignment, status, delegation
+**Why not chosen**:
+- MCP is optimized for tool calling, not agent coordination
+- A2A has specific primitives: task assignment, status, delegation
 
-## Arquitetura de Transportes
+## Transport Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                         Transportes                             │
+│                         Transports                              │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                 │
-│  stdio (MCP padrão)          Unix Socket           HTTP/2      │
-│  ─────────────────           ───────────           ──────      │
-│  IDE ↔ tb serve              tb ↔ processos        remoto      │
-│  Cursor, VSCode              internos, agentes     (futuro)    │
-│                              na mesma máquina                   │
+│  stdio (MCP default)         Unix Socket           HTTP/2      │
+│  ───────────────────         ───────────           ──────      │
+│  IDE ↔ tb serve              tb ↔ processes        remote      │
+│  Cursor, VSCode              internal, agents      (future)    │
+│                              on the same machine                │
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
                               │
@@ -143,7 +143,7 @@ Ambos os protocolos usam JSON-RPC 2.0:
 └─────────────────────────┘     └─────────────────────────┘
 ```
 
-## Referências
+## References
 
 - [MCP Specification](https://spec.modelcontextprotocol.io/)
 - [Google A2A Protocol](https://github.com/google/A2A)

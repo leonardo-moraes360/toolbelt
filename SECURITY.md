@@ -1,92 +1,93 @@
-🇧🇷 Português | [🇺🇸 English](SECURITY.en.md)
+🇺🇸 English | [🇧🇷 Português](docs/pt-BR/SECURITY.md)
 
-# Política de Segurança
+# Security Policy
 
-## Versões Suportadas
+## Supported Versions
 
-| Versão | Suportada |
-| ------ | --------- |
-| -      | Nenhuma versão lançada ainda |
+| Version | Supported |
+| ------- | --------- |
+| 0.0.5 (latest) | Yes |
+| < 0.0.5 | No |
 
-Este projeto está em fase de design e documentação. Quando versões forem lançadas, esta tabela será atualizada.
+The project is pre-1.0: security fixes ship in the latest release. See how to verify a release in [docs/release.md](docs/release.md).
 
-## Reportando Vulnerabilidades
+## Reporting Vulnerabilities
 
-### Como Reportar
+### How to Report
 
-Use o **GitHub Private Vulnerability Reporting** para reportar vulnerabilidades de segurança:
+Use **GitHub Private Vulnerability Reporting** to report security vulnerabilities:
 
-1. Vá para a aba **Security** do repositório
-2. Clique em **Report a vulnerability**
-3. Preencha o formulário com detalhes da vulnerabilidade
+1. Go to the repository **Security** tab
+2. Click **Report a vulnerability**
+3. Fill in the form with vulnerability details
 
-**Não abra issues públicas para vulnerabilidades de segurança.**
+**Do not open public issues for security vulnerabilities.**
 
-### O Que Incluir no Relatório
+### What to Include in the Report
 
-- Descrição clara da vulnerabilidade
-- Passos para reproduzir
-- Impacto potencial
-- Versão afetada (quando aplicável)
-- Possíveis mitigações (se conhecidas)
+- Clear description of the vulnerability
+- Steps to reproduce
+- Potential impact
+- Affected version (when applicable)
+- Possible mitigations (if known)
 
-### Tempo de Resposta Esperado
+### Expected Response Time
 
-| Etapa | Tempo |
-|-------|-------|
-| Confirmação de recebimento | 48 horas |
-| Triagem inicial | 7 dias |
-| Correção (vulnerabilidades críticas) | 14 dias |
-| Correção (vulnerabilidades médias/baixas) | 30 dias |
+| Step | Time |
+|------|------|
+| Receipt acknowledgment | 48 hours |
+| Initial triage | 7 days |
+| Fix (critical vulnerabilities) | 14 days |
+| Fix (medium/low vulnerabilities) | 30 days |
 
-Estes tempos são metas, não garantias. Vulnerabilidades complexas podem levar mais tempo.
+These times are targets, not guarantees. Complex vulnerabilities may take longer.
 
-## Escopo
+## Scope
 
-### Em Escopo
+### In Scope
 
-Vulnerabilidades relacionadas a:
+Vulnerabilities related to:
 
-- **Escape de sandbox**: qualquer forma de sair do isolamento bubblewrap/Landlock/seccomp
-- **Bypass de guardrails**: contornar proteções anti-trapaça ou limites de capacidade
-- **Escalação de privilégios**: agente obtendo permissões além do seu role
-- **Exfiltração de dados**: vazamento de secrets ou dados protegidos
-- **Injeção de comandos**: execução de comandos não autorizados
-- **Corrupção de audit log**: modificar ou apagar registros de auditoria
-- **Manipulação de benchmark**: formas de falsificar resultados de benchmark
-- **Denial of Service**: crashar ou travar o sistema
+- **Sandbox escape**: any way to break out of sandbox isolation (currently Landlock, fail-closed; bubblewrap/seccomp planned in [ADR-004](docs/adr/004-sandbox-isolamento.md))
+- **Guardrail bypass**: circumventing anti-cheat protections or capability limits
+- **Privilege escalation**: an agent obtaining permissions beyond its role
+- **Data exfiltration**: leaking secrets or protected data
+- **Command injection**: executing unauthorized commands
+- **Audit log corruption**: modifying or deleting audit records
+- **Benchmark manipulation**: ways to falsify benchmark results
+- **Denial of Service**: crashing or hanging the system
 
-### Fora de Escopo
+### Out of Scope
 
-- Vulnerabilidades em dependências (reporte diretamente aos mantenedores)
-- Configurações incorretas pelo usuário
-- Ataques que requerem acesso físico à máquina
+- Vulnerabilities in dependencies (report directly to maintainers)
+- Incorrect user configurations
+- Attacks that require physical access to the machine
 - Social engineering
-- Bugs sem impacto de segurança
+- Bugs with no security impact
 
-## Processo de Disclosure
+## Disclosure Process
 
-1. **Recebemos** o relatório via GitHub Private Vulnerability Reporting
-2. **Confirmamos** recebimento em 48h
-3. **Investigamos** e reproduzimos a vulnerabilidade
-4. **Desenvolvemos** correção em branch privado
-5. **Coordenamos** disclosure com o reporter
-6. **Lançamos** correção
-7. **Publicamos** advisory de segurança
+1. **We receive** the report via GitHub Private Vulnerability Reporting
+2. **We acknowledge** receipt within 48h
+3. **We investigate** and reproduce the vulnerability
+4. **We develop** a fix on a private branch
+5. **We coordinate** disclosure with the reporter
+6. **We ship** the fix
+7. **We publish** a security advisory
 
-## Créditos
+## Credits
 
-Pesquisadores de segurança que reportam vulnerabilidades válidas serão creditados no advisory de segurança (a menos que prefiram anonimato).
+Security researchers who report valid vulnerabilities will be credited in the security advisory (unless they prefer anonymity).
 
-## Compromisso
+## Commitment
 
-Nos comprometemos a:
+We commit to:
 
-- Não tomar ações legais contra pesquisadores agindo de boa fé
-- Trabalhar com reporters para entender e resolver issues
-- Manter reporters informados do progresso
-- Creditar descobertas quando desejado
+- Not taking legal action against researchers acting in good faith
+- Working with reporters to understand and resolve issues
+- Keeping reporters informed of progress
+- Crediting findings when desired
 
-## Contato
+## Contact
 
-Para questões sobre esta política (não para reportar vulnerabilidades), abra uma issue no repositório.
+For questions about this policy (not for reporting vulnerabilities), open an issue in the repository.

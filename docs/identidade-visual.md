@@ -1,45 +1,45 @@
-🇧🇷 Português | [🇺🇸 English](en/identidade-visual.md)
+🇺🇸 English | [🇧🇷 Português](pt-BR/identidade-visual.md)
 
-# Identidade Visual do Toolbelt
+# Toolbelt Visual Identity
 
 <p align="center">
-  <img src="../assets/logo/toolbelt-logo.png" alt="Logo do Toolbelt" width="256">
+  <img src="../assets/logo/toolbelt-logo.png" alt="Toolbelt Logo" width="256">
 </p>
 
-O toolbelt adota o tema **Synthwave** como identidade visual oficial, inspirado na estética retro-futurista dos anos 80 com tons vibrantes de roxo, magenta, rosa e ciano.
+Toolbelt adopts the **Synthwave** theme as its official visual identity, inspired by 1980s retro-futurist aesthetics with vibrant purple, magenta, pink, and cyan tones.
 
 ---
 
 ## Logo
 
-### Versões Disponíveis
+### Available Versions
 
-| Arquivo | Tamanho | Uso |
-|---------|---------|-----|
-| `toolbelt-logo.png` | 1024×1024 | Original, alta resolução |
-| `toolbelt-logo-512.png` | 512×512 | Documentação, web |
-| `toolbelt-logo-256.png` | 256×256 | README, avatares |
-| `toolbelt-logo-128.png` | 128×128 | Ícones médios |
-| `toolbelt-logo-64.png` | 64×64 | Ícones pequenos |
-| `toolbelt-logo.svg` | Vetorial | Escalável, impressão |
-| `favicon.ico` | 32×32 | Favicon web |
+| File | Size | Use |
+|------|------|-----|
+| `toolbelt-logo.png` | 1024×1024 | Original, high resolution |
+| `toolbelt-logo-512.png` | 512×512 | Documentation, web |
+| `toolbelt-logo-256.png` | 256×256 | README, avatars |
+| `toolbelt-logo-128.png` | 128×128 | Medium icons |
+| `toolbelt-logo-64.png` | 64×64 | Small icons |
+| `toolbelt-logo.svg` | Vector | Scalable, print |
+| `favicon.ico` | 32×32 | Web favicon |
 
-### Elementos do Logo
+### Logo Elements
 
-O logo representa um cinto de ferramentas estilizado com elementos que simbolizam o projeto:
+The logo represents a stylized tool belt with elements that symbolize the project:
 
-1. **Círculo violeta** (#4A1999): fundo que representa o ambiente de execução
-2. **Cinto roxo com pontas escuras**: a estrutura unificadora das ferramentas
-3. **Bolsinha com degradê magenta→rosa**: o pocket/bolso de armazenamento (vault)
-4. **Botão branco**: ponto focal, simplicidade
-5. **Colchetes `< >`**: representam código e a CLI
-6. **Robô ciano**: o agente de IA que utiliza as ferramentas
+1. **Violet circle** (#4A1999): background that represents the execution environment
+2. **Purple belt with dark tips**: the unifying structure of the tools
+3. **Pouch with magenta→pink gradient**: the storage pocket/vault
+4. **White button**: focal point, simplicity
+5. **Angle brackets `< >`**: represent code and the CLI
+6. **Cyan robot**: the AI agent that uses the tools
 
-### Regras de Uso
+### Usage Rules
 
-#### Área de Respiro
+#### Clear Space
 
-Mantenha uma margem mínima igual a **10% do tamanho do logo** em todos os lados.
+Keep a minimum margin equal to **10% of the logo size** on all sides.
 
 ```
 ┌──────────────────────────┐
@@ -53,111 +53,111 @@ Mantenha uma margem mínima igual a **10% do tamanho do logo** em todos os lados
 └──────────────────────────┘
 ```
 
-#### Tamanho Mínimo
+#### Minimum Size
 
-| Contexto | Tamanho Mínimo |
-|----------|----------------|
+| Context | Minimum Size |
+|---------|--------------|
 | Digital (web, app) | 32px |
-| Impresso | 12mm |
-| Favicon | 16px (use o ICO específico) |
+| Print | 12mm |
+| Favicon | 16px (use the specific ICO) |
 
-#### Fundo Permitido
+#### Allowed Backgrounds
 
-| Cor de Fundo | Versão do Logo |
-|--------------|----------------|
-| Escuro (#29282D ou mais escuro) | Logo padrão ✓ |
-| Violeta (#4A1999) | Logo padrão ✓ |
-| Claro (#F5F3FA ou branco) | Logo padrão ✓ (círculo violeta cria contraste) |
+| Background Color | Logo Version |
+|------------------|--------------|
+| Dark (#29282D or darker) | Standard logo ✓ |
+| Violet (#4A1999) | Standard logo ✓ |
+| Light (#F5F3FA or white) | Standard logo ✓ (violet circle creates contrast) |
 
-**Proibido:**
-- Esticar ou distorcer proporções
-- Aplicar efeitos (sombra, brilho) que alterem as cores
-- Usar sobre fundos com padrões complexos
-- Alterar as cores do logo
+**Forbidden:**
+- Stretching or distorting proportions
+- Applying effects (shadow, glow) that alter the colors
+- Using over backgrounds with complex patterns
+- Changing the logo colors
 
 ---
 
-## Paleta de Cores
+## Color Palette
 
-### Cores Primárias (extraídas do logo)
+### Primary Colors (extracted from the logo)
 
-| Nome | Hex | RGB | Uso |
+| Name | Hex | RGB | Use |
 |------|-----|-----|-----|
-| **Violeta** | `#4A1999` | 74, 25, 153 | Fundo principal, cor institucional |
-| **Roxo** | `#982BD4` | 152, 43, 212 | Primária, botões, links |
-| **Roxo Sombra** | `#761DC5` | 118, 29, 197 | Hover, bordas, sombras |
-| **Magenta** | `#BE2AC6` | 190, 42, 198 | Início do degradê, destaques |
-| **Rosa** | `#F9278C` | 249, 39, 140 | Fim do degradê, erros, alertas |
-| **Ciano** | `#0CD7FF` | 12, 215, 255 | Accent, links, interativo |
-| **Azul Escuro** | `#00579A` | 0, 87, 154 | Ciano escuro, contraste |
-| **Quase Preto** | `#29282D` | 41, 40, 45 | Superfícies, texto em fundo claro |
-| **Branco** | `#FFFFFF` | 255, 255, 255 | Texto em fundo escuro |
+| **Violet** | `#4A1999` | 74, 25, 153 | Main background, institutional color |
+| **Purple** | `#982BD4` | 152, 43, 212 | Primary, buttons, links |
+| **Purple Shadow** | `#761DC5` | 118, 29, 197 | Hover, borders, shadows |
+| **Magenta** | `#BE2AC6` | 190, 42, 198 | Gradient start, highlights |
+| **Pink** | `#F9278C` | 249, 39, 140 | Gradient end, errors, alerts |
+| **Cyan** | `#0CD7FF` | 12, 215, 255 | Accent, links, interactive |
+| **Dark Blue** | `#00579A` | 0, 87, 154 | Dark cyan, contrast |
+| **Near Black** | `#29282D` | 41, 40, 45 | Surfaces, text on light backgrounds |
+| **White** | `#FFFFFF` | 255, 255, 255 | Text on dark backgrounds |
 
-### Cores Semânticas
+### Semantic Colors
 
-| Propósito | Modo Escuro | Modo Claro |
-|-----------|-------------|------------|
-| Fundo | `#4A1999` | `#F5F3FA` |
-| Superfície | `#29282D` | `#FFFFFF` |
-| Texto principal | `#FFFFFF` | `#29282D` |
-| Texto secundário | `#A099B0` | `#6B6680` |
-| Sucesso | `#2DD4A7` | `#1AA87A` |
-| Erro | `#F9278C` | `#D91A6B` |
-| Aviso | `#FFB020` | `#D99000` |
+| Purpose | Dark Mode | Light Mode |
+|---------|-----------|------------|
+| Background | `#4A1999` | `#F5F3FA` |
+| Surface | `#29282D` | `#FFFFFF` |
+| Primary text | `#FFFFFF` | `#29282D` |
+| Secondary text | `#A099B0` | `#6B6680` |
+| Success | `#2DD4A7` | `#1AA87A` |
+| Error | `#F9278C` | `#D91A6B` |
+| Warning | `#FFB020` | `#D99000` |
 
-### Degradês
+### Gradients
 
-| Nome | Definição | Uso |
-|------|-----------|-----|
-| **Primary** | `linear-gradient(180deg, #BE2AC6 → #F9278C)` | Destaque principal, CTAs |
-| **Belt** | `linear-gradient(90deg, #29282D → #761DC5 → #982BD4 → #761DC5 → #29282D)` | Decorativo, headers |
-| **Accent** | `linear-gradient(135deg, #0CD7FF → #00579A)` | Accent secundário |
-
----
-
-## Contraste WCAG
-
-Combinações de texto verificadas para acessibilidade:
-
-### Modo Escuro (fundo violeta #4A1999)
-
-| Texto | Fundo | Ratio | WCAG AA | WCAG AAA |
-|-------|-------|-------|---------|----------|
-| Branco `#FFFFFF` | Violeta `#4A1999` | 8.5:1 | ✅ Pass | ✅ Pass |
-| Ciano `#0CD7FF` | Violeta `#4A1999` | 7.2:1 | ✅ Pass | ✅ Pass |
-| Rosa `#F9278C` | Violeta `#4A1999` | 4.6:1 | ✅ Pass | ❌ Fail |
-| Roxo `#982BD4` | Violeta `#4A1999` | 2.1:1 | ❌ Fail | ❌ Fail |
-
-### Modo Escuro (superfície #29282D)
-
-| Texto | Fundo | Ratio | WCAG AA | WCAG AAA |
-|-------|-------|-------|---------|----------|
-| Branco `#FFFFFF` | Quase Preto `#29282D` | 14.3:1 | ✅ Pass | ✅ Pass |
-| Ciano `#0CD7FF` | Quase Preto `#29282D` | 11.8:1 | ✅ Pass | ✅ Pass |
-| Rosa `#F9278C` | Quase Preto `#29282D` | 7.5:1 | ✅ Pass | ✅ Pass |
-| Roxo `#982BD4` | Quase Preto `#29282D` | 3.4:1 | ✅ Pass (large) | ❌ Fail |
-
-### Modo Claro (fundo #F5F3FA)
-
-| Texto | Fundo | Ratio | WCAG AA | WCAG AAA |
-|-------|-------|-------|---------|----------|
-| Quase Preto `#29282D` | Claro `#F5F3FA` | 12.8:1 | ✅ Pass | ✅ Pass |
-| Violeta `#4A1999` | Claro `#F5F3FA` | 7.6:1 | ✅ Pass | ✅ Pass |
-| Roxo `#982BD4` | Claro `#F5F3FA` | 4.1:1 | ✅ Pass | ❌ Fail |
-| Azul Escuro `#00579A` | Claro `#F5F3FA` | 5.8:1 | ✅ Pass | ✅ Pass (large) |
-
-### Recomendações
-
-- **Texto de corpo**: use Branco sobre Violeta/Quase Preto ou Quase Preto sobre fundo claro
-- **Links e interativos**: Ciano sobre fundos escuros, Azul Escuro sobre fundos claros
-- **Alertas/Erros**: Rosa é acessível sobre superfícies (#29282D), mas não sobre Violeta para texto pequeno
-- **Evitar**: Roxo como cor de texto (baixo contraste); use apenas para elementos decorativos ou grandes
+| Name | Definition | Use |
+|------|------------|-----|
+| **Primary** | `linear-gradient(180deg, #BE2AC6 → #F9278C)` | Main highlight, CTAs |
+| **Belt** | `linear-gradient(90deg, #29282D → #761DC5 → #982BD4 → #761DC5 → #29282D)` | Decorative, headers |
+| **Accent** | `linear-gradient(135deg, #0CD7FF → #00579A)` | Secondary accent |
 
 ---
 
-## Tokens de Design
+## WCAG Contrast
 
-Os tokens estão disponíveis em dois formatos:
+Verified text combinations for accessibility:
+
+### Dark Mode (violet background #4A1999)
+
+| Text | Background | Ratio | WCAG AA | WCAG AAA |
+|------|------------|-------|---------|----------|
+| White `#FFFFFF` | Violet `#4A1999` | 8.5:1 | ✅ Pass | ✅ Pass |
+| Cyan `#0CD7FF` | Violet `#4A1999` | 7.2:1 | ✅ Pass | ✅ Pass |
+| Pink `#F9278C` | Violet `#4A1999` | 4.6:1 | ✅ Pass | ❌ Fail |
+| Purple `#982BD4` | Violet `#4A1999` | 2.1:1 | ❌ Fail | ❌ Fail |
+
+### Dark Mode (surface #29282D)
+
+| Text | Background | Ratio | WCAG AA | WCAG AAA |
+|------|------------|-------|---------|----------|
+| White `#FFFFFF` | Near Black `#29282D` | 14.3:1 | ✅ Pass | ✅ Pass |
+| Cyan `#0CD7FF` | Near Black `#29282D` | 11.8:1 | ✅ Pass | ✅ Pass |
+| Pink `#F9278C` | Near Black `#29282D` | 7.5:1 | ✅ Pass | ✅ Pass |
+| Purple `#982BD4` | Near Black `#29282D` | 3.4:1 | ✅ Pass (large) | ❌ Fail |
+
+### Light Mode (background #F5F3FA)
+
+| Text | Background | Ratio | WCAG AA | WCAG AAA |
+|------|------------|-------|---------|----------|
+| Near Black `#29282D` | Light `#F5F3FA` | 12.8:1 | ✅ Pass | ✅ Pass |
+| Violet `#4A1999` | Light `#F5F3FA` | 7.6:1 | ✅ Pass | ✅ Pass |
+| Purple `#982BD4` | Light `#F5F3FA` | 4.1:1 | ✅ Pass | ❌ Fail |
+| Dark Blue `#00579A` | Light `#F5F3FA` | 5.8:1 | ✅ Pass | ✅ Pass (large) |
+
+### Recommendations
+
+- **Body text**: use White on Violet/Near Black, or Near Black on a light background
+- **Links and interactive elements**: Cyan on dark backgrounds, Dark Blue on light backgrounds
+- **Alerts/Errors**: Pink is accessible on surfaces (#29282D), but not on Violet for small text
+- **Avoid**: Purple as a text color (low contrast); use only for decorative or large elements
+
+---
+
+## Design Tokens
+
+Tokens are available in two formats:
 
 ### JSON (Design Tokens Format)
 
@@ -165,7 +165,7 @@ Os tokens estão disponíveis em dois formatos:
 assets/theme/tokens.json
 ```
 
-Segue o padrão [Design Tokens](https://design-tokens.github.io/community-group/format/) para integração com ferramentas como Figma, Style Dictionary, etc.
+Follows the [Design Tokens](https://design-tokens.github.io/community-group/format/) standard for integration with tools such as Figma, Style Dictionary, etc.
 
 ### CSS Custom Properties
 
@@ -173,74 +173,76 @@ Segue o padrão [Design Tokens](https://design-tokens.github.io/community-group/
 assets/theme/theme.css
 ```
 
-Variáveis CSS prontas para uso:
+Ready-to-use CSS variables:
 
 ```css
-/* Importar no projeto */
+/* Import into the project */
 @import 'assets/theme/theme.css';
 
-/* Usar variáveis */
+/* Use variables */
 .meu-componente {
   background: var(--tb-bg);
   color: var(--tb-text);
   border-radius: var(--tb-radius-md);
 }
 
-/* Degradê do logo */
+/* Logo gradient */
 .destaque {
   background: var(--tb-gradient-primary);
 }
 ```
 
-### Nomenclatura das Variáveis CSS
+### CSS Variable Naming
 
-| Prefixo | Categoria | Exemplos |
-|---------|-----------|----------|
-| `--tb-color-*` | Cores base | `--tb-color-violeta`, `--tb-color-ciano` |
-| `--tb-gradient-*` | Degradês | `--tb-gradient-primary`, `--tb-gradient-belt` |
-| `--tb-bg*` | Fundos | `--tb-bg`, `--tb-bg-secondary` |
-| `--tb-surface*` | Superfícies | `--tb-surface`, `--tb-surface-elevated` |
-| `--tb-primary*` | Cor primária | `--tb-primary`, `--tb-primary-hover` |
-| `--tb-accent*` | Cor accent | `--tb-accent`, `--tb-accent-dark` |
-| `--tb-text*` | Texto | `--tb-text`, `--tb-text-muted` |
-| `--tb-spacing-*` | Espaçamento | `--tb-spacing-sm`, `--tb-spacing-lg` |
-| `--tb-radius-*` | Bordas | `--tb-radius-md`, `--tb-radius-full` |
-| `--tb-font-*` | Tipografia | `--tb-font-mono`, `--tb-font-size-md` |
-| `--tb-shadow-*` | Sombras | `--tb-shadow-sm`, `--tb-shadow-lg` |
+| Prefix | Category | Examples |
+|--------|----------|----------|
+| `--tb-color-*` | Base colors | `--tb-color-violeta`, `--tb-color-ciano` |
+| `--tb-gradient-*` | Gradients | `--tb-gradient-primary`, `--tb-gradient-belt` |
+| `--tb-bg*` | Backgrounds | `--tb-bg`, `--tb-bg-secondary` |
+| `--tb-surface*` | Surfaces | `--tb-surface`, `--tb-surface-elevated` |
+| `--tb-primary*` | Primary color | `--tb-primary`, `--tb-primary-hover` |
+| `--tb-accent*` | Accent color | `--tb-accent`, `--tb-accent-dark` |
+| `--tb-text*` | Text | `--tb-text`, `--tb-text-muted` |
+| `--tb-spacing-*` | Spacing | `--tb-spacing-sm`, `--tb-spacing-lg` |
+| `--tb-radius-*` | Borders | `--tb-radius-md`, `--tb-radius-full` |
+| `--tb-font-*` | Typography | `--tb-font-mono`, `--tb-font-size-md` |
+| `--tb-shadow-*` | Shadows | `--tb-shadow-sm`, `--tb-shadow-lg` |
 | `--tb-error/success/warning` | Status | `--tb-error`, `--tb-success` |
 
 ---
 
-## CLI: Mapeamento ANSI
+## CLI: ANSI Mapping
 
-A saída colorida do CLI (`tb`) deve seguir a mesma paleta. Use os códigos abaixo:
+Colored CLI (`tb`) output should follow the same palette. Use the codes below:
 
-### Tabela de Mapeamento
+### Mapping Table
 
-| Cor Semântica | Hex | ANSI 256 | ANSI Escape | Uso |
-|---------------|-----|----------|-------------|-----|
-| Background | `#4A1999` | 54 | `\033[48;5;54m` | Fundo (se suportado) |
-| Primary | `#982BD4` | 134 | `\033[38;5;134m` | Headers, comandos |
-| Accent | `#0CD7FF` | 51 | `\033[38;5;51m` | Valores, paths, URLs |
-| Error | `#F9278C` | 198 | `\033[38;5;198m` | Erros, falhas |
-| Success | `#2DD4A7` | 43 | `\033[38;5;43m` | Sucesso, ✓ |
-| Warning | `#FFB020` | 214 | `\033[38;5;214m` | Avisos, ⚠ |
-| Text | `#FFFFFF` | 15 | `\033[38;5;15m` | Texto padrão |
-| Muted | `#A099B0` | 249 | `\033[38;5;249m` | Texto secundário |
+| Semantic Color | Hex | ANSI 256 | ANSI Escape | Use |
+|----------------|-----|----------|-------------|-----|
+| Background | `#4A1999` | 54 | `\033[48;5;54m` | Background (if supported) |
+| Primary | `#982BD4` | 134 | `\033[38;5;134m` | Headers, commands |
+| Accent | `#0CD7FF` | 51 | `\033[38;5;51m` | Values, paths, URLs |
+| Error | `#F9278C` | 198 | `\033[38;5;198m` | Errors, failures |
+| Success | `#2DD4A7` | 43 | `\033[38;5;43m` | Success, ✓ |
+| Warning | `#FFB020` | 214 | `\033[38;5;214m` | Warnings, ⚠ |
+| Text | `#FFFFFF` | 15 | `\033[38;5;15m` | Default text |
+| Muted | `#A099B0` | 249 | `\033[38;5;249m` | Secondary text |
 
 ### TrueColor (24-bit)
 
-Para terminais com suporte a TrueColor:
+For terminals with TrueColor support:
 
 ```bash
-# Exemplo: texto roxo
+# Example: purple text
 printf '\033[38;2;152;43;212mTexto Roxo\033[0m\n'
 
-# Exemplo: texto ciano
+# Example: cyan text
 printf '\033[38;2;12;215;255mTexto Ciano\033[0m\n'
 ```
 
-### Exemplo de Output CLI
+### CLI Output Example
+
+Illustrative: `tb run` does not exist yet (see [cli.md](cli.md)).
 
 ```
 tb run --timeout 30s "go test ./..."
@@ -259,27 +261,27 @@ tb run --timeout 30s "go test ./..."
 
 ---
 
-## Aplicação em UIs
+## Application in UIs
 
 ### `tb md` (TUI Markdown)
 
-O leitor/editor Markdown TUI deve usar os tokens para:
+Planned, not implemented yet. The Markdown TUI reader/editor should use the tokens for:
 
-- Fundo da aplicação: `--tb-bg`
-- Texto de corpo: `--tb-text`
-- Headers: `--tb-primary` ou degradê
+- Application background: `--tb-bg`
+- Body text: `--tb-text`
+- Headers: `--tb-primary` or gradient
 - Links: `--tb-accent`
-- Código inline: `--tb-surface` + `--tb-accent`
-- Blocos de código: `--tb-surface` com borda `--tb-border`
-- Seleção/cursor: `--tb-accent` com opacidade
+- Inline code: `--tb-surface` + `--tb-accent`
+- Code blocks: `--tb-surface` with `--tb-border` border
+- Selection/cursor: `--tb-accent` with opacity
 
 ### Obsidian (Vault)
 
-Para quem usar o vault `.tb/vault/` no Obsidian, um snippet CSS personalizado pode ser criado baseado nos tokens para manter consistência visual.
+For those who use the `.tb/vault/` vault in Obsidian, a custom CSS snippet can be created based on the tokens to keep visual consistency.
 
 ---
 
-## Arquivos
+## Files
 
 ```
 assets/
@@ -289,17 +291,17 @@ assets/
 │   ├── toolbelt-logo-256.png
 │   ├── toolbelt-logo-128.png
 │   ├── toolbelt-logo-64.png
-│   ├── toolbelt-logo.svg      # Versão vetorial
+│   ├── toolbelt-logo.svg      # Vector version
 │   └── favicon.ico            # 32×32
 └── theme/
     ├── tokens.json            # Design tokens (JSON)
-    └── theme.css              # Variáveis CSS
+    └── theme.css              # CSS variables
 ```
 
 ---
 
-## Histórico
+## History
 
-| Data | Versão | Alteração |
-|------|--------|-----------|
-| 2026-11-15 | 1.0.0 | Criação inicial com logo e tema Synthwave |
+| Date | Version | Change |
+|------|---------|--------|
+| 2026-11-15 | 1.0.0 | Initial creation with logo and Synthwave theme |

@@ -1,326 +1,326 @@
-🇧🇷 Português | [🇺🇸 English](en/benchmark.md)
+🇺🇸 English | [🇧🇷 Português](pt-BR/benchmark.md)
 
-# Benchmark e KPIs
+# Benchmark and KPIs
 
-Este documento define a metodologia de benchmark e os KPIs (Key Performance Indicators) para avaliar a eficácia do toolbelt.
+This document defines the benchmark methodology and the KPIs (Key Performance Indicators) for evaluating toolbelt effectiveness.
 
-## Objetivo
+## Objective
 
-Medir quantitativamente se o toolbelt atinge seus três objetivos:
+Quantitatively measure whether toolbelt achieves its three goals:
 
-1. **Economizar tokens** — menos tokens consumidos por tarefa
-2. **Melhorar a acurácia** — maior taxa de sucesso na primeira tentativa
-3. **Aumentar a velocidade** — menor tempo de execução
+1. **Save tokens** — fewer tokens consumed per task
+2. **Improve accuracy** — higher first-attempt success rate
+3. **Increase speed** — lower execution time
 
 ---
 
-## Metodologia
+## Methodology
 
-### Desenho Experimental
+### Experimental Design
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                      Suite de Tarefas                           │
-│  (código fechado, testes ocultos, reprodutível)                 │
+│                      Task Suite                                 │
+│  (closed code, hidden tests, reproducible)                      │
 └─────────────────────────────────────────────────────────────────┘
                               │
               ┌───────────────┴───────────────┐
               │                               │
               ▼                               ▼
 ┌─────────────────────────┐     ┌─────────────────────────┐
-│      Grupo Baseline     │     │    Grupo Experimental    │
-│  (agente sozinho)       │     │  (agente + toolbelt)     │
+│      Baseline Group     │     │    Experimental Group   │
+│  (agent alone)          │     │  (agent + toolbelt)     │
 │                         │     │                          │
-│  - Acesso direto ao     │     │  - Acesso via tb graph   │
-│    código (grep/read)   │     │  - Sandbox isolado       │
-│  - Sem isolamento       │     │  - Memória persistente   │
-│  - Sem memória          │     │  - Guardrails ativos     │
-│    estruturada          │     │                          │
+│  - Direct access to     │     │  - Access via tb graph   │
+│    code (grep/read)     │     │  - Isolated sandbox      │
+│  - No isolation         │     │  - Persistent memory     │
+│  - No structured        │     │  - Active guardrails     │
+│    memory               │     │                          │
 └─────────────────────────┘     └─────────────────────────┘
               │                               │
               └───────────────┬───────────────┘
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                      Avaliador Isolado                          │
-│  (executa testes ocultos, mede métricas, gera relatório)        │
+│                      Isolated Evaluator                         │
+│  (runs hidden tests, measures metrics, generates report)        │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-### Condições Controladas
+### Controlled Conditions
 
-| Aspecto | Controle |
-|---------|----------|
-| Modelo de linguagem | Mesmo modelo e temperatura para ambos os grupos |
-| Tarefas | Suite fixa, embaralhada, sem acesso prévio |
-| Testes | Ocultos do agente implementador |
-| Ambiente | Mesmo hardware/VM, mesmo estado inicial do repositório |
-| Avaliação | Automatizada, determinística, sem intervenção humana |
+| Aspect | Control |
+|--------|---------|
+| Language model | Same model and temperature for both groups |
+| Tasks | Fixed suite, shuffled, no prior access |
+| Tests | Hidden from the implementing agent |
+| Environment | Same hardware/VM, same initial repository state |
+| Evaluation | Automated, deterministic, no human intervention |
 
-### Repetições e Variância
+### Repetitions and Variance
 
-- **Mínimo de repetições**: 5 por tarefa por condição
-- **Recomendado**: 10 repetições para significância estatística
-- **Medidas**: média, mediana, desvio padrão, intervalo de confiança 95%
+- **Minimum repetitions**: 5 per task per condition
+- **Recommended**: 10 repetitions for statistical significance
+- **Measures**: mean, median, standard deviation, 95% confidence interval
 
 ---
 
-## KPIs Primários
+## Primary KPIs
 
-### 1. pass@1 (Taxa de Sucesso na Primeira Tentativa)
+### 1. pass@1 (First-Attempt Success Rate)
 
-**Definição**: Proporção de tarefas completadas corretamente na primeira tentativa, sem retrabalho.
+**Definition**: Proportion of tasks completed correctly on the first attempt, without rework.
 
 ```
 pass@1 = (tarefas corretas na 1ª tentativa) / (total de tarefas)
 ```
 
-**Medição**:
-- O agente submete solução
-- Avaliador executa suite de testes ocultos
-- Passa se todos os testes passam
+**Measurement**:
+- The agent submits a solution
+- The evaluator runs the hidden test suite
+- Passes if all tests pass
 
-**Meta**: Melhorar pass@1 em relação ao baseline
+**Goal**: Improve pass@1 relative to baseline
 
-### 2. tokens_per_task (Tokens por Tarefa)
+### 2. tokens_per_task (Tokens per Task)
 
-**Definição**: Total de tokens consumidos (input + output) para completar uma tarefa.
+**Definition**: Total tokens consumed (input + output) to complete a task.
 
 ```
 tokens_per_task = tokens_input + tokens_output
 ```
 
-**Medição**:
-- Contagem via API do modelo
-- Inclui todas as chamadas até conclusão ou timeout
+**Measurement**:
+- Count via the model API
+- Includes all calls until completion or timeout
 
-**Meta**: Reduzir tokens_per_task em relação ao baseline
+**Goal**: Reduce tokens_per_task relative to baseline
 
-### 3. wall_time (Tempo de Execução)
+### 3. wall_time (Execution Time)
 
-**Definição**: Tempo total desde o início da tarefa até a submissão final.
+**Definition**: Total time from task start to final submission.
 
 ```
 wall_time = timestamp_fim - timestamp_inicio
 ```
 
-**Medição**:
-- Timestamp do sistema
-- Inclui tempo de espera por API, execução de ferramentas
+**Measurement**:
+- System timestamp
+- Includes API wait time and tool execution
 
-**Meta**: Reduzir wall_time em relação ao baseline
+**Goal**: Reduce wall_time relative to baseline
 
 ---
 
-## KPIs Secundários
+## Secondary KPIs
 
-### 4. tool_calls (Chamadas de Ferramentas)
+### 4. tool_calls (Tool Calls)
 
-**Definição**: Número de chamadas a ferramentas externas (read file, run command, etc.).
+**Definition**: Number of calls to external tools (read file, run command, etc.).
 
-**Relevância**: Menos chamadas geralmente indica uso mais eficiente do contexto.
+**Relevance**: Fewer calls generally indicates more efficient use of context.
 
-### 5. file_reads (Leituras de Arquivos)
+### 5. file_reads (File Reads)
 
-**Definição**: Número de arquivos lidos durante a tarefa.
+**Definition**: Number of files read during the task.
 
-**Relevância**: O grafo deve reduzir leituras desnecessárias.
+**Relevance**: The graph should reduce unnecessary reads.
 
-### 6. rework_rate (Taxa de Retrabalho)
+### 6. rework_rate (Rework Rate)
 
-**Definição**: Proporção de tarefas que precisaram de correção após primeira submissão.
+**Definition**: Proportion of tasks that needed correction after the first submission.
 
 ```
 rework_rate = (tarefas com retrabalho) / (total de tarefas)
 ```
 
-### 7. cost_per_task (Custo por Tarefa)
+### 7. cost_per_task (Cost per Task)
 
-**Definição**: Custo monetário (USD) por tarefa completada.
+**Definition**: Monetary cost (USD) per completed task.
 
 ```
 cost_per_task = (tokens_input * price_input) + (tokens_output * price_output)
 ```
 
-### 8. guard_violations_blocked (Violações Bloqueadas)
+### 8. guard_violations_blocked (Blocked Violations)
 
-**Definição**: Número de tentativas de violação de segurança detectadas e bloqueadas.
+**Definition**: Number of security violation attempts detected and blocked.
 
-**Relevância**: Demonstra eficácia das proteções.
+**Relevance**: Demonstrates the effectiveness of protections.
 
-### 9. guard_violations_unblocked (Violações Não Bloqueadas)
+### 9. guard_violations_unblocked (Unblocked Violations)
 
-**Definição**: Número de violações que escaparam às proteções.
+**Definition**: Number of violations that escaped protections.
 
-**Meta**: Zero
+**Goal**: Zero
 
 ---
 
-## KPIs de Revisão (Elephant-Goldfish)
+## Review KPIs (Elephant-Goldfish)
 
-O padrão Elephant-Goldfish introduz métricas específicas para avaliar a qualidade das revisões com contexto fresco.
+The Elephant-Goldfish pattern introduces specific metrics to evaluate the quality of reviews with fresh context.
 
-### 10. defects_found_pre_impl (Defeitos Encontrados Pré-Implementação)
+### 10. defects_found_pre_impl (Defects Found Pre-Implementation)
 
-**Definição**: Número de defeitos encontrados na fase de revisão, antes da implementação.
+**Definition**: Number of defects found in the review phase, before implementation.
 
 ```
 defects_found_pre_impl = count(findings com severity >= warning)
 ```
 
-**Relevância**: Defeitos encontrados antes da implementação são muito mais baratos de corrigir.
+**Relevance**: Defects found before implementation are much cheaper to fix.
 
-### 11. false_positive_rate (Taxa de Falsos Positivos)
+### 11. false_positive_rate (False Positive Rate)
 
-**Definição**: Proporção de findings que foram rejeitados na etapa de resolução.
+**Definition**: Proportion of findings that were rejected in the resolution step.
 
 ```
 false_positive_rate = (findings rejeitados) / (total de findings)
 ```
 
-**Medição**:
-- Humano marca cada finding como aceito, rejeitado ou adiado
-- Rejeitados são falsos positivos
+**Measurement**:
+- A human marks each finding as accepted, rejected, or deferred
+- Rejected findings are false positives
 
-**Meta**: < 20%
+**Goal**: < 20%
 
-### 12. tokens_per_review (Tokens por Revisão)
+### 12. tokens_per_review (Tokens per Review)
 
-**Definição**: Total de tokens consumidos para revisar um documento.
+**Definition**: Total tokens consumed to review a document.
 
 ```
 tokens_per_review = sum(tokens de cada revisor goldfish)
 ```
 
-**Relevância**: Revisores goldfish devem ser eficientes por receberem contexto mínimo.
+**Relevance**: Goldfish reviewers should be efficient because they receive minimal context.
 
-### 13. review_coverage (Cobertura de Revisão)
+### 13. review_coverage (Review Coverage)
 
-**Definição**: Proporção do documento efetivamente analisada pelos revisores.
+**Definition**: Proportion of the document effectively analyzed by reviewers.
 
 ```
 review_coverage = (seções com findings ou OK explícito) / (total de seções)
 ```
 
-### 14. reviewer_agreement (Concordância entre Revisores)
+### 14. reviewer_agreement (Agreement Between Reviewers)
 
-**Definição**: Proporção de findings onde múltiplos revisores concordam.
+**Definition**: Proportion of findings where multiple reviewers agree.
 
 ```
 reviewer_agreement = (findings com 2+ revisores) / (total de findings únicos)
 ```
 
-**Relevância**: Alta concordância indica findings mais confiáveis.
+**Relevance**: High agreement indicates more reliable findings.
 
 ---
 
-## Comparação: Graph-First vs Grep-First
+## Comparison: Graph-First vs Grep-First
 
-Uma variante específica do benchmark compara abordagens de busca:
+A specific benchmark variant compares search approaches:
 
 ### Graph-First (Experimental)
 
-1. Agente recebe tarefa
-2. Consulta `tb graph search` / `callers` / `deps` primeiro
-3. Identifica arquivos relevantes via grafo
-4. Lê apenas arquivos necessários
-5. Implementa solução
+1. Agent receives the task
+2. Queries `tb graph search` / `callers` / `deps` first
+3. Identifies relevant files via the graph
+4. Reads only necessary files
+5. Implements the solution
 
 ### Grep-First (Baseline)
 
-1. Agente recebe tarefa
-2. Usa grep/rg para buscar padrões
-3. Lê arquivos que parecem relevantes
-4. Pode ler arquivos desnecessários
-5. Implementa solução
+1. Agent receives the task
+2. Uses grep/rg to search for patterns
+3. Reads files that seem relevant
+4. May read unnecessary files
+5. Implements the solution
 
-### Métricas Específicas
+### Specific Metrics
 
-| Métrica | Descrição |
-|---------|-----------|
-| `files_read_relevant` | Arquivos lidos que eram de fato relevantes |
-| `files_read_irrelevant` | Arquivos lidos que não eram relevantes |
+| Metric | Description |
+|--------|-------------|
+| `files_read_relevant` | Files read that were actually relevant |
+| `files_read_irrelevant` | Files read that were not relevant |
 | `precision` | files_read_relevant / total_files_read |
 | `recall` | files_read_relevant / total_files_actually_relevant |
-| `tokens_on_irrelevant` | Tokens gastos em arquivos irrelevantes |
+| `tokens_on_irrelevant` | Tokens spent on irrelevant files |
 
 ---
 
-## Comparação: Fresh-Context vs Same-Context Review
+## Comparison: Fresh-Context vs Same-Context Review
 
-Uma variante específica do benchmark compara abordagens de revisão:
+A specific benchmark variant compares review approaches:
 
 ### Fresh-Context Review (Goldfish)
 
-1. Documento é preparado pelo elephant (planner)
-2. N revisores são spawados com contexto **fresco**
-3. Cada revisor recebe apenas: documento + material referenciado
-4. Revisores não têm acesso ao histórico da conversa
-5. Findings são agregados e deduplicados
+1. Document is prepared by the elephant (planner)
+2. N reviewers are spawned with **fresh** context
+3. Each reviewer receives only: document + referenced material
+4. Reviewers do not have access to the conversation history
+5. Findings are aggregated and deduplicated
 
 ### Same-Context Review (Self-Review)
 
-1. Documento é preparado pelo agente
-2. O **mesmo agente** revisa seu próprio trabalho
-3. Agente tem todo o contexto acumulado
-4. Pode estar "cego" para problemas que assumiu
+1. Document is prepared by the agent
+2. The **same agent** reviews its own work
+3. Agent has all accumulated context
+4. May be "blind" to problems it assumed
 
-### Métricas Específicas
+### Specific Metrics
 
-| Métrica | Descrição |
-|---------|-----------|
-| `unique_defects_found` | Defeitos distintos encontrados |
-| `defects_missed` | Defeitos que existiam mas não foram encontrados |
-| `blind_spot_rate` | Problemas óbvios perdidos por viés de contexto |
-| `tokens_total` | Tokens totais consumidos na revisão |
-| `tokens_per_defect` | Eficiência: tokens / defeito encontrado |
-| `time_to_review` | Tempo total da revisão |
+| Metric | Description |
+|--------|-------------|
+| `unique_defects_found` | Distinct defects found |
+| `defects_missed` | Defects that existed but were not found |
+| `blind_spot_rate` | Obvious problems missed due to context bias |
+| `tokens_total` | Total tokens consumed in the review |
+| `tokens_per_defect` | Efficiency: tokens / defect found |
+| `time_to_review` | Total review time |
 
-### Metodologia
+### Methodology
 
-Para medir objetivamente:
+To measure objectively:
 
-1. **Gold standard**: humanos especialistas revisam o mesmo documento e criam lista de defeitos conhecidos
-2. **Fresh-context**: N goldfish revisam, medem recall contra gold standard
-3. **Same-context**: mesmo agente revisa, mede recall contra gold standard
-4. **Comparação**: qual abordagem encontra mais defeitos do gold standard?
+1. **Gold standard**: expert humans review the same document and create a list of known defects
+2. **Fresh-context**: N goldfish review, measure recall against the gold standard
+3. **Same-context**: the same agent reviews, measure recall against the gold standard
+4. **Comparison**: which approach finds more defects from the gold standard?
 
-### Hipótese
+### Hypothesis
 
-Esperamos que fresh-context supere same-context em:
-- `unique_defects_found`: mais defeitos encontrados
-- `blind_spot_rate`: menos pontos cegos
-- `tokens_per_defect`: mais eficiente (contexto menor)
+We expect fresh-context to outperform same-context on:
+- `unique_defects_found`: more defects found
+- `blind_spot_rate`: fewer blind spots
+- `tokens_per_defect`: more efficient (smaller context)
 
-E que same-context seja melhor em:
-- `time_to_review`: mais rápido (sem spawn de subagentes)
-- `tokens_total`: menos tokens totais (um agente só)
+And same-context to be better on:
+- `time_to_review`: faster (no subagent spawn)
+- `tokens_total`: fewer total tokens (one agent only)
 
 ---
 
-## Suite de Tarefas
+## Task Suite
 
-### Categorias
+### Categories
 
-| Categoria | Descrição | Qtd Tarefas |
-|-----------|-----------|-------------|
-| `implement` | Implementar nova funcionalidade | 20 |
-| `bugfix` | Corrigir bug descrito | 15 |
-| `refactor` | Refatorar código existente | 10 |
-| `test` | Escrever testes para código existente | 10 |
-| `document` | Documentar código/API | 5 |
+| Category | Description | Task Count |
+|----------|-------------|------------|
+| `implement` | Implement a new feature | 20 |
+| `bugfix` | Fix a described bug | 15 |
+| `refactor` | Refactor existing code | 10 |
+| `test` | Write tests for existing code | 10 |
+| `document` | Document code/API | 5 |
 
-**Total**: 60 tarefas
+**Total**: 60 tasks
 
-### Níveis de Dificuldade
+### Difficulty Levels
 
-| Nível | Características |
+| Level | Characteristics |
 |-------|-----------------|
-| `easy` | Mudança localizada, 1-2 arquivos |
-| `medium` | Múltiplos arquivos, entender contexto |
-| `hard` | Arquitetura complexa, dependências cruzadas |
+| `easy` | Localized change, 1–2 files |
+| `medium` | Multiple files, understand context |
+| `hard` | Complex architecture, cross-cutting dependencies |
 
-### Estrutura de uma Tarefa
+### Structure of a Task
 
 ```yaml
 id: task-042
@@ -351,23 +351,23 @@ timeout: 10m
 max_tokens: 20000
 ```
 
-### Proteção dos Testes
+### Test Protection
 
-Os arquivos em `hidden_tests` são:
-- Não visíveis para o agente implementador
-- Montados read-only no sandbox do avaliador
-- Hash verificado antes e depois de cada avaliação
+Files in `hidden_tests` are:
+- Not visible to the implementing agent
+- Mounted read-only in the evaluator sandbox
+- Hash-verified before and after each evaluation
 
 ---
 
-## Execução do Benchmark (Fase 0 + A/B Fase 2)
+## Running the Benchmark (Phase 0 + A/B Phase 2)
 
-O harness de benchmark está implementado e pode ser usado com:
-- **Agente fake**: determinístico, para testar o harness no CI
-- **Agente externo**: qualquer comando shell que aceite prompt
-- **Comparação A/B**: duas configs/feature flags no mesmo conjunto de tarefas
+The benchmark harness is implemented and can be used with:
+- **Fake agent**: deterministic, to test the harness in CI
+- **External agent**: any shell command that accepts a prompt
+- **A/B comparison**: two configs/feature flags on the same task set
 
-### Comandos Básicos (Implementados)
+### Basic Commands (Implemented)
 
 ```bash
 # Executar com agente fake (para CI/testes)
@@ -405,31 +405,31 @@ tb bench compare --config-a bench/ab/graph-off.yaml \
                  --agent "cursor-agent {prompt} --workdir {workdir}"
 ```
 
-### Tarefas Fixture
+### Fixture Tasks
 
-| Task ID | Categoria | Dificuldade | Descrição |
-|---------|-----------|-------------|-----------|
-| `bugfix-go` | bugfix | easy | Corrigir divisão por zero |
-| `feature-small` | feature | easy | Implementar Multiply e Divide |
-| `refactor-simple` | refactor | medium | Extrair UserRepository |
-| `test-coverage` | test | easy | Aumentar cobertura de testes |
-| `doc-function` | doc | easy | Documentar funções |
-| `localize-callers` | localization | medium | Mapear chamadores cross-package |
-| `cross-file-rename` | refactor | medium | Renomear tipo em múltiplos arquivos |
-| `api-handler` | feature | medium | Endpoint /echo + registro de rota |
-| `mcp-smoke` | smoke | easy | Smoke do servidor MCP |
+| Task ID | Category | Difficulty | Description |
+|---------|----------|------------|-------------|
+| `bugfix-go` | bugfix | easy | Fix division by zero |
+| `feature-small` | feature | easy | Implement Multiply and Divide |
+| `refactor-simple` | refactor | medium | Extract UserRepository |
+| `test-coverage` | test | easy | Increase test coverage |
+| `doc-function` | doc | easy | Document functions |
+| `localize-callers` | localization | medium | Map cross-package callers |
+| `cross-file-rename` | refactor | medium | Rename a type across multiple files |
+| `api-handler` | feature | medium | /echo endpoint + route registration |
+| `mcp-smoke` | smoke | easy | MCP server smoke |
 
-### Configs A/B
+### A/B Configs
 
-Arquivos em `bench/ab/`:
+Files in `bench/ab/`:
 
-| Arquivo | Label | Flags |
-|---------|-------|-------|
+| File | Label | Flags |
+|------|-------|-------|
 | `graph-off.yaml` | graph-off | `graph=off` |
 | `graph-on.yaml` | graph-on | `graph=on` |
 | `baseline.yaml` | baseline | `graph=off`, `review=off` |
 
-### Estrutura dos Resultados
+### Results Structure
 
 ```json
 {
@@ -475,20 +475,20 @@ Arquivos em `bench/ab/`:
 
 ---
 
-## Relatório de Resultados
+## Results Report
 
-### Formato
+### Format
 
-O relatório deve incluir:
+The report should include:
 
-1. **Resumo executivo**: melhorias percentuais em cada KPI
-2. **Tabela comparativa**: baseline vs toolbelt por categoria
-3. **Análise estatística**: significância das diferenças
-4. **Gráficos**: distribuições, boxplots, tendências
-5. **Casos notáveis**: tarefas onde toolbelt teve maior/menor impacto
-6. **Violações**: detalhes de qualquer violação detectada
+1. **Executive summary**: percentage improvements on each KPI
+2. **Comparison table**: baseline vs toolbelt by category
+3. **Statistical analysis**: significance of differences
+4. **Charts**: distributions, boxplots, trends
+5. **Notable cases**: tasks where toolbelt had the greatest/least impact
+6. **Violations**: details of any detected violation
 
-### Exemplo de Resumo
+### Summary Example
 
 ```markdown
 ## Resumo Executivo
@@ -508,191 +508,191 @@ Diferenças estatisticamente significativas (p < 0.05) em todos os KPIs.
 
 ---
 
-## Questões em Aberto
+## Open Questions
 
-### Tamanho da Suite
+### Suite Size
 
-- 60 tarefas são suficientes para significância estatística?
-- Devemos expandir para 100+ tarefas?
-- Trade-off: mais tarefas = mais tempo de benchmark = mais custo
+- Are 60 tasks enough for statistical significance?
+- Should we expand to 100+ tasks?
+- Trade-off: more tasks = more benchmark time = more cost
 
-### Modelos Diferentes
+### Different Models
 
-- O benchmark deve ser executado em múltiplos modelos?
-- Como normalizar resultados entre modelos com preços diferentes?
+- Should the benchmark be run on multiple models?
+- How to normalize results across models with different prices?
 
-### Tarefas Multi-Agente
+### Multi-Agent Tasks
 
-- Como medir eficácia da hierarquia de agentes?
-- Métricas específicas para coordenação planner→supervisor→worker
+- How to measure the effectiveness of the agent hierarchy?
+- Specific metrics for planner→supervisor→worker coordination
 
-### Reprodutibilidade
+### Reproducibility
 
-- Como garantir que a suite de tarefas não vaze para dados de treinamento?
-- Devemos rotacionar tarefas periodicamente?
+- How to ensure the task suite does not leak into training data?
+- Should we rotate tasks periodically?
 
-### Baseline Alternativo
+### Alternative Baseline
 
-- Considerar outros baselines além de "agente sozinho":
-  - Agente com grep + sem grafo
-  - Agente com outro toolkit (comparação competitiva)
+- Consider other baselines beyond "agent alone":
+  - Agent with grep + no graph
+  - Agent with another toolkit (competitive comparison)
 
-### Revisão: Número Ideal de Goldfish
+### Review: Ideal Number of Goldfish
 
-- Quantos revisores goldfish produzem o melhor custo-benefício?
-- Retornos decrescentes: 3 vs 5 vs 10 revisores?
-- Especialização: revisores genéricos vs especializados por área?
+- How many goldfish reviewers produce the best cost-benefit?
+- Diminishing returns: 3 vs 5 vs 10 reviewers?
+- Specialization: generic reviewers vs specialized by area?
 
 ### Drift Detection
 
-- Como medir eficácia do `tb drift`?
-- Ground truth: diffs manuais entre docs e código
-- Métricas: precision/recall de divergências detectadas
+- How to measure `tb drift` effectiveness?
+- Ground truth: manual diffs between docs and code
+- Metrics: precision/recall of detected divergences
 
 ---
 
-## KPIs de Verificação Adversarial
+## Adversarial Verification KPIs
 
-O sistema `tb verify` introduz métricas específicas para avaliar a eficácia do loop gerador→discriminador.
+The `tb verify` system introduces specific metrics to evaluate the effectiveness of the generator→discriminator loop.
 
-### 15. mean_similarity (Similaridade Média)
+### 15. mean_similarity (Mean Similarity)
 
-**Definição**: Média de similaridade por tela no ruler visual.
+**Definition**: Mean similarity per screen in the visual ruler.
 
 ```
 mean_similarity = sum(similarity_per_screen) / count(screens)
 ```
 
-**Medição**:
-- Calculada pelo discriminador
-- Separada por modo (light/dark)
-- Exclui áreas mascaradas
+**Measurement**:
+- Calculated by the discriminator
+- Separated by mode (light/dark)
+- Excludes masked areas
 
-### 16. iterations_to_pass (Iterações até PASS)
+### 16. iterations_to_pass (Iterations to PASS)
 
-**Definição**: Número de ciclos gerador→discriminador até atingir PASS.
+**Definition**: Number of generator→discriminator cycles until PASS is reached.
 
 ```
 iterations_to_pass = count(iterations até verdict == PASS)
 ```
 
-**Relevância**: Menos iterações = maior eficiência do gerador.
+**Relevance**: Fewer iterations = higher generator efficiency.
 
-**Meta**: ≤ 2 iterações em média
+**Goal**: ≤ 2 iterations on average
 
-### 17. cheating_attempts_detected (Tentativas de Trapaça Detectadas)
+### 17. cheating_attempts_detected (Cheating Attempts Detected)
 
-**Definição**: Número de tentativas de trapaça identificadas pelo discriminador.
+**Definition**: Number of cheating attempts identified by the discriminator.
 
 ```
 cheating_attempts = count(violations onde tipo ∈ cheating_rules)
 ```
 
-**Categorias**:
-- Edição de referências
-- Masks inválidas
-- Alteração de threshold
-- Mudança de seed
-- Outros
+**Categories**:
+- Reference edits
+- Invalid masks
+- Threshold changes
+- Seed changes
+- Others
 
-**Meta**: 0 tentativas não detectadas
+**Goal**: 0 undetected attempts
 
-### 18. human_escalations (Escalações para Humano)
+### 18. human_escalations (Human Escalations)
 
-**Definição**: Proporção de tarefas que requerem intervenção humana após 3 falhas.
+**Definition**: Proportion of tasks that require human intervention after 3 failures.
 
 ```
 human_escalations = (tasks com 3 FAILs) / (total de tasks)
 ```
 
-**Relevância**: Alta taxa indica problema no processo ou spec inadequada.
+**Relevance**: A high rate indicates a process problem or inadequate spec.
 
-**Meta**: < 10%
+**Goal**: < 10%
 
-### 19. discriminator_false_fail_rate (Taxa de Falso-FAIL do Discriminador)
+### 19. discriminator_false_fail_rate (Discriminator False-FAIL Rate)
 
-**Definição**: Proporção de FAILs que eram falsos positivos (trabalho estava correto).
+**Definition**: Proportion of FAILs that were false positives (work was correct).
 
 ```
 false_fail_rate = (FAILs revertidos por humano) / (total de FAILs)
 ```
 
-**Medição**:
-- Humano revisa FAILs escalados
-- Marca como "falso FAIL" se implementação estava correta
-- Indica discriminador muito rigoroso ou spec ambígua
+**Measurement**:
+- A human reviews escalated FAILs
+- Marks as "false FAIL" if the implementation was correct
+- Indicates an overly strict discriminator or ambiguous spec
 
-**Meta**: < 5%
+**Goal**: < 5%
 
-### 20. verification_overhead (Overhead de Verificação)
+### 20. verification_overhead (Verification Overhead)
 
-**Definição**: Tempo adicional gasto em verificação vs implementação.
+**Definition**: Extra time spent on verification vs implementation.
 
 ```
 overhead = (tempo_total_verificacao) / (tempo_implementacao)
 ```
 
-**Componentes**:
-- Tempo de guard check
-- Tempo de build
-- Tempo de captura
-- Tempo de comparação
+**Components**:
+- Guard check time
+- Build time
+- Capture time
+- Comparison time
 
 ---
 
-## Comparação: Auto-Verificação vs Verificação Adversarial
+## Comparison: Self-Verification vs Adversarial Verification
 
-Uma variante do benchmark compara verificação pelo próprio implementador com verificação adversarial.
+A benchmark variant compares verification by the implementer itself with adversarial verification.
 
-### Auto-Verificação (Self-Verify)
+### Self-Verification (Self-Verify)
 
-1. Gerador implementa solução
-2. **Mesmo gerador** verifica seu próprio trabalho
-3. Gerador tem todo o contexto e código
-4. Métricas coletadas pelo próprio gerador
+1. Generator implements the solution
+2. The **same generator** verifies its own work
+3. Generator has all context and code
+4. Metrics collected by the generator itself
 
-### Verificação Adversarial
+### Adversarial Verification
 
-1. Gerador implementa solução
-2. **Discriminador independente** verifica
-3. Discriminador não viu o código sendo escrito
-4. Clean build, fresh capture, medição independente
+1. Generator implements the solution
+2. An **independent discriminator** verifies
+3. Discriminator did not see the code being written
+4. Clean build, fresh capture, independent measurement
 
-### Métricas Específicas
+### Specific Metrics
 
-| Métrica | Descrição |
-|---------|-----------|
-| `defects_caught_self` | Defeitos encontrados por auto-verificação |
-| `defects_caught_adversarial` | Defeitos encontrados por verificação adversarial |
-| `defects_missed_self` | Defeitos que passaram por auto-verificação |
-| `defects_missed_adversarial` | Defeitos que passaram por verificação adversarial |
-| `cheating_detected` | Tentativas de trapaça detectadas (só adversarial detecta) |
-| `time_to_verify_self` | Tempo de auto-verificação |
-| `time_to_verify_adversarial` | Tempo de verificação adversarial |
+| Metric | Description |
+|--------|-------------|
+| `defects_caught_self` | Defects found by self-verification |
+| `defects_caught_adversarial` | Defects found by adversarial verification |
+| `defects_missed_self` | Defects that passed self-verification |
+| `defects_missed_adversarial` | Defects that passed adversarial verification |
+| `cheating_detected` | Cheating attempts detected (only adversarial detects) |
+| `time_to_verify_self` | Self-verification time |
+| `time_to_verify_adversarial` | Adversarial verification time |
 
-### Metodologia
+### Methodology
 
-Para medir objetivamente:
+To measure objectively:
 
-1. **Gold standard**: humanos especialistas identificam todos os defeitos em implementações
-2. **Auto-verificação**: gerador verifica, mede recall contra gold standard
-3. **Adversarial**: discriminador verifica, mede recall contra gold standard
-4. **Comparação**: qual abordagem encontra mais defeitos?
+1. **Gold standard**: expert humans identify all defects in implementations
+2. **Self-verification**: generator verifies, measure recall against the gold standard
+3. **Adversarial**: discriminator verifies, measure recall against the gold standard
+4. **Comparison**: which approach finds more defects?
 
-### Hipótese
+### Hypothesis
 
-Esperamos que verificação adversarial supere auto-verificação em:
-- `defects_caught`: mais defeitos encontrados
-- `cheating_detected`: detecta manipulação (auto-verificação não detecta)
-- `defects_missed`: menos defeitos escapam
+We expect adversarial verification to outperform self-verification on:
+- `defects_caught`: more defects found
+- `cheating_detected`: detects manipulation (self-verification does not)
+- `defects_missed`: fewer defects escape
 
-E que auto-verificação seja melhor em:
-- `time_to_verify`: mais rápida (sem spawn de discriminador)
-- `false_fail_rate`: menos falsos positivos (conhece o contexto)
+And self-verification to be better on:
+- `time_to_verify`: faster (no discriminator spawn)
+- `false_fail_rate`: fewer false positives (knows the context)
 
-### Benchmark de UI
+### UI Benchmark
 
-Específico para o ruler visual:
+Specific to the visual ruler:
 
 ```yaml
 benchmark:
@@ -725,161 +725,161 @@ benchmark:
 
 ---
 
-## KPIs de Router/Workers
+## Router/Workers KPIs
 
-O padrão Router/Workers introduz métricas específicas para avaliar a eficácia da delegação e paralelização.
+The Router/Workers pattern introduces specific metrics to evaluate delegation and parallelization effectiveness.
 
-### 21. cache_read_tokens_pct (Porcentagem de Tokens Cache-Read)
+### 21. cache_read_tokens_pct (Cache-Read Token Percentage)
 
-**Definição**: Proporção de tokens de input que vieram de cache (contexto reutilizado).
+**Definition**: Proportion of input tokens that came from cache (reused context).
 
 ```
 cache_read_tokens_pct = (cache_read_tokens) / (total_input_tokens) × 100
 ```
 
-**Medição**:
-- Reportado pela API do modelo (quando disponível)
-- Estimado via repetição de contextos entre workers
+**Measurement**:
+- Reported by the model API (when available)
+- Estimated via context repetition across workers
 
-**Relevância**: Workers com mandates pequenos e repetitivos aproveitam mais cache.
+**Relevance**: Workers with small, repetitive mandates benefit more from cache.
 
-**Meta**: ≥ 70% de cache-read em workloads típicos
+**Goal**: ≥ 70% cache-read in typical workloads
 
-### 22. router_latency_p50 / router_latency_p95 (Latência do Router)
+### 22. router_latency_p50 / router_latency_p95 (Router Latency)
 
-**Definição**: Tempo que o router leva para decompor tarefa e criar tickets.
+**Definition**: Time the router takes to decompose a task and create tickets.
 
 ```
 router_latency = timestamp_tickets_criados - timestamp_tarefa_recebida
 ```
 
-**Medição**:
-- p50 (mediana): latência típica
-- p95 (percentil 95): latência de cauda
+**Measurement**:
+- p50 (median): typical latency
+- p95 (95th percentile): tail latency
 
-**Meta**: 
+**Goal**:
 - p50 < 500ms
 - p95 < 2s
 
-### 23. tickets_parallel_max (Paralelismo Máximo de Tickets)
+### 23. tickets_parallel_max (Maximum Ticket Parallelism)
 
-**Definição**: Maior número de tickets executando simultaneamente.
+**Definition**: Highest number of tickets executing simultaneously.
 
 ```
 tickets_parallel_max = max(workers_ativos em qualquer instante)
 ```
 
-**Relevância**: Indica eficácia da paralelização. Baixo paralelismo sugere dependências excessivas.
+**Relevance**: Indicates parallelization effectiveness. Low parallelism suggests excessive dependencies.
 
-**Meta**: ≥ 3 tickets em paralelo para tarefas complexas
+**Goal**: ≥ 3 tickets in parallel for complex tasks
 
-### 24. merge_conflict_rate (Taxa de Conflitos no Merge)
+### 24. merge_conflict_rate (Merge Conflict Rate)
 
-**Definição**: Proporção de arquivos com conflitos entre workers.
+**Definition**: Proportion of files with conflicts between workers.
 
 ```
 merge_conflict_rate = (arquivos com conflito) / (arquivos modificados) × 100
 ```
 
-**Relevância**: Alta taxa indica mandates mal definidos ou sobreposição de escopo.
+**Relevance**: A high rate indicates poorly defined mandates or scope overlap.
 
-**Meta**: < 5%
+**Goal**: < 5%
 
-### 25. delegation_rate (Taxa de Delegação)
+### 25. delegation_rate (Delegation Rate)
 
-**Definição**: Proporção de tarefas delegadas vs executadas pelo próprio router.
+**Definition**: Proportion of tasks delegated vs executed by the router itself.
 
 ```
 delegation_rate = (tarefas delegadas para workers) / (total de tarefas)
 ```
 
-**Relevância**: Router deve delegar, não executar. Taxa baixa indica gargalo.
+**Relevance**: The router should delegate, not execute. A low rate indicates a bottleneck.
 
-**Meta**: ≥ 90%
+**Goal**: ≥ 90%
 
-### 26. worker_utilization (Utilização de Workers)
+### 26. worker_utilization (Worker Utilization)
 
-**Definição**: Tempo que workers passam trabalhando vs ociosos.
+**Definition**: Time workers spend working vs idle.
 
 ```
 worker_utilization = (tempo_trabalhando) / (tempo_total) × 100
 ```
 
-**Medição**: Por worker e agregado.
+**Measurement**: Per worker and aggregate.
 
-**Meta**: ≥ 80% durante processamento de filas
+**Goal**: ≥ 80% during queue processing
 
-### 27. ticket_retry_rate (Taxa de Retry de Tickets)
+### 27. ticket_retry_rate (Ticket Retry Rate)
 
-**Definição**: Proporção de tickets que precisaram de retry após falha.
+**Definition**: Proportion of tickets that needed a retry after failure.
 
 ```
 ticket_retry_rate = (tickets com retry) / (total de tickets)
 ```
 
-**Relevância**: Alta taxa indica tickets mal especificados ou workers instáveis.
+**Relevance**: A high rate indicates poorly specified tickets or unstable workers.
 
-**Meta**: < 10%
+**Goal**: < 10%
 
-### 28. direct_delivery_rate (Taxa de Entrega Direta)
+### 28. direct_delivery_rate (Direct Delivery Rate)
 
-**Definição**: Proporção de tickets entregues diretamente a workers subscritos vs via board.
+**Definition**: Proportion of tickets delivered directly to subscribed workers vs via the board.
 
 ```
 direct_delivery_rate = (tickets entregues diretamente) / (total de tickets) × 100
 ```
 
-**Relevância**: Entrega direta reduz latência de atribuição e melhora afinidade de contexto.
+**Relevance**: Direct delivery reduces assignment latency and improves context affinity.
 
-**Meta**: ≥ 50% para workloads com dependências
+**Goal**: ≥ 50% for workloads with dependencies
 
 ---
 
-## Comparação: Router/Workers vs Monolítico
+## Comparison: Router/Workers vs Monolithic
 
-Uma variante do benchmark compara a arquitetura Router/Workers com execução monolítica.
+A benchmark variant compares the Router/Workers architecture with monolithic execution.
 
-### Monolítico (Baseline)
+### Monolithic (Baseline)
 
-1. Agente único recebe tarefa complexa
-2. Executa todas as subtarefas sequencialmente
-3. Contexto cresce ao longo da execução
-4. Sem paralelização
+1. A single agent receives a complex task
+2. Executes all subtasks sequentially
+3. Context grows throughout execution
+4. No parallelization
 
 ### Router/Workers (Experimental)
 
-1. Router decompõe tarefa em tickets
-2. Workers executam em paralelo com contexto mínimo
-3. Follow-ups podem ir direto ao worker dono (entrega direta)
-4. Merge agrega resultados
-5. Paralelização efetiva
+1. Router decomposes the task into tickets
+2. Workers execute in parallel with minimal context
+3. Follow-ups can go directly to the owning worker (direct delivery)
+4. Merge aggregates results
+5. Effective parallelization
 
-### Métricas Específicas
+### Specific Metrics
 
-| Métrica | Descrição |
-|---------|-----------|
-| `total_input_tokens` | Tokens de input totais (monolítico acumula) |
-| `cache_read_savings` | Economia por reutilização de cache |
-| `wall_time_total` | Tempo total de execução |
-| `wall_time_critical_path` | Tempo do caminho crítico (paralelização) |
-| `context_peak_tokens` | Pico de contexto (monolítico cresce) |
-| `failures_isolated` | Falhas contidas em um worker |
-| `failures_cascaded` | Falhas que afetaram outros (monolítico) |
-| `direct_delivery_latency` | Latência de entrega direta vs via board |
+| Metric | Description |
+|--------|-------------|
+| `total_input_tokens` | Total input tokens (monolithic accumulates) |
+| `cache_read_savings` | Savings from cache reuse |
+| `wall_time_total` | Total execution time |
+| `wall_time_critical_path` | Critical-path time (parallelization) |
+| `context_peak_tokens` | Peak context (monolithic grows) |
+| `failures_isolated` | Failures contained in one worker |
+| `failures_cascaded` | Failures that affected others (monolithic) |
+| `direct_delivery_latency` | Direct delivery latency vs via board |
 
-### Hipótese
+### Hypothesis
 
-Esperamos que Router/Workers supere monolítico em:
-- `total_input_tokens`: ~40% menos via contexto mínimo + cache
-- `wall_time_total`: ~60% menos via paralelização
-- `failures_isolated`: falhas não propagam
+We expect Router/Workers to outperform monolithic on:
+- `total_input_tokens`: ~40% less via minimal context + cache
+- `wall_time_total`: ~60% less via parallelization
+- `failures_isolated`: failures do not propagate
 
-E que monolítico seja melhor em:
-- `router_latency`: sem overhead de decomposição
-- `merge_conflict_rate`: sem conflitos (único executor)
-- Tarefas simples: overhead de coordenação não compensa
+And monolithic to be better on:
+- `router_latency`: no decomposition overhead
+- `merge_conflict_rate`: no conflicts (single executor)
+- Simple tasks: coordination overhead does not pay off
 
-### Benchmark de Delegação
+### Delegation Benchmark
 
 ```yaml
 benchmark:
@@ -915,79 +915,79 @@ benchmark:
 
 ---
 
-## Métricas e Experimentos Propostos (2026-11)
+## Proposed Metrics and Experiments (2026-11)
 
-Baseado na revisão de fontes primárias ([docs/pesquisa/achados.md](pesquisa/achados.md)), as seguintes métricas e experimentos são propostos para validação futura.
+Based on the primary-source review ([docs/pesquisa/achados.md](pesquisa/achados.md)), the following metrics and experiments are proposed for future validation.
 
-### Métricas Propostas
+### Proposed Metrics
 
-#### Retenção de Invariantes após Compactação
+#### Invariant Retention after Compaction
 
-**Definição**: Proporção de regras anti-trapaça e constraints de segurança preservadas após N ciclos de compactação.
+**Definition**: Proportion of anti-cheating rules and security constraints preserved after N compaction cycles.
 
 ```
 invariant_retention = (invariantes preservados após N compactações) / (invariantes originais)
 ```
 
-**Fonte**: [Benchmarks Are Surprisingly Compaction-Friendly](https://arxiv.org/abs/2610.31778) (Salle et al., 2026)
+**Source**: [Benchmarks Are Surprisingly Compaction-Friendly](https://arxiv.org/abs/2610.31778) (Salle et al., 2026)
 
-**Meta proposta**: 100% (invariantes vivem fora da compactação, por design)
+**Proposed goal**: 100% (invariants live outside compaction, by design)
 
-**Status**: proposta pendente, veja [ADR-010](adr/010-invariantes-fora-compactacao.md)
+**Status**: pending proposal, see [ADR-010](adr/010-invariantes-fora-compactacao.md)
 
 ---
 
-#### Gap Visível vs Oculto (Reward Hacking)
+#### Visible vs Hidden Gap (Reward Hacking)
 
-**Definição**: Diferença entre pass rate em testes visíveis e pass rate em testes held-out.
+**Definition**: Difference between pass rate on visible tests and pass rate on held-out tests.
 
 ```
 visible_hidden_gap = pass_rate_visible - pass_rate_hidden
 ```
 
-**Fonte**: [SpecBench](https://arxiv.org/abs/2605.21384) (Zhao et al., 2026) — gap cresce 28 pts a cada 10× de código
+**Source**: [SpecBench](https://arxiv.org/abs/2605.21384) (Zhao et al., 2026) — gap grows 28 pts for every 10× of code
 
-**Meta proposta**: gap < 10% (diferença pequena indica baixo reward hacking)
+**Proposed goal**: gap < 10% (a small difference indicates low reward hacking)
 
-**Status**: proposta pendente
+**Status**: pending proposal
 
 ---
 
-#### Taxa de Impossível (Cheating Rate)
+#### Impossible Rate (Cheating Rate)
 
-**Definição**: Proporção de tarefas impossíveis onde o agente reporta sucesso.
+**Definition**: Proportion of impossible tasks where the agent reports success.
 
 ```
 impossible_pass_rate = (tarefas impossíveis com pass) / (total de tarefas impossíveis)
 ```
 
-**Fonte**: [ImpossibleBench](https://arxiv.org/abs/2510.20270) (Zhong et al., 2025) — qualquer pass é trapaça
+**Source**: [ImpossibleBench](https://arxiv.org/abs/2510.20270) (Zhong et al., 2025) — any pass is cheating
 
-**Meta proposta**: 0%
+**Proposed goal**: 0%
 
-**Status**: proposta pendente (implementar via `tb bench --impossible`)
+**Status**: pending proposal (implement via `tb bench --impossible`)
 
 ---
 
-#### ROI do Grafo
+#### Graph ROI
 
-**Definição**: Proporção de tarefas onde usar o grafo resultou em economia de tokens.
+**Definition**: Proportion of tasks where using the graph resulted in token savings.
 
 ```
 graph_roi_positive_pct = (tarefas onde grafo economizou) / (tarefas onde grafo foi usado)
 ```
 
-**Fonte**: [How Should Agents See Code?](https://arxiv.org/abs/2611.07286) (Sepidband et al., 2026) e [Cost-Inefficient Behaviors](https://arxiv.org/abs/2609.30725) (Hu et al., 2026)
+**Source**: [How Should Agents See Code?](https://arxiv.org/abs/2611.07286) (Sepidband et al., 2026) and [Cost-Inefficient Behaviors](https://arxiv.org/abs/2609.30725) (Hu et al., 2026)
 
-**Meta proposta**: ≥ 60%
+**Proposed goal**: ≥ 60%
 
-**Status**: proposta pendente, veja [ADR-011](adr/011-grafo-sob-demanda.md)
+**Status**: pending proposal, see [ADR-011](adr/011-grafo-sob-demanda.md)
 
 ---
 
-### Experimentos Propostos
+### Proposed Experiments
 
-#### A/B: Grafo vs Sem Grafo por Tipo de Tarefa
+#### A/B: Graph vs No Graph by Task Type
 
 ```yaml
 experiment:
@@ -1014,11 +1014,11 @@ experiment:
   source: "arxiv.org/abs/2611.07286, arxiv.org/abs/2609.30725"
 ```
 
-**Status**: proposta pendente
+**Status**: pending proposal
 
 ---
 
-#### A/B: Compactação Híbrida vs Apenas LLM
+#### A/B: Hybrid Compaction vs LLM Only
 
 ```yaml
 experiment:
@@ -1042,11 +1042,11 @@ experiment:
   source: "arxiv.org/abs/2610.31710, arxiv.org/abs/2610.31778"
 ```
 
-**Status**: proposta pendente
+**Status**: pending proposal
 
 ---
 
-#### Benchmark: Tarefas Impossíveis
+#### Benchmark: Impossible Tasks
 
 ```yaml
 experiment:
@@ -1069,11 +1069,11 @@ experiment:
   source: "arxiv.org/abs/2510.20270"
 ```
 
-**Status**: proposta pendente (implementar via `tb bench --impossible`)
+**Status**: pending proposal (implement via `tb bench --impossible`)
 
 ---
 
-#### Medição: pass^k além de pass@1
+#### Measurement: pass^k Beyond pass@1
 
 ```yaml
 experiment:
@@ -1093,11 +1093,11 @@ experiment:
   source: "arxiv.org/abs/2406.12045 (τ-bench)"
 ```
 
-**Status**: proposta pendente
+**Status**: pending proposal
 
 ---
 
-#### Fronteira Custo × Acurácia
+#### Cost × Accuracy Frontier
 
 ```yaml
 experiment:
@@ -1122,60 +1122,60 @@ experiment:
   source: "arxiv.org/abs/2407.01502 (AI Agents That Matter)"
 ```
 
-**Status**: proposta pendente
+**Status**: pending proposal
 
 ---
 
-## Microbenchmark: `tb stack` (binário real)
+## Microbenchmark: `tb stack` (real binary)
 
-Medir wall-clock do **binário** (`go build -o tb ./cmd/tb`), não só `testing.B` in-process.
-O stack já reutiliza diff/índice/memória; a paralelização (`--jobs`) cobre etapas
-somente leitura (`guard`/`drift`/`review`). `verify` permanece isolado.
+Measure wall-clock of the **binary** (`go build -o tb ./cmd/tb`), not only in-process `testing.B`.
+The stack already reuses diff/index/memory; parallelization (`--jobs`) covers
+read-only steps (`guard`/`drift`/`review`). `verify` stays isolated.
 
-### Metodologia
+### Methodology
 
-- ≥ 7 corridas; reportar média
-- Comparar: `tb stack …` vs sequência de comandos avulsos
-- Variantes: `guard+drift+review` e `verify+guard+drift+review` (`--test-cmd true --max-iter 1`)
-- Fixtures: repositório do toolbelt e fixture com centenas de arquivos alterados
-- Controles: `--jobs 1` (serial interno) vs default (nº de CPUs)
+- ≥ 7 runs; report the mean
+- Compare: `tb stack …` vs a sequence of standalone commands
+- Variants: `guard+drift+review` and `verify+guard+drift+review` (`--test-cmd true --max-iter 1`)
+- Fixtures: the toolbelt repository and a fixture with hundreds of changed files
+- Controls: `--jobs 1` (internal serial) vs default (CPU count)
 
-### Perfil observado (Prepare)
+### Observed profile (Prepare)
 
-| Fase | Fixture pequena | Fixture grande (~500 arquivos) |
-|------|-----------------|--------------------------------|
+| Phase | Small fixture | Large fixture (~500 files) |
+|------|-----------------|------------------------------|
 | Startup (`tb version`) | ~3 ms | ~3 ms |
-| `git diff` unificado | ~1.4 ms | ~32 ms |
+| Unified `git diff` | ~1.4 ms | ~32 ms |
 | `git diff --name-status` + `--name-only` | ~2.5 ms | ~5.5 ms |
-| 3× git em paralelo | ~1.6 ms | ~31 ms (dominado pelo unified) |
+| 3× git in parallel | ~1.6 ms | ~31 ms (dominated by unified) |
 
-O ganho in-process (stack paralelo vs `--jobs 1` ~2.6×; vs 3× `Run` avulsos ~7×)
-superestima o ganho no binário real, porque o startup (~3 ms) e o `git diff`
-unificado dominam.
+The in-process gain (parallel stack vs `--jobs 1` ~2.6×; vs 3× standalone `Run` ~7×)
+overestimates the real-binary gain, because startup (~3 ms) and the unified
+`git diff` dominate.
 
-### Resultados (binário real, média de 7 corridas)
+### Results (real binary, mean of 7 runs)
 
-| Cenário | Antes (serial stack) | Depois (paralelo) | Sequência avulsa | Speedup stack÷seq |
+| Scenario | Before (serial stack) | After (parallel) | Standalone sequence | Speedup stack÷seq |
 |---------|----------------------|-------------------|------------------|-------------------|
 | toolbelt `guard+drift+review` | 10 ms | 5 ms | 15 ms | 3.00× |
 | toolbelt `verify+…` | 10 ms | 5 ms | 19 ms | 3.80× |
-| fixture grande `guard+drift+review` | 60 ms | 36 ms | 80 ms | 2.22× |
-| fixture grande `verify+…` | 74 ms | 44 ms | 93 ms | 2.11× |
-| grande + `--jobs 1` | — | 47 ms | 84 ms | 1.79× (só Prepare paralelo) |
+| large fixture `guard+drift+review` | 60 ms | 36 ms | 80 ms | 2.22× |
+| large fixture `verify+…` | 74 ms | 44 ms | 93 ms | 2.11× |
+| large + `--jobs 1` | — | 47 ms | 84 ms | 1.79× (Prepare parallel only) |
 
-Na fixture grande, paralelizar etapas + git no Prepare cortou ~40% do wall-clock
-do stack (60→36 ms). O `--jobs 1` mantém o Prepare paralelo e serve de controle serial
-das etapas.
+On the large fixture, parallelizing steps + git in Prepare cut ~40% of stack
+wall-clock (60→36 ms). `--jobs 1` keeps Prepare parallel and serves as the serial
+control for steps.
 
-### Como rodar
+### How to run
 
 ```bash
 go build -o /tmp/tb ./cmd/tb
 /tmp/tb stack guard drift review --ticket rd.md
-# vs sequência:
+# vs sequence:
 /tmp/tb guard check --json
 /tmp/tb drift --ticket rd.md --json
 /tmp/tb review --ticket rd.md --json
 ```
 
-**Status**: medido no desenvolvimento de `--jobs` (ver CHANGELOG Não Lançado)
+**Status**: measured during `--jobs` development (shipped in v0.0.3, see CHANGELOG)

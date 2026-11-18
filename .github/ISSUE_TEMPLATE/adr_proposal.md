@@ -1,50 +1,50 @@
 ---
 name: ADR Proposal
-about: Proponha um Registro de Decisão Arquitetural
+about: Propose an Architecture Decision Record
 title: '[ADR] '
 labels: adr
 assignees: ''
 ---
 
-## Título da Decisão
+## Decision Title
 
-Uma frase descrevendo a decisão.
+One sentence describing the decision.
 
-## Contexto
+## Context
 
-Qual problema ou situação motivou esta decisão?
+What problem or situation motivated this decision?
 
-## Opções Consideradas
+## Options Considered
 
-### Opção 1: [Nome]
-- Descrição
-- Prós
-- Contras
+### Option 1: [Name]
+- Description
+- Pros
+- Cons
 
-### Opção 2: [Nome]
-- Descrição
-- Prós
-- Contras
+### Option 2: [Name]
+- Description
+- Pros
+- Cons
 
-## Decisão Proposta
+## Proposed Decision
 
-Qual opção você recomenda e por quê?
+Which option do you recommend and why?
 
-## Consequências
+## Consequences
 
-### Positivas
+### Positive
 - ...
 
-### Negativas
+### Negative
 - ...
 
-## Informações Adicionais
+## Additional Information
 
-Links, referências, ou contexto adicional.
+Links, references, or additional context.
 
 ---
 
-**Próximos passos após aprovação da proposta:**
-1. Criar arquivo `docs/adr/NNN-titulo.md`
-2. Abrir PR no branch `adr/NNN-titulo`
-3. Após merge, esta issue será fechada
+**Next steps after the proposal is approved:**
+1. Create the file `docs/adr/NNN-titulo.md`
+2. Open a PR on the branch `adr/NNN-titulo`
+3. After merge, this issue will be closed

@@ -1,168 +1,168 @@
-🇧🇷 Português | [🇺🇸 English](../../en/campo/rodada2/requests.md)
+🇺🇸 English | [🇧🇷 Português](../../pt-BR/campo/rodada2/requests.md)
 
-# Campo rodada 2: psf/requests
+# Field round 2: psf/requests
 
-Grupo: **without existing AI-agent instrumentation**.  
-Ferramenta: `tb` compilado de `main` (`make build`, ldflags `a46c295`).  
-Clone local: `/tmp/target` (basename `target` de propósito para revalidar SkipDirs).  
-Nenhuma interação com o remoto `psf/requests` (sem push/issue/PR/comentário).
+Group: **without existing AI-agent instrumentation**.  
+Tool: `tb` built from `main` (`make build`, ldflags `a46c295`).  
+Local clone: `/tmp/target` (basename `target` on purpose to revalidate SkipDirs).  
+No interaction with the remote `psf/requests` (no push/issue/PR/comment).
 
-## Repositório
+## Repository
 
-| Campo | Valor |
+| Field | Value |
 |-------|-------|
-| Nome | [psf/requests](https://github.com/psf/requests) |
-| Linguagem | Python ≥3.10 |
-| Tamanho | ~34 `.py` em `src/`+`tests/`; ~6396 LOC em `src/requests`; working tree ~5,8 MiB (sem `.git`/`.venv`/`.toolbelt`); shallow clone depth 50 |
-| Commit base | `3c7baaa` |
-| Instrumentação de IA existente | **Não** há `AGENTS.md`, `CLAUDE.md`, `.cursorrules`. Há `.github/AI_POLICY.md` (política humana). |
-| Toolchain | **Parcial.** `python3.12` + venv + `requirements-dev.txt` + editable install + `ruff` + `pytest`. Suite alvo do patch: **13 passed**. **Não configurado:** `tox` multi-versão, `pyright`, docs Sphinx, pre-commit completo. Suite completa não reexecutada (ambiente com timeouts de rede conhecidos da rodada 1). |
+| Name | [psf/requests](https://github.com/psf/requests) |
+| Language | Python ≥3.10 |
+| Size | ~34 `.py` under `src/`+`tests/`; ~6396 LOC in `src/requests`; working tree ~5.8 MiB (without `.git`/`.venv`/`.toolbelt`); shallow clone depth 50 |
+| Base commit | `3c7baaa` |
+| Existing AI instrumentation | **No** `AGENTS.md`, `CLAUDE.md`, `.cursorrules`. There is `.github/AI_POLICY.md` (human policy). |
+| Toolchain | **Partial.** `python3.12` + venv + `requirements-dev.txt` + editable install + `ruff` + `pytest`. Patch target suite: **13 passed**. **Not configured:** multi-version `tox`, `pyright`, Sphinx docs, full pre-commit. Full suite not re-run (environment with known network timeouts from round 1). |
 
-## Tarefa escolhida
+## Chosen task
 
-| Campo | Valor |
+| Field | Value |
 |-------|-------|
-| O quê | Em `should_bypass_proxies`, normalizar entradas IPv6 **entre colchetes** em `no_proxy` (ex.: `[2001:db8::1]`) para casar com `urlparse().hostname` (sem colchetes). Teste parametrizado em `tests/test_utils.py`. |
-| Por quê | Bug claro, repro local sem rede, escopo pequeno, distinto da rodada 1. |
-| Issue | Nenhuma issue aberta consultada (protocolo: sem rede além de clone/deps). Motivado por falha local: `no_proxy='[2001:db8::1]'` não bypassava `http://[2001:db8::1]/`. |
-| Completada? | **Sim no clone local.** Diff: 2 linhas em `utils.py` + 4 casos de teste. Sem `HISTORY.md` / PR upstream (proibido). |
-| Checks nativos | `pytest tests/test_utils.py -k 'bypass_proxies_no_proxy_ipv6 or bypass_proxies_no_proxy_domain'`: **13 passed**. `ruff check` nos tocados: **ok**. |
-| Rodada 1 (comparação) | Digest `qop` com espaços após vírgula (`auth.py` + `test_lowlevel.py`, issue #7648). |
+| What | In `should_bypass_proxies`, normalize **bracketed** IPv6 entries in `no_proxy` (e.g. `[2001:db8::1]`) to match `urlparse().hostname` (without brackets). Parametrized test in `tests/test_utils.py`. |
+| Why | Clear bug, local repro without network, small scope, distinct from round 1. |
+| Issue | No open issue consulted (protocol: no network beyond clone/deps). Motivated by local failure: `no_proxy='[2001:db8::1]'` did not bypass `http://[2001:db8::1]/`. |
+| Completed? | **Yes on the local clone.** Diff: 2 lines in `utils.py` + 4 test cases. No `HISTORY.md` / upstream PR (forbidden). |
+| Native checks | `pytest tests/test_utils.py -k 'bypass_proxies_no_proxy_ipv6 or bypass_proxies_no_proxy_domain'`: **13 passed**. `ruff check` on touched files: **ok**. |
+| Round 1 (comparison) | Digest `qop` with spaces after commas (`auth.py` + `test_lowlevel.py`, issue #7648). |
 
-## Verificação das 12 correções
+## Verification of the 12 fixes
 
-| # | correção | funcionou/não funcionou/não testado/não se aplica | evidência |
-|---|----------|---------------------------------------------------|-----------|
-| 1 | graph SkipDirs na raiz do walk | **funcionou** | `tb graph index --enable .` em `/tmp/target` → **853 nós, 2349 arestas** (rodada 1: 0 nós no mesmo path) |
-| 2 | verify `hidden_test_cmd` sem `tests/hidden/` | **funcionou** | Sem dir `tests/hidden/`; config com `hidden_test_cmd` pytest domain → JSON `hidden_available: true`, `hidden_passed: true`, verdict PASS |
-| 3 | guard `--strict --json` exit ≠ 0 | **funcionou** | Diff tocando path protegido → JSON com `severity:error` e **EXIT=1** |
-| 4 | guard lê `protected_paths` de `guard.yaml` | **funcionou** | `.toolbelt/guard.yaml` com `src/requests/adapters.py`; commit probe → `protected_path` nesse arquivo |
-| 5 | init detecção de toolchain | **funcionou** | `tb init` → `verify.test_cmd: pytest` (não `go test`); probe `/tmp/agents-probe` idem |
-| 6 | review `tests/hidden` casa por path | **funcionou** | Ticket menciona `tests/hidden/**` só como forbidden/prosa; review limpo (`findings: []`, sem FP critical) |
-| 7 | bench `default_agent` e `compare --agent` | **funcionou** | Sem `--agent` com `default_agent: echo…` → `agent=external`, EXIT=0; sem default → EXIT=1; `compare --help` lista `-a/--agent`; A/B com `--agent` rodou |
-| 8 | review `## Scope`/`## Escopo`, listas MD e `**` globs | **funcionou** | Ticket só com `## Scope` + bullets → review PASS; frontmatter `src/requests/**/*.py` + `tests/**` cobriu `utils.py`/`test_utils.py` |
-| 9 | verify `build_cmd` e `lint_cmd` | **funcionou** | JSON: `build_ran/passed: true`, `lint_ran/passed: true` antes dos testes |
-| 10 | init lê AGENTS/CLAUDE e `--write-agents` | **funcionou** | Flag existe; em repo sem docs, `tb init --write-agents` semeou `AGENTS.md` + `.toolbelt/agent_docs.yaml`. Em `/tmp/target` (sem instrumentação) init sem flag não cria AGENTS (esperado) |
-| 11 | graph Python `calls` | **funcionou** | Stats: `edges_calls: 1170`. `callers --function should_bypass_proxies` listou testes + `get_environ_proxies`; `impact --file src/requests/utils.py` não vazio |
-| 12 | visual skipped agregado + docs CLI alinhados | **funcionou** | Manifesto com refs ausentes → top-level `"skipped": true`, `skip_reason: "todas as telas foram skipped"`. `docs/cli.md` documenta `tb mem add <regra>` (sem `--type` fantasma); CLI rejeita `--type` (EXIT=1) de forma consistente com a docs atual |
+| # | fix | worked / did not work / not tested / not applicable | evidence |
+|---|-----|-----------------------------------------------------|----------|
+| 1 | graph SkipDirs at walk root | **worked** | `tb graph index --enable .` under `/tmp/target` → **853 nodes, 2349 edges** (round 1: 0 nodes on the same path) |
+| 2 | verify `hidden_test_cmd` without `tests/hidden/` | **worked** | No `tests/hidden/` dir; config with domain pytest `hidden_test_cmd` → JSON `hidden_available: true`, `hidden_passed: true`, verdict PASS |
+| 3 | guard `--strict --json` exit ≠ 0 | **worked** | Diff touching a protected path → JSON with `severity:error` and **EXIT=1** |
+| 4 | guard reads `protected_paths` from `guard.yaml` | **worked** | `.toolbelt/guard.yaml` with `src/requests/adapters.py`; probe commit → `protected_path` on that file |
+| 5 | init toolchain detection | **worked** | `tb init` → `verify.test_cmd: pytest` (not `go test`); probe `/tmp/agents-probe` same |
+| 6 | review `tests/hidden` matches by path | **worked** | Ticket mentions `tests/hidden/**` only as forbidden/prose; clean review (`findings: []`, no critical FP) |
+| 7 | bench `default_agent` and `compare --agent` | **worked** | Without `--agent` with `default_agent: echo…` → `agent=external`, EXIT=0; without default → EXIT=1; `compare --help` lists `-a/--agent`; A/B with `--agent` ran |
+| 8 | review `## Scope`/`## Escopo`, MD lists and `**` globs | **worked** | Ticket with only `## Scope` + bullets → review PASS; frontmatter `src/requests/**/*.py` + `tests/**` covered `utils.py`/`test_utils.py` |
+| 9 | verify `build_cmd` and `lint_cmd` | **worked** | JSON: `build_ran/passed: true`, `lint_ran/passed: true` before tests |
+| 10 | init reads AGENTS/CLAUDE and `--write-agents` | **worked** | Flag exists; in a repo without docs, `tb init --write-agents` seeded `AGENTS.md` + `.toolbelt/agent_docs.yaml`. Under `/tmp/target` (no instrumentation) init without the flag does not create AGENTS (expected) |
+| 11 | graph Python `calls` | **worked** | Stats: `edges_calls: 1170`. `callers --function should_bypass_proxies` listed tests + `get_environ_proxies`; `impact --file src/requests/utils.py` non-empty |
+| 12 | aggregated visual skipped + CLI docs aligned | **worked** | Manifesto with missing refs → top-level `"skipped": true`, `skip_reason: "todas as telas foram skipped"`. `docs/cli.md` documents `tb mem add <regra>` (no phantom `--type`); CLI rejects `--type` (EXIT=1) consistently with current docs |
 
-## Uso do tb por comando
+## tb usage by command
 
-| comando | resultado | ajudou/atrapalhou/neutro | evidência |
-|---------|-----------|--------------------------|-----------|
-| `tb init` | OK; `test_cmd: pytest` | **ajudou** | Onboarding Python correto vs rodada 1 (`go test`) |
-| `tb init --write-agents` | Semeia `AGENTS.md` | **ajudou** | Probe `/tmp/agents-probe`; mode 0600 |
-| `tb mem init/list/check/add` | OK | neutro/ajudou | Invariantes anti-cheat; `mem add --type` ainda erro (docs ok) |
-| `tb graph index` em `/tmp/target` | 853 nós / 2349 arestas | **ajudou** | SkipDirs raiz corrigido |
-| `tb graph search/callers/impact` | callers/impact úteis em Python | **ajudou** | Diferente da rodada 1 (vazio) |
-| Ticket `rd.md` + `## Scope` | Parse OK | **ajudou** | Heading+bullets e `**` globs |
-| `tb verify run` | PASS com build/lint/hidden | **ajudou** | Sem pasta `tests/hidden/` |
-| `tb verify --ruler visual` | PASS skipped agregado | neutro | Sem UI real no projeto |
-| `tb review` | Limpo com scope correto | **ajudou** | Sem FP `tests/hidden` |
-| `tb drift` | Sem out-of-scope no fix | ajudou | Alinhado ao review |
-| `tb guard check --strict --json` | EXIT=1 com violação | **ajudou** | `guard.yaml` honrado |
-| `tb bench run` / `compare --agent` | OK com fixtures do toolbelt | neutro | Repo alvo sem `bench/tasks` próprios |
-| `tb mcp` tools/list | Subset JSON-RPC | neutro | echo/env/run/graph_*/version; sem mem/verify/review |
-| `tb version` | `a46c295` | neutro | Com ldflags |
+| command | result | helped / hindered / neutral | evidence |
+|---------|--------|-----------------------------|----------|
+| `tb init` | OK; `test_cmd: pytest` | **helped** | Correct Python onboarding vs round 1 (`go test`) |
+| `tb init --write-agents` | Seeds `AGENTS.md` | **helped** | Probe `/tmp/agents-probe`; mode 0600 |
+| `tb mem init/list/check/add` | OK | neutral/helped | Anti-cheat invariants; `mem add --type` still errors (docs ok) |
+| `tb graph index` under `/tmp/target` | 853 nodes / 2349 edges | **helped** | Root SkipDirs fixed |
+| `tb graph search/callers/impact` | useful callers/impact in Python | **helped** | Unlike round 1 (empty) |
+| Ticket `rd.md` + `## Scope` | Parse OK | **helped** | Heading+bullets and `**` globs |
+| `tb verify run` | PASS with build/lint/hidden | **helped** | No `tests/hidden/` folder |
+| `tb verify --ruler visual` | aggregated PASS skipped | neutral | No real UI in the project |
+| `tb review` | Clean with correct scope | **helped** | No `tests/hidden` FP |
+| `tb drift` | No out-of-scope on the fix | helped | Aligned with review |
+| `tb guard check --strict --json` | EXIT=1 with violation | **helped** | `guard.yaml` honored |
+| `tb bench run` / `compare --agent` | OK with toolbelt fixtures | neutral | Target repo has no own `bench/tasks` |
+| `tb mcp` tools/list | JSON-RPC subset | neutral | echo/env/run/graph_*/version; no mem/verify/review |
+| `tb version` | `a46c295` | neutral | With ldflags |
 
-## Problemas que continuam
+## Problems that persist
 
-- **MCP incompleto** frente à CLI (sem mem/verify/review/drift/guard) — igual à rodada 1.
-- **Verify só tão amplo quanto `test_cmd`**: com filtro `-k ipv6`, erros em outros arquivos não entram no veredicto (mesmo padrão da rodada 1).
-- **Init não preenche `lint_cmd`/`build_cmd`** automaticamente (só `test_cmd`); ainda é edição manual do YAML.
-- **`graph impact` exige `--file`** (UX rígida inalterada).
-- **Configs em mode `0600`** (confirmado em `config.yaml` / `AGENTS.md` semeado).
-- **Repo alvo sem tasks de bench**: precisa apontar `-t/-f` para o tree do toolbelt.
-- Docs de arquitetura/`cli.md` ainda mencionam `--manifest`/promessas extras em trechos; o contrato efetivo de `guard check <base>..<head>` exige range posicional (UX fácil de errar).
+- **Incomplete MCP** vs CLI (no mem/verify/review/drift/guard) — same as round 1.
+- **Verify only as broad as `test_cmd`**: with `-k ipv6` filter, errors in other files do not enter the verdict (same pattern as round 1).
+- **Init does not fill `lint_cmd`/`build_cmd`** automatically (only `test_cmd`); still manual YAML editing.
+- **`graph impact` requires `--file`** (rigid UX unchanged).
+- **Configs mode `0600`** (confirmed on `config.yaml` / seeded `AGENTS.md`).
+- **Target repo without bench tasks**: must point `-t/-f` at the toolbelt tree.
+- Architecture/`cli.md` docs still mention `--manifest`/extra promises in places; the effective `guard check <base>..<head>` contract requires a positional range (easy UX mistake).
 
-## Problemas novos
+## New problems
 
-### P2 — Arestas `calls` Python com alvos espúrios
+### P2 — Python `calls` edges with spurious targets
 
-- **Repro:** Após `tb graph index --enable .`, inspecionar edges `calls` (ex.: `file:setup.py` → `func:tests.setup`, confidence 0.55).
-- **Esperado:** Resolução conservadora dentro do módulo / imports reais.
-- **Actual:** Heurística gera callers/impact úteis, mas também pares de baixa precisão que podem confundir o agente.
+- **Repro:** After `tb graph index --enable .`, inspect `calls` edges (e.g. `file:setup.py` → `func:tests.setup`, confidence 0.55).
+- **Expected:** Conservative resolution within the module / real imports.
+- **Actual:** Heuristic yields useful callers/impact, but also low-precision pairs that can confuse the agent.
 
-### P2 — Onboarding ainda exige YAML manual para lint/build/hidden
+### P2 — Onboarding still needs manual YAML for lint/build/hidden
 
-- **Repro:** `tb init` em requests → `lint_cmd`/`build_cmd` ausentes; `hidden_test_cmd: ""`.
-- **Esperado:** Sugerir `ruff`/`pytest` subset a partir de `pyproject.toml`/`Makefile`.
-- **Actual:** Só `test_cmd: pytest`; build/lint/hidden configurados à mão neste estudo.
+- **Repro:** `tb init` on requests → `lint_cmd`/`build_cmd` absent; `hidden_test_cmd: ""`.
+- **Expected:** Suggest `ruff`/`pytest` subset from `pyproject.toml`/`Makefile`.
+- **Actual:** Only `test_cmd: pytest`; build/lint/hidden configured by hand in this study.
 
-### P3 — Formato do manifesto visual pouco óbvio
+### P3 — Visual manifesto format not obvious
 
-- **Repro:** YAML com chave `reference:` singular não agrega como o schema `references: {light: …}`; com schema certo, skipped agregado funciona.
-- **Esperado:** Erro/aviso de schema ou aceitar alias.
-- **Actual:** Silêncio / comportamento diferente conforme o shape do YAML.
+- **Repro:** YAML with singular `reference:` key does not aggregate like the `references: {light: …}` schema; with the right schema, aggregated skipped works.
+- **Expected:** Schema error/warning or accept an alias.
+- **Actual:** Silence / different behavior depending on YAML shape.
 
-## O que o tb pegou e o que deixou passar
+## What tb caught and what it let slip
 
-**Pegou**
+**Caught**
 
-- Indexação em `/tmp/target` (regressão SkipDirs sumiu).
-- Callers dos testes de `should_bypass_proxies` via arestas `calls`.
-- Drift/review com `## Scope` e globs `**`.
-- Build+lint+hidden no verify sem pasta `tests/hidden/`.
-- Violação `guard.yaml` em `adapters.py` com `--strict --json` (exit 1).
-- Seed de `AGENTS.md` via `--write-agents` em repo sem instrumentação.
+- Indexing under `/tmp/target` (SkipDirs regression gone).
+- Callers of `should_bypass_proxies` tests via `calls` edges.
+- Drift/review with `## Scope` and `**` globs.
+- Build+lint+hidden in verify without a `tests/hidden/` folder.
+- `guard.yaml` violation on `adapters.py` with `--strict --json` (exit 1).
+- `AGENTS.md` seed via `--write-agents` in a repo without instrumentation.
 
-**Deixou passar**
+**Let slip**
 
-- Completude de contribuição (`HISTORY.md` / checklist CONTRIBUTING) — nenhum nudge.
-- Cobertura além do `test_cmd` estreito.
-- Qualidade/precisão de algumas arestas `calls`.
-- Política em `.github/AI_POLICY.md` (não importada para mem/invariantes).
+- Contribution completeness (`HISTORY.md` / CONTRIBUTING checklist) — no nudge.
+- Coverage beyond the narrow `test_cmd`.
+- Quality/precision of some `calls` edges.
+- Policy in `.github/AI_POLICY.md` (not imported into mem/invariants).
 
-**Nativo vs tb:** pytest+ruff validaram o fix; `tb verify` com os mesmos comandos também PASS. tb não substituiu tox/pyright/suite completa.
+**Native vs tb:** pytest+ruff validated the fix; `tb verify` with the same commands also PASS. tb did not replace tox/pyright/full suite.
 
-## Interação com instrumentação existente / onboarding
+## Interaction with existing instrumentation / onboarding
 
-Requests **não** tem harness de agente; só `AI_POLICY.md`.
+Requests **has no** agent harness; only `AI_POLICY.md`.
 
-`tb init` + `mem init` criaram `.toolbelt/` (config, vault, logs, bench, invariants). Com `--write-agents` (probe), gerou `AGENTS.md` mínimo apontando verify/guard/mem.
+`tb init` + `mem init` created `.toolbelt/` (config, vault, logs, bench, invariants). With `--write-agents` (probe), generated a minimal `AGENTS.md` pointing at verify/guard/mem.
 
-**Melhoria vs rodada 1:** defaults Python corretos + opção de seed AGENTS.  
-**Ainda falta:** importar dicas de `Makefile`/`pyproject` para lint/build; referenciar `AI_POLICY.md`; template de `rd.md`.
+**Improvement vs round 1:** correct Python defaults + AGENTS seed option.  
+**Still missing:** import lint/build hints from `Makefile`/`pyproject`; reference `AI_POLICY.md`; `rd.md` template.
 
-## Comparação com a rodada 1
+## Comparison with round 1
 
-| Aspecto | Rodada 1 | Rodada 2 | Veredito |
-|---------|----------|----------|----------|
-| SkipDirs `/tmp/target` | 0 nós | 853 nós | **melhor** |
-| init `test_cmd` | `go test ./...` | `pytest` | **melhor** |
-| graph callers/impact Python | vazio | populado (`calls`) | **melhor** |
-| hidden sem dir | ignorado | executa | **melhor** |
-| guard.yaml | ignorado | lido | **melhor** |
-| `--strict --json` | frouxo (quando testado) | EXIT=1 | **melhor** |
-| review FP `tests/hidden` | sim | não | **melhor** |
-| `## Scope` + `**` | frágil | OK | **melhor** |
-| build/lint no verify | inerte | honrados | **melhor** |
-| default_agent / compare `--agent` | quebrado | OK | **melhor** |
-| AGENTS / `--write-agents` | ausente | funciona | **melhor** |
-| visual skipped agregado | parcial | OK no cenário all-skipped | **melhor** |
-| MCP subset / completude tarefa | lacunas | lacunas | **igual** |
-| Precisão de `calls` | N/A | ruído novo | **misto** |
+| Aspect | Round 1 | Round 2 | Verdict |
+|--------|---------|---------|---------|
+| SkipDirs `/tmp/target` | 0 nodes | 853 nodes | **better** |
+| init `test_cmd` | `go test ./...` | `pytest` | **better** |
+| graph callers/impact Python | empty | populated (`calls`) | **better** |
+| hidden without dir | ignored | runs | **better** |
+| guard.yaml | ignored | read | **better** |
+| `--strict --json` | loose (when tested) | EXIT=1 | **better** |
+| review FP `tests/hidden` | yes | no | **better** |
+| `## Scope` + `**` | fragile | OK | **better** |
+| build/lint in verify | inert | honored | **better** |
+| default_agent / compare `--agent` | broken | OK | **better** |
+| AGENTS / `--write-agents` | absent | works | **better** |
+| aggregated visual skipped | partial | OK in all-skipped scenario | **better** |
+| MCP subset / task completeness | gaps | gaps | **same** |
+| `calls` precision | N/A | new noise | **mixed** |
 
-No agregado: **claramente melhor** que a rodada 1 para o fluxo end-to-end neste repo; as 12 correções listadas **funcionaram** sob `tb@a46c295`.
+In aggregate: **clearly better** than round 1 for the end-to-end flow in this repo; the 12 listed fixes **worked** under `tb@a46c295`.
 
-## Sugestões de melhoria
+## Improvement suggestions
 
-1. **[P1 · graph]** Filtrar / ranquear `calls` Python por confiança e escopo de módulo; ocultar pares &lt;0.6 no `callers` default.  
-2. **[P1 · init]** Preencher `lint_cmd`/`build_cmd` a partir de `pyproject`/`Makefile` (ex. `ruff check`, `python -m build`).  
-3. **[P2 · verify]** Aviso quando `test_cmd` é um subset (`-k` / path único) sem `hidden_test_cmd` amplo.  
-4. **[P2 · guard]** Aceitar flags `--base/--head` além de `base..head` (UX alinhada a review/drift).  
-5. **[P2 · visual]** Validar schema do manifesto e alias `reference`→`references`.  
-6. **[P2 · mcp]** Expor mem/verify/review/guard no MCP.  
-7. **[P3 · onboarding]** Ao detectar `.github/AI_POLICY.md`, registrar pointer em `agent_docs.yaml` / mem.
+1. **[P1 · graph]** Filter / rank Python `calls` by confidence and module scope; hide pairs &lt;0.6 in default `callers`.  
+2. **[P1 · init]** Fill `lint_cmd`/`build_cmd` from `pyproject`/`Makefile` (e.g. `ruff check`, `python -m build`).  
+3. **[P2 · verify]** Warn when `test_cmd` is a subset (`-k` / single path) without a broad `hidden_test_cmd`.  
+4. **[P2 · guard]** Accept `--base/--head` flags in addition to `base..head` (UX aligned with review/drift).  
+5. **[P2 · visual]** Validate manifesto schema and `reference`→`references` alias.  
+6. **[P2 · mcp]** Expose mem/verify/review/guard on MCP.  
+7. **[P3 · onboarding]** When `.github/AI_POLICY.md` is detected, record a pointer in `agent_docs.yaml` / mem.
 
-## Métricas
+## Metrics
 
-| métrica | rodada 2 | rodada 1 (referência) |
-|---------|----------|------------------------|
-| Wall time (estudo ativo tb + patch + checks) | ~25–35 min (inclui rebuild após fast-forward de `main`) | ~25–30 min |
-| Invocações `tb` (aprox.) | ~45 (revalidação pós-`a46c295` incluída) | ~32 |
-| Falhas tb (exit ≠ 0 esperadas/probes) | ~8 (flags docs antigas no binário stale, guard sem range, bench sem tasks, mem `--type`, probes) | ≥15 |
-| Crashes | Nenhum | Nenhum |
-| Binário final | `toolbelt a46c295` | `c8aae04` |
-| Clone alvo | Somente local; zero interação GitHub `psf/requests` | idem |
-| Artefato | Apenas `docs/campo/rodada2/requests.md` na branch `campo2/requests` | `docs/campo/requests.md` |
+| metric | round 2 | round 1 (reference) |
+|--------|---------|---------------------|
+| Wall time (active tb study + patch + checks) | ~25–35 min (includes rebuild after `main` fast-forward) | ~25–30 min |
+| Approx. `tb` invocations | ~45 (post-`a46c295` revalidation included) | ~32 |
+| tb failures (expected exit ≠ 0 / probes) | ~8 (stale-binary old doc flags, guard without range, bench without tasks, mem `--type`, probes) | ≥15 |
+| Crashes | None | None |
+| Final binary | `toolbelt a46c295` | `c8aae04` |
+| Target clone | Local only; zero `psf/requests` GitHub interaction | same |
+| Artifact | Only `docs/campo/rodada2/requests.md` on branch `campo2/requests` | `docs/campo/requests.md` |

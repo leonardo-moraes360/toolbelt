@@ -1,36 +1,36 @@
-🇧🇷 Português | [🇺🇸 English](../en/adr/005-anti-trapaca.md)
+🇺🇸 English | [🇧🇷 Português](../pt-BR/adr/005-anti-trapaca.md)
 
-# ADR-005: Estratégia Anti-Trapaça
+# ADR-005: Anti-Cheat Strategy
 
 ## Status
 
 accepted
 
-## Contexto
+## Context
 
-Modelos de linguagem otimizam para recompensas aparentes, não necessariamente para o objetivo real. Em tarefas de código, isso pode manifestar-se como:
+Language models optimize for apparent rewards, not necessarily for the real objective. In coding tasks, this can show up as:
 
-1. **Deletar testes que falham**: o teste não falha mais, mas o bug permanece
-2. **Hardcodar outputs**: retorna valores esperados sem implementar lógica
-3. **Skipar testes**: `t.Skip("TODO")` para passar artificialmente
-4. **Modificar benchmarks**: alterar critérios de sucesso
-5. **Retry excessivo**: tentar até passar por sorte
+1. **Deleting failing tests**: the test no longer fails, but the bug remains
+2. **Hardcoding outputs**: returns expected values without implementing logic
+3. **Skipping tests**: `t.Skip("TODO")` to pass artificially
+4. **Modifying benchmarks**: changing success criteria
+5. **Excessive retry**: trying until it passes by chance
 
-Precisamos de proteções que:
-- Detectem e bloqueiem comportamentos desonestos
-- Mantenham a integridade dos benchmarks
-- Criem trail de auditoria completo
-- Separem implementação de avaliação
+We need protections that:
+- Detect and block dishonest behavior
+- Maintain benchmark integrity
+- Create a complete audit trail
+- Separate implementation from evaluation
 
-## Decisão
+## Decision
 
-Estratégia em cinco pilares:
+A five-pillar strategy:
 
-### 1. Separação Implementador/Avaliador
+### 1. Implementer/Evaluator Separation
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                         Tarefa                                  │
+│                         Task                                    │
 └─────────────────────────────────────────────────────────────────┘
               │
     ┌─────────┴─────────┐
@@ -40,50 +40,50 @@ Estratégia em cinco pilares:
 │ Implementor │   │  Evaluator  │
 │   Agent     │   │   Agent     │
 ├─────────────┤   ├─────────────┤
-│ Pode:       │   │ Pode:       │
-│ - ler código│   │ - ler código│
-│ - escrever  │   │ - executar  │
-│   código    │   │   testes    │
-│ - rodar     │   │             │
-│   testes    │   │ Não pode:   │
-│   visíveis  │   │ - escrever  │
-│             │   │ - ver impl  │
-│ Não pode:   │   │   history   │
-│ - ver/editar│   │             │
+│ Can:        │   │ Can:        │
+│ - read code │   │ - read code │
+│ - write     │   │ - run       │
+│   code      │   │   tests     │
+│ - run       │   │             │
+│   visible   │   │ Cannot:     │
+│   tests     │   │ - write     │
+│             │   │ - see impl  │
+│ Cannot:     │   │   history   │
+│ - see/edit  │   │             │
+│   hidden    │   │             │
 │   tests     │   │             │
-│   ocultos   │   │             │
 └─────────────┘   └─────────────┘
 ```
 
-O avaliador:
-- Executa em sandbox separado
-- Não tem acesso ao histórico do implementador
-- Apenas roda testes e reporta resultados
+The evaluator:
+- Runs in a separate sandbox
+- Has no access to the implementer's history
+- Only runs tests and reports results
 
-### 2. Arquivos de Teste Imutáveis
+### 2. Immutable Test Files
 
 ```bash
-# Antes da tarefa
+# Before the task
 tb guard snapshot --paths "tests/**" "benchmarks/**"
 
-# Durante execução
-# tests/** montados como read-only no sandbox
+# During execution
+# tests/** mounted as read-only in the sandbox
 
-# Após tarefa
+# After the task
 tb guard verify --snapshot-id $SNAP_ID
-# Se hash diferir → VIOLAÇÃO
+# If hash differs → VIOLATION
 ```
 
-Implementação:
-- Bind-mount read-only via bubblewrap
-- Hash SHA-256 de cada arquivo
-- Verificação antes e depois
-- Log de qualquer tentativa de escrita
+Implementation:
+- Read-only bind-mount via bubblewrap
+- SHA-256 hash of each file
+- Verification before and after
+- Log of any write attempt
 
-### 3. Log de Auditoria Append-Only
+### 3. Append-Only Audit Log
 
 ```
-.tb/audit.log (append-only, mesmo root não edita)
+.tb/audit.log (append-only, even root cannot edit)
 
 2026-01-15T10:30:00.123Z | worker-001 | file:read    | src/parser.go | OK
 2026-01-15T10:30:01.456Z | worker-001 | file:write   | src/parser.go | OK | hash:abc→def
@@ -91,38 +91,38 @@ Implementação:
 2026-01-15T10:30:03.012Z | worker-001 | run:command  | go test       | OK | exit:0
 ```
 
-Características:
-- Append-only enforçado via syscall filtering
-- Hash encadeado (cada entrada inclui hash da anterior)
-- Rotação por tamanho/tempo
-- Exportável para análise externa
+Characteristics:
+- Append-only enforced via syscall filtering
+- Chained hash (each entry includes the previous hash)
+- Rotation by size/time
+- Exportable for external analysis
 
-### 4. Tokens de Capacidade para Ações Destrutivas
+### 4. Capability Tokens for Destructive Actions
 
-Ações perigosas requerem aprovação explícita:
+Dangerous actions require explicit approval:
 
 ```go
 type CapabilityToken struct {
     ID        string
     Action    string    // "delete:file", "modify:test"
-    Resource  string    // path ou padrão
-    GrantedBy string    // humano ou supervisor autorizado
+    Resource  string    // path or pattern
+    GrantedBy string    // human or authorized supervisor
     GrantedAt time.Time
     ExpiresAt time.Time
-    OneTime   bool      // invalida após uso
-    Signature string    // prova criptográfica
+    OneTime   bool      // invalidates after use
+    Signature string    // cryptographic proof
 }
 ```
 
-Fluxo:
-1. Agente tenta ação destrutiva
-2. Sistema bloqueia e cria pending request
-3. Supervisor ou humano revisa
-4. Se aprovado, token é emitido
-5. Token tem validade curta (minutos)
-6. Ação executa apresentando token
+Flow:
+1. Agent attempts a destructive action
+2. System blocks and creates a pending request
+3. Supervisor or human reviews
+4. If approved, a token is issued
+5. Token has short validity (minutes)
+6. Action executes by presenting the token
 
-### 5. Detecção de Padrões Suspeitos
+### 5. Suspicious Pattern Detection
 
 ```go
 type RewardHackingDetector struct {
@@ -130,14 +130,14 @@ type RewardHackingDetector struct {
 }
 
 var defaultPatterns = []Pattern{
-    // Deleção de testes
+    // Test deletion
     {
         Name:    "test_deletion",
         Trigger: "file:delete",
         Match:   "*_test.go",
         Action:  "block",
     },
-    // Skip de testes
+    // Test skip
     {
         Name:    "test_skip",
         Trigger: "file:write",
@@ -145,7 +145,7 @@ var defaultPatterns = []Pattern{
         Search:  `t\.Skip\(`,
         Action:  "flag_for_review",
     },
-    // Output hardcodado
+    // Hardcoded output
     {
         Name:    "hardcoded_output",
         Trigger: "file:write",
@@ -153,7 +153,7 @@ var defaultPatterns = []Pattern{
         Search:  `return "expected_value"`,
         Action:  "flag_for_review",
     },
-    // Cobertura artificial
+    // Artificial coverage
     {
         Name:    "artificial_coverage",
         Trigger: "test:run",
@@ -163,60 +163,60 @@ var defaultPatterns = []Pattern{
 }
 ```
 
-## Consequências
+## Consequences
 
-### Positivas
+### Positive
 
-- **Integridade**: benchmarks não podem ser manipulados
-- **Rastreabilidade**: toda ação é logada
-- **Revisão**: padrões suspeitos são flagados
-- **Confiança**: resultados são verificáveis
+- **Integrity**: benchmarks cannot be manipulated
+- **Traceability**: every action is logged
+- **Review**: suspicious patterns are flagged
+- **Trust**: results are verifiable
 
-### Negativas
+### Negative
 
-- **Overhead**: verificações adicionam latência
-- **Falsos positivos**: detecção pode ser overly strict
-- **Complexidade**: múltiplos sistemas para manter
-- **UX**: aprovações podem frustrar fluxo
+- **Overhead**: checks add latency
+- **False positives**: detection can be overly strict
+- **Complexity**: multiple systems to maintain
+- **UX**: approvals can frustrate the flow
 
-## Alternativas Consideradas
+## Alternatives Considered
 
-### Confiar no Modelo
+### Trust the Model
 
-**Por que considerado**:
-- Simplicidade
-- Modelos modernos são "bem comportados"
+**Why considered**:
+- Simplicity
+- Modern models are "well-behaved"
 
-**Por que não escolhido**:
-- Modelos otimizam para reward aparente
-- Casos edge de reward hacking são documentados
-- Segurança requer defesa em profundidade
+**Why not chosen**:
+- Models optimize for apparent reward
+- Edge cases of reward hacking are documented
+- Security requires defense in depth
 
-### Revisão Humana de Tudo
+### Human Review of Everything
 
-**Por que considerado**:
-- Máxima segurança
-- Humano como juiz final
+**Why considered**:
+- Maximum security
+- Human as final judge
 
-**Por que não escolhido**:
-- Não escala
-- Frustra automação
-- Humanos também erram
+**Why not chosen**:
+- Does not scale
+- Frustrates automation
+- Humans also err
 
-### Testes de Mutação Pós-Hoc
+### Post-Hoc Mutation Testing
 
-**Por que considerado**:
-- Detecta testes fracos
-- Sem overhead durante execução
+**Why considered**:
+- Detects weak tests
+- No overhead during execution
 
-**Por que não escolhido como única medida**:
-- Detecta depois, não previne
-- Adicionar como camada extra (Fase 2)
+**Why not chosen as the only measure**:
+- Detects after the fact, does not prevent
+- Add as an extra layer (Phase 2)
 
-## Casos de Teste para Detecção
+## Detection Test Cases
 
 ```yaml
-# Cenários que o sistema deve detectar/bloquear:
+# Scenarios the system must detect/block:
 
 - scenario: delete_failing_test
   action: rm tests/auth_test.go
@@ -239,7 +239,7 @@ var defaultPatterns = []Pattern{
   expected: flagged_for_review
 ```
 
-## Referências
+## References
 
 - [Reward Hacking in RL](https://arxiv.org/abs/1706.03741)
 - [Specification Gaming Examples](https://docs.google.com/spreadsheets/d/e/2PACX-1vRPiprOaC3HsCf5Tuum8bRfzYUiKLRqJmbOoC-32JorNdfyTiRRsR7Ea5eWtvsWzuxo8bjOxCG84dAg/pubhtml)

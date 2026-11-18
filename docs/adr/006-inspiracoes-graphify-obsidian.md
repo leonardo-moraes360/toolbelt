@@ -1,177 +1,177 @@
-🇧🇷 Português | [🇺🇸 English](../en/adr/006-inspiracoes-graphify-obsidian.md)
+🇺🇸 English | [🇧🇷 Português](../pt-BR/adr/006-inspiracoes-graphify-obsidian.md)
 
-# ADR-006: Inspirações — Graphify e Obsidian
+# ADR-006: Inspirations — Graphify and Obsidian
 
 ## Status
 
 accepted
 
-## Contexto
+## Context
 
-O owner do projeto utiliza duas ferramentas que melhoram significativamente a experiência com agentes de código:
+The project owner uses two tools that significantly improve the experience with coding agents:
 
-1. **Graphify**: mapeia projetos em grafos de conhecimento queryáveis
-2. **Obsidian**: vault de Markdown com wikilinks e grafo visual
+1. **Graphify**: maps projects into queryable knowledge graphs
+2. **Obsidian**: Markdown vault with wikilinks and a visual graph
 
-Ambas demonstram padrões valiosos que queremos incorporar ao toolbelt.
+Both demonstrate valuable patterns we want to incorporate into toolbelt.
 
-## O Que Aprendemos
+## What We Learned
 
 ### Graphify
 
-| Característica | Valor |
+| Characteristic | Value |
 |----------------|-------|
-| Grafo local queryável | Agente consulta grafo ao invés de grep em arquivos |
-| Parsing via AST | tree-sitter para extração estrutural |
-| Proveniência | Distingue "extraído do código" vs "inferido por LLM" |
-| Hooks para agentes | Direciona agente para grafo antes de ler arquivos |
-| MCP server | Expõe callers, deps, impact como ferramentas MCP |
+| Queryable local graph | Agent queries the graph instead of grepping files |
+| AST parsing | tree-sitter for structural extraction |
+| Provenance | Distinguishes "extracted from code" vs "inferred by LLM" |
+| Agent hooks | Directs agent to the graph before reading files |
+| MCP server | Exposes callers, deps, impact as MCP tools |
 
-**Insight principal**: Agentes gastam muitos tokens lendo arquivos irrelevantes. O grafo reduz isso drasticamente.
+**Main insight**: Agents spend many tokens reading irrelevant files. The graph reduces that drastically.
 
 ### Obsidian
 
-| Característica | Valor |
+| Characteristic | Value |
 |----------------|-------|
-| Vault Markdown | Arquivos `.md` são a fonte de verdade |
-| Wikilinks | `[[outro-arquivo]]` cria grafo de relações |
-| Backlinks | Navegação bidirecional |
-| Frontmatter YAML | Metadados estruturados |
-| Graph view | Visualização de conexões |
-| Local-first | Humano pode editar diretamente |
+| Markdown vault | `.md` files are the source of truth |
+| Wikilinks | `[[outro-arquivo]]` creates a relation graph |
+| Backlinks | Bidirectional navigation |
+| YAML frontmatter | Structured metadata |
+| Graph view | Visualization of connections |
+| Local-first | Human can edit directly |
 
-**Insight principal**: Memória legível por humanos, editável no editor preferido, versionável com git.
+**Main insight**: Human-readable memory, editable in the preferred editor, versionable with git.
 
-## Decisão
+## Decision
 
-### O Que Adotamos
+### What We Adopt
 
-1. **Vault Markdown como fonte de verdade**
-   - Memória em `.tb/vault/` como arquivos Markdown
-   - Wikilinks para relacionamentos
-   - Frontmatter para metadados
-   - Compatível com Obsidian
+1. **Markdown vault as source of truth**
+   - Memory in `.tb/vault/` as Markdown files
+   - Wikilinks for relationships
+   - Frontmatter for metadata
+   - Compatible with Obsidian
 
-2. **SQLite como índice derivado (não fonte)**
-   - Reconstruível a partir do vault
-   - Sync unidirecional: vault → SQLite
-   - Vault sempre vence em conflitos
+2. **SQLite as derived index (not source)**
+   - Rebuildable from the vault
+   - Unidirectional sync: vault → SQLite
+   - Vault always wins in conflicts
 
-3. **Indexação de código via AST**
-   - tree-sitter para parsing
-   - Extração de funções, classes, imports, calls
-   - Nós de código no mesmo grafo que memória
+3. **Code indexing via AST**
+   - tree-sitter for parsing
+   - Extraction of functions, classes, imports, calls
+   - Code nodes in the same graph as memory
 
-4. **Proveniência em arestas**
-   - `source: extracted` — do AST, alta confiança
-   - `source: inferred` — deduzido por LLM, confiança variável
-   - `source: manual` — inserido por humano
+4. **Provenance on edges**
+   - `source: extracted` — from AST, high confidence
+   - `source: inferred` — deduced by LLM, variable confidence
+   - `source: manual` — inserted by a human
 
-5. **Hooks graph-first**
-   - Agentes devem consultar grafo antes de ler arquivos
-   - Guidance em prompts de role
-   - KPI de tokens economizados
+5. **Graph-first hooks**
+   - Agents should query the graph before reading files
+   - Guidance in role prompts
+   - KPI for tokens saved
 
-6. **Queries de alto nível**
-   - `tb graph callers` — quem chama esta função
-   - `tb graph deps` — dependências de um módulo
-   - `tb graph impact` — impacto de uma mudança
+6. **High-level queries**
+   - `tb graph callers` — who calls this function
+   - `tb graph deps` — dependencies of a module
+   - `tb graph impact` — impact of a change
 
-### O Que Fazemos Diferente
+### What We Do Differently
 
-1. **FTS5 ao invés de embeddings por default**
-   - Graphify pode usar embeddings para busca semântica
-   - Nós usamos FTS5 como baseline (mais simples, sem custo de inferência)
-   - Embeddings são opcionais na Fase 2
+1. **FTS5 instead of embeddings by default**
+   - Graphify may use embeddings for semantic search
+   - We use FTS5 as baseline (simpler, no inference cost)
+   - Embeddings are optional in Phase 2
 
-2. **Integração com sandbox**
-   - Graphify é read-only
-   - Nosso grafo informa o sandbox sobre arquivos protegidos
+2. **Sandbox integration**
+   - Graphify is read-only
+   - Our graph informs the sandbox about protected files
 
-3. **Foco em agentes autônomos**
-   - Graphify é principalmente para humanos com assistente
-   - Nosso foco é hierarquia de agentes operando autonomamente
+3. **Focus on autonomous agents**
+   - Graphify is mainly for humans with an assistant
+   - Our focus is a hierarchy of agents operating autonomously
 
-4. **TUI própria**
-   - Obsidian requer app Electron
-   - `tb md` oferece TUI terminal (Bubble Tea)
-   - Mas é interoperável: pode abrir vault no Obsidian
+4. **Own TUI**
+   - Obsidian requires an Electron app
+   - `tb md` offers a terminal TUI (Bubble Tea)
+   - But it is interoperable: the vault can be opened in Obsidian
 
-## Questões em Aberto
+## Open Questions
 
-### Integrar ou Reimplementar?
+### Integrate or Reimplement?
 
-**Opção A: Integrar Graphify via MCP**
-
-```yaml
-pros:
-  - Menos código para manter
-  - Aproveita work existente
-  - Comunidade ativa
-
-cons:
-  - Dependência externa
-  - Pode divergir de nossas necessidades
-  - Overhead de comunicação MCP
-```
-
-**Opção B: Reimplementar indexação**
+**Option A: Integrate Graphify via MCP**
 
 ```yaml
 pros:
-  - Controle total
-  - Otimizado para nosso caso
-  - Sem dependências externas
+  - Less code to maintain
+  - Leverages existing work
+  - Active community
 
 cons:
-  - Mais trabalho inicial
-  - Reinventar a roda
-  - Manter parser de múltiplas linguagens
+  - External dependency
+  - May diverge from our needs
+  - MCP communication overhead
 ```
 
-**Decidido no [ADR-014](014-graphify-reimplementacao.md)**: reimplementar. O `tb graph` já é implementação própria (go/ast + extratores regex, sem tree-sitter nem dependência do Graphify); `tb graph explain`/`path` foram as primeiras consultas do Graphify trazidas para o toolbelt.
+**Option B: Reimplement indexing**
 
-### Sync Bidirecional com Obsidian
+```yaml
+pros:
+  - Full control
+  - Optimized for our case
+  - No external dependencies
 
-Atualmente: vault → SQLite (unidirecional)
+cons:
+  - More initial work
+  - Reinventing the wheel
+  - Maintaining parsers for multiple languages
+```
 
-Questão: Se usuário edita no Obsidian enquanto agente edita via `tb mem`, como resolver conflitos?
+**Decided in [ADR-014](014-graphify-reimplementacao.md)**: reimplement. `tb graph` is already an in-house implementation (go/ast + regex extractors, no tree-sitter and no Graphify dependency); `tb graph explain`/`path` are the first Graphify queries brought into toolbelt.
 
-**Proposta**:
-1. Watcher detecta mudanças do Obsidian
-2. Atualiza SQLite imediatamente
-3. Se agente tem mudança pendente, merge via git-style conflict markers
-4. Humano resolve no próximo `tb md` ou Obsidian
+### Bidirectional Sync with Obsidian
 
-### Extensão do Grafo para Outras Linguagens
+Currently: vault → SQLite (unidirectional)
 
-tree-sitter suporta 100+ linguagens. Prioridade inicial:
+Question: If a user edits in Obsidian while an agent edits via `tb mem`, how do we resolve conflicts?
+
+**Proposal**:
+1. Watcher detects Obsidian changes
+2. Updates SQLite immediately
+3. If the agent has a pending change, merge via git-style conflict markers
+4. Human resolves on the next `tb md` or Obsidian
+
+### Extending the Graph to Other Languages
+
+tree-sitter supports 100+ languages. Initial priority:
 1. Go
 2. TypeScript/JavaScript
 3. Python
 4. Rust
 
-Cada linguagem precisa de:
-- Grammar tree-sitter
-- Extrator de nós (funções, classes)
-- Extrator de arestas (calls, imports)
+Each language needs:
+- tree-sitter grammar
+- Node extractor (functions, classes)
+- Edge extractor (calls, imports)
 
-## Consequências
+## Consequences
 
-### Positivas
+### Positive
 
-- **Economia de tokens**: grafo evita leitura desnecessária
-- **Memória legível**: humano pode ler/editar no Obsidian
-- **Proveniência**: sabe-se o que foi extraído vs inferido
-- **Integração suave**: vault é só Markdown, funciona em qualquer editor
+- **Token savings**: graph avoids unnecessary reading
+- **Readable memory**: human can read/edit in Obsidian
+- **Provenance**: know what was extracted vs inferred
+- **Smooth integration**: vault is just Markdown, works in any editor
 
-### Negativas
+### Negative
 
-- **Complexidade**: vault + SQLite + sync
-- **Dependência de Obsidian**: formato deve permanecer compatível
-- **tree-sitter por linguagem**: trabalho para suportar muitas linguagens
+- **Complexity**: vault + SQLite + sync
+- **Obsidian dependency**: format must remain compatible
+- **tree-sitter per language**: work to support many languages
 
-## Arquitetura Final
+## Final Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -185,14 +185,15 @@ Cada linguagem precisa de:
         │       ┌──────────────┐              │
         │       │ .tb/vault/   │◄─────────────┘
         │       │ (Markdown)   │
-        │       │ fonte verdade│
+        │       │ source of    │
+        │       │ truth        │
         │       └──────┬───────┘
         │              │ sync
         │              ▼
         │       ┌──────────────┐      ┌──────────────┐
         │       │ index.db     │◄─────│ tree-sitter  │
         │       │ (SQLite)     │      │ code parser  │
-        │       │ índice       │      └──────────────┘
+        │       │ index        │      └──────────────┘
         │       └──────┬───────┘
         │              │
         ▼              ▼
@@ -209,17 +210,17 @@ Cada linguagem precisa de:
         │
         ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                         Agentes                                 │
-│  1. Consulta grafo                                              │
-│  2. Identifica arquivos relevantes                              │
-│  3. Lê apenas o necessário                                      │
-│  4. Implementa                                                  │
+│                         Agents                                  │
+│  1. Query graph                                                 │
+│  2. Identify relevant files                                     │
+│  3. Read only what is needed                                    │
+│  4. Implement                                                   │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-## Referências
+## References
 
 - [Graphify](https://github.com/Graphify-Labs/graphify)
 - [Obsidian](https://obsidian.md/)
-- [Obsidian Dataview](https://github.com/blacksmithgu/obsidian-dataview) — queries sobre vault
+- [Obsidian Dataview](https://github.com/blacksmithgu/obsidian-dataview) — vault queries
 - [tree-sitter](https://tree-sitter.github.io/)

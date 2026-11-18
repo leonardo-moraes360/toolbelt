@@ -1,193 +1,193 @@
-🇧🇷 Português | [🇺🇸 English](../../en/campo/rodada2/ripgrep.md)
+🇺🇸 English | [🇧🇷 Português](../../pt-BR/campo/rodada2/ripgrep.md)
 
-# Campo rodada 2: BurntSushi/ripgrep
+# Field round 2: BurntSushi/ripgrep
 
-Estudo de campo ROUND 2 do `tb` (grupo: **without existing AI-agent instrumentation**). Clone local apenas — sem push/issue/PR/comentário no upstream.
+Field study ROUND 2 of `tb` (group: **without existing AI-agent instrumentation**). Local clone only — no push/issue/PR/comment upstream.
 
-- **tb build**: `make build` em `main` → `toolbelt a46c295` (commit `a46c295`, built `2026-11-16T12:42:05Z`)
-- **Alvo**: clone shallow em `/tmp/target/ripgrep` (HEAD inicial `178cc02`)
-- **Janela**: ~2026-11-16T12:35Z → 12:43Z UTC
-- **Evidências**: `/tmp/tb-campo2-ripgrep/`
+- **tb build**: `make build` on `main` → `toolbelt a46c295` (commit `a46c295`, built `2026-11-16T12:42:05Z`)
+- **Target**: shallow clone at `/tmp/target/ripgrep` (initial HEAD `178cc02`)
+- **Window**: ~2026-11-16T12:35Z → 12:43Z UTC
+- **Evidence**: `/tmp/tb-campo2-ripgrep/`
 
 ---
 
-## Repositório
+## Repository
 
-| Campo | Valor |
+| Field | Value |
 |-------|--------|
-| Nome | [BurntSushi/ripgrep](https://github.com/BurntSushi/ripgrep) |
-| Linguagem | Rust (edition 2024 / `rust-version` 1.96; workspace `grep-*`) |
-| Tamanho | ~104 `.rs` / ~55k LOC; shallow ~4.8 MiB; com `target/` ~676 MiB após build |
-| Instrumentação AI existente | Só `AI_POLICY.md` (+ menção em `CONTRIBUTING.md`). Sem `AGENTS.md`/`CLAUDE.md`/`.cursorrules`/`.cursor/` no tree original. Política proíbe agentes autônomos no upstream; estudo 100% local. |
-| Toolchain | Rustup `stable` **1.100.0**. `cargo test --tests` (114 + 332) e `cargo build` ok. `rustfmt`/`clippy` disponíveis. Não rodei matrix CI multi-target/`cross`/PCRE2; `cargo clippy -D warnings` workspace-wide não foi a porta principal deste run. |
+| Name | [BurntSushi/ripgrep](https://github.com/BurntSushi/ripgrep) |
+| Language | Rust (edition 2024 / `rust-version` 1.96; `grep-*` workspace) |
+| Size | ~104 `.rs` / ~55k LOC; shallow ~4.8 MiB; with `target/` ~676 MiB after build |
+| Existing AI instrumentation | Only `AI_POLICY.md` (+ mention in `CONTRIBUTING.md`). No `AGENTS.md`/`CLAUDE.md`/`.cursorrules`/`.cursor/` in the original tree. Policy forbids autonomous agents upstream; study 100% local. |
+| Toolchain | Rustup `stable` **1.100.0**. `cargo test --tests` (114 + 332) and `cargo build` ok. `rustfmt`/`clippy` available. Did not run multi-target CI/`cross`/PCRE2 matrix; workspace-wide `cargo clippy -D warnings` was not the main gate this run. |
 
 ---
 
-## Tarefa escolhida
+## Chosen task
 
-| Campo | Valor |
+| Field | Value |
 |-------|--------|
-| O quê | Evitar `Path::canonicalize` em `StandardSink::start_hyperlink` quando o formato de hyperlink está vazio (#3594) |
-| Por quê | Bug aberto no master; escopo pequeno em `grep-printer` com regressão clara; diferente da rodada 1 |
-| Issue | https://github.com/BurntSushi/ripgrep/issues/3594 (há PR #3596 fechado **sem** merge — fix ainda ausente em `178cc02`) |
-| Completou? | **Sim, só local** (commit `69fedaf` em `/tmp/target/ripgrep`; **não** enviado ao GitHub) |
-| Resultado nativo | `cargo test -q -p grep-printer --lib` → 110 ok (inclui `empty_hyperlink_skips_path_canonicalization`); `cargo test -q --tests` → 114 + 332 ok; `cargo fmt --check` ok |
-| Rodada 1 (comparação) | #2779 — números de linha errados com `-U`+`-r` em matches multilinha adjacentes |
+| What | Avoid `Path::canonicalize` in `StandardSink::start_hyperlink` when the hyperlink format is empty (#3594) |
+| Why | Open bug on master; small scope in `grep-printer` with a clear regression; different from round 1 |
+| Issue | https://github.com/BurntSushi/ripgrep/issues/3594 (PR #3596 closed **without** merge — fix still absent at `178cc02`) |
+| Completed? | **Yes, local only** (commit `69fedaf` under `/tmp/target/ripgrep`; **not** sent to GitHub) |
+| Native result | `cargo test -q -p grep-printer --lib` → 110 ok (includes `empty_hyperlink_skips_path_canonicalization`); `cargo test -q --tests` → 114 + 332 ok; `cargo fmt --check` ok |
+| Round 1 (comparison) | #2779 — wrong line numbers with `-U`+`-r` on adjacent multiline matches |
 
-Arquivos tocados: `crates/printer/src/standard.rs`, `crates/printer/src/util.rs` (+ accessor `#[cfg(test)]` no cache de hyperlink).
-
----
-
-## Verificação das 12 correções
-
-| # | correção | funcionou/não funcionou/não testado/não se aplica | evidência |
-|---|----------|---------------------------------------------------|-----------|
-| 1 | graph SkipDirs na raiz do walk | **funcionou** | `tb graph index --enable /tmp/target` → 2544 nós / 3221 arestas com paths `ripgrep/...` (root `/tmp/target`). Na rodada 1 o mesmo path rendia 0 nós. |
-| 2 | verify `hidden_test_cmd` sem `tests/hidden/` | **funcionou** | Sem dir `tests/hidden/`; `--hidden-test-cmd false` → `hidden_available: true`, `hidden_passed: false`, veredicto `ESCALATE` exit 1. Com cmd real de teste → `hidden_passed: true` no PASS final. |
-| 3 | guard `--strict --json` exit ≠ 0 | **funcionou** | Diff em `.toolbelt/thresholds.yaml` + `--strict --json` → JSON com `protected_path` e **EXIT=1**. |
-| 4 | guard lê `protected_paths` de `guard.yaml` | **funcionou** | `.toolbelt/guard.yaml` com `crates/core/main.rs`; diff tocando esse path → `violations: [{type: protected_path, file: crates/core/main.rs}]`, `--strict --json` EXIT=1. |
-| 5 | init detecção de toolchain | **funcionou** | `tb init` → `verify.test_cmd: cargo test` (não mais `go test ./...`). |
-| 6 | review `tests/hidden` casa por path | **funcionou** | Ticket com texto “Não tocar em tests/hidden/” + diff só em printer → `findings: []` (sem critical por substring). |
-| 7 | bench `default_agent` e `compare --agent` | **funcionou** | Com `bench.default_agent: echo AGENT_OK {prompt}` no `.toolbelt/config.yaml`, `tb bench run -r 1 --task bugfix-go` (sem `--agent`/`--fake`) → 100% sucesso; `tb bench compare ... --agent 'echo COMPARE_AGENT {prompt}'` aceitou a flag e gerou relatório A/B. |
-| 8 | review/drift `## Scope`/`## Escopo`, listas MD e `**` globs | **funcionou** | `## Escopo` + bullets → review sem `scope-missing`; `## Escopo` errado (`crates/core/main.rs`) → drift lista printer files `out_of_scope` EXIT=1; `crates/printer/src/**/*.rs` manteve files in-scope. |
-| 9 | verify `build_cmd` e `lint_cmd` | **funcionou** | Config com `cargo build`/`cargo fmt --check` → `build_ran/lint_ran: true` no PASS. `build_cmd: false` → `ESCALATE`, `build_passed: false`. |
-| 10 | init lê `AGENTS.md`/`CLAUDE.md` e `--write-agents` | **funcionou** | Sem instrumentação: `tb init --write-agents` semeou `AGENTS.md` + `.toolbelt/agent_docs.yaml` (`sources=AGENTS.md`). `CLAUDE.md` ausente (ok). Não importou `AI_POLICY.md`. |
-| 11 | graph Python `calls` edges | **não se aplica** | Repo Rust; após index, edge types só `defines`/`imports`/`mentions`/`links` — **0** `calls` (esperado: fix é para Python). |
-| 12 | verify visual skipped agregado + docs CLI alinhados | **funcionou (parcial)** | Visual sem manifesto: `skipped: true`, `skip_reason: manifesto de telas ausente` (mas `verdict: PASS` ainda). Docs: `default_agent`, `guard.yaml` e `tb ticket` (marcado Fase 3+) alinhados; ainda há ruído residual vs CLI em exemplos antigos de `mem`/manifest flags. |
+Files touched: `crates/printer/src/standard.rs`, `crates/printer/src/util.rs` (+ `#[cfg(test)]` accessor on the hyperlink cache).
 
 ---
 
-## Uso do tb por comando
+## Verification of the 12 fixes
 
-| comando | resultado | ajudou/atrapalhou/neutro | evidência |
-|---------|-----------|--------------------------|-----------|
-| `tb init` / `--write-agents` | `.toolbelt/` + `test_cmd: cargo test`; seed `AGENTS.md` | **ajudou** | Onboarding Rust ok; `AI_POLICY.md` ainda ignorado |
-| `tb mem init/add/list/check` | 3 anti-cheat + 1 custom; `retencao: 1.00` | neutro | Invariantes genéricas; `mem add --type` ainda rejeitado (docs legadas) |
-| `tb graph index --enable /tmp/target` | 2544 nós / 3221 arestas | **ajudou** | SkipDirs na raiz corrigido |
-| `tb graph search --enable hyperlink` | Achou `HyperlinkFormat`, `as_hyperlink`, etc. | **ajudou** | Acelerou achar `standard.rs` |
-| `tb graph impact --enable --file …` | `(vazio)` / JSON `null` | **atrapalhou** | Continua sem blast radius em Rust |
-| `tb graph callers/deps` | callers exige `--function` (sem `--file`); deps lista pkgs | neutro→atrapalhou | UX ainda pouco intuitiva |
-| Ticket `rd.md` (`## Escopo` + globs) | Parse ok no review/drift | **ajudou** | Contraste forte com rodada 1 |
-| `tb verify run` (build/lint/test/hidden) | `PASS`; hidden ran | **ajudou** | Pipeline completo; `hidden_available: true` sem dir |
-| `tb verify --ruler visual` | `PASS` + `skipped: true` | neutro | Skip honesto no campo `skipped`; veredicto PASS ainda confunde |
-| `tb review` | `findings: []` com scope MD; sem FP `tests/hidden` | **ajudou** | |
-| `tb drift` | Detecta fora de `## Escopo`; globs `**` ok | **ajudou** | EXIT≠0 + lista `out_of_scope` |
-| `tb guard check` | Limpo no fix; honra `guard.yaml`; `--strict --json` EXIT≠0 | **ajudou** | |
-| `tb bench run/compare` | `default_agent` e `--agent` ok; fixtures do toolbelt | neutro | Não mede o ripgrep em si |
-| `tb mcp` | `tools/list`: env/run/graph_*/version/echo | neutro | Sem review/verify/drift/guard/mem |
-| `tb ticket` | `unknown command` | neutro | Docs agora marcam como planejado |
+| # | fix | worked / did not work / not tested / not applicable | evidence |
+|---|-----|-----------------------------------------------------|----------|
+| 1 | graph SkipDirs at walk root | **worked** | `tb graph index --enable /tmp/target` → 2544 nodes / 3221 edges with paths `ripgrep/...` (root `/tmp/target`). In round 1 the same path yielded 0 nodes. |
+| 2 | verify `hidden_test_cmd` without `tests/hidden/` | **worked** | No `tests/hidden/` dir; `--hidden-test-cmd false` → `hidden_available: true`, `hidden_passed: false`, verdict `ESCALATE` exit 1. With a real test cmd → `hidden_passed: true` on the final PASS. |
+| 3 | guard `--strict --json` exit ≠ 0 | **worked** | Diff on `.toolbelt/thresholds.yaml` + `--strict --json` → JSON with `protected_path` and **EXIT=1**. |
+| 4 | guard reads `protected_paths` from `guard.yaml` | **worked** | `.toolbelt/guard.yaml` with `crates/core/main.rs`; diff touching that path → `violations: [{type: protected_path, file: crates/core/main.rs}]`, `--strict --json` EXIT=1. |
+| 5 | init toolchain detection | **worked** | `tb init` → `verify.test_cmd: cargo test` (no longer `go test ./...`). |
+| 6 | review `tests/hidden` matches by path | **worked** | Ticket with text “Não tocar em tests/hidden/” + diff only in printer → `findings: []` (no critical from substring). |
+| 7 | bench `default_agent` and `compare --agent` | **worked** | With `bench.default_agent: echo AGENT_OK {prompt}` in `.toolbelt/config.yaml`, `tb bench run -r 1 --task bugfix-go` (without `--agent`/`--fake`) → 100% success; `tb bench compare ... --agent 'echo COMPARE_AGENT {prompt}'` accepted the flag and produced an A/B report. |
+| 8 | review/drift `## Scope`/`## Escopo`, MD lists and `**` globs | **worked** | `## Escopo` + bullets → review without `scope-missing`; wrong `## Escopo` (`crates/core/main.rs`) → drift lists printer files `out_of_scope` EXIT=1; `crates/printer/src/**/*.rs` kept files in-scope. |
+| 9 | verify `build_cmd` and `lint_cmd` | **worked** | Config with `cargo build`/`cargo fmt --check` → `build_ran/lint_ran: true` on PASS. `build_cmd: false` → `ESCALATE`, `build_passed: false`. |
+| 10 | init reads `AGENTS.md`/`CLAUDE.md` and `--write-agents` | **worked** | Without instrumentation: `tb init --write-agents` seeded `AGENTS.md` + `.toolbelt/agent_docs.yaml` (`sources=AGENTS.md`). `CLAUDE.md` absent (ok). Did not import `AI_POLICY.md`. |
+| 11 | graph Python `calls` edges | **not applicable** | Rust repo; after index, edge types only `defines`/`imports`/`mentions`/`links` — **0** `calls` (expected: the fix is for Python). |
+| 12 | aggregated visual skipped + CLI docs aligned | **worked (partial)** | Visual without manifest: `skipped: true`, `skip_reason: manifesto de telas ausente` (but `verdict: PASS` still). Docs: `default_agent`, `guard.yaml`, and `tb ticket` (marked Phase 3+) aligned; residual noise vs CLI remains in old `mem`/manifest-flag examples. |
 
 ---
 
-## Problemas que continuam
+## tb usage by command
 
-Da rodada 1 (`docs/campo/ripgrep.md`) que **ainda acontecem** com `tb@a46c295`:
-
-1. **`graph impact` vazio em Rust** — `tb graph impact --enable --file crates/printer/src/standard.rs` → vazio/`null` (igual rodada 1).
-2. **Sem arestas `calls` em Rust** — índice só `defines`/`imports`/`mentions`/`links`; callers/impact continuam fracos fora de Go/JS/Python.
-3. **Visual: `verdict: PASS` com `skipped: true`** — manifesto ausente; fácil ler como “visual ok”.
-4. **MCP << CLI** — sem tools de review/verify/drift/guard/mem/bench.
-5. **Configs mode `0600`** — `config.yaml` e `AGENTS.md` semeado ficaram `600`.
-6. **`tb` não empurra completude sozinho** — melhor bootstrap, mas a tarefa (#3594) ainda exige iniciativa humana para issue/código/teste.
-7. **Não lê `AI_POLICY.md`** — política humana do repo continua invisível ao harness (só relevante se alguém fosse contribuir no upstream; não contribuímos).
-
-Problemas da rodada 1 **corrigidos neste run**: init Go-default; Scope markdown; guard.yaml ignorado; `default_agent`; review FP `tests/hidden`; verify sem build/lint; hidden gated por dir; grafo mudo em `/tmp/target`; ausência de `--write-agents`.
-
----
-
-## Problemas novos
-
-1. **P2 — `verdict: PASS` no ruler visual quando `skipped: true`**  
-   - Repro: `tb verify run --ruler visual --skip-unavailable` sem `.toolbelt/screens.yaml`.  
-   - Esperado: veredicto `SKIP`/`N/A` (ou não-PASS) alinhado a `skipped`.  
-   - Atual: JSON `skipped: true` + `verdict: PASS`.
-
-2. **P2 — flag global `-c/--config` não alimenta `config.Load()`**  
-   - Repro: `tb -c /tmp/.../config.yaml bench run -r 1` com `default_agent` só nesse arquivo → ainda exige `--agent`/`--fake`.  
-   - Esperado: `-c` sobrescreve o YAML carregado.  
-   - Atual: só `.toolbelt/config.yaml` do cwd / global; a flag parece decorativa.
-
-3. **P3 — `graph impact` permanece silencioso (sem mensagem “sem impacto”)**  
-   - Repro: após index Rust rico, impact no printer → `(vazio)`.  
-   - Esperado: pelo menos diagnóstico (“0 edges” / “linguagem sem calls”).  
-   - Atual: silêncio; search encontra símbolos no mesmo arquivo.
-
-4. **P3 — seed `AGENTS.md` mode 0600 e genérico**  
-   - Repro: `tb init --write-agents` em ripgrep.  
-   - Esperado: 0644 para doc não-secreta; opcionalmente citar `cargo test`/`AI_POLICY.md`.  
-   - Atual: stub toolbelt-centric; não referencia a política do projeto.
-
-Nenhuma regressão óbvia causada pelas 12 correções foi observada nos caminhos exercitados (guard/verify/review/drift/init/graph root).
+| command | result | helped / hindered / neutral | evidence |
+|---------|--------|-----------------------------|----------|
+| `tb init` / `--write-agents` | `.toolbelt/` + `test_cmd: cargo test`; seed `AGENTS.md` | **helped** | Rust onboarding ok; `AI_POLICY.md` still ignored |
+| `tb mem init/add/list/check` | 3 anti-cheat + 1 custom; `retencao: 1.00` | neutral | Generic invariants; `mem add --type` still rejected (legacy docs) |
+| `tb graph index --enable /tmp/target` | 2544 nodes / 3221 edges | **helped** | Root SkipDirs fixed |
+| `tb graph search --enable hyperlink` | Found `HyperlinkFormat`, `as_hyperlink`, etc. | **helped** | Speeds finding `standard.rs` |
+| `tb graph impact --enable --file …` | `(vazio)` / JSON `null` | **hindered** | Still no blast radius in Rust |
+| `tb graph callers/deps` | callers requires `--function` (no `--file`); deps lists pkgs | neutral→hindered | UX still unintuitive |
+| Ticket `rd.md` (`## Escopo` + globs) | Parse ok in review/drift | **helped** | Strong contrast with round 1 |
+| `tb verify run` (build/lint/test/hidden) | `PASS`; hidden ran | **helped** | Full pipeline; `hidden_available: true` without dir |
+| `tb verify --ruler visual` | `PASS` + `skipped: true` | neutral | Honest `skipped` field; PASS verdict still confuses |
+| `tb review` | `findings: []` with MD scope; no `tests/hidden` FP | **helped** | |
+| `tb drift` | Detects outside `## Escopo`; `**` globs ok | **helped** | EXIT≠0 + `out_of_scope` list |
+| `tb guard check` | Clean on the fix; honors `guard.yaml`; `--strict --json` EXIT≠0 | **helped** | |
+| `tb bench run/compare` | `default_agent` and `--agent` ok; toolbelt fixtures | neutral | Does not measure ripgrep itself |
+| `tb mcp` | `tools/list`: env/run/graph_*/version/echo | neutral | No review/verify/drift/guard/mem |
+| `tb ticket` | `unknown command` | neutral | Docs now mark as planned |
 
 ---
 
-## O que o tb pegou e o que deixou passar
+## Problems that persist
 
-**Pegou**
-- Toolchain Cargo no init; seed `AGENTS.md` sob `--write-agents`.
-- Graph index em `/tmp/target` + search de hyperlink → `standard.rs`.
-- Scope markdown + globs no review/drift; FP de `tests/hidden` eliminado.
-- Verify com build/lint/test/hidden (hidden sem pasta) → PASS no fix; ESCALATE se hidden/`build_cmd` falham.
-- Guard com `guard.yaml` custom + exit code estrito com JSON.
+From round 1 (`docs/campo/ripgrep.md`) that **still happen** with `tb@a46c295`:
+
+1. **Empty Rust `graph impact`** — `tb graph impact --enable --file crates/printer/src/standard.rs` → empty/`null` (same as round 1).
+2. **No Rust `calls` edges** — index only `defines`/`imports`/`mentions`/`links`; callers/impact stay weak outside Go/JS/Python.
+3. **Visual: `verdict: PASS` with `skipped: true`** — missing manifest; easy to read as “visual ok”.
+4. **MCP << CLI** — no review/verify/drift/guard/mem/bench tools.
+5. **Configs mode `0600`** — `config.yaml` and seeded `AGENTS.md` stayed `600`.
+6. **`tb` does not push completeness alone** — better bootstrap, but task (#3594) still needs human initiative for issue/code/test.
+7. **Does not read `AI_POLICY.md`** — the repo’s human policy stays invisible to the harness (only relevant if someone were to contribute upstream; we did not).
+
+Round 1 problems **fixed in this run**: Go-default init; Markdown Scope; ignored guard.yaml; `default_agent`; review FP `tests/hidden`; verify without build/lint; hidden gated by dir; mute graph under `/tmp/target`; missing `--write-agents`.
+
+---
+
+## New problems
+
+1. **P2 — `verdict: PASS` on the visual ruler when `skipped: true`**  
+   - Repro: `tb verify run --ruler visual --skip-unavailable` without `.toolbelt/screens.yaml`.  
+   - Expected: `SKIP`/`N/A` verdict (or non-PASS) aligned with `skipped`.  
+   - Actual: JSON `skipped: true` + `verdict: PASS`.
+
+2. **P2 — global `-c/--config` flag does not feed `config.Load()`**  
+   - Repro: `tb -c /tmp/.../config.yaml bench run -r 1` with `default_agent` only in that file → still requires `--agent`/`--fake`.  
+   - Expected: `-c` overrides the loaded YAML.  
+   - Actual: only cwd/global `.toolbelt/config.yaml`; the flag seems decorative.
+
+3. **P3 — `graph impact` stays silent (no “no impact” message)**  
+   - Repro: after a rich Rust index, impact on the printer → `(vazio)`.  
+   - Expected: at least a diagnosis (“0 edges” / “language without calls”).  
+   - Actual: silence; search finds symbols in the same file.
+
+4. **P3 — `AGENTS.md` seed mode 0600 and generic**  
+   - Repro: `tb init --write-agents` on ripgrep.  
+   - Expected: 0644 for non-secret docs; optionally cite `cargo test`/`AI_POLICY.md`.  
+   - Actual: toolbelt-centric stub; does not reference the project policy.
+
+No obvious regression caused by the 12 fixes was observed on the exercised paths (guard/verify/review/drift/init/graph root).
+
+---
+
+## What tb caught and what it let slip
+
+**Caught**
+- Cargo toolchain in init; `AGENTS.md` seed under `--write-agents`.
+- Graph index under `/tmp/target` + hyperlink search → `standard.rs`.
+- Markdown scope + globs in review/drift; `tests/hidden` FP eliminated.
+- Verify with build/lint/test/hidden (hidden without folder) → PASS on the fix; ESCALATE if hidden/`build_cmd` fail.
+- Guard with custom `guard.yaml` + strict exit code with JSON.
 - Bench `default_agent` / `compare --agent`.
 
-**Deixou passar / não ajudou**
-- Não sugeriu a causa raiz (#3594) nem apontou o early-return no hyperlink.
-- `graph impact` não guiou blast radius (path.rs/summary.rs também chamam `as_hyperlink`).
-- Visual PASS skipped; MCP incompleto; `AI_POLICY.md` ignorado.
-- Clippy workspace-wide / matrix CI do ripgrep não entraram no harness.
+**Let slip / did not help**
+- Did not suggest the root cause (#3594) or point at the early-return in hyperlink.
+- `graph impact` did not guide blast radius (`path.rs`/`summary.rs` also call `as_hyperlink`).
+- Visual PASS skipped; incomplete MCP; ignored `AI_POLICY.md`.
+- Workspace-wide clippy / ripgrep CI matrix did not enter the harness.
 
-**Nativo vs tb**: a regressão nova foi vista por `cargo test -p grep-printer`; o tb espelhou isso via `test_cmd`/`hidden_test_cmd` configurados.
-
----
-
-## Interação com instrumentação existente / onboarding
-
-- **Existente**: apenas `AI_POLICY.md` (proíbe agentes autônomos no upstream).
-- **`tb init --write-agents` gerou**: `.toolbelt/{config.yaml,vault,logs,bench}`, `AGENTS.md` stub, `agent_docs.yaml`. Depois `mem init` → `invariants.yaml`; graph → `graph.json`; `guard.yaml` criado manualmente para o teste.
-- **Qualidade**: bem melhor que a rodada 1 (`cargo test` automático + AGENTS). Ainda genérico; não importa CONTRIBUTING/AI_POLICY nem sugere `cargo fmt`/`clippy` no seed.
-- **Conflito**: nenhum com instrumentação de agente (não havia). Conflito potencial com AI_POLICY só se houvesse intenção de PR autônomo — não houve.
+**Native vs tb**: the new regression was seen by `cargo test -p grep-printer`; tb mirrored it via configured `test_cmd`/`hidden_test_cmd`.
 
 ---
 
-## Comparação com a rodada 1
+## Interaction with existing instrumentation / onboarding
 
-| Aspecto | Rodada 1 (`c8aae04`) | Rodada 2 (`a46c295`) |
-|---------|----------------------|----------------------|
-| Init | `go test` em Rust | `cargo test` + `--write-agents` |
-| `/tmp/target` graph | 0 nós | 2544 nós |
-| Scope markdown | “sem scope” | parse ok |
-| guard.yaml | ignorado | honrado |
-| verify build/lint/hidden | ausente / gated | rodaram |
-| review FP `tests/hidden` | critical | limpo |
-| bench default_agent / compare --agent | quebrados | ok |
-| impact Rust | vazio | ainda vazio |
-| Tarefa | #2779 multilinha | #3594 hyperlink canonicalize |
-| Conclusão local | sim | sim |
-
-**Veredito**: **melhor** de forma concreta no bootstrap e nas 12 correções listadas; **igual** nas lacunas de grafo Rust/impact, visual PASS-skipped e superfície MCP.
+- **Existing**: only `AI_POLICY.md` (forbids autonomous agents upstream).
+- **`tb init --write-agents` generated**: `.toolbelt/{config.yaml,vault,logs,bench}`, stub `AGENTS.md`, `agent_docs.yaml`. Then `mem init` → `invariants.yaml`; graph → `graph.json`; `guard.yaml` created manually for the test.
+- **Quality**: much better than round 1 (automatic `cargo test` + AGENTS). Still generic; does not import CONTRIBUTING/AI_POLICY nor suggest `cargo fmt`/`clippy` in the seed.
+- **Conflict**: none with agent instrumentation (there was none). Potential conflict with AI_POLICY only if there were intent for an autonomous PR — there was not.
 
 ---
 
-## Sugestões de melhoria
+## Comparison with round 1
 
-1. **[verify/visual] P1** — Não emitir `PASS` quando `skipped: true` (usar `SKIP`/`N/A`).
-2. **[graph] P1** — `impact`/callers em Rust (mesmo regex conservador) **ou** erro explícito “sem edges calls nesta linguagem”.
-3. **[config/cli] P2** — Honrar `-c/--config` em `config.Load()` (hoje a flag não altera o YAML lido).
-4. **[init] P2** — Ao semear `AGENTS.md`, detectar `Cargo.toml` → documentar `cargo test`/`fmt`; avisar se existir `AI_POLICY.md`.
-5. **[mcp] P2** — Expor verify/review/drift/guard/mem ou documentar o subset no `tools/list`.
-6. **[ux] P3** — Permissões 0644 para `AGENTS.md`/configs não-secretas; `-o` consistente já melhorou em parte.
+| Aspect | Round 1 (`c8aae04`) | Round 2 (`a46c295`) |
+|--------|---------------------|---------------------|
+| Init | `go test` on Rust | `cargo test` + `--write-agents` |
+| `/tmp/target` graph | 0 nodes | 2544 nodes |
+| Markdown Scope | “no scope” | parse ok |
+| guard.yaml | ignored | honored |
+| verify build/lint/hidden | absent / gated | ran |
+| review FP `tests/hidden` | critical | clean |
+| bench default_agent / compare --agent | broken | ok |
+| Rust impact | empty | still empty |
+| Task | #2779 multiline | #3594 hyperlink canonicalize |
+| Local conclusion | yes | yes |
+
+**Verdict**: **better** in concrete ways on bootstrap and the 12 listed fixes; **same** on Rust graph/impact gaps, visual PASS-skipped, and MCP surface.
 
 ---
 
-## Métricas
+## Improvement suggestions
 
-| métrica | rodada 2 | rodada 1 (ref) |
-|---------|----------|----------------|
-| Wall time (estudo ativo) | ~8–12 min de comandos + implementação/teste local | ~15–20 min wall |
-| Invocações tb (aprox.) | **~55–65** (inclui re-probes após rebuild `a46c295` e probes das 12 correções) | ~49 |
-| Falhas/erros tb observados | **~8–12** (drift intencional, hidden=`false`→ESCALATE, build_cmd=`false`, probes de flags/docs, impact vazio) | ~11–16 |
-| Binário | `toolbelt a46c295` | `toolbelt c8aae04` |
-| Artefatos | `/tmp/tb-campo2-ripgrep/`; mudança ripgrep só em `/tmp/target/ripgrep` | `/tmp/tb-campo-ripgrep/` |
+1. **[verify/visual] P1** — Do not emit `PASS` when `skipped: true` (use `SKIP`/`N/A`).  
+2. **[graph] P1** — Rust `impact`/callers (even a conservative regex) **or** an explicit “no calls edges in this language” error.  
+3. **[config/cli] P2** — Honor `-c/--config` in `config.Load()` (today the flag does not change the loaded YAML).  
+4. **[init] P2** — When seeding `AGENTS.md`, detect `Cargo.toml` → document `cargo test`/`fmt`; warn if `AI_POLICY.md` exists.  
+5. **[mcp] P2** — Expose verify/review/drift/guard/mem or document the subset in `tools/list`.  
+6. **[ux] P3** — 0644 permissions for `AGENTS.md`/non-secret configs; consistent `-o` already partly improved.
 
-**Não executado / por quê**: CI multi-OS/PCRE2/`cross` do ripgrep; clippy `-D warnings` workspace-wide; bench com agente LLM real (só echo/`--fake`); qualquer interação com o GitHub do ripgrep (proibido).
+---
+
+## Metrics
+
+| metric | round 2 | round 1 (ref) |
+|--------|---------|---------------|
+| Wall time (active study) | ~8–12 min of commands + local implement/test | ~15–20 min wall |
+| Approx. tb invocations | **~55–65** (includes re-probes after `a46c295` rebuild and probes of the 12 fixes) | ~49 |
+| Observed tb failures/errors | **~8–12** (intentional drift, hidden=`false`→ESCALATE, build_cmd=`false`, flag/docs probes, empty impact) | ~11–16 |
+| Binary | `toolbelt a46c295` | `toolbelt c8aae04` |
+| Artifacts | `/tmp/tb-campo2-ripgrep/`; ripgrep change only under `/tmp/target/ripgrep` | `/tmp/tb-campo-ripgrep/` |
+
+**Not run / why**: ripgrep multi-OS/PCRE2/`cross` CI; workspace-wide clippy `-D warnings`; bench with a real LLM agent (only echo/`--fake`); any interaction with ripgrep’s GitHub (forbidden).

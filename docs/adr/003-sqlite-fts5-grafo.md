@@ -1,36 +1,36 @@
-🇧🇷 Português | [🇺🇸 English](../en/adr/003-sqlite-fts5-grafo.md)
+🇺🇸 English | [🇧🇷 Português](../pt-BR/adr/003-sqlite-fts5-grafo.md)
 
-# ADR-003: SQLite + FTS5 como Grafo e Índice de Memória
+# ADR-003: SQLite + FTS5 as Graph and Memory Index
 
 ## Status
 
 accepted
 
-## Contexto
+## Context
 
-O toolbelt precisa de um sistema de armazenamento para:
+toolbelt needs a storage system for:
 
-1. **Grafo de conhecimento**: nós (funções, classes, arquivos, fatos) e arestas (calls, imports, references)
-2. **Memória persistente**: fatos, decisões, sumários
-3. **Busca rápida**: full-text search para queries semânticas
-4. **Proveniência**: distinguir dados extraídos vs inferidos
+1. **Knowledge graph**: nodes (functions, classes, files, facts) and edges (calls, imports, references)
+2. **Persistent memory**: facts, decisions, summaries
+3. **Fast search**: full-text search for semantic queries
+4. **Provenance**: distinguish extracted vs inferred data
 
-Requisitos:
-- Arquivo único (distribuição simples)
-- Queries complexas (grafos, full-text, filtros)
-- Performance adequada para projetos grandes (100k+ nós)
-- Sem servidor (embedded)
+Requirements:
+- Single file (simple distribution)
+- Complex queries (graphs, full-text, filters)
+- Adequate performance for large projects (100k+ nodes)
+- No server (embedded)
 
-## Decisão
+## Decision
 
-**SQLite + FTS5** como índice derivado, com vault Markdown como fonte de verdade.
+**SQLite + FTS5** as a derived index, with a Markdown vault as the source of truth.
 
-### Arquitetura
+### Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                    Vault Markdown                               │
-│                  (fonte de verdade)                             │
+│                    Markdown Vault                               │
+│                  (source of truth)                              │
 │  ─────────────────────────────────────────────────────────────  │
 │  .tb/vault/                                                     │
 │  ├── facts/                                                     │
@@ -38,21 +38,21 @@ Requisitos:
 │  └── agents/                                                    │
 └─────────────────────────────────────────────────────────────────┘
               │
-              │  sync unidirecional
+              │  unidirectional sync
               │  (vault → SQLite)
               ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │                   SQLite + FTS5                                 │
-│                  (índice derivado)                              │
+│                  (derived index)                                │
 │  ─────────────────────────────────────────────────────────────  │
 │  .tb/index.db                                                   │
-│  ├── nodes (nós do grafo)                                       │
+│  ├── nodes (graph nodes)                                        │
 │  ├── nodes_fts (full-text index)                                │
-│  └── edges (arestas do grafo)                                   │
+│  └── edges (graph edges)                                        │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-### Schema Resumido
+### Summary Schema
 
 ```sql
 CREATE TABLE nodes (
@@ -77,78 +77,78 @@ CREATE TABLE edges (
 );
 ```
 
-## Consequências
+## Consequences
 
-### Positivas
+### Positive
 
-- **Arquivo único**: `.tb/index.db` fácil de backup/restaurar
-- **Zero config**: sem servidor, sem containers
-- **FTS5 embutido**: busca full-text sem Elasticsearch
-- **Queries SQL**: flexibilidade para grafos (CTEs recursivas)
-- **Performance**: otimizado para leitura, adequado para 100k+ nós
-- **Transações ACID**: consistência garantida
-- **Reconstruível**: pode ser deletado e reconstruído do vault
+- **Single file**: `.tb/index.db` easy to backup/restore
+- **Zero config**: no server, no containers
+- **Built-in FTS5**: full-text search without Elasticsearch
+- **SQL queries**: flexibility for graphs (recursive CTEs)
+- **Performance**: optimized for reads, adequate for 100k+ nodes
+- **ACID transactions**: guaranteed consistency
+- **Rebuildable**: can be deleted and rebuilt from the vault
 
-### Negativas
+### Negative
 
-- **Single-writer**: lock de escrita limita concorrência de indexação
-- **Sem índice vetorial nativo**: busca semântica requer extensão
-- **Modelo relacional**: grafos são cidadãos de segunda classe
-- **Escala limitada**: milhões de nós podem ficar lentos
+- **Single-writer**: write lock limits indexing concurrency
+- **No native vector index**: semantic search requires an extension
+- **Relational model**: graphs are second-class citizens
+- **Limited scale**: millions of nodes may become slow
 
-## Alternativas Consideradas
+## Alternatives Considered
 
 ### Neo4j / Graph Database
 
-**Por que considerado**:
-- Modelo nativo de grafos
-- Cypher é expressivo para traversals
-- Índices otimizados para grafos
+**Why considered**:
+- Native graph model
+- Cypher is expressive for traversals
+- Indexes optimized for graphs
 
-**Por que não escolhido**:
-- Requer servidor rodando
-- Complexidade de deploy
-- Overkill para nosso tamanho de dados
-- Licenciamento (Community vs Enterprise)
+**Why not chosen**:
+- Requires a running server
+- Deploy complexity
+- Overkill for our data size
+- Licensing (Community vs Enterprise)
 
 ### PostgreSQL
 
-**Por que considerado**:
-- Maduro, feature-rich
-- Full-text search nativo
+**Why considered**:
+- Mature, feature-rich
+- Native full-text search
 - JSON support
 
-**Por que não escolhido**:
-- Requer servidor
-- Overhead para deploy local
-- SQLite é suficiente para nosso caso
+**Why not chosen**:
+- Requires a server
+- Overhead for local deploy
+- SQLite is sufficient for our case
 
-### Índice Vetorial (FAISS, Qdrant)
+### Vector Index (FAISS, Qdrant)
 
-**Por que considerado**:
-- Busca semântica via embeddings
-- Similar search mais poderosa
+**Why considered**:
+- Semantic search via embeddings
+- More powerful similar search
 
-**Por que não escolhido como default**:
-- Complexidade adicional (gerar embeddings)
-- Custo de inferência para indexação
-- FTS5 é suficiente para MVP
-- **Será adicionado opcionalmente na Fase 2**
+**Why not chosen as default**:
+- Additional complexity (generating embeddings)
+- Inference cost for indexing
+- FTS5 is sufficient for MVP
+- **Will be added optionally in Phase 2**
 
 ### LevelDB / RocksDB
 
-**Por que considerado**:
-- Key-value rápido
+**Why considered**:
+- Fast key-value
 - Embedded
 
-**Por que não escolhido**:
-- Sem queries SQL
-- Teria que implementar índices manualmente
-- Sem full-text search nativo
+**Why not chosen**:
+- No SQL queries
+- Would have to implement indexes manually
+- No native full-text search
 
-## Índice Vetorial Opcional (Fase 2)
+## Optional Vector Index (Phase 2)
 
-Quando FTS5 não for suficiente, adicionaremos:
+When FTS5 is not enough, we will add:
 
 ```sql
 CREATE VIRTUAL TABLE nodes_vec USING vec0(
@@ -156,27 +156,27 @@ CREATE VIRTUAL TABLE nodes_vec USING vec0(
 );
 ```
 
-Opções de implementação:
-- [sqlite-vec](https://github.com/asg017/sqlite-vec): extensão SQLite
-- [Qdrant](https://qdrant.tech/): servidor separado, mais poderoso
+Implementation options:
+- [sqlite-vec](https://github.com/asg017/sqlite-vec): SQLite extension
+- [Qdrant](https://qdrant.tech/): separate server, more powerful
 
-## Sincronização Vault → SQLite
+## Vault → SQLite Sync
 
-A direção é sempre vault → SQLite:
+The direction is always vault → SQLite:
 
-1. Watcher detecta mudança no vault
-2. Parser extrai frontmatter, wikilinks, conteúdo
-3. UPSERT no SQLite
-4. FTS5 atualizado automaticamente
+1. Watcher detects a vault change
+2. Parser extracts frontmatter, wikilinks, content
+3. UPSERT into SQLite
+4. FTS5 updated automatically
 
-Se SQLite corromper ou divergir:
+If SQLite corrupts or diverges:
 
 ```bash
-tb graph rebuild  # reconstrói tudo do vault + código
+tb graph rebuild  # rebuilds everything from vault + code
 ```
 
-## Referências
+## References
 
 - [SQLite FTS5](https://www.sqlite.org/fts5.html)
 - [sqlite-vec](https://github.com/asg017/sqlite-vec)
-- [Recursive CTEs para grafos](https://www.sqlite.org/lang_with.html)
+- [Recursive CTEs for graphs](https://www.sqlite.org/lang_with.html)

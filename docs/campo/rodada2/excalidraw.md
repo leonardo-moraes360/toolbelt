@@ -1,167 +1,167 @@
-🇧🇷 Português | [🇺🇸 English](../../en/campo/rodada2/excalidraw.md)
+🇺🇸 English | [🇧🇷 Português](../../pt-BR/campo/rodada2/excalidraw.md)
 
-# Campo rodada 2: excalidraw/excalidraw
+# Field round 2: excalidraw/excalidraw
 
-Estudo em 2026-11-16 com `tb` de `toolbelt@a46c295` (`make build` → `./bin/tb`). Clone local em `/tmp/target/excalidraw` (shallow). Grupo: **with existing AI-agent instrumentation**. **Nenhuma** interação com o remoto do Excalidraw. Evidências em `/tmp/campo2-evidence/`.
+Study on 2026-11-16 with `tb` from `toolbelt@a46c295` (`make build` → `./bin/tb`). Local clone at `/tmp/target/excalidraw` (shallow). Group: **with existing AI-agent instrumentation**. **No** interaction with the Excalidraw remote. Evidence under `/tmp/campo2-evidence/`.
 
-## Repositório
+## Repository
 
-| Campo | Valor |
+| Field | Value |
 |-------|-------|
-| Nome | [excalidraw/excalidraw](https://github.com/excalidraw/excalidraw) |
-| Linguagem | TypeScript / React (monorepo Yarn workspaces) |
-| Tamanho | ~1375 arquivos TS/JS (sem `node_modules`); checkout shallow ~93 MiB; com `node_modules` ~1.1 GiB |
-| Commit base | `82190fb` (`master` shallow) |
-| Instrumentação AI | `AGENTS.md` (DOM/`ownerDocument`, `Merge<>`); `CLAUDE.md` (estrutura monorepo, `yarn test:typecheck` / `yarn test:update` / `yarn fix`) |
-| Toolchain | **Configurada**: Node 22, Yarn 1.22.22, `yarn install --frozen-lockfile` OK, Vitest 3.0.6, `tsc`, ESLint, Chrome headless (`/usr/local/bin/google-chrome`) |
-| Não configurado | App no browser / Playwright E2E de UI; `yarn build` de produção; suíte `yarn test:all` completa (typecheck+eslint nos arquivos da tarefa e vitest math foram rodados) |
+| Name | [excalidraw/excalidraw](https://github.com/excalidraw/excalidraw) |
+| Language | TypeScript / React (Yarn workspaces monorepo) |
+| Size | ~1375 TS/JS files (without `node_modules`); shallow checkout ~93 MiB; with `node_modules` ~1.1 GiB |
+| Base commit | `82190fb` (`master` shallow) |
+| AI instrumentation | `AGENTS.md` (DOM/`ownerDocument`, `Merge<>`); `CLAUDE.md` (monorepo structure, `yarn test:typecheck` / `yarn test:update` / `yarn fix`) |
+| Toolchain | **Configured**: Node 22, Yarn 1.22.22, `yarn install --frozen-lockfile` OK, Vitest 3.0.6, `tsc`, ESLint, headless Chrome (`/usr/local/bin/google-chrome`) |
+| Not configured | App in the browser / Playwright UI E2E; production `yarn build`; full `yarn test:all` suite (typecheck+eslint on task files and vitest math were run) |
 
-## Tarefa escolhida
+## Chosen task
 
-| Campo | Valor |
+| Field | Value |
 |-------|-------|
-| O quê | Slice 1 de [#9297](https://github.com/excalidraw/excalidraw/issues/9297): adicionar tipos `ViewportPoint` e `GenericPoint` em `@excalidraw/math`, helper `viewportPointFrom`, testes em `packages/math/tests/point.test.ts`. Migração completa dos `extends GlobalPoint \| LocalPoint` → `GenericPoint` **adiada** (typecheck do monorepo quebra quando `ViewportPoint` entra nas constraints existentes). |
-| Por quê | Feature pequena/média, isolada no pacote math, com issue real e testes unitários; diferente da rodada 1. |
+| What | Slice 1 of [#9297](https://github.com/excalidraw/excalidraw/issues/9297): add types `ViewportPoint` and `GenericPoint` in `@excalidraw/math`, helper `viewportPointFrom`, tests in `packages/math/tests/point.test.ts`. Full migration of `extends GlobalPoint \| LocalPoint` → `GenericPoint` **deferred** (monorepo typecheck breaks when `ViewportPoint` enters existing constraints). |
+| Why | Small/medium feature, isolated in the math package, with a real issue and unit tests; different from round 1. |
 | Issue | https://github.com/excalidraw/excalidraw/issues/9297 |
-| Completada? | **Sim, localmente** (commit `619250f` no clone; **não** enviado ao upstream). Tentativa ampla de trocar constraints gerou ~29 erros `tsc` (utils/element/excalidraw); slice tipado+helper passou. |
-| Checks nativos | `yarn vitest run packages/math/tests` → 9 files / 60 tests PASS (~2.7–3.0 s). `yarn test:typecheck` → PASS (~14–15 s). ESLint nos arquivos tocados: 1 warning Prettier no 1º draft; após `--fix` → PASS. |
-| Rodada 1 (comparação) | Rodada 1: bugfix `normalizeRadians` → `0` em múltiplos de 2π (issue #12599). Rodada 2: tipos `ViewportPoint`/`GenericPoint` (#9297). |
+| Completed? | **Yes, locally** (commit `619250f` on the clone; **not** sent upstream). A broad attempt to swap constraints produced ~29 `tsc` errors (utils/element/excalidraw); the typed slice+helper passed. |
+| Native checks | `yarn vitest run packages/math/tests` → 9 files / 60 tests PASS (~2.7–3.0 s). `yarn test:typecheck` → PASS (~14–15 s). ESLint on touched files: 1 Prettier warning on the 1st draft; after `--fix` → PASS. |
+| Round 1 (comparison) | Round 1: bugfix `normalizeRadians` → `0` on multiples of 2π (issue #12599). Round 2: types `ViewportPoint`/`GenericPoint` (#9297). |
 
-## Verificação das 12 correções
+## Verification of the 12 fixes
 
-| # | correção | resultado | evidência |
-|---|----------|-----------|-----------|
-| 1 | graph SkipDirs na raiz do walk | **funcionou** | Clone em `/tmp/target/excalidraw`; `TB_GRAPH=on tb graph rebuild --enable` → 4453–4454 nós / ~18471 arestas (~1.47 s), não grafo vazio (`09-graph-rebuild.txt`) |
-| 2 | verify `hidden_test_cmd` sem `tests/hidden/` | **funcionou** | Sem dir `tests/hidden/`; `--hidden-test-cmd "yarn vitest run …point.test.ts"` → `hidden_available: true`, `hidden_passed: true`, verdict PASS (`31b-hidden-no-dir.txt`). Com `false` → `hidden_available: true`, `hidden_passed: false`, ESCALATE (`31c`) |
-| 3 | guard `--strict --json` exit ≠ 0 | **funcionou** | Com `.toolbelt/guard.yaml` protegendo `types.ts` (alterado no diff): sem `--strict` exit 0 + violations; com `--strict --json` exit **1** + JSON válido (`29b`/`30b`) |
-| 4 | guard lê `protected_paths` de `guard.yaml` | **funcionou** | YAML com `packages/math/src/types.ts` → violação `protected_path` nesse arquivo; sem YAML → `violations: null` no mesmo diff (`28`/`29`) |
-| 5 | init detecção de toolchain | **funcionou** (parcial útil) | `tb init` → `verify.test_cmd: yarn test` (não mais `go test`); não preencheu sozinho `build_cmd`/`lint_cmd` a partir dos scripts/`CLAUDE.md` (`02-init.txt`) |
-| 6 | review `tests/hidden` por path | **funcionou** | `rd.md` menciona `tests/hidden/**` em Forbidden; diff da tarefa não toca esse path → `findings: []` (`27-review.txt`, `40-review-no-fp-hidden.txt`) |
-| 7 | bench `default_agent` e `compare --agent` | **funcionou** | `bench.default_agent: echo default-agent-used` + `tb bench run -r 1 --task bugfix-go` (sem `--agent`) iniciou `agent=external` e concluiu (`33b`). `tb bench compare … --agent "echo compare-agent"` aceitou a flag e rodou A/B (`35b`). Help documenta `-a/--agent` |
-| 8 | review/drift `## Scope`/`## Escopo`, listas MD e `**` globs | **funcionou** | Ticket com `## Escopo` + bullets + `packages/math/tests/**` e `packages/math/src/**/*.ts`; drift/review limpos no commit da tarefa; commit de `CONTRIBUTING.md` → `out_of_scope: ["CONTRIBUTING.md"]` (`26`, `39b`) |
-| 9 | verify `build_cmd` e `lint_cmd` | **funcionou** | Config com `build_cmd: yarn test:typecheck` e `lint_cmd: eslint…`; 1º verify → lint falhou (Prettier), `lint_ran/passed`, `build_ran/passed`, verdict ESCALATE (`23`). Após fix → PASS com build+lint+visible+hidden (`25`) |
-| 10 | init lê AGENTS.md/CLAUDE.md e `--write-agents` | **funcionou** | Init logou sources + hints; gravou `.toolbelt/agent_docs.yaml`. `--write-agents` no Excalidraw **não** sobrescreveu `AGENTS.md`. Em repo vazio semeou `AGENTS.md` mínimo (`02`, `02c`, `38`) |
-| 11 | graph Python `calls` | **não se aplica** | Repo TS/React; arestas `calls` JS presentes no stats (`edges_calls: 8871`). Não exercitado o indexador Python |
-| 12 | visual skipped agregado + docs CLI alinhados | **funcionou** | Manifesto sem refs → top-level `"skipped": true`, `skip_reason: "todas as telas foram skipped"` (`32-visual-skipped.txt`). `docs/cli.md` documenta hidden sem dir, build/lint, `default_agent`, ticket como planejado, visual skipped (`41`) |
+| # | fix | result | evidence |
+|---|-----|--------|----------|
+| 1 | graph SkipDirs at walk root | **worked** | Clone under `/tmp/target/excalidraw`; `TB_GRAPH=on tb graph rebuild --enable` → 4453–4454 nodes / ~18471 edges (~1.47 s), not an empty graph (`09-graph-rebuild.txt`) |
+| 2 | verify `hidden_test_cmd` without `tests/hidden/` | **worked** | No `tests/hidden/` dir; `--hidden-test-cmd "yarn vitest run …point.test.ts"` → `hidden_available: true`, `hidden_passed: true`, verdict PASS (`31b-hidden-no-dir.txt`). With `false` → `hidden_available: true`, `hidden_passed: false`, ESCALATE (`31c`) |
+| 3 | guard `--strict --json` exit ≠ 0 | **worked** | With `.toolbelt/guard.yaml` protecting `types.ts` (changed in the diff): without `--strict` exit 0 + violations; with `--strict --json` exit **1** + valid JSON (`29b`/`30b`) |
+| 4 | guard reads `protected_paths` from `guard.yaml` | **worked** | YAML with `packages/math/src/types.ts` → `protected_path` violation on that file; without YAML → `violations: null` on the same diff (`28`/`29`) |
+| 5 | init toolchain detection | **worked** (useful partial) | `tb init` → `verify.test_cmd: yarn test` (no longer `go test`); did not fill `build_cmd`/`lint_cmd` alone from scripts/`CLAUDE.md` (`02-init.txt`) |
+| 6 | review `tests/hidden` by path | **worked** | `rd.md` mentions `tests/hidden/**` under Forbidden; task diff does not touch that path → `findings: []` (`27-review.txt`, `40-review-no-fp-hidden.txt`) |
+| 7 | bench `default_agent` and `compare --agent` | **worked** | `bench.default_agent: echo default-agent-used` + `tb bench run -r 1 --task bugfix-go` (without `--agent`) started `agent=external` and finished (`33b`). `tb bench compare … --agent "echo compare-agent"` accepted the flag and ran A/B (`35b`). Help documents `-a/--agent` |
+| 8 | review/drift `## Scope`/`## Escopo`, MD lists and `**` globs | **worked** | Ticket with `## Escopo` + bullets + `packages/math/tests/**` and `packages/math/src/**/*.ts`; clean drift/review on the task commit; `CONTRIBUTING.md` commit → `out_of_scope: ["CONTRIBUTING.md"]` (`26`, `39b`) |
+| 9 | verify `build_cmd` and `lint_cmd` | **worked** | Config with `build_cmd: yarn test:typecheck` and `lint_cmd: eslint…`; 1st verify → lint failed (Prettier), `lint_ran/passed`, `build_ran/passed`, verdict ESCALATE (`23`). After fix → PASS with build+lint+visible+hidden (`25`) |
+| 10 | init reads AGENTS.md/CLAUDE.md and `--write-agents` | **worked** | Init logged sources + hints; wrote `.toolbelt/agent_docs.yaml`. `--write-agents` on Excalidraw **did not** overwrite `AGENTS.md`. In an empty repo seeded a minimal `AGENTS.md` (`02`, `02c`, `38`) |
+| 11 | graph Python `calls` | **not applicable** | TS/React repo; JS `calls` edges present in stats (`edges_calls: 8871`). Python indexer not exercised |
+| 12 | aggregated visual skipped + CLI docs aligned | **worked** | Manifest without refs → top-level `"skipped": true`, `skip_reason: "todas as telas foram skipped"` (`32-visual-skipped.txt`). `docs/cli.md` documents hidden without dir, build/lint, `default_agent`, ticket as planned, visual skipped (`41`) |
 
-## Uso do tb por comando
+## tb usage by command
 
-| comando | resultado | ajudou/atrapalhou/neutro | evidência |
-|---------|-----------|--------------------------|-----------|
-| `tb version` (`make build`) | `toolbelt a46c295` com commit/built | neutro | `01-version.txt` |
-| `go run ./cmd/tb version` | `0.1.0-dev`, commit/built `unknown` | atrapalhou (sem ldflags) | `48-version-norflags.txt` |
-| `tb init` | `.toolbelt/` + `yarn test`; leu AGENTS/CLAUDE; mode `600` | ajudou (onboarding bem melhor que rodada 1) | `02-init.txt` WALL 0.006 s |
-| `tb init --write-agents` | não sobrescreve existente; semeia se ausente | ajudou | `02c`, `38` |
-| `tb mem init/add/list/check` | OK; invariantes + sha256 | ajudou | `03`–`06` |
-| Ticket (`rd.md` manual) | `tb ticket` ainda inexistente (docs: Fase 3+) | neutro (fluxo manual documentado) | `41`, `08-rd.md` |
-| `TB_GRAPH=on tb graph rebuild` | ~4454 nós / ~18474 arestas | ajudou | `09`, `42` |
-| `tb graph search viewportPointFrom` | achou a função nova | ajudou | `43` |
-| `tb graph callers --function pointFrom` | callers intra-`packages/math` (curve/point/segment); pouco cross-package | atrapalhou parcialmente | `45` |
-| `tb graph impact --file point.ts` | impacto limitado ao pacote math | atrapalhou parcialmente | `46` |
-| `tb verify run` (build+lint+test+hidden) | FAIL→PASS; pegou Prettier; hidden sem dir | ajudou | `23`, `25`, `31b` |
-| `tb verify --ruler visual` | skipped top-level honesto | ajudou | `32` |
-| `tb review rd.md` | sem findings; sem FP `tests/hidden` | ajudou | `27`, `40` |
-| `tb drift rd.md` | limpo na tarefa; detectou OOS; ainda imprime Usage após JSON | ajudou / UX atrapalha | `26`, `39b` |
-| `tb guard check` + `guard.yaml` + `--strict --json` | YAML honrado; strict exit 1 | ajudou | `28`–`30b` |
-| `tb bench run` via `default_agent` | funciona sem `--agent` | ajudou | `33b` |
-| `tb bench compare --agent` | flag aceita; A/B OK | ajudou | `35b` |
-| `tb mcp` + `tools/list` | initialize + tools (env/run/graph/…) | ajudou | `37b-mcp.txt` |
-| Checks nativos | vitest/tsc/eslint conforme acima | ajudou (baseline) | `17`–`22`, `49`–`50` |
+| command | result | helped / hindered / neutral | evidence |
+|---------|--------|-----------------------------|----------|
+| `tb version` (`make build`) | `toolbelt a46c295` with commit/built | neutral | `01-version.txt` |
+| `go run ./cmd/tb version` | `0.1.0-dev`, commit/built `unknown` | hindered (without ldflags) | `48-version-norflags.txt` |
+| `tb init` | `.toolbelt/` + `yarn test`; read AGENTS/CLAUDE; mode `600` | helped (onboarding much better than round 1) | `02-init.txt` WALL 0.006 s |
+| `tb init --write-agents` | does not overwrite existing; seeds if absent | helped | `02c`, `38` |
+| `tb mem init/add/list/check` | OK; invariants + sha256 | helped | `03`–`06` |
+| Ticket (manual `rd.md`) | `tb ticket` still nonexistent (docs: Phase 3+) | neutral (manual flow documented) | `41`, `08-rd.md` |
+| `TB_GRAPH=on tb graph rebuild` | ~4454 nodes / ~18474 edges | helped | `09`, `42` |
+| `tb graph search viewportPointFrom` | found the new function | helped | `43` |
+| `tb graph callers --function pointFrom` | callers inside `packages/math` (curve/point/segment); little cross-package | hindered partially | `45` |
+| `tb graph impact --file point.ts` | impact limited to the math package | hindered partially | `46` |
+| `tb verify run` (build+lint+test+hidden) | FAIL→PASS; caught Prettier; hidden without dir | helped | `23`, `25`, `31b` |
+| `tb verify --ruler visual` | honest top-level skipped | helped | `32` |
+| `tb review rd.md` | no findings; no `tests/hidden` FP | helped | `27`, `40` |
+| `tb drift rd.md` | clean on the task; detected OOS; still prints Usage after JSON | helped / UX hinders | `26`, `39b` |
+| `tb guard check` + `guard.yaml` + `--strict --json` | YAML honored; strict exit 1 | helped | `28`–`30b` |
+| `tb bench run` via `default_agent` | works without `--agent` | helped | `33b` |
+| `tb bench compare --agent` | flag accepted; A/B OK | helped | `35b` |
+| `tb mcp` + `tools/list` | initialize + tools (env/run/graph/…) | helped | `37b-mcp.txt` |
+| Native checks | vitest/tsc/eslint as above | helped (baseline) | `17`–`22`, `49`–`50` |
 
-## Problemas que continuam
+## Problems that persist
 
-- **Callers/impact fracos cross-package no monorepo TS** (P2 rodada 1): `pointFrom` / `types.ts` ainda não listam consumidores em `packages/element` / `excalidraw` de forma útil (`45`, `46`, e busca `GlobalPoint` só achou matches de substring em nomes de função — `11`).
-- **`version` → `unknown` sem ldflags** (`48`).
+- **Weak cross-package callers/impact in the TS monorepo** (round 1 P2): `pointFrom` / `types.ts` still do not list consumers in `packages/element` / `excalidraw` usefully (`45`, `46`, and search for `GlobalPoint` only found substring matches in function names — `11`).
+- **`version` → `unknown` without ldflags** (`48`).
 - **Configs mode `0600`** (`02-init.txt` stat).
-- **Usage do Cobra após JSON** em `tb drift` com drift (`39b`: JSON + `Error:` + Usage).
-- **Init não promove hints de `CLAUDE.md` a `build_cmd`/`lint_cmd`**: só loga hints e seta `test_cmd: yarn test`; typecheck/eslint ainda exigem edição manual do YAML (gap residual do onboarding).
-- **`tb ticket` não implementado** (docs agora marcam como planejado — melhoria de expectativa, comando continua ausente).
+- **Cobra Usage after JSON** on `tb drift` with drift (`39b`: JSON + `Error:` + Usage).
+- **Init does not promote `CLAUDE.md` hints to `build_cmd`/`lint_cmd`**: only logs hints and sets `test_cmd: yarn test`; typecheck/eslint still need manual YAML edits (residual onboarding gap).
+- **`tb ticket` not implemented** (docs now mark it as planned — better expectation, command still missing).
 
-## Problemas novos
+## New problems
 
-### P2 — Hints de AGENTS/CLAUDE não viram `verify.build_cmd`/`lint_cmd`
+### P2 — AGENTS/CLAUDE hints do not become `verify.build_cmd`/`lint_cmd`
 
-- **Repro**: `tb init` no Excalidraw (há `yarn test:typecheck` / `yarn fix` no `CLAUDE.md`).
-- **Esperado**: pelo menos sugerir/preencher build/lint além de `yarn test`.
-- **Atual**: `agent_docs.yaml` com hints; `config.yaml` só com `test_cmd: yarn test` (`02-init.txt`).
+- **Repro**: `tb init` on Excalidraw (`yarn test:typecheck` / `yarn fix` in `CLAUDE.md`).
+- **Expected**: at least suggest/fill build/lint beyond `yarn test`.
+- **Actual**: `agent_docs.yaml` with hints; `config.yaml` only with `test_cmd: yarn test` (`02-init.txt`).
 
-### P3 — `bench.tasks_dir` absoluto no YAML pode ser ignorado conforme cwd
+### P3 — Absolute YAML `bench.tasks_dir` may be ignored depending on cwd
 
-- **Repro**: em `/tmp/bench-probe`, config com `tasks_dir: /agent/repos/toolbelt/bench/tasks`; `tb bench run -r 1`.
-- **Esperado**: abrir o path absoluto.
-- **Atual**: log `tasks_dir=bench/tasks` relativo e falha `open bench/tasks` (`33-bench-default.txt`). No repo toolbelt (cwd certo) o default_agent funciona.
+- **Repro**: under `/tmp/bench-probe`, config with `tasks_dir: /agent/repos/toolbelt/bench/tasks`; `tb bench run -r 1`.
+- **Expected**: open the absolute path.
+- **Actual**: log `tasks_dir=bench/tasks` relative and fails `open bench/tasks` (`33-bench-default.txt`). In the toolbelt repo (right cwd) default_agent works.
 
-### P3 — Regressão de expectativa: verify “PASS” ainda não significa “tarefa maintainer-completa”
+### P3 — Expectation regression: verify “PASS” still does not mean “maintainer-complete task”
 
-- Não é regressão de código das 12 fixes (build/lint agora funcionam se configurados), mas o default pós-init ainda passa sem typecheck/eslint do Excalidraw. Agente precisa lembrar de espelhar `CLAUDE.md` no YAML.
+- Not a code regression of the 12 fixes (build/lint now work when configured), but the post-init default still passes without Excalidraw typecheck/eslint. The agent must remember to mirror `CLAUDE.md` into YAML.
 
-Nenhuma regressão observada nas 12 correções listadas quando exercitadas de propósito.
+No regression observed on the 12 listed fixes when exercised on purpose.
 
-## O que o tb pegou e o que deixou passar
+## What tb caught and what it let slip
 
-**Pegou**
+**Caught**
 
-- Warning Prettier no helper novo via `lint_cmd` (verify ESCALATE até corrigir).
-- Drift de `CONTRIBUTING.md` fora do `## Escopo`.
-- Path protegido via `guard.yaml` + exit 1 com `--strict --json`.
-- Suíte hidden configurada sem diretório `tests/hidden/`.
-- Visual com todas as telas skipped → `skipped: true` no topo.
-- Indexação do monorepo sob `/tmp/target` e localização de `viewportPointFrom`.
-- Leitura de `AGENTS.md`/`CLAUDE.md` no init; ausência de FP de review por mencionar `tests/hidden`.
+- Prettier warning on the new helper via `lint_cmd` (verify ESCALATE until fixed).
+- Drift of `CONTRIBUTING.md` outside `## Escopo`.
+- Protected path via `guard.yaml` + exit 1 with `--strict --json`.
+- Configured hidden suite without a `tests/hidden/` directory.
+- Visual with all screens skipped → top-level `skipped: true`.
+- Monorepo indexing under `/tmp/target` and locating `viewportPointFrom`.
+- Reading `AGENTS.md`/`CLAUDE.md` in init; no review FP from mentioning `tests/hidden`.
 
-**Deixou passar**
+**Let slip**
 
-- Consumidores cross-package das APIs de ponto (grafo).
-- Preenchimento automático de typecheck/eslint no config (só hints).
-- Completude “maintainer” se o agente aceitar só o default `yarn test` pós-init.
-- A tentativa falha de migrar todos os generics para `GenericPoint` (limitação da tarefa/typecheck do monorepo — o tb não analisa esse risco de API).
+- Cross-package consumers of point APIs (graph).
+- Auto-fill of typecheck/eslint in config (hints only).
+- “Maintainer” completeness if the agent accepts only the post-init default `yarn test`.
+- The failed attempt to migrate all generics to `GenericPoint` (task/monorepo typecheck limitation — tb does not analyze that API risk).
 
-## Interação com instrumentação existente / onboarding
+## Interaction with existing instrumentation / onboarding
 
-- **Melhora clara vs rodada 1**: `tb init` detecta Yarn, grava `agent_docs.yaml`, extrai comandos do `CLAUDE.md`, e `--write-agents` respeita arquivo existente.
-- **Ainda incompleto**: hints não viram `build_cmd`/`lint_cmd`; invariantes default do `mem init` continuam genéricas (`tests/hidden`, `thresholds.yaml`) e não importam bullets do `AGENTS.md` (`ownerDocument`, `Merge<>`).
-- **Sem conflito destrutivo**: não sobrescreveu `AGENTS.md`/`CLAUDE.md`.
-- **O que ainda faltaria importar**: (1) mapear hints → `verify.*`; (2) bullets do `AGENTS.md` → `tb mem` mandate; (3) workspaces Yarn para defaults de graph/impact.
+- **Clear improvement vs round 1**: `tb init` detects Yarn, writes `agent_docs.yaml`, extracts commands from `CLAUDE.md`, and `--write-agents` respects an existing file.
+- **Still incomplete**: hints do not become `build_cmd`/`lint_cmd`; default `mem init` invariants stay generic (`tests/hidden`, `thresholds.yaml`) and do not import `AGENTS.md` bullets (`ownerDocument`, `Merge<>`).
+- **No destructive conflict**: did not overwrite `AGENTS.md`/`CLAUDE.md`.
+- **What would still need importing**: (1) map hints → `verify.*`; (2) `AGENTS.md` bullets → `tb mem` mandate; (3) Yarn workspaces for graph/impact defaults.
 
-## Comparação com a rodada 1
+## Comparison with round 1
 
-| Aspecto | Rodada 1 (`c8aae04`) | Rodada 2 (`a46c295`) |
-|---------|----------------------|----------------------|
-| init / toolchain | `go test` em repo Yarn | `yarn test` + leitura AGENTS/CLAUDE |
-| verify | só test_cmd; hidden morto sem dir; PASS sem tsc | build/lint/hidden honrados; pegou Prettier |
-| guard.yaml / strict JSON | ignorado; strict+json exit 0 | honrado; exit 1 |
-| review FP `tests/hidden` | confirmado | ausente neste ticket |
-| Scope Markdown | frágil / frontmatter | `## Escopo` + globs OK |
-| bench default_agent / compare `--agent` | quebrados | funcionam |
-| visual skipped top-level | mentiroso | `skipped: true` |
-| graph em `/tmp/target` | risco SkipDirs (outros repos) | indexou normalmente |
-| callers cross-package TS | fraco | ainda fraco |
-| docs CLI | desatualizados | alinhados nos pontos checados |
+| Aspect | Round 1 (`c8aae04`) | Round 2 (`a46c295`) |
+|--------|---------------------|---------------------|
+| init / toolchain | `go test` in a Yarn repo | `yarn test` + AGENTS/CLAUDE read |
+| verify | only test_cmd; hidden dead without dir; PASS without tsc | build/lint/hidden honored; caught Prettier |
+| guard.yaml / strict JSON | ignored; strict+json exit 0 | honored; exit 1 |
+| review FP `tests/hidden` | confirmed | absent on this ticket |
+| Markdown Scope | fragile / frontmatter | `## Escopo` + globs OK |
+| bench default_agent / compare `--agent` | broken | work |
+| visual skipped top-level | lying | `skipped: true` |
+| graph under `/tmp/target` | SkipDirs risk (other repos) | indexed normally |
+| TS cross-package callers | weak | still weak |
+| CLI docs | outdated | aligned on checked points |
 
-**Veredito:** claramente **melhor** nas 12 correções priorizadas; dores estruturais de grafo TS monorepo e de “empurrar completude” a partir da instrumentação nativa **permanecem**.
+**Verdict:** clearly **better** on the 12 prioritized fixes; structural TS monorepo graph pain and “pushing completeness” from native instrumentation **remain**.
 
-## Sugestões de melhoria
+## Improvement suggestions
 
-1. **[P1 · init/verify]** Aplicar hints de `CLAUDE.md`/`package.json` a `build_cmd`/`lint_cmd` (ou checklist interativa), não só log + `test_cmd`.
-2. **[P1 · mem/init]** Importar bullets de `AGENTS.md` como invariantes `mandate`.
-3. **[P2 · graph]** Resolver callers/impact cross-package com path aliases / workspaces Yarn (TS).
-4. **[P2 · bench]** Honrar `tasks_dir`/`fixtures_dir` absolutos no config independente do cwd.
-5. **[P3 · cli]** Em `--json`, não imprimir Usage do Cobra após erro (`drift`/`review`).
-6. **[P3 · verify]** Profile `js-monorepo` que combine test+typecheck+lint a partir de scripts conhecidos.
+1. **[P1 · init/verify]** Apply `CLAUDE.md`/`package.json` hints to `build_cmd`/`lint_cmd` (or an interactive checklist), not only log + `test_cmd`.  
+2. **[P1 · mem/init]** Import `AGENTS.md` bullets as `mandate` invariants.  
+3. **[P2 · graph]** Resolve cross-package callers/impact with path aliases / Yarn workspaces (TS).  
+4. **[P2 · bench]** Honor absolute `tasks_dir`/`fixtures_dir` in config regardless of cwd.  
+5. **[P3 · cli]** With `--json`, do not print Cobra Usage after an error (`drift`/`review`).  
+6. **[P3 · verify]** `js-monorepo` profile that combines test+typecheck+lint from known scripts.
 
-## Métricas
+## Metrics
 
-| métrica | rodada 2 | rodada 1 (ref) |
-|---------|----------|----------------|
-| Wall time somado (amostra cronometrada tb + nativos no log) | ~103 s (inclui typecheck falho da tentativa ampla + verify×2) | ~49 s |
-| Invocações tb (aprox., com probes das 12 fixes) | ~55–70 | ~45–55 |
-| Evidência files em `/tmp/campo2-evidence` | 68 | — |
-| Falhas tb observadas | verify ESCALATE (lint Prettier) até fix; guard strict exit 1 (esperado); drift OOS; bench cwd/tasks; compare sem before/after | drift/review/guard/bench bugs de produto |
-| Graph rebuild | ~1.47 s / 4453 nós / 18471 arestas | ~1.05 s / 4452 / 18465 |
-| Verify PASS final (build+lint+test+hidden) | ~20.2 s | ~2.9 s (só vitest) |
+| metric | round 2 | round 1 (ref) |
+|--------|---------|---------------|
+| Summed wall time (timed tb + native sample in the log) | ~103 s (includes failed typecheck of the broad attempt + verify×2) | ~49 s |
+| Approx. tb invocations (with probes of the 12 fixes) | ~55–70 | ~45–55 |
+| Evidence files under `/tmp/campo2-evidence` | 68 | — |
+| Observed tb failures | verify ESCALATE (Prettier lint) until fix; expected guard strict exit 1; OOS drift; bench cwd/tasks; compare without before/after | drift/review/guard/bench product bugs |
+| Graph rebuild | ~1.47 s / 4453 nodes / 18471 edges | ~1.05 s / 4452 / 18465 |
+| Final verify PASS (build+lint+test+hidden) | ~20.2 s | ~2.9 s (vitest only) |
 | Vitest math | ~3.0 s, 60 tests PASS | ~2.8 s, 64 tests |
-| `tsc` (slice OK) | ~14.8 s PASS | ~13.6 s PASS |
+| `tsc` (OK slice) | ~14.8 s PASS | ~13.6 s PASS |
 | MCP `tools/list` | OK | OK |
-| Bench fake (toolbelt, 9 tasks) | sucesso 33.3% (baseline fake) | idem |
+| Bench fake (toolbelt, 9 tasks) | 33.3% success (fake baseline) | same |
 
-**Nota:** a tarefa foi fechada com typecheck+eslint+vitest; o tb só “fechou” o loop depois de configurarmos `build_cmd`/`lint_cmd`/`hidden_test_cmd` manualmente — avanço real vs rodada 1, ainda dependente do agente espelhar a instrumentação existente.
+**Note:** the task was closed with typecheck+eslint+vitest; tb only “closed” the loop after we configured `build_cmd`/`lint_cmd`/`hidden_test_cmd` manually — real progress vs round 1, still dependent on the agent mirroring existing instrumentation.
