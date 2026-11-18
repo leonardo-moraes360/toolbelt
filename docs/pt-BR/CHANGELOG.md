@@ -9,6 +9,8 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Não Lançado]
 
+## [0.0.6] - 2026-11-18
+
 ### Alterado
 - Inglês passa a ser a língua padrão do repositório: docs da raiz (`README.md`, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md`, `CHANGELOG.md`), `docs/`, `AGENTS.md`, `CLAUDE.md`, templates do `.github/`, invariantes e comentários de código; a tradução em português vai para `docs/pt-BR/` (substitui `docs/en/` e os `*.en.md` da raiz); `TestDocsTranslationMirrorComplete` substitui `TestDocsEnglishMirrorComplete`
 - Landing page abre em inglês por padrão (toggle PT mantido)
