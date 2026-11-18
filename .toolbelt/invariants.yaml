@@ -56,3 +56,44 @@ invariants:
       rule: 'tb é 100% local: nenhum comando fala com GitHub/rede; review/drift/verify leem ticket/rd.md do disco (docs/en/cli.md#local-first-sem-github)'
       added_at: 2026-11-17T14:11:24.833007617Z
       immutable: false
+    - id: inv-1795019844120185514
+      category: security
+      rule: Harness do bus (tb bus run) nunca usa bypassPermissions/--dangerously-skip-permissions; --check recusa e o sandbox segue fail-closed
+      ref: docs/en/adr/013-barramento-multi-vendor.md
+      added_at: 2026-11-18T16:37:24.120186776Z
+      immutable: false
+    - id: inv-1795019844122559508
+      category: security
+      rule: Estado privado do bus (sessões, tokens, wake, audit) fica fora do repositório ($XDG_STATE_HOME/toolbelt/bus); wake packet e audit nunca carregam payload, token ou valor de pass_env
+      ref: docs/en/adr/013-barramento-multi-vendor.md
+      added_at: 2026-11-18T16:37:24.12256025Z
+      immutable: false
+    - id: inv-1795019844131303635
+      category: security
+      rule: MCP do bus não expõe criar canal nem convite; identidade presa à conexão, from definido pelo broker
+      ref: docs/en/adr/013-barramento-multi-vendor.md
+      added_at: 2026-11-18T16:37:24.131304176Z
+      immutable: false
+    - id: inv-1795019844133530381
+      category: mandate
+      rule: Espera do bus é sem LLM (zero tokens em espera) e o tb não abre rede; rede só no processo filho configurado pelo humano
+      ref: docs/en/adr/013-barramento-multi-vendor.md
+      added_at: 2026-11-18T16:37:24.133530933Z
+      immutable: false
+    - id: inv-1795019844135667819
+      category: mandate
+      rule: Consultas do grafo (search/explain/path) são determinísticas em Go puro, sem LLM; Graphify é reimplementado, não integrado
+      ref: docs/en/adr/014-graphify-reimplementacao.md
+      added_at: 2026-11-18T16:37:24.13566835Z
+      immutable: false
+    - id: inv-1795019844137842036
+      category: mandate
+      rule: 'Binário sem CGO (CGO_ENABLED=0): SQLite via modernc.org/sqlite; não adicionar dependência que exija CGO'
+      ref: docs/en/adr/003-sqlite-fts5-grafo.md
+      added_at: 2026-11-18T16:37:24.137842637Z
+      immutable: false
+    - id: inv-1795019844139802108
+      category: mandate
+      rule: 'Release: mover [Não Lançado] do CHANGELOG para a versão antes da tag v*; nunca reutilizar tag publicada (docs/en/release.md)'
+      added_at: 2026-11-18T16:37:24.139802619Z
+      immutable: false
