@@ -272,6 +272,12 @@ reindexed automatically; if `false`, output warns and JSON includes
 `{"stale": false, "nodes": [...]}`; `stats`/`index` include `stale` in the
 statistics object.
 
+Over MCP, `tb_graph_search`/`callers`/`deps`/`impact`/`explain`/`path` never
+reindex, whatever `graph.index_on_change` says: they are annotated
+`readOnlyHint`, so a client can auto-approve or parallelize them. A stale index
+returns `stale: true` with a `hint` to call `tb_graph_index`, which is the only
+MCP graph tool that writes.
+
 ```bash
 tb graph [--enable] <subcommand>
 
@@ -1808,7 +1814,7 @@ Unix/tcp transport and `--socket`/`--port`/`--tls-*` flags are planned; today on
 | `tb_version` | `tb version` | |
 | `tb_echo` | — | smoke |
 | `tb_env` | — | cwd/os/arch |
-| `tb_run` | — | `sh -c` with timeout; filtered env; `env`/`pass_env` args (arrays) |
+| `tb_run` | — | `sh -c` with timeout inside the Landlock sandbox (see [MCP `tb_run` sandbox](#mcp-tb_run-sandbox)); filtered env; `env`/`pass_env` args (arrays); `cwd` must be inside the repository |
 | `tb_mem_add` / `tb_mem_list` / `tb_mem_show` / `tb_mem_edit` / `tb_mem_retire` / `tb_mem_search` / `tb_mem_check` / `tb_mem_init` | `tb mem …` | optional `cwd` arg; `ref`/`all` (boolean; legacy strings ok) where applicable |
 | `tb_verify_run` | `tb verify run` | `ruler=tests\|visual`; args mirror flags + `env`/`pass_env` |
 | `tb_review` | `tb review` | ticket/base/head/approved_sha/require_approved_sha/reviewers/standards |
@@ -2009,10 +2015,43 @@ do not pass the full environment to `sh -c`. They only pass keys from the built-
 | `.toolbelt/config.yaml` → `env.pass` | Explicit secret opt-in |
 | Global flag `--env KEY` / MCP arg `env` | Extends the allowlist (does not bypass secrets) |
 | Global flag `--pass-env KEY` | Explicit secret opt-in |
-| MCP arg `pass_env` | Only keys already in `env.pass`; any other key is refused (the model cannot opt secrets in) |
+| MCP arg `pass_env` | Only keys already in `env.pass` of the **global** config (`~/.config/toolbelt/config.yaml` or `-c`); any other key is refused (the model cannot opt secrets in, and the repository's own config does not count because the agent can write it) |
 
 Secrets: any name containing `TOKEN`, `SECRET`, `KEY`, or `PASSWORD`
-(case-insensitive) is blocked without opt-in.
+(case-insensitive) is blocked without opt-in. For MCP `tb_run`, `env.pass` is read
+only from the global config.
+
+### MCP `tb_run` sandbox
+
+MCP `tb_run` runs `sh -c` under Landlock, like `tb router` and `tb bus run`.
+The child can:
+
+- **write** to the repository root (the directory holding `.toolbelt`, or the
+  server's working directory), to its own `TMPDIR` (created per call and removed
+  afterwards) and to the toolchain caches that exist: `GOCACHE`, `GOMODCACHE`,
+  `$GOPATH/pkg/sumdb`, the npm, pip and uv caches, `$CARGO_HOME/registry`;
+- **read** the system dirs (`/usr`, `/etc`, `/lib`...), every `PATH` entry
+  except `/`, `$HOME` and its ancestors, `GOROOT`, and the dir holding the `GOENV`
+  file;
+- reach nothing else: `$HOME` (`~/.ssh`, `~/.gitconfig`, shell history), the
+  shared `/tmp` and other repositories stay closed. Git works, but warns that it
+  cannot read `~/.gitconfig`.
+
+`cwd` must be the repository root or below it. Extra paths and the opt-out
+come only from the global config, because the repository (and its
+`.toolbelt/config.yaml`) is writable from inside the sandbox:
+
+```yaml
+# ~/.config/toolbelt/config.yaml
+sandbox:
+  read: [~/.nvm]              # read-only, absolute or ~/ (must exist)
+  write: [~/.cache/my-tool]   # read-write
+  allow_unsandboxed: false    # true: run without isolation when Landlock is unavailable
+```
+
+Without Landlock (macOS, Windows, kernels without the LSM) `tb_run` fails
+closed unless `sandbox.allow_unsandboxed: true`. The result carries
+`sandboxed: true|false`. The network is not restricted.
 
 ---
 

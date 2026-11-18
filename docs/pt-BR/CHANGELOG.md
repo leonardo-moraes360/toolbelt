@@ -13,6 +13,9 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 - Inglês passa a ser a língua padrão do repositório: docs da raiz (`README.md`, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md`, `CHANGELOG.md`), `docs/`, `AGENTS.md`, `CLAUDE.md`, templates do `.github/`, invariantes e comentários de código; a tradução em português vai para `docs/pt-BR/` (substitui `docs/en/` e os `*.en.md` da raiz); `TestDocsTranslationMirrorComplete` substitui `TestDocsEnglishMirrorComplete`
 - Landing page abre em inglês por padrão (toggle PT mantido)
 - Comentários de código que só repetiam o que o código faz foram removidos; os restantes explicam como/por quê
+- MCP: `tb_graph_search`/`callers`/`deps`/`impact`/`explain`/`path` nunca reindexam (agora `readOnlyHint`); índice obsoleto devolve `stale: true` e um `hint` para chamar `tb_graph_index`. A CLI continua respeitando `graph.index_on_change`
+- MCP: o `initialize` negocia a versão do protocolo (`2025-11-25`, `2025-06-18`, `2024-11-05`): versão suportada volta igual, qualquer outra recebe `2025-11-25`; antes o servidor respondia sempre `2024-11-05`
+- MCP: `tools/list` devolve as ferramentas ordenadas por nome (determinístico, cacheável)
 
 ### Documentação
 - README, site, `docs/cli.md`, arquitetura, índice/status dos ADRs, protocolo do bus, release, CONTRIBUTING e SECURITY atualizados para a v0.0.5 (36 tools MCP, etapas B0–B4 do `tb bus`, `tb mcp --bus-as`, `graph explain`/`path`)
@@ -22,6 +25,14 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 - `tb init` / `tb mem`: `config.yaml`, `agent_docs.yaml`, `invariants.yaml` e o `AGENTS.md` semeado são criados com `0644`, não `0600` (dogfood #7)
 - `tb init` numa `git worktree`: o exclude do estado local vai para `$GIT_COMMON_DIR/info/exclude`, o único que o git lê (dogfood #17)
 - `tb init`: dicas de `AGENTS.md`/`CLAUDE.md` ignoram comentários em fences de shell, comandos citados no meio de uma linha e nomes de ferramenta sem subcomando (`golangci-lint`, `go`) (dogfood #18)
+
+### Adicionado
+- MCP: toda ferramenta declara `annotations` (`readOnlyHint`, `destructiveHint`, `idempotentHint`, `openWorldHint`) justificadas pelo efeito real do handler, conforme a revisão do M8ven (`docs/pt-BR/pesquisa/mcp-sinais-m8ven.md`)
+
+### Segurança
+- MCP: o `tb_run` roda sob Landlock: escreve só na raiz do repositório, no próprio `TMPDIR` e nos caches de toolchain; lê os diretórios do sistema, o `PATH`, o `GOROOT` e `sandbox.read`/`sandbox.write` da config global; `$HOME` e `/tmp` ficam fechados e `cwd` fora do repositório é recusado. Sem Landlock, falha fechado, a menos que `sandbox.allow_unsandboxed: true`. O resultado ganha `sandboxed`
+- MCP: o `env.pass` (do `tb_run` e do gate de `pass_env`) e as chaves `sandbox.*` só são lidos da config global ou de `-c`, nunca do `.toolbelt/config.yaml` do repositório, que o agente pode escrever
+- MCP: o argumento `pass_env` de `tb_run`, `tb_verify_run` e `tb_stack` só aceita chaves já presentes em `env.pass`; qualquer outra é recusada, então um modelo com prompt injection não consegue mais liberar segredos (`--pass-env` na CLI não mudou)
 
 ## [0.0.5] - 2026-11-18
 
