@@ -546,3 +546,9 @@ func TestSchemaVersionPragma(t *testing.T) {
 		t.Fatalf("setSchemaVersion = %q, quer %q", setSchemaVersion, want)
 	}
 }
+
+func TestSelectInboxMatchesSelectMessage(t *testing.T) {
+	if !strings.HasPrefix(selectInbox, selectMessage+" WHERE ") {
+		t.Fatal("selectInbox precisa começar com selectMessage (mesmas colunas de scanMessage)")
+	}
+}

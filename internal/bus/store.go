@@ -719,10 +719,7 @@ const selectMessage = `SELECT seq, id, channel, sender, recipient, thread, type,
 // Queries completas como constantes: só placeholders, valores vão em args.
 const (
 	selectIdempotent = selectMessage + ` WHERE channel = ? AND sender = ? AND idempotency_key = ?`
-	selectInbox      = selectMessage + ` WHERE channel = ? AND seq > ? AND sender <> ?
-			AND (recipient = ? OR recipient = ? OR substr(recipient, 1, 6) = 'topic:')
-			AND (expires_at IS NULL OR expires_at > ?)
-			ORDER BY seq LIMIT ?`
+	selectInbox      = `SELECT seq, id, channel, sender, recipient, thread, type, causation_id, idempotency_key, ttl, payload, created_at FROM messages WHERE channel = ? AND seq > ? AND sender <> ? AND (recipient = ? OR recipient = ? OR substr(recipient, 1, 6) = 'topic:') AND (expires_at IS NULL OR expires_at > ?) ORDER BY seq LIMIT ?`
 )
 
 type rowScanner interface{ Scan(dest ...any) error }
@@ -842,8 +839,8 @@ func (s *Store) recvOnce(m Member, opt RecvOptions) ([]Message, error) {
 		if opt.Since > 0 {
 			after = opt.Since - 1
 		}
-		rows, err := tx.Query(selectInbox,
-			m.Channel, after, m.ID(), m.ID(), "role:"+string(m.Role), s.nowNS(), opt.Limit)
+		role := "role:" + string(m.Role)
+		rows, err := tx.Query(selectInbox, m.Channel, after, m.ID(), m.ID(), role, s.nowNS(), opt.Limit)
 		if err != nil {
 			return err
 		}
