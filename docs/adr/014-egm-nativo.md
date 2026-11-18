@@ -40,7 +40,7 @@ A Fase A tem duas specs:
 - **[Núcleo](../specs/egm-nativo.md)** (Fase A): isolamento, revisão, loop, resolve e árbitro, mais as defesas contra **conteúdo de terceiros** (repositório clonado, arquivo baixado, o próprio documento revisado). O núcleo parte de um elephant honesto, mas desleixado.
 - **[Trust](../specs/egm-trust.md)** (Fase A.2, depois do spike R0): defesas contra **fraude ativa** do elephant como o mesmo usuário.
 
-Essa divisão veio depois de 8 rodadas de revisão de uma spec única. Os findings anti-fraude cresciam a cada rodada, inclusive sobre as próprias defesas, e impediam a convergência do restante.
+Essa divisão veio depois de 8 rodadas de revisão de uma spec única. O núcleo passou depois por mais 5 rodadas e foi congelado para o spike R0, com o desenho de matching e convergência marcado como provisório até os dados do spike. Os findings anti-fraude cresciam a cada rodada, inclusive sobre as próprias defesas, e impediam a convergência do restante.
 
 ### 1. Goldfish é um processo isolado e sem ferramentas
 
@@ -55,7 +55,7 @@ Cada goldfish é um processo **one-shot**, sem estado, iniciado a partir de `egm
   - **Workdir:** é o pacote do goldfish, fora do repositório.
   - **Leituras de sistema:** as que já existiam (`/etc`, `/proc`…) continuam liberadas. Ler o environ de outro processo passa pela checagem de ptrace, que a Landlock restringe fora do domínio; o spike confirma. A ausência de ferramentas é uma segunda barreira.
 - **Env mínimo.** O env é montado do zero. Variáveis que injetam código no runtime (`NODE_OPTIONS`, `PYTHONPATH`, `LD_*`…) são recusadas.
-- **HOME descartável.** Diretório `0700` fora do repositório, apagado no fim. Assim o `CLAUDE.md`, as memórias e os settings globais do vendor não chegam ao goldfish. A autenticação segue esta ordem de preferência, definida no spike:
+- **HOME descartável.** Diretório `0700` fora do repositório, apagado no fim. Assim o `CLAUDE.md`, as memórias e os settings globais do vendor não chegam ao goldfish. A autenticação segue esta ordem de preferência, proposta aqui e confirmada no spike:
   1. API key via `egm.env.pass`;
   2. diretório de config do vendor dentro do HOME descartável;
   3. cópia de arquivo de credencial, só como último recurso.
@@ -67,8 +67,14 @@ Cada goldfish é um processo **one-shot**, sem estado, iniciado a partir de `egm
 - **A config do repositório** é lida com leitor próprio: arquivo regular, sem symlink no caminho, até 64 KiB.
 - **Git endurecido e restrito.**
   - **Lista fechada:** o egm usa só subcomandos que não executam filtros, drivers nem submódulos. Não usa `git status` e nunca varre todos os arquivos versionados.
-  - **Raiz:** é localizada pelo filesystem, com `GIT_DIR` e `GIT_WORK_TREE` explícitos, para que um `core.worktree` hostil não a desloque.
-  - **Inspeção prévia do `.git`:** antes de chamar o git, o tb confere o `.git` direto no filesystem e recusa symlink, `include`, `alternates` e `gitdir:` sem ponteiro de volta. Toda chamada tem timeout.
+  - **Raiz:** é localizada pelo filesystem a partir do documento, sem passar do `$HOME`, com `GIT_DIR` e `GIT_WORK_TREE` explícitos. Assim, um `core.worktree` hostil não desloca a raiz. Um documento baixado sem `.git` dentro de um repositório do usuário é revisado como parte desse repositório, com as fontes limitadas pelas regras de fonte.
+  - **Inspeção prévia do `.git`:** antes de chamar o git, o tb confere o `.git` direto no filesystem. Recusa symlinks, FIFOs, `commondir` desviado, `alternates` e `gitdir:` sem ponteiro de volta.
+  - **Config do git com lista de fatais:** o `.git/config` é lido pelo próprio `git config --no-includes --list`, que não executa nada, para não haver diferença de interpretação entre parsers. Cada chave cai num de três grupos:
+    - **fatais:** as que as opções `-c` não conseguem neutralizar (`include`, `partialclone`, `promisor`, `extensions` desconhecidas e arquivos `alternates`);
+    - **neutralizadas:** as que as opções `-c` do tb sobrescrevem ou que nenhum subcomando permitido lê. São aceitas com aviso;
+    - **todas as demais:** aceitas.
+
+    A segurança vem da lista fechada de subcomandos, das opções `-c` e do env, e de testes de sentinela que provam que nada é executado, e não de enumerar chaves perigosas. Repositórios comuns funcionam (husky, git-lfs, sparse-checkout, actions/checkout). Somam-se `GIT_NO_LAZY_FETCH`, `protocol.allow=never` e um timeout por chamada.
   - **Escopo:** o router e o merge não mudam. Os loaders que o `tb stack` já roda antes de qualquer op também ficam como estão, o que é declarado fora do escopo.
 - **Fontes por caminho real.** As fontes são só arquivos regulares versionados; o documento revisado pode não estar versionado.
   - Cada componente do caminho é conferido, então um diretório-pai symlink exclui a fonte.
@@ -88,7 +94,7 @@ O documento é escrito pelo próprio elephant, então a injeção mais provável
   - O trecho sinalizado chega escapado e rotulado.
   - O árbitro vê o finding original e atesta o que leu.
   - Termos dirigidos ao próprio árbitro perto do match recusam a contestação.
-  - Para blocker e major, a retirada só vale se o revisor dono concordar na rodada seguinte.
+  - Para blocker e major com revisor dono LLM, a retirada só vale se o dono concordar na rodada seguinte. Findings de checker e do scan são retirados direto.
 - **Texto do elephant fora do prompt.** A reavaliação recebe só campos fixos dos findings. Notas e razões escritas pelo elephant não entram.
 
 Isso segue o modelo do [ADR-013](013-barramento-multi-vendor.md), que já trata conteúdo de par como dado.
@@ -118,23 +124,23 @@ Criar e remover worktrees não afeta o estado.
 
 - **Reavaliação pelo revisor dono.** Cada linhagem tem um único dono: o revisor da ocorrência de maior severidade, preferindo quem vê o código.
   - O dono recebe a linhagem de volta a cada rodada e responde `still_holds`. Omitir uma linhagem invalida a saída.
-  - Se o dono não roda mais, a linhagem passa para outro revisor que cubra o trecho; sem nenhum, vai para o `zoom-out`.
+  - O dono é fixo na Fase A. Se o dono não pode rodar e a linhagem bloqueia, o tb recusa a rodada em vez de rodar sem ele.
   - Um finding novo com severidade maior que uma linhagem já recusada ou encerrada vira linhagem nova, em vez de ser absorvido.
   - Linhagens de checkers fecham ou reabrem pela re-execução do checker.
-- **Rodada limpa.** Nenhum blocker ou major aberto, contestado ou escalado, nenhum `fixed` sem confirmação e nenhum revisor obrigatório `not_run`.
+- **Rodada limpa.** Nenhuma linhagem bloqueante (blocker ou major aberto, contestado, escalado ou `fixed` sem confirmação) e nenhum revisor obrigatório `not_run`.
 - **Convergência.**
   - São 2 rodadas limpas seguidas **sobre o mesmo conteúdo**, com teto de 5 por ciclo.
   - Convergir grava um registro para aquele conteúdo e encerra o ciclo.
-  - Depois do teto, `loop next` exige `--past-cap`, que libera até 3 rodadas extras e rebaixa o ciclo.
+  - Depois do teto, o veredito é `FAIL`, e a saída é `--restart` com conteúdo novo.
 - **Rebaixamentos de dois tipos.**
   - Os **de linhagem** (settle forçado, `--decline` de major) persistem enquanto a linhagem estiver naquele status. Uma edição seguida de nova convergência não os apaga. Eles só saem com `--fix` sobre uma correção real, confirmada pelo revisor dono.
-  - Os **de ciclo** (rodadas extras, `--restart`, cobertura parcial…) valem só para a convergência daquele ciclo.
+  - Os **de ciclo** (rodadas extras, `--restart`, cobertura parcial…) valem só para a convergência daquele ciclo. `--restart` sempre exige conteúdo novo.
 - **Vereditos**, avaliados em ordem fixa sobre o conteúdo do worktree ou, no gate, do commit:
   - `NO_STATE`;
-  - `PASS`: registro para este conteúdo e esta política, sem nenhum rebaixamento e sem nenhum blocker/major aberto;
+  - `PASS`: registro para este conteúdo e esta política, sem nenhum rebaixamento e sem nenhuma linhagem bloqueante;
   - `PASS_PARTIAL`: registro com rebaixamento. O `tb stack` ganha o estado WARN para esse caso, e `--strict` ou `egm.require_full_coverage` o tornam falha;
   - `FAIL`: o ciclo bateu o teto sem rodadas extras, ou esgotou as extras;
-  - `STALE`: há registro só para outro conteúdo ou para outra política, ou há linhagem bloqueante (blocker ou major aberto) sobre um conteúdo já convergido;
+  - `STALE`: há registro só para outro conteúdo ou para outra política, ou há linhagem bloqueante sobre um conteúdo já convergido;
   - `IN_PROGRESS`.
 
 ### 6. Atalhos desleixados não chegam a `PASS`
@@ -144,13 +150,13 @@ Criar e remover worktrees não afeta o estado.
   - **Evidência:** precisa estar entre as fontes citadas e verificadas da linhagem, e passa de novo pelas regras de fonte.
   - **Sem agente:** não há contestação.
   - **Árbitro falhando:** depois de duas falhas seguidas do árbitro, a linhagem é escalada.
-  - **Desistir:** quem contestou pode desistir com `--fix`.
-  - **Se o árbitro retira** um `nit` ou um finding de checker, ele vira `settled`.
-  - **Se o árbitro retira** um blocker ou major, o finding vira `fixed`, e o dono confirma ou reabre.
+  - **Desistir:** quem contestou pode desistir com `--fix`, que exige uma edição real, como qualquer `--fix`.
+  - **Se o árbitro retira** um `nit`, um finding de checker ou um do scan anti-injeção, ele vira `settled`.
+  - **Se o árbitro retira** um blocker ou major de dono LLM, o finding vira `fixed`, e o dono confirma ou reabre.
   - **Se o árbitro mantém**, o finding volta a `open`.
 - **Severidade não some por casamento.** Um finding novo mais grave que uma linhagem já encerrada vira linhagem nova.
 - **`--decline` não serve para fugir.** Vale para `nit`. Para `major`, rebaixa o veredito. Para `blocker`, não existe.
-- **O gate avalia o commit.** O op `egm` do `tb stack` verifica os documentos sob gate tocados no range do stack, pelo conteúdo em `head`, e não pelo worktree. Uma seleção vazia gera aviso. A escolha do range por ref de confiança fica na spec de trust.
+- **O gate avalia o commit.** O op `egm` do `tb stack` verifica os documentos sob gate tocados no range do stack, pelo conteúdo em `head` e não pelo worktree. Um documento cujas fontes mudaram sem ele ser tocado gera só aviso; a detecção de deriva fica para a Fase B. Uma seleção vazia gera aviso, e uma seleção vazia com documentos sob gate não commitados falha. Um blocker resolvido com settle forçado falha o gate mesmo sem `--strict`. A escolha do range por ref de confiança fica na spec de trust.
 
 ### 7. Gates viram transições explícitas
 
@@ -162,7 +168,7 @@ As perguntas interativas do upstream viram subcomandos idempotentes do `tb egm r
   - **Comandos:** `review`, `loop next`, `resolve` e `status`, para specs e ADRs.
   - **Preset e perfis:** o preset `consolidated`, o perfil `claude` e um perfil `custom` com declaração explícita de "sem ferramentas".
   - **Personas:** embutidas, com texto próprio, sem cópia do upstream.
-  - **MCP:** as tools `tb_egm_*`.
+  - **MCP:** na Fase A, só `tb_egm_status` e `tb_egm_resolve`. `review` e `loop next` levam minutos e ficam só na CLI.
 - **Trust (Fase A.2):** ver a [spec](../specs/egm-trust.md).
 - **Specs seguintes:**
   - **Fase B:** `drift-report` e `bootstrap`.

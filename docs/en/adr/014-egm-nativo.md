@@ -40,7 +40,7 @@ Phase A has two specs:
 - **[Core](../specs/egm-nativo.md)** (Phase A): isolation, review, loop, resolve and arbiter, plus the defenses against **third-party content** (cloned repository, downloaded file, the reviewed document itself). The core assumes an honest but sloppy elephant.
 - **[Trust](../specs/egm-trust.md)** (Phase A.2, after the R0 spike): defenses against **active fraud** by the elephant as the same user.
 
-This split came after 8 review rounds of a single spec. The anti-fraud findings grew every round, including about the defenses themselves, and kept the rest from converging.
+This split came after 8 review rounds of a single spec. The core then went through 5 more rounds and was frozen for the R0 spike, with the matching and convergence design marked as provisional until the spike's data. The anti-fraud findings grew every round, including about the defenses themselves, and kept the rest from converging.
 
 ### 1. A goldfish is an isolated process with no tools
 
@@ -55,7 +55,7 @@ Each goldfish is a **one-shot**, stateless process, started from `egm.agent_cmd`
   - **Workdir:** it is the goldfish's packet, outside the repository.
   - **System reads:** the existing ones (`/etc`, `/proc`…) stay allowed. Reading another process's environ goes through the ptrace check, which Landlock restricts outside the domain; the spike confirms this. The absence of tools is a second barrier.
 - **Minimal env.** The env is built from scratch. Variables that inject code into the runtime (`NODE_OPTIONS`, `PYTHONPATH`, `LD_*`…) are refused.
-- **Disposable HOME.** A `0700` directory outside the repository, deleted at the end. That way, the vendor's `CLAUDE.md`, memories and global settings never reach the goldfish. Authentication follows this order of preference, settled in the spike:
+- **Disposable HOME.** A `0700` directory outside the repository, deleted at the end. That way, the vendor's `CLAUDE.md`, memories and global settings never reach the goldfish. Authentication follows this order of preference, proposed here and confirmed in the spike:
   1. API key via `egm.env.pass`;
   2. the vendor's config directory inside the disposable HOME;
   3. copying a credential file, only as a last resort.
@@ -67,8 +67,14 @@ Each goldfish is a **one-shot**, stateless process, started from `egm.agent_cmd`
 - **The repository config** is read with a dedicated reader: regular file, no symlink in the path, up to 64 KiB.
 - **Hardened and restricted git.**
   - **Closed list:** egm only uses subcommands that run no filters, drivers or submodules. It does not use `git status` and never sweeps all versioned files.
-  - **Root:** it is located through the filesystem, with explicit `GIT_DIR` and `GIT_WORK_TREE`, so a hostile `core.worktree` cannot displace it.
-  - **Prior inspection of `.git`:** before calling git, tb checks `.git` directly in the filesystem and refuses a symlink, `include`, `alternates` and a `gitdir:` without a back-pointer. Every call has a timeout.
+  - **Root:** it is located through the filesystem starting from the document, without going past `$HOME`, with explicit `GIT_DIR` and `GIT_WORK_TREE`. That way, a hostile `core.worktree` cannot displace the root. A downloaded document without `.git` inside a user repository is reviewed as part of that repository, with the sources limited by the source rules.
+  - **Prior inspection of `.git`:** before calling git, tb checks `.git` directly in the filesystem. It refuses symlinks, FIFOs, a diverted `commondir`, `alternates` and a `gitdir:` without a back-pointer.
+  - **Git config with a list of fatal keys:** `.git/config` is read by git itself, through `git config --no-includes --list`, which executes nothing, so there is no difference in interpretation between parsers. Each key falls into one of three groups:
+    - **fatal:** the ones tb's `-c` options cannot neutralize (`include`, `partialclone`, `promisor`, unknown `extensions` and `alternates` files);
+    - **neutralized:** the ones tb's `-c` options override or that no allowed subcommand reads. They are accepted with a warning;
+    - **all the others:** accepted.
+
+    Security comes from the closed list of subcommands, from the `-c` options and the env, and from sentinel tests that prove nothing is executed, not from enumerating dangerous keys. Common repositories work (husky, git-lfs, sparse-checkout, actions/checkout). On top of that come `GIT_NO_LAZY_FETCH`, `protocol.allow=never` and a per-call timeout.
   - **Scope:** the router and merge do not change. The loaders that `tb stack` already runs before any op also stay as they are, which is declared out of scope.
 - **Sources by real path.** Sources are only regular versioned files; the reviewed document may be unversioned.
   - Every path component is checked, so a symlinked parent directory excludes the source.
@@ -88,7 +94,7 @@ The document is written by the elephant itself, so the most likely injection com
   - The flagged excerpt arrives escaped and labeled.
   - The arbiter sees the original finding and attests what it read.
   - Terms directed at the arbiter itself near the match refuse the contest.
-  - For blocker and major, the withdrawal only counts if the owning reviewer agrees in the next round.
+  - For blocker and major with an LLM owning reviewer, the withdrawal only counts if the owner agrees in the next round. Checker and scan findings are withdrawn directly.
 - **Elephant text kept out of the prompt.** The re-evaluation receives only fixed fields from the findings. Notes and reasons written by the elephant do not go in.
 
 This follows the model of [ADR-013](013-barramento-multi-vendor.md), which already treats peer content as data.
@@ -118,23 +124,23 @@ Creating and removing worktrees does not affect the state.
 
 - **Re-evaluation by the owning reviewer.** Each lineage has a single owner: the reviewer of the highest-severity occurrence, preferring one that sees the code.
   - The owner gets the lineage back every round and answers `still_holds`. Omitting a lineage invalidates the output.
-  - If the owner no longer runs, the lineage passes to another reviewer that covers the excerpt; with none, it goes to `zoom-out`.
+  - The owner is fixed in Phase A. If the owner cannot run and the lineage is blocking, tb refuses the round instead of running without it.
   - A new finding with a higher severity than an already declined or closed lineage becomes a new lineage, instead of being absorbed.
   - Checker lineages close or reopen by re-running the checker.
-- **Clean round.** No blocker or major open, contested or escalated, no unconfirmed `fixed` and no required reviewer `not_run`.
+- **Clean round.** No blocking lineage (blocker or major open, contested, escalated or unconfirmed `fixed`) and no required reviewer `not_run`.
 - **Convergence.**
   - It takes 2 consecutive clean rounds **over the same content**, with a cap of 5 per cycle.
   - Converging writes a record for that content and closes the cycle.
-  - After the cap, `loop next` requires `--past-cap`, which allows up to 3 extra rounds and downgrades the cycle.
+  - After the cap, the verdict is `FAIL`, and the way out is `--restart` with new content.
 - **Two kinds of downgrades.**
   - **Lineage downgrades** (forced settle, `--decline` of a major) persist while the lineage stays in that status. An edit followed by a new convergence does not erase them. They only go away with `--fix` over a real fix, confirmed by the owning reviewer.
-  - **Cycle downgrades** (extra rounds, `--restart`, partial coverage…) apply only to that cycle's convergence.
+  - **Cycle downgrades** (extra rounds, `--restart`, partial coverage…) apply only to that cycle's convergence. `--restart` always requires new content.
 - **Verdicts**, evaluated in a fixed order over the worktree content or, in the gate, over the commit's content:
   - `NO_STATE`;
-  - `PASS`: a record for this content and this policy, with no downgrade at all and no open blocker/major;
+  - `PASS`: a record for this content and this policy, with no downgrade at all and no blocking lineage;
   - `PASS_PARTIAL`: a record with a downgrade. `tb stack` gains the WARN state for this case, and `--strict` or `egm.require_full_coverage` turn it into a failure;
   - `FAIL`: the cycle hit the cap without extra rounds, or used up the extras;
-  - `STALE`: there is a record only for another content or for another policy, or there is a blocking lineage (open blocker or major) over an already converged content;
+  - `STALE`: there is a record only for another content or for another policy, or there is a blocking lineage over an already converged content;
   - `IN_PROGRESS`.
 
 ### 6. Sloppy shortcuts do not reach `PASS`
@@ -144,13 +150,13 @@ Creating and removing worktrees does not affect the state.
   - **Evidence:** it must be among the lineage's cited and verified sources, and it goes through the source rules again.
   - **No agent:** there is no contest.
   - **Failing arbiter:** after two consecutive arbiter failures, the lineage is escalated.
-  - **Giving up:** whoever contested can give up with `--fix`.
-  - **If the arbiter withdraws** a `nit` or a checker finding, it becomes `settled`.
-  - **If the arbiter withdraws** a blocker or major, the finding becomes `fixed`, and the owner confirms or reopens it.
+  - **Giving up:** whoever contested can give up with `--fix`, which requires a real edit, like any `--fix`.
+  - **If the arbiter withdraws** a `nit`, a checker finding or one from the anti-injection scan, it becomes `settled`.
+  - **If the arbiter withdraws** a blocker or major with an LLM owner, the finding becomes `fixed`, and the owner confirms or reopens it.
   - **If the arbiter upholds**, the finding goes back to `open`.
 - **Severity does not vanish through matching.** A new finding more severe than an already closed lineage becomes a new lineage.
 - **`--decline` is no escape hatch.** It applies to `nit`. For `major`, it downgrades the verdict. For `blocker`, it does not exist.
-- **The gate evaluates the commit.** The `egm` op of `tb stack` checks the gated documents touched in the stack range, by their content at `head`, not by the worktree. An empty selection produces a warning. Choosing the range by trust ref is left to the trust spec.
+- **The gate evaluates the commit.** The `egm` op of `tb stack` checks the gated documents touched in the stack range, by their content at `head`, not by the worktree. A document whose sources changed without it being touched only produces a warning; drift detection is left to Phase B. An empty selection produces a warning, and an empty selection with uncommitted gated documents fails. A blocker resolved with a forced settle fails the gate even without `--strict`. Choosing the range by trust ref is left to the trust spec.
 
 ### 7. Gates become explicit transitions
 
@@ -162,7 +168,7 @@ The upstream's interactive questions become idempotent subcommands of `tb egm re
   - **Commands:** `review`, `loop next`, `resolve` and `status`, for specs and ADRs.
   - **Preset and profiles:** the `consolidated` preset, the `claude` profile and a `custom` profile with an explicit "no tools" declaration.
   - **Personas:** embedded, with original text, not copied from upstream.
-  - **MCP:** the `tb_egm_*` tools.
+  - **MCP:** in Phase A, only `tb_egm_status` and `tb_egm_resolve`. `review` and `loop next` take minutes and stay CLI-only.
 - **Trust (Phase A.2):** see the [spec](../specs/egm-trust.md).
 - **Following specs:**
   - **Phase B:** `drift-report` and `bootstrap`.

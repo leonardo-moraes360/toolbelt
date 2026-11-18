@@ -2,7 +2,7 @@
 
 # Spec: native EGM, Phase A, core (`tb egm review|loop|resolve|status`)
 
-Author: toolbelt · Status: Draft (restructured; round 3 of the new series) · Date: 2026-11-17 · Decision: [ADR-014](../adr/014-egm-nativo.md) · Companion: [egm trust](egm-trust.md)
+Author: toolbelt · Status: Frozen for the R0 spike (5 rounds of the new series; R18–R27 provisional, see Open Questions) · Date: 2026-11-17 · Decision: [ADR-014](../adr/014-egm-nativo.md) · Companion: [egm trust](egm-trust.md)
 
 ## Overview
 
@@ -45,8 +45,8 @@ The protections against active fraud by the author itself, who runs as the same 
 | lineage's cited sources | The document plus the union of the **verified** `evidence[].path` of the occurrences that went through `resolveSource` in the round (`cited`, R21). |
 | `origin_round` / `opened_round` | Round in which the lineage was born / last round in which it became `open` or `reopened` (a reopening updates `opened_round`). |
 | blocking lineage | A blocker or major lineage in `open`, `reopened`, `contest_pending`, `escalated` or unconfirmed `fixed`. |
-| policy | `policy_sha`: the sha256 of the canonical JSON with the effective required reviewers, engine, `vendor`, `tools_check`, `clean_rounds`, `match`, `attest`, `detail_headings`, `doc_types`, `refs_ignore`, `max_source_bytes` and `max_packet_bytes` (R21). |
-| content | `content`: the sha256 of the path-sorted list of `(path, sha256 of the bytes)` pairs of the document and of **all** sources sent to any goldfish of the round, plus `checks_sha` (the sha256 of the checkers' inputs: each checked path with type and existence). The bytes come from the worktree in interactive mode and from the blob in gate mode (R7a). |
+| policy | `policy_sha`: the sha256 of the canonical JSON with the effective required reviewers (the full set), `clean_rounds`, `match`, `attest`, `detail_headings`, `doc_types`, `refs_ignore`, `max_source_bytes` and `max_packet_bytes` (R21). The engine and the profile are not included; they are recorded in the rounds, and their effects are already downgrades (R24). |
+| content | `content`: the sha256 of the path-sorted list of `(path, sha256 of the bytes)` pairs of the document and of all sources resolved by R7 from the document, before per-reviewer packaging and regardless of who ran, plus `checks_sha` (the sha256 of the checkers' inputs: each checked path with type and existence). The bytes come from the worktree in interactive mode and from the blob in gate mode (R7a). |
 | convergence record | A record that ties a `content` to a convergence (R23). |
 | counted rounds | The `egm.clean_rounds` consecutive clean rounds, over the same `content`, that produced a convergence record. |
 | cycle | Rounds since the last convergence, or since `review`/`--restart`. Cap and budget count per cycle (R23, R27). |
@@ -97,7 +97,7 @@ The protections against active fraud by the author itself, who runs as the same 
 - **CUJ-3.** *Given* round 1 has findings, *when* I edit the pointed lines (or the cited code), run `tb egm resolve docs/specs/x.md --fix F-1,F-2` and then `tb egm loop next docs/specs/x.md` twice, *then* the owning reviewer re-evaluates each lineage and the last two rounds, clean and over the same content, produce a convergence record. <!-- tb:egm-example -->
 - **CUJ-4.** *Given* the blocker `F-3`, which cites `internal/x.go`, *when* I run `tb egm resolve docs/specs/x.md --contest F-3 --evidence internal/x.go:40`, *then* F-3 becomes `contest_pending` and the next `loop next` runs the arbiter first. A second contest of F-3 is refused. <!-- tb:egm-example -->
 - **CUJ-5.** *Given* a cloned repository whose `.toolbelt/config.yaml` defines `egm.agent_cmd` and `egm.env.pass`, *when* I run `tb egm review`, *then* those values are ignored, tb emits `config_untrusted` and nothing from the repository is executed.
-- **CUJ-6.** *Given* a downloaded file with hostile `.git/config` and `.gitattributes` (filters, fsmonitor, `core.worktree`), a forged `.git/index` and a versioned directory that is a symlink to `~/.config`, *when* I run `tb egm review`, *then* nothing is executed and nothing outside the repository is read.
+- **CUJ-6.** *Given* a downloaded file with hostile `.git/config` and `.gitattributes` (filters, fsmonitor, `core.worktree`, partial clone), a forged `.git/index` and a versioned directory that is a symlink to `~/.config`, *when* I run `tb egm review`, *then* nothing is executed and nothing outside the repository and its common git directory is read.
 - **CUJ-7.** *Given* I reviewed a spec in a feature worktree, merged it and removed the worktree, *when* I run `status` in another worktree with the same content, *then* the verdict is the same.
 - **CUJ-8.** *Given* I converge on version A and commit version B, *when* I run `tb stack egm`, *then* the gate evaluates B (the `head`), finds no record and answers `STALE`.
 
@@ -121,7 +121,7 @@ tb only calls git in phases 1 and 3, never while a goldfish is running (R3).
 
 ### Requirements
 
-**R0: spike.** This requirement blocks R1, R2, R3, R4, R4b and R5, and the move of ADR-014 to `accepted`. R4c and R4d do not depend on the spike.
+**R0: spike.** This requirement blocks R1, R2, R3, R4, R4b and R5, and the move of ADR-014 to `accepted`. R4c and R4d do not depend on the spike. **R18 to R27 are provisional**: the matching, lineage and convergence design is only closed with the R0 data, and may change.
 
 A prototype in `bench/egm-spike/` must prove that `claude -p`:
 1. runs in `sandbox.New` with the packet as a read-only workdir, private `TMPDIR`, disposable HOME, minimal env (R4b) and minimal `PATH`;
@@ -130,7 +130,8 @@ A prototype in `bench/egm-spike/` must prove that `claude -p`:
 4. does not load `~/.claude/CLAUDE.md`, the user's memories or settings;
 5. produces a valid attestation (R17);
 6. leaves no orphan child process without `TB_EGM_OWNER` (R3);
-7. cannot read `tb`'s `/proc/<ppid>/environ` (Landlock restricts ptrace to processes outside the domain). R1 is adjusted according to the result.
+7. cannot read `tb`'s `/proc/<ppid>/environ` (Landlock restricts ptrace to processes outside the domain), nor `/dev/pts/*` and `/dev/shm/*` (R2, `MinimalDev`). R1 is adjusted according to the result;
+8. with explicit `GIT_DIR` and a repository owned by another uid, git accepts the read with `-c safe.directory`, or does not even do the owner check.
 
 The spike must also:
 - **Authentication:** define the order of preference: (1) API key via `egm.env.pass`; (2) the vendor's config dir in the disposable HOME, for example `CLAUDE_CONFIG_DIR`; (3) copying a credential file, only as a last resort.
@@ -149,6 +150,8 @@ The result goes in `docs/campo/dogfood.md` (PT and EN).
   - `sources.json`: path, `sha256` and the included lines;
   - `meta.json`: persona, standard, range, nonce and `argv_sha256`.
 
+  Arbiters (R29) live in `<state-dir>/arbiter-<m>/<F-k>/`, where `<m>` is a sequential counter of arbiter steps, with owner `egm:<slug>:a<m>:<F-k>`.
+
   The content comes from the **worktree** in interactive mode and from the evaluated commit in gate mode (R33). The goldfish's workdir is the packet, outside the repository.
 
   Landlock allows reading the packet, the R4 paths and the system rules that already exist in `addSystemReadRules`: `/bin`, `/sbin`, `/lib*`, `/usr/bin`, `/usr/sbin`, `/usr/lib*`, `/usr/libexec`, `/usr/share`, `/etc`, `/dev`, `/proc` and `/sys`. Reading another process's `/proc/<pid>/environ` goes through the ptrace check, which Landlock restricts for processes outside the domain; R0 confirms this. The absence of tools (R5, verified by R15a) is a second barrier, not the only one.
@@ -158,11 +161,12 @@ The result goes in `docs/campo/dogfood.md` (PT and EN).
   - `Home string`: writable directory, exported as `HOME`, `XDG_CONFIG_HOME`, `XDG_CACHE_HOME` and `XDG_DATA_HOME`.
   - `Path string`: exported as `PATH`.
   - `Stdin io.Reader`.
-  - `Stdout io.Writer` and `MaxStdoutBytes int`: stdout goes only to this writer. If the limit overflows, capture stops and `Result` carries `StdoutOverflow: true`. stderr stays in the `tailBuffer`.
+  - `MinimalDev bool`: the rule that reads all of `/dev` is replaced by rules only for `/dev/null`, `/dev/zero`, `/dev/random` and `/dev/urandom`, without `/dev/pts` and without `/dev/shm`.
+  - `Stdout io.Writer` and `MaxStdoutBytes int`: stdout goes only to this writer. If the limit overflows, tb keeps reading and discarding the rest (the child does not block on the pipe) until the process ends or hits the timeout, and `Result` carries `StdoutOverflow: true`. stderr stays in the `tailBuffer`.
 
-  `Home` and `Path` override `Config.Env`. With an absolute command, `Run` no longer calls `exec.LookPath` and executes the path as given. Change in `addRule`: for a regular file, the mask becomes `accessMask(readOnly, abi)` without the directory-only rights (`ReadDir`, `Remove*`, `Make*`, `Refer`), as `deviceFileMask` already does.
-- R3: the `tb egm` process creates **one** `sandbox.Registry` with `NewRegistry("TB_EGM_OWNER")` and `SetOwnerVar("TB_EGM_OWNER")`, shared by all goldfish and arbiters, and calls `sandbox.AcquireSubreaper()` once. Without a subreaper (`ok=false`), the `llm` engine refuses with exit 2.
-  - **Each goldfish:** uses `sandbox.New` with `ProcessGroup: true` and that Registry, `GroupOwner = egm:<slug>:r<n>:<reviewer>` (for the arbiter, `egm:<slug>:r<n>:arbiter:<F-k>`) and the same string in `TB_EGM_OWNER`.
+  `Home` and `Path` override `Config.Env`. Change in `addRule`: for a regular file, the mask becomes `accessMask(readOnly, abi)` without the directory-only rights (`ReadDir`, `Remove*`, `Make*`, `Refer`), as `deviceFileMask` already does.
+- R3: the `tb egm` process creates **one** `sandbox.Registry` with `NewRegistry("TB_EGM_OWNER")` and `SetOwnerVar("TB_EGM_OWNER")`, shared by all goldfish and arbiters, and calls `sandbox.AcquireSubreaper()` once. Without a subreaper (`ok=false`), an explicit `--engine llm` exits 2; with `auto`, R12 applies.
+  - **Each goldfish:** uses `sandbox.New` with `ProcessGroup: true` and that Registry, `GroupOwner = egm:<slug>:r<n>:<reviewer>` (for the arbiter, `egm:<slug>:a<m>:<F-k>`, R1) and the same string in `TB_EGM_OWNER`.
   - **Git:** tb does not call git while goldfish are running. Git calls (R4c) happen only in phases 1 and 3.
   - **Sweep:** each `Sweep()` attributes orphans by `Orphan.Vars["TB_EGM_OWNER"]` and by `GroupOwner`.
     - Orphan of a goldfish of the round, including a `ForeignGroup` with that owner: that goldfish becomes `not_run` with `reason: escaped_process`.
@@ -191,37 +195,54 @@ The result goes in `docs/campo/dogfood.md` (PT and EN).
     - `-c diff.external=`, `-c core.pager=cat`, `-c core.untrackedCache=false`;
     - `-c submodule.recurse=false`, `-c diff.ignoreSubmodules=all`;
     - `-c core.excludesFile=/dev/null`, `-c core.attributesFile=/dev/null`;
+    - `-c protocol.allow=never`, `-c credential.helper=`, `-c core.askPass=`, `-c core.editor=true`, `-c core.alternateRefsCommand=`;
+    - `--end-of-options` before any `<rev>`, `<a>` or `<b>`, which first go through `rev-parse --verify --end-of-options`;
+    - `-c safe.directory=<real root>`, for repositories owned by another uid (file extracted with sudo, shared mounts);
     - `--no-ext-diff --no-textconv`, where the subcommand accepts them.
-  - **Env:** starts from `os.Environ()` and removes everything that starts with `GIT_`. Then it adds `GIT_CONFIG_NOSYSTEM=1`, `GIT_CONFIG_GLOBAL=/dev/null`, `GIT_PAGER=cat`, `GIT_TERMINAL_PROMPT=0` and explicit `GIT_DIR`/`GIT_WORK_TREE`, coming from R4d. The exception is `diff --no-index`, which runs without `GIT_DIR`/`GIT_WORK_TREE`, with cwd and `GIT_CEILING_DIRECTORIES` in the state directory.
+  - **Env:** starts from `os.Environ()` and removes everything that starts with `GIT_`. Then it adds `GIT_CONFIG_NOSYSTEM=1`, `GIT_CONFIG_GLOBAL=/dev/null`, `GIT_PAGER=cat`, `GIT_TERMINAL_PROMPT=0`, `GIT_NO_LAZY_FETCH=1` (ignored by old versions, which are already covered by R4d), `GIT_LITERAL_PATHSPECS=1`, `GIT_ASKPASS=` and explicit `GIT_DIR`/`GIT_WORK_TREE`, coming from R4d. The exception is `diff --no-index`, which runs without `GIT_DIR`/`GIT_WORK_TREE`, with cwd and `GIT_CEILING_DIRECTORIES` in the state directory.
   - **Timeout:** each call has a fixed 30 s timeout. If it expires, exit 2 with `reason: git_timeout`.
   - **Allowed subcommands (closed list):**
 
     | Subcommand | Use |
     |------------|-----|
-    | `ls-files -s -z -- <paths>` | Git mode and blob in the index, only for the candidate sources |
-    | `ls-tree -z <rev> -- <paths>` | Git mode and blob at a commit, only for the candidate sources (gate mode) |
+    | `ls-files -s -z -- <paths>` | Git mode and blob in the index: candidate sources; prefix directories of `doc_globs` (R33); prefix directory of a plan `*` (R13) |
+    | `ls-files -z --others --exclude-standard -- <dirs>` | Unversioned gated documents, only in the prefix directories of `doc_globs` (R33) |
+    | `ls-tree -z <rev> -- <paths>` | Git mode and blob at a commit: candidate sources, the document and `.toolbelt/config.yaml` (gate mode) |
+    | `ls-tree -r -z --name-only <rev> -- <dir>` | Files under the prefix directory of a plan `*`, in gate mode (R13), with at most 1000 entries |
     | `hash-object --no-filters -- <paths>` | Hash of the worktree bytes, only for sources already validated by R7 |
-    | `cat-file blob <rev>:<path>` | Content at a commit (gate, arbiter) |
+    | `cat-file -s <rev>:<path>`, `cat-file blob <rev>:<path>` | Size and content at a commit (gate, arbiter); the size is checked before reading |
     | `rev-parse --verify`, `merge-base <a> <b>` | Refs and three-dot base (R33) |
     | `diff --name-status --no-renames -z <a> <b>` | Tree diff between commits (R33) |
     | `diff --no-index -U0` | Diff between snapshots, outside any repository (env above) |
     | `check-ignore --no-index -- <paths>` | Exclusion of ignored files (R7) |
+    | `config --file <path> --no-includes --null --list` | Reading `config` and `config.worktree` for the allowlist (R4d); executes nothing |
 
     Any other git call in the package is a programming error, covered by a static test. `git status` is not used, and tb never sweeps all versioned files.
-- R4d (real repository root): tb locates the repository by walking up from the cwd until it finds a `.git` entry in the filesystem, without asking git.
-  - If `.git` is a directory, `GIT_DIR` is that directory.
-  - If `.git` is a `gitdir:` file (worktree), the target must be under `<common>/worktrees/` of a repository whose `.git` is a directory. If it is not, exit 2.
-  - `GIT_WORK_TREE` is always the directory that contains `.git`. A `core.worktree` in `.git/config` is ignored, because the explicit env takes precedence.
-  - The realpath (`EvalSymlinks`) of that directory is the **real root**.
-  - **Before any git call**, tb checks `.git` directly in the filesystem:
-    - a `.git` that is a symlink is refused;
-    - in a `gitdir:`, the `<gitdir>/gitdir` file must point back to this `.git`, and `<gitdir>/commondir` must resolve to `<common>`;
-    - the files checked are `<common>/config` and `<gitdir>/config.worktree` (both, if they exist), `<gitdir>/HEAD`, `<gitdir>/index` (optional: a fresh `git init` has none) and `<common>/objects/info/`; with a `.git` directory, `<common>` and `<gitdir>` are `.git` itself;
-    - `config` and `config.worktree` must be regular files of at most 1 MiB, without `[include]` or `[includeIf …]` sections;
-    - `HEAD` must be a regular file of at most 4 KiB, and `index`, if it exists, a regular file with no size limit;
+- R4d (real root and trusted `.git`): tb locates the repository through the filesystem, without asking git.
+  - **Discovery:** it walks up from the directory (realpath) of the **document**, not from the cwd, until it finds a `.git` entry. The search stops on reaching the realpath of `$HOME` (without inspecting it) and on crossing a filesystem (`st_dev`). With no `.git`, tb exits 2 with `reason: no_repository`. A downloaded document without `.git` inside a user repository is then reviewed as part of that repository; this is expected, and the sources stay limited by R7.
+  - **Git directories:**
+    - `.git` must be a directory or a regular `gitdir:` file; a symlink is refused;
+    - if `.git` is a directory, `GIT_DIR` and `<common>` are that directory, and a `commondir` file inside it is refused;
+    - if `.git` is a `gitdir:` file (worktree), `<common>` is the realpath of `<gitdir>/commondir`, `<gitdir>` must be `<common>/worktrees/<name>`, and `<gitdir>/gitdir` must point back to this `.git`. A `gitdir:` pointing to `<super>/.git/modules/…` (submodule) gives exit 2 with `reason: submodule_unsupported`;
+    - `GIT_WORK_TREE` is always the directory that contains `.git`; a `core.worktree` has no effect, because the explicit env takes precedence;
+    - the realpath of that directory is the **real root**.
+  - **Inspection of `.git`**, before any git call, directly in the filesystem and without following links:
+    - in `<common>` and `<gitdir>`, the entries `objects`, `objects/pack`, `objects/info`, `refs`, `packed-refs`, `info`, `worktrees`, `modules`, `HEAD`, `index`, `config`, `config.worktree`, `shallow`, `commondir`, `gitdir`, `sharedindex.*`, `info/exclude`, `info/attributes` and `info/sparse-checkout` cannot be a symlink, FIFO or device;
+    - `config` and `config.worktree` are at most 1 MiB; `HEAD` is at most 4 KiB; `index` is optional (a fresh `git init` has none);
     - neither `objects/info/alternates` nor `objects/info/http-alternates` may exist.
+  - **Git config, with a list of fatal keys:** tb reads `<common>/config` and `<gitdir>/config.worktree` with `git config --file <path> --no-includes --null --list` (R4c), with no parser of its own. The comparison is case-insensitive, and `<n>` is any subsection. Each key falls into one of three groups:
+    1. **Fatal:** the keys that the R4c `-c` options cannot neutralize:
+       - `include.*` and `includeif.*`;
+       - `extensions.partialclone` and `remote.<n>.promisor`;
+       - any `extensions.*` other than `objectformat`, `worktreeconfig`, `refstorage` and `preciousobjects`.
 
-    Any violation gives exit 2 with `reason: hostile_git_dir`.
+       The `objects/info/alternates` and `objects/info/http-alternates` files are also fatal (inspection above).
+    2. **Neutralized**, accepted with the `git_config_neutralized` warning: the ones the R4c `-c` options override, or that no allowed subcommand reads. For example `core.hookspath`, `core.fsmonitor`, `core.sshcommand`, `core.pager`, `core.editor`, `core.askpass`, `core.excludesfile`, `core.attributesfile`, `core.worktree`, `core.alternaterefscommand`, `filter.*`, `diff.*`, `merge.<n>.driver`, `mergetool.*`, `difftool.*`, `credential.*`, `protocol.*`, `url.*`, `http.*`, `pager.*` and `submodule.recurse`.
+    3. **Other keys:** accepted with no warning.
+
+    A fatal key gives exit 2 with `reason: hostile_git_dir`. The message lists the keys.
+
+    The security of this design does **not** depend on enumerating dangerous keys. It depends on three things: the closed list of R4c subcommands, the R4c `-c` options and env, and the sentinel tests (Verification Plan) that prove none of these subcommands executes anything with a hostile config. If a new git version starts reading a new key in an allowed subcommand, the sentinel tests are what detect it.
 - R5: the goldfish's argv is `egm.agent_cmd` plus the profile flags that turn off **all** tools; all content goes in the prompt. tb refuses with exit 2:
   - argv with `bypassPermissions`, `--dangerously-skip-permissions` or anything from `egm.forbidden_flags`;
   - a `custom` profile without `egm.tools_disabled: true`.
@@ -230,7 +251,7 @@ The result goes in `docs/campo/dogfood.md` (PT and EN).
   - **Type:** `egm.doc_types` maps globs to types. The default is `docs/adr/**` → `adr`; the rest is `spec`. The type only determines the structural standard (R13).
   - **Required reviewers:**
     - with DetailedRange: the 9 of R10;
-    - without DetailedRange: the 6 without DetailedRange.
+    - without DetailedRange: the 6 R10 reviewers whose range is not the DetailedRange.
   - **Coverage:** in a `spec` without DetailedRange, the 3 detail reviewers are `skipped` (`reason: no_detailed_section`), which is partial coverage (R24). In an `adr` without DetailedRange, they are not required.
 
 **Sources, redaction and prompt**
@@ -244,11 +265,11 @@ The result goes in `docs/campo/dogfood.md` (PT and EN).
     - if it exceeds `egm.max_packet_bytes`, exit 2.
   - **Source candidates:**
     - (a) relative markdown links (`CollectMDLinks`), resolved relative to the document's directory;
-    - (b) single-backtick spans (`CollectBacktickSpans`, a new function over `reBacktick`), resolved relative to the root.
+    - (b) single-backtick spans, extracted by egm's own regex in `internal/egm/sources.go`, resolved relative to the root.
 
     A span is only a candidate if it:
     - has no space, `<`, `>`, `$`, `~`, `(`, `*`, `{`, `…` nor `:`;
-    - ends in an extension of `rePathLike` (which gains `json`, `yaml`, `yml` and `toml`) or ends in `/`.
+    - ends in an extension from egm's list (those of `rePathLike` plus `json`, `yaml`, `yml` and `toml`) or ends in `/`. `tb graph`'s `rePathLike` does not change.
   - **Resolution** (`egm.resolveSource`):
     1. strips fragment and query;
     2. refuses an absolute path;
@@ -267,18 +288,22 @@ The result goes in `docs/campo/dogfood.md` (PT and EN).
     - **other gated documents and files under `docs/en/`**, because they are not code and are reviewed as documents;
     - above `egm.max_source_bytes`;
     - whatever exceeds `egm.max_packet_bytes`.
-  - **Candidate outside the index:** a candidate that exists in the worktree but is not in the index produces the `unstaged_source` warning.
+  - **Order of the source rules:**
+    1. deny-list, `.toolbelt/`, `.git/`, `testdata` and ignored files (`check-ignore`): silent exclusion;
+    2. a candidate that exists in the worktree, is not in the index and is not ignored: `unstaged_source` warning, and the round is **not clean**, with the message `faça git add das fontes citadas antes de convergir` ("git add the cited sources before converging");
+    3. a versioned source whose worktree bytes differ from the index blob (partial staging): also `unstaged_source`.
+
+    That way, the interactive mode's `content` is the same one the gate will see after the commit.
   - **Effects:**
     - an exclusion by `max_*` in a source of a reviewer with code sources makes coverage partial;
-    - only reviewers with code sources (R10) and the arbiter receive sources besides the document;
-    - the change to `rePathLike` also changes `tb graph`'s mention and link edges (`EdgeLinks`) for MD, TXT and HTML, and there is a regression test for that.
+    - only reviewers with code sources (R10) and the arbiter receive sources besides the document.
 - R7a (gate mode): with `--at <rev>`, resolution is the same as in R7, but over the commit's tree:
   - the mode comes from `ls-tree` and must be `100644` or `100755`; an intermediate component that is not a tree (for example, a `120000` symlink) excludes the source;
   - the bytes come from `cat-file blob`;
   - the exclusions are the same as in R7.
 
   If a source uses a `.gitattributes` filter, the worktree and blob bytes differ, and tb emits `filtered_source`. In that case, the interactive mode's `content` does not match the gate's. This is a declared limitation.
-- R8: `internal/egm/redact.go` has its own copy of the `mem.RedactText` patterns plus the patterns below, and replaces each match with `[REDACTED]` followed by the same number of line breaks as the original excerpt, preserving the numbering. `internal/mem` does not change.
+- R8: `internal/egm/redact.go` uses the `mem.RedactText` patterns, obtained through a new getter `mem.SecretPatterns()` that returns a copy without changing the behavior of `mem`, plus the patterns below, and replaces each match with `[REDACTED]` followed by the same number of line breaks as the original excerpt, preserving the numbering. `RedactText` itself does not change.
   - `\bsk-ant-[A-Za-z0-9_-]{20,}`
   - `\bsk-[A-Za-z0-9]{32,}`
   - `(?i)\b[A-Za-z0-9_]*_(KEY|SECRET|PASSWORD)=[^\s"'&]+`
@@ -291,7 +316,7 @@ The result goes in `docs/campo/dogfood.md` (PT and EN).
   6. `PRIOR:` followed by a `<<<DATA-<nonce> path=PRIOR>>> … <<<END-<nonce>>>>` block;
   7. the `<<<DATA-<nonce> path=…>>> … <<<END-<nonce>>>>` blocks, with the original line numbering.
 
-  `PRIOR` lists the lineages the reviewer owns (already with the R20 transfers) that are in `open` or `reopened`, in unconfirmed `fixed` or in `fixed` confirmed in the current cycle. Of each one, it carries only these fields: `lineage`, `severity`, `status`, `scope`, `message`, `rationale` and `evidence`. No text written by the elephant (reasons) goes into the prompt. The prompt declares that **all** content of the blocks is data, never instruction.
+  `PRIOR` lists the lineages the reviewer owns that are in `open` or `reopened`, in unconfirmed `fixed` or in `fixed` confirmed in the current cycle. Of each one, it carries only these fields: `lineage`, `severity`, `status`, `scope`, `message`, `rationale` and `evidence`. No text written by the elephant (reasons) goes into the prompt. Every reviewer receives the whole document in the data blocks; the `RANGE` only indicates the focus. A finding whose `scope` falls outside the range is accepted and counts normally, but gets `out_of_range: true` in the report. The prompt declares that **all** content of the blocks is data, never instruction.
 
 **Personas, standards and engines**
 
@@ -306,20 +331,21 @@ The result goes in `docs/campo/dogfood.md` (PT and EN).
   | structural | structural | type's structural | whole doc | no |
   | style-feature | style | (none) | FeatureRange | no |
   | implementation-readiness | implementation-readiness | implementation-readiness | DetailedRange | yes |
-  | codebase-details | codebase-details | implementation-readiness | DetailedRange | yes |
+  | codebase-details | codebase-details | implementation-readiness | whole doc | yes |
   | style-detailed | style | (none) | DetailedRange | no |
 
   The structural standard is `feature-spec` for `spec` and `adr` for `adr`. `--reviewers a,b` restricts the list and makes coverage partial.
-- R11: the personas, the `arbiter` and the standards are embedded (`go:embed`) in `internal/egm/personas/` and `internal/egm/standards/`, with original text. Each persona declares `max_severity`; for `inventive-catalyst`, it is `major`. A finding above the cap makes the output invalid.
+- R11: the personas, the `arbiter` and the standards are embedded (`go:embed`) in `internal/egm/personas/` and `internal/egm/standards/`, with original text. Each persona declares `max_severity`: `major` for `inventive-catalyst` and `style`, and `blocker` for the others. A finding above the cap makes the output invalid.
 - R12: `--engine auto|llm|deterministic`, default `auto`.
   - `auto` uses `llm` if `egm.agent_cmd` is set in the user config. Otherwise, it uses `deterministic` and prints `agent_cmd ausente na config de usuário` ("agent_cmd missing from user config").
+  - If `llm` cannot run (outside Linux, without Landlock or without a subreaper), `auto` uses `deterministic` and records the reason in `engine_reason`.
   - There is no inheritance from `router.agent_cmd`.
   - `--engine llm` without an agent is an error (exit 2).
 - R13: the checkers below and the `injection-scan` (R17a) run **in both engines** and do not count as reviewers for coverage.
 
   | Checker | Partially covers (`deterministic` engine) | Severity | Checks |
   |---------|-------------------------------------------|----------|--------|
-  | `refs-exist` | codebase-details | `major` in the DetailedRange; `nit` outside it | Each R7 candidate (b) that contains `/` goes through steps 1 to 5 of `resolveSource`. Those that leave the root or cross a symlink are ignored, without saying whether they exist. The rest must exist, as a file or directory, before the versioning and size exclusions. Ignores: paths under `.toolbelt/` or `.git/`; the plan's `Create` paths (after expanding `{a,b}`) and the directories that contain them; whatever matches `egm.refs_ignore` (default `refs/**`); lines with `<!-- tb:egm-example -->`. |
+  | `refs-exist` | codebase-details | `major` | Each R7 candidate (b) that contains `/` goes through steps 1 to 5 of `resolveSource`. Those that leave the root or cross a symlink are ignored, without saying whether they exist. The rest must exist **in the index** (interactive mode) or **in the `<rev>` tree** (gate mode), as a file or as a directory that contains versioned files. Ignores: paths under `.toolbelt/` or `.git/`; the plan's `Create` paths, after expanding `{a,b}`, and the directories that contain them (on a line with a glob, the prefix before the first `*`); whatever matches `egm.refs_ignore` (default `refs/**`); lines with `<!-- tb:egm-example -->`. Each exemption (marker or `Create`) is listed in `report.json` under `exemptions`. |
   | `required-sections` | structural | `major` | Headings required by the structural standard; either of the two languages is enough |
   | `plan-files-listed` | implementation-readiness | `major` | The parsing described below; only with DetailedRange |
 
@@ -334,10 +360,10 @@ The result goes in `docs/campo/dogfood.md` (PT and EN).
   1. Uses the first table of the DetailedRange that has an `Arquivo`/`File` column and an `Ação`/`Action` column.
   2. Reads only the `Arquivo`/`File` column, and only the single-backtick spans.
   3. The text `(+ docs/en/)` outside backticks, in a cell, is a directive: it generates the `docs/en/…` mirror of each `docs/…` path in that cell.
-  4. `{a,b}` expands to both paths. With `Modify`, a `*` must match some file.
+  4. Every path in the column, before and after the expansions, goes through steps 1 to 5 of `resolveSource`. An absolute path or one outside the root becomes a `major` finding, without querying the filesystem. The per-component `Lstat` stops at the first nonexistent component, which is accepted. `{a,b}` expands to at most 64 paths per cell, and `**` is not accepted. With `Modify`, a `*` must match some versioned file under the prefix directory before the `*`, with `ls-files` in interactive mode and `ls-tree -r` in gate mode (R4c), with at most 1000 entries. With `Create`, the path cannot already exist in the index (or in the tree, in gate mode); if it does, it becomes a `nit` finding.
   5. The action must be `Create`, `Modify` or `Delete`, and every `Modify` or `Delete` must exist.
 
-  Checker lineages can be contested at the arbiter. In the `deterministic` engine, the LLM personas are `unavailable`, there is no arbiter and `--contest` is refused. A major `injection-scan` lineage in that engine only leaves through `--fix` or through `--force-settle`, which is a lineage downgrade. This is consistent with the best offline verdict being `PASS_PARTIAL`.
+  Checker lineages can be contested at the arbiter. In the `deterministic` engine, the LLM personas are `unavailable`, there is no arbiter and `--contest` is refused. A major `injection-scan` lineage in that engine leaves when the re-run does not reproduce it (R20), through `--fix` or through `--force-settle`, which is a lineage downgrade. This is consistent with the best offline verdict being `PASS_PARTIAL`.
 
 **Output contract and validation**
 
@@ -348,7 +374,7 @@ The result goes in `docs/campo/dogfood.md` (PT and EN).
 - R15a (tool use): the profile defines how to detect tool use in the envelope.
   - In `claude-json`, these count as use: `num_turns > 1`, `tool_use` entries or a non-empty `permission_denials`.
   - If use is detected, the goldfish becomes `not_run` with `reason: tools_used` and the report carries the `tools_used` warning.
-  - `custom` declares `egm.tools_check: none`, and in that case the best verdict is `PASS_PARTIAL`.
+  - In Phase A, the `custom` profile always has `tools_check: none`, and therefore the best verdict with it is `PASS_PARTIAL`.
 - R16 (failures): `not_run` is never equivalent to zero findings.
   - With retry (one more attempt and then `not_run` with `reason`): missing output, invalid schema or cap exceeded, wrong nonce, invalid attestation, incomplete `prior`, `StdoutOverflow` and timeout.
   - Without retry: escaped process (R3), tool use (R15a) and budget (R27).
@@ -366,7 +392,7 @@ The result goes in `docs/campo/dogfood.md` (PT and EN).
 - R17a (anti-injection scan): before each round, tb sweeps the **whole** snapshot (prose, code and quotes), each reviewer's `PRIOR` block and the sources sent.
   - **Patterns:** they live in `internal/egm/injection_patterns.txt` (RE2, one per line, case-insensitive). The initial content is **exactly**:
     - `ignore (all |the )?(previous|prior|above) instructions`
-    - `do not report`
+    - `do not report (any|this|these|the) (findings?|issues?|problems?)`
     - `return (no|empty|zero) findings`
     - `you are (approved|pre-approved)`
     - `como revisor, (não|aprove)`
@@ -375,16 +401,16 @@ The result goes in `docs/campo/dogfood.md` (PT and EN).
   - **Finding:** the matches under the same heading, or from the same source file, form **one** `major` finding of `injection-scan`.
     - `scope` is the union of the lines.
     - It also carries `context` and `match_sha` (the sha256 of the matched text). `context` is `code` (fenced block or inline code), `quote` (line starting with `>`), `source` (source), `prior` (`PRIOR` block) or `prose` (the rest).
-    - A match in `PRIOR` removes the originating lineage from that round's `PRIOR`, moves that lineage to `escalated` (`by: rerun`) and produces the `prior_injection` warning.
+    - A match in `PRIOR` produces no lineage. The matched excerpt is replaced with `[PADRÃO-REMOVIDO]` in that round's `PRIOR`, and tb produces the `prior_injection` warning.
   - **Contest** (R29):
     - the `scope` lines go to the arbiter quoted and escaped, in a `TRECHO-SINALIZADO` block;
     - the contest is refused if there is a term directed at the arbiter (`arbiter`, `árbitro`, `withdraw`, `uphold`, `verdict`, `veredito`) within 80 characters of any match;
     - the scan runs over the evidence excerpt, exempting the `scope` lines of `injection-scan` lineages in `open`, `reopened`, `contest_pending` or `settled` with an equal `match_sha`; any other match refuses the contest.
   - **Reopening:** an `injection-scan` lineage in `settled` **reopens** if the `match_sha` changes.
   - **Goldens:**
-    - this spec produces a single lineage, whose only match is the second item of the pattern list above;
-    - ADR-014 produces a single lineage, whose only match is the second example cited in its §3;
-    - in both cases, the contest with the document as evidence is accepted, and the arbiter's withdrawal takes the lineage to `settled`.
+    - the `internal/egm/testdata/injection/*.md` fixtures cover each pattern in prose, code, quote and source, documents that discuss patterns without a directive, and an arbiter term near and far from the match;
+    - as a regression, this spec produces no `injection-scan` lineage;
+    - ADR-014 produces a single lineage, whose only match is the second example cited in its §3. The contest with the document as evidence is accepted, and the arbiter's withdrawal takes the lineage to `settled`.
 
 **Matching, lineage and state**
 
@@ -395,7 +421,7 @@ The result goes in `docs/campo/dogfood.md` (PT and EN).
 - R19 (merge and owner): in the same round, two findings merge when `sim ≥ egm.match.sim` and, in addition, `overlap ≥ egm.match.overlap` or, without `lines`, the same `heading`. The merge keeps the highest severity and the `reviewers[]` list.
 
   The owner is the reviewer of the **highest-severity** occurrence. Ties are broken in this order: reviewer with code sources, then the R10 order, and checkers after reviewers.
-- R20 (re-evaluation): between rounds, the one who re-evaluates is the **owning reviewer**. That reviewer's `open`, `reopened` and `fixed` lineages go into its `PRIOR`, and it answers `prior[].still_holds`. Omitting a lineage invalidates the output.
+- R20 (re-evaluation): between rounds, the one who re-evaluates is the **owning reviewer**. The R9 set goes into its `PRIOR`, and it answers `prior[].still_holds` for each lineage. Omitting a lineage from that set invalidates the output.
 
   | Status | `still_holds: true` | `still_holds: false` |
   |--------|---------------------|----------------------|
@@ -405,13 +431,12 @@ The result goes in `docs/campo/dogfood.md` (PT and EN).
   - **Checker lineages:** re-evaluated by re-running the checker.
     - Not reproduced: becomes `fixed`, confirmed.
     - Reproduced: `fixed` becomes `reopened`.
-  - **Owner out of the round** (`skipped`, `unavailable` or removed by `--reviewers`):
-    - the lineage passes to the next reviewer, in the R19 order, that is running and whose range covers the mapped `scope`;
-    - if there is none, the new owner is `zoom-out`, which has the whole document in its range and is always required.
+  - **Fixed owner:** a lineage's owner never changes in Phase A. If the owner does not run in the round (`skipped`, `unavailable` or removed by `--reviewers`), the lineage does not change. A blocking lineage whose owner cannot run makes R26 refuse the round.
   - **New findings:** they are matched against existing lineages by line mapping (`git diff --no-index -U0` between the snapshots) and by R19.
     - Matched a `fixed` lineage: it reopens.
+    - Matched an `open` or `reopened` lineage: it records the occurrence; if the new severity is higher, the lineage rises to it.
     - Matched `settled`, `declined`, `contest_pending` or `escalated` and the new severity **is not higher**: it only records the occurrence, except for R17a.
-    - Matched one of these, but the new severity is higher: it becomes a new `F-<k>` with `supersedes` pointing to the old one.
+    - Matched one of these, but the new severity is higher: it becomes a new `F-<k>`.
     - Did not match: it becomes a new `F-<k>`.
 - R21 (state): the state directory contains:
   - `state.json` (`0600`), written to a temporary file followed by `rename` and an `fsync` of the directory;
@@ -437,14 +462,14 @@ The result goes in `docs/campo/dogfood.md` (PT and EN).
 
   There is convergence with `egm.clean_rounds` (default 2) consecutive clean rounds **over the same `content`**. A clean round with a `content` different from the previous one resets the count to 1. Convergence writes a record for the `content` and closes the cycle; the next round opens a new cycle.
 
-  Cycle cap: `capped` when round `egm.max_rounds` (default 5) of the cycle ends without converging. From then on, `loop next` without `--past-cap` is refused with exit 1 (`FAIL`). `loop next --past-cap` allows up to `egm.max_past_cap_rounds` (default 3) extra rounds and downgrades the cycle.
+  Cycle cap: `capped` when round `egm.max_rounds` (default 5) of the cycle ends without converging. From then on, `loop next` is refused with exit 1 (`FAIL`). The way out is `--restart`, which requires a new `content`.
 - R24 (downgrades): there are two kinds, and all are recorded.
-  - **Lineage downgrades**, which apply while the lineage stays in the status: `forced` (`--force-settle`) and `declined` of a `major`. They persist across cycles. They only go away through `--fix` from `settled` or `declined` (R28), followed by the owner's confirmation (`still_holds: false`).
+  - **Lineage downgrades**, which apply while the lineage stays in the status: `forced` (`--force-settle`) and `declined` of a `major`. A `forced` of a **blocker** is marked `forced_blocker`, and `tb stack` gives `ok: false` with it even without `--strict` (R33). They persist across cycles. They only go away through `--fix` from `settled` or `declined` (R28), followed by the owner's confirmation (`still_holds: false`).
   - **Cycle downgrades**, which apply to that cycle's convergence record:
-    - `--past-cap` and `--restart`;
-    - coverage smaller than that of the cycle's first round (for example, a more restricted `--reviewers`), except structural `skipped`;
+    - `--restart`;
+    - some required reviewer that did not end up `completed` in a counted round, for any reason other than structural `skipped`, including having been removed by `--reviewers`. The `policy_sha` always uses the full required set, never the `--reviewers` subset;
     - `max_*` exclusion;
-    - required reviewer `unavailable` or `skipped`, or a document of type `spec` without DetailedRange (`no_detailed_section`);
+    - required reviewer `unavailable`, or `skipped` for a non-structural reason, or a document of type `spec` without DetailedRange (`no_detailed_section`);
     - profile without `tools_check`.
 - R25 (verdict): the verdict is computed over the **target content**, which is the worktree in interactive mode or the commit in gate mode (R33). The rules are evaluated **in this order**, and the first one that matches wins:
 
@@ -453,12 +478,12 @@ The result goes in `docs/campo/dogfood.md` (PT and EN).
   | 1 | `NO_STATE` | There is no state. |
   | 2 | `PASS` | There is a convergence record for the target content, with `policy_sha` equal to the current one, no cycle downgrade, no lineage with a lineage downgrade and no blocking lineage at all. |
   | 3 | `PASS_PARTIAL` | Like row 2, but with some downgrade. |
-  | 4 | `FAIL` | The current cycle is `capped` and `--past-cap` has not run, or it has already used up the extra rounds. |
+  | 4 | `FAIL` | The current cycle is `capped`. |
   | 5 | `STALE` | There is a record for another content, or for this content with a different `policy_sha`, or for this content with some blocking lineage. |
   | 6 | `IN_PROGRESS` | None of the above. |
 
   The report also carries `loop_state ∈ running|capped|converged`. A coverage smaller than that of the cycle's first round is not refused: it becomes a cycle downgrade (R24). Structural `skipped` (`no_detailed_section`, `range_too_small`) does not count as a reduction.
-- R26: in `loop next`, the arbiters of the `contest_pending` lineages (R29) run first. Then, if the `content` has not changed since the previous round **and** there is some blocking lineage whose status does not change without an edit or `resolve` (`open`, `reopened`, `escalated`, unconfirmed `fixed`, or `contest_pending` with no eligible arbiter), tb does not open a new round and shows `documento e fontes não mudaram desde a rodada N; há findings bloqueantes abertos` ("document and sources have not changed since round N; there are open blocking findings"). It exits 0 if some arbiter ran and 2 if none ran. Otherwise, the round is opened.
+- R26: in `loop next`, the arbiters of the `contest_pending` lineages (R29) run first. Then, if the `content` has not changed since the previous round **and** there is some blocking lineage whose status does not change without an edit or `resolve` (`open`, `reopened`, `escalated`, or `contest_pending` with no eligible arbiter), **and** there is no unconfirmed `fixed` lineage, which can always change in a new round, tb does not open a new round and shows `documento e fontes não mudaram desde a rodada N; há findings bloqueantes abertos` ("document and sources have not changed since round N; there are open blocking findings"). It exits 0 if some arbiter ran and 2 if none ran. Otherwise, the round is opened. An eligible arbiter means the `llm` engine with an agent, remaining budget and fewer than 2 consecutive `not_run` on that lineage. If some blocking lineage has an owner that cannot run in the effective engine, because it was removed by `--reviewers`, is `unavailable` or because the engine fell back to `deterministic`, tb does not open the round, exits 2 with `reason: owner_unavailable`, and the attempt does not count toward the cap. With `auto` and LLM-owned lineages in the state, falling back to `deterministic` requires an explicit `--engine deterministic`.
 - R27 (budget): tb counts the cycle's agent runs (reviewers, retries and arbiters) and stops at `egm.max_agent_runs` (default 120). Whatever is left becomes `not_run` with `reason: budget`.
   - The worst case of a round is `reviewers × 2 + pending contests × 2`, and `--dry-run` prints that value and the balance.
   - A round whose worst case exceeds the balance is refused with exit 2.
@@ -469,8 +494,8 @@ The result goes in `docs/campo/dogfood.md` (PT and EN).
 
   | Flag | From | To | Restriction |
   |------|------|----|-------------|
-  | `--fix F-…` | open, reopened, escalated, contest_pending, settled, declined | fixed (unconfirmed) | Since the `opened_round` (or since the transition's round, for `settled` and `declined`), there was a diff with some changed line that, ignoring whitespace, touched the mapped `scope` lines or the `evidence[].line ± 5` lines of a source in `cited`. The snapshots are those of R1, and the whitespace normalization is done in Go over the hunks. From `contest_pending`, it cancels the contest (`contests` stays 1). From `settled`/`declined`, the lineage downgrade only goes away with the owner's confirmation. A fix elsewhere closes through the owner's re-evaluation, without `--fix`. |
-  | `--contest F-x --evidence path:line` | open, reopened | contest_pending | Effective engine with an agent; `contests == 0`; the path is in `cited` and goes through `resolveSource` again; the persona is not comprehension. If the path is the document, the evidence comes from the current round's snapshot. If it is another source, it must be versioned, with `hash-object --no-filters` equal to the `HEAD` blob, and that blob must equal the one at the `opened_round`. |
+  | `--fix F-…` | open, reopened, escalated, contest_pending, settled, declined | fixed (unconfirmed) | Since the **reference round** (the one of the lineage's last status transition: the `opened_round`, or the round in which it went to `settled` or `declined`), there was a diff with some changed line that, ignoring whitespace, touched the mapped `scope` lines or the `evidence[].line ± 5` lines of a source in `cited`. `resolve` compares a new, redacted snapshot of the worktree (the document and the `cited` sources, resolved by `resolveSource`, written to `<state-dir>/resolve-<n>/`) against the reference round's snapshot. The whitespace normalization is done in Go over the hunks. From `contest_pending`, it cancels the contest (`contests` stays 1). From `settled`/`declined`, the lineage downgrade only goes away with the owner's confirmation. A fix elsewhere closes through the owner's re-evaluation, without `--fix`. |
+  | `--contest F-x --evidence path:line` | open, reopened | contest_pending | Effective engine with an agent; `contests == 0`; the path is in `cited` and goes through `resolveSource` again; the persona is not comprehension. If the path is the document, the evidence comes from the current round's snapshot. If it is another source, it must be versioned, and the sha256 of the worktree bytes, that of the blob bytes at `HEAD` and the one recorded at the `opened_round` must be equal. Recording the contest sets `contests = 1`. |
   | `--decline F-…` | open, reopened | declined | `contests == 0`. Applies only to `nit` and `major`; a declined `major` gets a lineage downgrade. Never applies to `blocker`. |
   | `--force-settle F-x --reason "…"` | open, reopened, contest_pending, escalated | settled | `forced: true`, lineage downgrade |
 
@@ -483,8 +508,8 @@ The result goes in `docs/campo/dogfood.md` (PT and EN).
 
   Outcomes:
   - `withdraw` of a `nit`, a checker or `injection-scan`: `settled` (`by: arbiter`).
-  - `withdraw` of a `blocker` or `major` with an LLM owner: `fixed` without confirmation. The owner re-evaluates in the next round: `still_holds: false` confirms; `true` reopens with `contests = 1`.
-  - `uphold`: `open`, with `contests = 1`.
+  - `withdraw` of a `blocker` or `major` with an LLM owner: `fixed` without confirmation. The owner re-evaluates in the next round: `still_holds: false` confirms; `true` reopens (`contests` stays 1).
+  - `uphold`: `open` (`contests` is already 1).
   - `not_run`: stays `contest_pending`. After 2 consecutive `not_run` of the arbiter, the lineage goes to `escalated`.
 
   After `uphold`, the lineage only leaves through `--fix`, the owner's `still_holds: false` or `--force-settle`.
@@ -497,25 +522,25 @@ The result goes in `docs/campo/dogfood.md` (PT and EN).
   | Command | Flags |
   |---------|-------|
   | `tb egm review <doc>` | `--engine`, `--reviewers`, `--dry-run`, `--restart` |
-  | `tb egm loop next <doc>` | `--engine`, `--reviewers`, `--dry-run`, `--past-cap` |
+  | `tb egm loop next <doc>` | `--engine`, `--reviewers`, `--dry-run` |
   | `tb egm resolve <doc>` | those of R28 |
   | `tb egm status <doc>` | `--at <rev>`, `--strict` |
 
   - **`review`:** creates round 1 of the first cycle. If state already exists, it suggests `loop next` or `--restart`.
-  - **`--restart`:** opens a new cycle, keeping the lineages, and downgrades that cycle. The new cycle inherits the budget already spent. If the current cycle is `capped`, `--restart` requires the `content` to have changed.
-  - **Config:** the `tb egm` commands do not go through the root's `config.Load()` (`cmd/tb/main.go`). The user config is loaded with `config.LoadFile(config.GlobalConfigPath())`, or with the `-c` file, and never comes from the merged config nor from `Shared.FileConfig`. On top of it, only the repository config is applied, under the R34 rules.
-  - **MCP:** the `tb_egm_review`, `tb_egm_loop_next`, `tb_egm_resolve` and `tb_egm_status` tools live in `internal/registry/parity.go` and in the `parity_test.go` list.
+  - **`--restart`:** opens a new cycle, keeping the lineages, with cap and budget reset, and downgrades that cycle. It always requires the `content` to have changed since the last round, so each restart costs an edit. The budget stays bounded per content version.
+  - **Config:** the `tb egm` commands do not go through the root's `config.Load()` (`cmd/tb/main.go`). The test is by the command chain (`cmd.CommandPath()` starts with `tb egm`), not by the leaf name, which collides with `tb review` and others. The user config is loaded with `config.LoadFile(config.GlobalConfigPath())`, or with the `-c` file. If the file does not exist, the defaults apply, and the `auto` engine resolves to `deterministic`. The user config never comes from the merged config nor from `Shared.FileConfig`. On top of it, only the repository config is applied, under the R34 rules. `tb stack` keeps going through the root's `config.Load()` (Non-Goals).
+  - **MCP:** in Phase A, only `tb_egm_status` (arguments `cwd`, `doc`, `at` and `strict`) and `tb_egm_resolve` (arguments `cwd`, `doc` and the R28 flags) live in `internal/registry/parity.go` and in the `parity_test.go` list. `review` and `loop next` take minutes and stay CLI-only. `cwd` must be absolute, and the R4d discovery starts from `cwd/doc`. `tb mcp` reloads the user config on every call.
 - R32 (exit codes):
 
   | Command | 0 | 1 | 2 | 3 |
   |---------|---|---|---|---|
   | `review`, `loop next` | Round or arbiter step completed, and the verdict is not `FAIL` | `FAIL` | Usage, execution or env error; budget; `loop next` with no change and no arbiter (R26) | — |
-  | `resolve` | Success or no-op | — | Invalid transition | — |
-  | `status` | `PASS`, or `PASS_PARTIAL` without `--strict` | `PASS_PARTIAL` with `--strict` or `egm.require_full_coverage: true`; `FAIL` | Usage error | `IN_PROGRESS`, `STALE`, `NO_STATE` |
+  | `resolve` | Success or no-op | — | Invalid transition; contest refused; `locked`; `hostile_git_dir`, `no_repository`, `submodule_unsupported`, `git_timeout` | — |
+  | `status` | `PASS`, or `PASS_PARTIAL` without `--strict` and without `egm.require_full_coverage: true` | `PASS_PARTIAL` with `--strict` or `egm.require_full_coverage: true`; `FAIL` | Usage error; `hostile_git_dir`, `no_repository`, `submodule_unsupported`, `git_timeout` | `IN_PROGRESS`, `STALE`, `NO_STATE` |
 - R33 (gate in `tb stack`): `tb stack` gains the `egm` op, the `--strict` and `--egm-doc <path>` (repeatable) flags, the `EgmDocs []string` and `Strict` fields in `stack.Options`, the `egm_docs` and `strict` arguments in the `tb_stack` schema (with the `ops` description including `egm`) and the additive `warn` field in `StepResult` and `Result`.
-  - **Selection:** the op picks the gated documents (default `docs/specs/**` and `docs/adr/**`) added or modified between `merge-base(base, head)` and `head` (the stack's same three-dot semantics), through R4c's `diff --name-status --no-renames`. Those from `--egm-doc` are added. Deleted documents are left out.
-  - **Evaluation:** each document is evaluated with `status --at head`, with document and sources resolved by R7a.
-  - **Empty selection:** `ok: true, warn: true`, with the `no_gated_docs` warning, or `ok: false` with `--strict`.
+  - **Selection:** the op picks the gated documents (default `docs/specs/**` and `docs/adr/**`) added or modified between `merge-base(base, head)` and `head` (the stack's same three-dot semantics), through R4c's `diff --name-status --no-renames`. A document with state whose sources changed in the range, but that was not touched, is not selected: it only produces the `sources_changed` warning (drift detection belongs to Phase B). Those from `--egm-doc` are added. Deleted documents are left out.
+  - **Evaluation:** each document is evaluated with `status --at head`. The document, the sources and the `checks_sha` are recomputed from the document at `head`, through R7a and R13 in gate mode, never from the recorded paths.
+  - **Empty selection:** `ok: true, warn: true`, with the `no_gated_docs` warning, or `ok: false` with `--strict`. If, in addition, the worktree has modified or unversioned gated documents, the result is `ok: false` with `uncommitted_gated_docs`. This check uses `ls-files -s` and `ls-files --others` only in the prefix directories of `doc_globs` (the part before the first `*`), with the glob filter applied in Go, and `hash-object --no-filters` on the files found.
 
   | Verdict | Result in the stack |
   |---------|---------------------|
@@ -523,7 +548,7 @@ The result goes in `docs/campo/dogfood.md` (PT and EN).
   | `PASS_PARTIAL` | `ok: true, warn: true` (`ok: false` with `--strict` or `require_full_coverage`) |
   | others | `ok: false` |
 
-  With `warn`, the stack lists the downgrades, and the exit is 0. In Phase A, choosing the range is up to whoever calls the stack. Selection by trust ref is in [egm trust](egm-trust.md).
+  `Result.warn` is the OR of the steps' `warn`. The `egm` op is not parallel. If it appears before other ops, the stack moves it to the end, and the description of `ops` in the `tb_stack` schema says so. A document with `forced_blocker` gives `ok: false` even without `--strict`. With `warn`, the stack lists the downgrades, and the `ExitCode` stays 0. In Phase A, choosing the range is up to whoever calls the stack. Selection by trust ref is in [egm trust](egm-trust.md).
 - R33a (CI): the gate is local. In a CI checkout there is no state, so the result is `NO_STATE` and `ok: false`. CI can run the loop with its own credentials or not include the `egm` op.
 - R33b (report): `report.json` follows `internal/egm/schema/report.schema.json`, with the fields:
   - `slug`, `doc`, `doc_type`, `cycle`, `round`, `verdict`, `loop_state`, `content` and `target` (`worktree` or `<rev>`);
@@ -536,17 +561,17 @@ The result goes in `docs/campo/dogfood.md` (PT and EN).
   The ordering is stable and the body has no timestamps. `report.md` is generated from the JSON.
 - R34 (config and compatibility): `review.Finding`, `tb review`, `tb drift`, `tb merge` and the router do not change.
 
-  **Execution and secret keys:** `agent_cmd`, `path`, `env`, `home`, `vendor`, `output`, `tools_disabled`, `tools_check` and `forbidden_flags`. They come **only** from the user config.
+  **Execution and secret keys:** `agent_cmd`, `path`, `env`, `home`, `vendor`, `output`, `tools_disabled`, `tools_check`, `forbidden_flags`. They come **only** from the user config. Any key that loosens a protection goes into this class.
   - One of these keys present in the repository's `.toolbelt/config.yaml` (in the worktree or, in gate mode, in the `head` blob) is ignored, and tb emits `config_untrusted`.
   - With `-c/--config`, these keys are read from the given file, because the user chose the file themselves.
 
-  **Limit keys:** `max_agent_runs`, `max_rounds`, `max_past_cap_rounds`, `max_parallel`, `timeout_per_reviewer`, `max_source_bytes`, `max_packet_bytes` and `max_stdout_bytes`. The repository can only **lower** these values. A repository value above the user config value (or the default) is capped to it, and tb emits `config_untrusted`.
+  **Limit keys:** `max_agent_runs`, `max_rounds`, `max_parallel`, `timeout_per_reviewer`, `max_source_bytes`, `max_packet_bytes` and `max_stdout_bytes`. The repository can only **lower** these values. A repository value above the user config value (or the default) is capped to it, and tb emits `config_untrusted`.
 
   **Policy keys:** the repository can only **harden**.
   - `clean_rounds`, `attest.min_quotes`, `match.sim` and `match.overlap` only go up.
   - `require_full_coverage` only becomes `true`.
-  - `doc_globs` and `detail_headings` only gain items.
-  - `doc_types` and `refs_ignore` come only from the user config.
+  - `doc_globs` only gains items, and the repository's items apply only to the gate selection (R33), not to the source exclusion (R7).
+  - `doc_types`, `refs_ignore` and `detail_headings` come only from the user config.
   - Values that loosen are ignored with `config_untrusted`.
   - In gate mode, the repository config comes from the `head` blob, under this same rule.
 
@@ -569,10 +594,10 @@ egm:
   env:
     pass: []                 # e.g. [ANTHROPIC_API_KEY]; prefixes forbidden in R4b
   home:
-    copy: []                 # only if R0 picks copying
+    copy: []                 # only if R0 picks copying: paths relative to the real HOME, copied into the disposable HOME with 0600
     read_only: []            # vendor runtime directories
   # Limits (R34): the repository can only lower max_* and timeout_per_reviewer.
-  # Other keys: user config overlaid by the repository's.
+  # Policy (R34): the repository only hardens; doc_types, refs_ignore and detail_headings only from the user.
   doc_globs: ["docs/specs/**", "docs/adr/**"]
   doc_types: {"docs/adr/**": adr}   # rest → spec
   detail_headings: ["## Detailed Implementation Plan", "## Plano de Implementação Detalhado", "## Implementation Plan"]
@@ -582,7 +607,6 @@ egm:
   require_full_coverage: false
   max_rounds: 5              # ≥ 1, per cycle
   clean_rounds: 2            # 1 ≤ clean_rounds ≤ max_rounds
-  max_past_cap_rounds: 3     # ≥ 0, per cycle
   max_agent_runs: 120        # ≥ 1, per cycle
   max_source_bytes: 65536
   max_packet_bytes: 409600
@@ -596,7 +620,8 @@ egm:
 | Threat | Mitigation |
 |--------|------------|
 | Third-party repository picks the binary or forwards secrets | R34 (execution and secret only from the user config), R4b |
-| Downloaded file with hostile `.git/config`/`.gitattributes` (filters, fsmonitor, drivers, submodules, `core.worktree`, `include`, `alternates`, `excludesFile`, `gitdir:` to another repository) | R4c (closed list, no `git status`, no full sweep, timeout), R4d (real root via filesystem, explicit `GIT_WORK_TREE`, prior inspection of `.git`) |
+| Downloaded file with hostile `.git/config`/`.gitattributes` (filters, fsmonitor, drivers, submodules, `core.worktree`, `include`, `alternates`, `excludesFile`, `commondir`, `gitdir:` to another repository, partial clone with lazy fetch) | R4c (closed list, no `git status`, no full sweep, timeout), R4d (real root via filesystem starting from the document, explicit `GIT_WORK_TREE`, prior inspection of `.git`, config **allowlist**), `GIT_NO_LAZY_FETCH` and `protocol.allow=never` |
+| Downloaded document without `.git`, in a directory with no repository above it (up to `$HOME`) | R4d (`no_repository`; the search stops at the realpath of `$HOME`) |
 | Repository config that raises limits (cost, timeout), or that is a FIFO or symlink | R34 (limits only go down; reading with `Lstat`, regular file, 64 KiB) |
 | Contest evidence pointing to a secret or symlink | R28 (`resolveSource` again), glossary (`cited` only with verified paths) |
 | `tb stack` loaders running git without hardening | **Out of scope** (Non-Goals); use `tb egm status --at` |
@@ -615,7 +640,7 @@ egm:
 | Crash in the middle of a write, or two processes at the same time | R21 (atomic write, non-blocking `flock`) |
 | Repository config loosening the policy | R34 (the repository only hardens) |
 | `refs-exist` querying paths outside the repository | R13 (`resolveSource` before existence) |
-| Unbounded cost (repeated `loop next`, `--restart`) | R26, R27, R31 (`--restart` inherits the budget) |
+| Unbounded cost (repeated `loop next`, `--restart`) | R26, R27, R31 (`--restart` requires a new `content`) |
 | Active fraud by the same user | **Out of scope**: see [egm trust](egm-trust.md) |
 
 ## Non-Functional Requirements (NFRs)
@@ -629,7 +654,12 @@ See [ADR-014](../adr/014-egm-nativo.md#alternatives-considered).
 
 ## Open Questions
 
-- R0 defines: authentication, no-tools flags, tool-use detection and runtime directories for `claude`, matching thresholds and convergence rate.
+- R0 defines: authentication, no-tools flags, tool-use detection and runtime directories for `claude`, matching thresholds and convergence rate. With that, R18 to R27 are revised.
+- Findings from the last review round that were left until after R0:
+  - code reviewers see the whole document, but `implementation-readiness` stays only on the DetailedRange;
+  - offline coverage: an `injection-scan` lineage without an agent only leaves through a re-run, `--fix` or `--force-settle`;
+  - convergence with 9 non-deterministic reviewers: if it is rare, Phase A changes the number of clean rounds or the clean-round rule;
+  - owner transfer, `supersedes` and rounds beyond the cap were left out of v1 and may come back with data.
 
 ## Detailed Implementation Plan
 
@@ -646,7 +676,9 @@ See [ADR-014](../adr/014-egm-nativo.md#alternatives-considered).
 | `internal/egm/glob.go` | Create | Globs with `**` for `doc_globs`, `doc_types` and `refs_ignore` |
 | `cmd/tb/main.go` | Modify | Skip the root's `config.Load()` for the `tb egm` commands (R31) |
 | `internal/egm/packet.go`, `internal/egm/sources.go` | Create | Snapshot, worktree or commit content, `resolveSource`, exclusions, prompt (R1, R7, R9) |
-| `internal/graph/index_docs.go` | Modify | Export `CollectMDLinks`; create `CollectBacktickSpans`; new extensions (R7) |
+| `internal/graph/index_docs.go` | Modify | Export `CollectMDLinks` (R7) |
+| `internal/mem/redact.go` | Modify | `SecretPatterns()` getter, no behavior change (R8) |
+| `internal/egm/gitconfig.go` | Create | Classification of the `git config --list` keys (R4d) |
 | `internal/egm/redact.go` | Create | egm redaction with line preservation (R8) |
 | `internal/egm/personas/*.md`, `internal/egm/standards/*.md` | Create | 8 personas and `arbiter`; standards `feature-spec`, `adr`, `implementation-readiness`, `zoom-out` (R10, R11, R13, R29) |
 | `internal/egm/checkers/refs.go`, `internal/egm/checkers/sections.go`, `internal/egm/checkers/planfiles.go` | Create | Checkers (R13) |
@@ -662,6 +694,7 @@ See [ADR-014](../adr/014-egm-nativo.md#alternatives-considered).
 | `internal/egm/review.go` | Create | Phased orchestration, types, ranges, arbiter step, `--restart` (R6, R10, R12, R26, R31) |
 | `internal/egm/config.go` | Create | Repository config reader, key classes, limits and `config_untrusted` (R34) |
 | `internal/egm/testdata/paraphrases.json` | Create | R0 corpus |
+| `internal/egm/testdata/injection/*.md` | Create | Anti-injection scan fixtures (R17a) |
 | `internal/config/config.go` | Modify | `EgmConfig` with Validate (R34) |
 | `cmd/tb/egm.go` | Create | Cobra group (R31, R32) |
 | `internal/stack/stack.go`, `cmd/tb/stack.go` | Modify | `egm` op, `EgmDocs`, `Strict`, `--strict`, `--egm-doc`, `warn` (R33) |
@@ -682,7 +715,7 @@ Note on the fake-agent:
   - `stderr-json`: fake JSON on stderr and valid output on stdout;
   - `overflow`: stdout above the limit;
   - `sleep`: sleeps past the timeout;
-  - `probe-fs`: tries to read the real `$HOME`, the repository, `/proc/<ppid>/environ` and another packet, and reports each result in a `nit` finding;
+  - `probe-fs`: tries to read the real `$HOME`, the repository, `/proc/<ppid>/environ`, `/dev/pts/*`, `/dev/shm` and another packet, and reports each result in a `nit` finding;
   - `escape`: leaves a `setsid` process without `TB_EGM_OWNER`;
   - `tool-use`: `num_turns: 2`;
   - `withdraw` and `uphold`: arbiter output.
@@ -711,7 +744,18 @@ Note on the fake-agent:
   - repository with `egm.agent_cmd` and `egm.env.pass`;
   - `.toolbelt/config.yaml` as a FIFO, as a symlink to `/dev/zero` and with limits above the user's;
   - `[include]`, `alternates`, `core.excludesFile` pointing to a FIFO, `.git` as a symlink and `gitdir:` without a back-pointer;
-  - hung git (timeout).
+  - hung git (timeout);
+  - `extensions.partialClone` with a canary `remote.origin.uploadpack` and a missing object: nothing is executed (`hostile_git_dir`);
+  - fatal keys (`include`, `partialclone`, `promisor`, unknown `extensions.*`) refused; neutralized ones accepted with a warning; common keys (sparse-checkout, `index.*`, `pack.*`, `http.<url>.extraheader`, npm merge driver) accepted;
+  - real config from husky (`core.hooksPath`), git-lfs (`filter.lfs.*`), VS Code (`branch.<n>.vscode-merge-base`), Scalar (`core.fsmonitor`) and reftable: accepted, with `git_config_neutralized` when applicable;
+  - repository owned by another uid (`safe.directory`); magic pathspec (`:(top)`, `*`) in a link;
+  - `commondir` in a `.git` directory, `objects` or `refs` as a symlink, `packed-refs` as a FIFO;
+  - downloaded document without `.git` under a versioned `$HOME`: exit 2 (`no_repository`);
+  - plan with an absolute path, `..`, nested `{…}` and a broad `*`: no query outside the root and no hang;
+  - unstaged source: round not clean; after `git add` and commit, `status --at HEAD` gives `PASS`;
+  - a gate where only a cited source changed does not select the document and emits `sources_changed`; an empty selection with an uncommitted gated document gives `ok: false`.
+
+  Method for "nothing outside the root is read": sentinels outside the root. A sentinel FIFO would make the test hang, and sentinel files have unique tokens that cannot appear in any packet, prompt or report.
 
   In every case, `review`, `status --at` and `resolve` execute nothing, read nothing outside the root and do not hang. A static test checks that the `egm` package only calls the R4c subcommands. The `tb merge` and router tests keep passing unchanged.
 - **Env and tools:**
@@ -730,7 +774,10 @@ Note on the fake-agent:
   - offline `--contest` refused; `--fix` from `contest_pending`; two arbiter `not_run` lead to `escalated`;
   - `--force-settle`, then `--fix` with a real fix and the owner's confirmation: back to `PASS`;
   - repeated `loop next` with an `escalated` lineage and no edit is refused;
-  - `--restart` inherits the budget and, with the cycle `capped`, requires a new `content`;
+  - `--restart` resets cap and budget, downgrades the cycle and always requires a new `content`;
+  - the arbiter withdraws a blocker, then `loop next` without an edit: the round opens and the owner confirms;
+  - `--reviewers zoom-out` from round 1 gives at most `PASS_PARTIAL`;
+  - `--fix` right after editing, with no round in between, is accepted;
   - a repository that loosens `clean_rounds`, `match`, `doc_types` or `refs_ignore` is ignored;
   - `refs-exist` with `..` and with a symlink: ignored, without reporting existence;
   - extended deny-list and `secret_like`;
@@ -739,10 +786,14 @@ Note on the fake-agent:
   - contest evidence with a symlink or `.env` is refused;
   - changed `policy_sha` gives `STALE`;
   - spec without a plan gives `PASS_PARTIAL`;
-  - `capped` without `--past-cap` gives `FAIL`;
+  - `capped` gives `FAIL`, and `--restart` with a new `content` opens a cycle;
+  - `--force-settle` of a blocker gives `ok: false` in the stack even without `--strict`;
+  - owner removed by `--reviewers` or engine fallen back to `deterministic` with a blocking lineage gives `owner_unavailable`;
+  - a cited ignored file is silently excluded; partial staging gives `unstaged_source`;
+  - `MinimalDev`: `/dev/pts` and `/dev/shm` unreadable;
   - `--force-settle`, edit and new convergence: stays `PASS_PARTIAL`;
-  - injection in prose, code, quote, source and `PRIOR`;
-  - injection goldens of this spec and of ADR-014;
+  - injection in prose, code, quote, source and `PRIOR` (fixtures);
+  - injection regression: this spec with no lineage, ADR-014 with one;
   - invalid attestation, headings-only, valid in this spec's DetailedRange, and `range_too_small`;
   - CUJ-7 and CUJ-8;
   - two clean rounds over different contents do not converge;
@@ -762,7 +813,7 @@ Note on the fake-agent:
   - R28 transitions and idempotence;
   - verdict precedence (R25);
   - cycles;
-  - `capped`, `--past-cap` and `max_past_cap_rounds`;
+  - `capped` and `--restart`;
   - R26 with and without arbiters;
   - arbiter `withdraw`, `uphold` and `not_run`;
   - budget;
@@ -777,7 +828,6 @@ Note on the fake-agent:
 - **Regression:**
   - `tb review` and `tb drift` JSON;
   - `tb mem` and `tb_mem_*` unchanged (R8);
-  - `tb graph` mention and link edges for MD, TXT and HTML (R7);
   - `go test ./...` and `TestDocsEnglishMirrorComplete`.
 
 *Based on the EGM pattern*
