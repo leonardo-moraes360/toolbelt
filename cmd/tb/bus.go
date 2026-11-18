@@ -91,7 +91,7 @@ var busChannelCmd = &cobra.Command{
 }
 
 var busChannelCreateCmd = &cobra.Command{
-	Use:   "create <canal>",
+	Use:   "create <channel>",
 	Short: "Creates a channel and a single-use invite for the owner (supervisor)",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -151,7 +151,7 @@ var busChannelListCmd = &cobra.Command{
 }
 
 var busChannelShowCmd = &cobra.Command{
-	Use:   "show <canal>",
+	Use:   "show <channel>",
 	Short: "Shows agents registered in the channel",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -178,7 +178,7 @@ var busChannelShowCmd = &cobra.Command{
 }
 
 var busChannelExtendCmd = &cobra.Command{
-	Use:   "extend <canal>",
+	Use:   "extend <channel>",
 	Short: "Resets the channel expiry to now + --ttl (reopens an expired channel)",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -208,7 +208,7 @@ var busChannelExtendCmd = &cobra.Command{
 }
 
 var busInviteCmd = &cobra.Command{
-	Use:   "invite <canal>",
+	Use:   "invite <channel>",
 	Short: "Issues a single-use invite with a fixed role (human only)",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -237,7 +237,7 @@ var busInviteCmd = &cobra.Command{
 }
 
 var busJoinCmd = &cobra.Command{
-	Use:   "join <canal>",
+	Use:   "join <channel>",
 	Short: "Joins the channel with an invite and an Agent Card",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -440,7 +440,7 @@ var busCompleteCmd = &cobra.Command{
 }
 
 var busLogCmd = &cobra.Command{
-	Use:   "log <canal>",
+	Use:   "log <channel>",
 	Short: "Channel audit trail (payload redacted)",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
