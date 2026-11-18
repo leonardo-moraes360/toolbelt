@@ -14,10 +14,10 @@ func init() {
 }
 
 func registerRouterTools() {
-	cwdProp := Property{Type: "string", Description: "Diretório do repositório"}
+	cwdProp := Property{Type: "string", Description: "Repository directory"}
 	Register(&Tool{
 		Name:        "tb_router_status",
-		Description: "Estado do router (state.json: workers, fila, pausa; detecta estado obsoleto). Paridade com tb router status",
+		Description: "Router state (state.json: workers, queue, pause; detects stale state). Parity with tb router status",
 		InputSchema: &InputSchema{
 			Type:       "object",
 			Properties: map[string]Property{"cwd": cwdProp},
@@ -26,13 +26,13 @@ func registerRouterTools() {
 	})
 	Register(&Tool{
 		Name:        "tb_watchdog_alerts",
-		Description: "Alertas do watchdog (alerts.jsonl). Paridade com tb watchdog alerts",
+		Description: "Watchdog alerts (alerts.jsonl). Parity with tb watchdog alerts",
 		InputSchema: &InputSchema{
 			Type: "object",
 			Properties: map[string]Property{
-				"since": {Type: "string", Description: "Só alertas recentes: duração (10m, 2h) ou RFC3339"},
+				"since": {Type: "string", Description: "Only recent alerts: duration (10m, 2h) or RFC3339"},
 				"kind":  {Type: "string", Description: "worker_slow|worker_stuck|worker_crash|worker_killed|queue_growing|global_timeout"},
-				"limit": {Type: "integer", Description: "Só os N mais recentes (0 = todos)", Default: 0},
+				"limit": {Type: "integer", Description: "Only the N most recent (0 = all)", Default: 0},
 				"cwd":   cwdProp,
 			},
 		},

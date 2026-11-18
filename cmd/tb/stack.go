@@ -14,43 +14,43 @@ import (
 
 var stackCmd = &cobra.Command{
 	Use:   "stack <op> [<op>...]",
-	Short: "Empilha operações de verificação (verify/review/drift/guard), não branches",
-	Long: `Empilha operações de verificação numa execução com contexto compartilhado
-(diff, índice de arquivos alterados, memória e config).
+	Short: "Stacks verification operations (verify/review/drift/guard), not branches",
+	Long: `Stacks verification operations in a single run with shared context
+(diff, index of changed files, memory and config).
 
-Não é stack de branches (como Graphite ou git-stack): só orquestra verify,
-review, drift e/ou guard na ordem dada.
+Not a branch stack (like Graphite or git-stack): it only orchestrates verify,
+review, drift and/or guard in the given order.
 
-Operações: verify, review, drift, guard.
-Etapas somente leitura (guard, drift, review) rodam em paralelo; verify fica isolado
-(build/test). A saída JSON preserva a ordem pedida. --jobs N limita a concorrência
-(default = nº de CPUs, máx. 32; --jobs 1 = serial). --fail-fast cancela as demais
-via context. A saída é sempre um único JSON agregado.
-Sem operação, sai com erro curto listando as ops válidas (sem dump de Usage).`,
+Operations: verify, review, drift, guard.
+Read-only stages (guard, drift, review) run in parallel; verify stays isolated
+(build/test). The JSON output preserves the requested order. --jobs N limits concurrency
+(default = number of CPUs, max 32; --jobs 1 = serial). --fail-fast cancels the others
+via context. The output is always a single aggregated JSON.
+Without an operation, exits with a short error listing the valid ops (no Usage dump).`,
 	RunE: runStack,
 }
 
 func init() {
-	stackCmd.Flags().String("base", "HEAD~1", "ref base compartilhada")
-	stackCmd.Flags().String("head", "HEAD", "ref head compartilhada")
-	stackCmd.Flags().Bool("fail-fast", false, "cancela as demais etapas na primeira falha")
-	stackCmd.Flags().Int("jobs", 0, "limite de concorrência (0=nº de CPUs, máx. 32; 1=serial)")
-	stackCmd.Flags().String("ticket", "rd.md", "caminho do ticket/rd.md (review/drift/verify)")
-	stackCmd.Flags().String("approved-sha", "", "SHA aprovado; patch-id verbatim (review/drift)")
-	stackCmd.Flags().String("approved-base", "", "base do range aprovado; default: merge-base(approved, base)")
-	stackCmd.Flags().Bool("require-approved-sha", false, "falha se --approved-sha estiver ausente (ou review.require_approved_sha)")
-	stackCmd.Flags().Bool("warn-only", false, "guard: não falha exit em SeverityError")
-	stackCmd.Flags().String("test-cmd", "", "verify: linha de testes visíveis")
-	stackCmd.Flags().String("hidden-test-cmd", "", "verify: linha de testes ocultos")
-	stackCmd.Flags().String("build-cmd", "", "verify: comando de build (vazio + flag explícita ou --no-build para pular)")
-	stackCmd.Flags().String("lint-cmd", "", "verify: comando de lint (vazio + flag explícita ou --no-lint para pular)")
-	stackCmd.Flags().Bool("no-build", false, "verify: pula build_cmd")
-	stackCmd.Flags().Bool("no-lint", false, "verify: pula lint_cmd")
-	stackCmd.Flags().Bool("dry-run", false, "verify: mostra o plano (cmds/dir) sem executar")
-	stackCmd.Flags().Int("max-iter", 0, "verify: máximo de iterações")
+	stackCmd.Flags().String("base", "HEAD~1", "shared base ref")
+	stackCmd.Flags().String("head", "HEAD", "shared head ref")
+	stackCmd.Flags().Bool("fail-fast", false, "cancels the remaining stages on the first failure")
+	stackCmd.Flags().Int("jobs", 0, "concurrency limit (0=number of CPUs, max 32; 1=serial)")
+	stackCmd.Flags().String("ticket", "rd.md", "path to the ticket/rd.md (review/drift/verify)")
+	stackCmd.Flags().String("approved-sha", "", "approved SHA; verbatim patch-id (review/drift)")
+	stackCmd.Flags().String("approved-base", "", "base of the approved range; default: merge-base(approved, base)")
+	stackCmd.Flags().Bool("require-approved-sha", false, "fails if --approved-sha is missing (or review.require_approved_sha)")
+	stackCmd.Flags().Bool("warn-only", false, "guard: do not fail the exit code on SeverityError")
+	stackCmd.Flags().String("test-cmd", "", "verify: visible tests command line")
+	stackCmd.Flags().String("hidden-test-cmd", "", "verify: hidden tests command line")
+	stackCmd.Flags().String("build-cmd", "", "verify: build command (empty + explicit flag or --no-build to skip)")
+	stackCmd.Flags().String("lint-cmd", "", "verify: lint command (empty + explicit flag or --no-lint to skip)")
+	stackCmd.Flags().Bool("no-build", false, "verify: skips build_cmd")
+	stackCmd.Flags().Bool("no-lint", false, "verify: skips lint_cmd")
+	stackCmd.Flags().Bool("dry-run", false, "verify: shows the plan (cmds/dir) without executing")
+	stackCmd.Flags().Int("max-iter", 0, "verify: maximum iterations")
 	stackCmd.Flags().String("timeout", "10m", "verify: timeout")
-	stackCmd.Flags().Int("reviewers", 0, "review: máximo de goldfish")
-	stackCmd.Flags().String("standards", "", "review: papéis CSV (scope,quality,acceptance)")
+	stackCmd.Flags().Int("reviewers", 0, "review: maximum goldfish")
+	stackCmd.Flags().String("standards", "", "review: roles CSV (scope,quality,acceptance)")
 }
 
 func runStack(cmd *cobra.Command, args []string) error {
@@ -77,7 +77,7 @@ func runStack(cmd *cobra.Command, args []string) error {
 	timeoutStr, _ := cmd.Flags().GetString("timeout")
 	timeout, err := time.ParseDuration(timeoutStr)
 	if err != nil {
-		return fmt.Errorf("timeout inválido: %w", err)
+		return fmt.Errorf("invalid timeout: %w", err)
 	}
 	base, _ := cmd.Flags().GetString("base")
 	head, _ := cmd.Flags().GetString("head")

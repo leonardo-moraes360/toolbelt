@@ -118,7 +118,7 @@ func gitRangeDiff(repo, leftBase, leftHead, rightBase, rightHead string) (string
 	left := leftBase + ".." + leftHead
 	right := rightBase + ".." + rightHead
 	if leftBase == leftHead {
-		return "", fmt.Errorf("approved-sha coincide com a base (%s); intervalo base..approved vazio — não há commits para range-diff; o patch do head diverge do SHA aprovado", shortRef(leftBase))
+		return "", fmt.Errorf("approved-sha matches the base (%s); base..approved range is empty — no commits for range-diff; the head patch diverges from the approved SHA", shortRef(leftBase))
 	}
 	out, err := git.CombinedOutput(repo, "range-diff", left, right)
 	if err != nil {

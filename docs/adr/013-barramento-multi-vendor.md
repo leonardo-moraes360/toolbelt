@@ -77,7 +77,10 @@ The user creates the channel and explicitly authorizes each agent:
 
 ```bash
 tb bus channel create feature-x --owner claude-main --ttl 2h
-# canal: feature-x  convite: K7Q2-9XMD (uso único por agente, expira em 10m)
+# channel: feature-x  owner: claude-main
+# owner invite: 4MPA-2HQC (role supervisor, single-use, expires 10:10:00Z)
+tb bus invite feature-x --role worker
+# invite: K7Q2-9XMD (channel feature-x, role worker, single-use, expires 10:10:00Z)
 ```
 
 The user asks each agent: "join channel `feature-x`, invite `K7Q2-9XMD`, role `worker`". The agent calls `tb bus join` (or `bus_join` via MCP). From then on the agents proceed on their own.

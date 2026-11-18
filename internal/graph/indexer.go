@@ -173,7 +173,7 @@ func resolveIndexRoot(abs string) (string, error) {
 		return "", err
 	}
 	if resolved != abs {
-		log.Warn("raiz do grafo é symlink; usando caminho real antes do walk", "from", abs, "to", resolved)
+		log.Warn("graph root is a symlink; using real path before walk", "from", abs, "to", resolved)
 	}
 	return resolved, nil
 }

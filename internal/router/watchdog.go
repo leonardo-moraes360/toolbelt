@@ -151,7 +151,7 @@ type KillRequest struct {
 // RequestKill writes a kill request that the router consumes on its next tick.
 func RequestKill(root, worker, reason string, now time.Time) (string, error) {
 	if !ValidWorkerID(worker) {
-		return "", fmt.Errorf("worker inválido %q (esperado w1, w2, ...)", worker)
+		return "", fmt.Errorf("invalid worker %q (expected w1, w2, ...)", worker)
 	}
 	if err := os.MkdirAll(ControlDir(root), 0o755); err != nil {
 		return "", err
@@ -168,9 +168,9 @@ func RequestKill(root, worker, reason string, now time.Time) (string, error) {
 func (r *Router) alert(kind, severity, worker, tkt, msg, action string) {
 	a := Alert{Time: r.now().UTC(), Kind: kind, Severity: severity, Worker: worker, Ticket: tkt, Message: msg, Action: action}
 	if err := r.alerts.append(&a); err != nil {
-		r.logf("aviso: não consegui gravar alerta: %v", err)
+		r.logf("warning: could not write alert: %v", err)
 	}
-	r.logf("[alerta %s/%s] %s", severity, kind, msg)
+	r.logf("[alert %s/%s] %s", severity, kind, msg)
 }
 
 func (r *Router) failureAction(attempts int) string {
@@ -193,7 +193,7 @@ func (r *Router) watchdogTick() (stop bool) {
 		if cur, err := r.store.Get(s.ticket); err == nil && (cur.Status != ticket.StatusRunning || cur.Worker != s.id) {
 			s.reason = reasonCanceled
 			r.alert(AlertTicketCanceled, SevWarn, s.id, s.ticket,
-				fmt.Sprintf("%s foi %s fora do router; encerrando o agente em %s e descartando o resultado", s.ticket, cur.Status, s.id),
+				fmt.Sprintf("%s was %s outside the router; stopping the agent on %s and discarding the result", s.ticket, cur.Status, s.id),
 				ActionNone)
 			s.cancel()
 			continue
@@ -202,20 +202,20 @@ func (r *Router) watchdogTick() (stop bool) {
 		if !s.slowAlerted && elapsed >= time.Duration(r.cfg.SlowThreshold*float64(s.timeout)) && elapsed < s.timeout {
 			s.slowAlerted = true
 			r.alert(AlertWorkerSlow, SevWarn, s.id, s.ticket,
-				fmt.Sprintf("%s em %s há %s (limite %s)", s.ticket, s.id, elapsed.Round(time.Millisecond), s.timeout),
+				fmt.Sprintf("%s on %s for %s (limit %s)", s.ticket, s.id, elapsed.Round(time.Millisecond), s.timeout),
 				ActionNone)
 		}
 		if elapsed >= s.timeout {
 			s.reason = reasonStuck
 			r.alert(AlertWorkerStuck, SevCritical, s.id, s.ticket,
-				fmt.Sprintf("%s em %s excedeu o timeout de %s; cancelando", s.ticket, s.id, s.timeout),
+				fmt.Sprintf("%s on %s exceeded the timeout of %s; canceling", s.ticket, s.id, s.timeout),
 				r.failureAction(s.attempts))
 			s.cancel()
 		}
 	}
 	if now.Sub(r.startedAt) >= r.global {
 		r.alert(AlertGlobalTimeout, SevCritical, "", "",
-			fmt.Sprintf("timeout global de %s atingido; encerrando o router", r.global), ActionStop)
+			fmt.Sprintf("global timeout of %s reached; stopping the router", r.global), ActionStop)
 		r.stopReason = ReasonGlobalTimeout
 		return true
 	}
@@ -227,7 +227,7 @@ func (r *Router) checkQueue(ready int) {
 	growing := ready > 2*r.workers
 	if growing && !r.queueGrowing {
 		r.alert(AlertQueueGrowing, SevWarn, "", "",
-			fmt.Sprintf("fila crescendo: %d tickets prontos para %d workers", ready, r.workers), ActionNone)
+			fmt.Sprintf("queue growing: %d tickets ready for %d workers", ready, r.workers), ActionNone)
 	}
 	r.queueGrowing = growing
 }
@@ -274,17 +274,17 @@ func (r *Router) handleKillRequest(name string) {
 		stamp = fi.ModTime()
 	}
 	if !stamp.IsZero() && stamp.Before(r.startedAt) {
-		r.logf("kill obsoleto ignorado: %s", name)
+		r.logf("stale kill ignored: %s", name)
 		return
 	}
 	s := r.slotByID(req.Worker)
 	if s == nil || s.ticket == "" || s.reason != "" {
-		r.logf("kill ignorado: %s não está executando nada", req.Worker)
+		r.logf("kill ignored: %s is not running anything", req.Worker)
 		return
 	}
 	s.reason = reasonKilled
 	s.killReason = req.Reason
-	msg := fmt.Sprintf("%s em %s encerrado por tb watchdog kill", s.ticket, s.id)
+	msg := fmt.Sprintf("%s on %s terminated by tb watchdog kill", s.ticket, s.id)
 	if req.Reason != "" {
 		msg += ": " + req.Reason
 	}
@@ -300,13 +300,13 @@ func ParseSince(s string, now time.Time) (time.Time, error) {
 	}
 	if d, err := time.ParseDuration(s); err == nil {
 		if d < 0 {
-			return time.Time{}, fmt.Errorf("--since negativo: %q", s)
+			return time.Time{}, fmt.Errorf("--since negative: %q", s)
 		}
 		return now.Add(-d), nil
 	}
 	t, err := time.Parse(time.RFC3339, s)
 	if err != nil {
-		return time.Time{}, fmt.Errorf("--since inválido %q (use 10m, 2h ou RFC3339)", s)
+		return time.Time{}, fmt.Errorf("invalid --since %q (use 10m, 2h or RFC3339)", s)
 	}
 	return t, nil
 }

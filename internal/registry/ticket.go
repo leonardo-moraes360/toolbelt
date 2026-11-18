@@ -20,15 +20,15 @@ func ticketStoreFromArgs(args map[string]any) (*ticket.Store, error) {
 }
 
 func registerTicketTools() {
-	cwdProp := Property{Type: "string", Description: "Diretório do repositório"}
+	cwdProp := Property{Type: "string", Description: "Repository directory"}
 	Register(&Tool{
 		Name:        "tb_ticket_list",
-		Description: "Lista tickets de .toolbelt/tickets (paridade com tb ticket list)",
+		Description: "Lists tickets from .toolbelt/tickets (parity with tb ticket list)",
 		InputSchema: &InputSchema{
 			Type: "object",
 			Properties: map[string]Property{
-				"status": {Type: "string", Description: "Filtro por status, separado por vírgula (pending,running,done,failed,canceled)"},
-				"deps":   {Type: "string", Description: "Só tickets que dependem deste ID"},
+				"status": {Type: "string", Description: "Status filter, comma-separated (pending,running,done,failed,canceled)"},
+				"deps":   {Type: "string", Description: "Only tickets that depend on this ID"},
 				"cwd":    cwdProp,
 			},
 		},
@@ -36,11 +36,11 @@ func registerTicketTools() {
 	})
 	Register(&Tool{
 		Name:        "tb_ticket_show",
-		Description: "Mostra um ticket (paridade com tb ticket show)",
+		Description: "Shows a ticket (parity with tb ticket show)",
 		InputSchema: &InputSchema{
 			Type: "object",
 			Properties: map[string]Property{
-				"id":  {Type: "string", Description: "ID do ticket (TKT-001)"},
+				"id":  {Type: "string", Description: "Ticket ID (TKT-001)"},
 				"cwd": cwdProp,
 			},
 			Required: []string{"id"},
@@ -49,19 +49,19 @@ func registerTicketTools() {
 	})
 	Register(&Tool{
 		Name:        "tb_ticket_create",
-		Description: "Cria ticket (paridade com tb ticket create; dependências desconhecidas e ciclos são rejeitados)",
+		Description: "Creates a ticket (parity with tb ticket create; unknown dependencies and cycles are rejected)",
 		InputSchema: &InputSchema{
 			Type: "object",
 			Properties: map[string]Property{
-				"title":       {Type: "string", Description: "Título do ticket"},
-				"description": {Type: "string", Description: "Descrição"},
-				"scope":       {Type: "array", Items: &Property{Type: "string"}, Description: "Paths permitidos"},
-				"forbid":      {Type: "array", Items: &Property{Type: "string"}, Description: "Paths proibidos"},
-				"accept":      {Type: "array", Items: &Property{Type: "string"}, Description: "Critérios de aceite"},
-				"dep":         {Type: "array", Items: &Property{Type: "string"}, Description: "IDs de dependências"},
-				"priority":    {Type: "integer", Description: "Prioridade (maior primeiro)", Default: 0},
+				"title":       {Type: "string", Description: "Ticket title"},
+				"description": {Type: "string", Description: "Description"},
+				"scope":       {Type: "array", Items: &Property{Type: "string"}, Description: "Allowed paths"},
+				"forbid":      {Type: "array", Items: &Property{Type: "string"}, Description: "Forbidden paths"},
+				"accept":      {Type: "array", Items: &Property{Type: "string"}, Description: "Acceptance criteria"},
+				"dep":         {Type: "array", Items: &Property{Type: "string"}, Description: "Dependency IDs"},
+				"priority":    {Type: "integer", Description: "Priority (highest first)", Default: 0},
 				"timeout":     {Type: "string", Description: "Timeout (ex.: 10m)"},
-				"dry_run":     {Type: "boolean", Description: "Valida sem gravar", Default: false},
+				"dry_run":     {Type: "boolean", Description: "Validates without writing", Default: false},
 				"cwd":         cwdProp,
 			},
 			Required: []string{"title"},
@@ -70,14 +70,14 @@ func registerTicketTools() {
 	})
 	Register(&Tool{
 		Name:        "tb_board",
-		Description: "Mostra o board (RUNNING/READY/BLOCKED/DONE/FAILED) e controla pause/resume/drain (paridade com tb board)",
+		Description: "Shows the board (RUNNING/READY/BLOCKED/DONE/FAILED) and controls pause/resume/drain (parity with tb board)",
 		InputSchema: &InputSchema{
 			Type: "object",
 			Properties: map[string]Property{
-				"action":   {Type: "string", Description: "list (padrão)|pause|resume|drain", Default: "list"},
+				"action":   {Type: "string", Description: "list (default)|pause|resume|drain", Default: "list"},
 				"strategy": {Type: "string", Description: "fifo|priority|dependency", Default: "dependency"},
-				"status":   {Type: "string", Description: "Filtro por status, separado por vírgula"},
-				"worker":   {Type: "string", Description: "Filtra por worker"},
+				"status":   {Type: "string", Description: "Status filter, comma-separated"},
+				"worker":   {Type: "string", Description: "Filters by worker"},
 				"cwd":      cwdProp,
 			},
 		},
@@ -163,7 +163,7 @@ func handleBoard(_ context.Context, args map[string]any) (any, error) {
 	case "drain":
 		return ticket.Drain(s.Root())
 	default:
-		return nil, fmt.Errorf("action inválida %q (use list, pause, resume ou drain)", action)
+		return nil, fmt.Errorf("invalid action %q (use list, pause, resume or drain)", action)
 	}
 }
 

@@ -50,7 +50,7 @@ echo y > f.txt`, marker)
 	if got.Status != ticket.StatusFailed || got.Attempts != 1 {
 		t.Fatalf("esperava failed sem retry: %+v", got)
 	}
-	if got.Result == nil || !strings.Contains(got.Result.Error, "aninhado") || got.Result.HeadCommit != "" {
+	if got.Result == nil || !strings.Contains(got.Result.Error, "nested") || got.Result.HeadCommit != "" {
 		t.Fatalf("resultado: %+v", got.Result)
 	}
 }
@@ -58,10 +58,10 @@ echo y > f.txt`, marker)
 func TestNestedGitFileOrDirAnywhereIsRefused(t *testing.T) {
 	root := newRepo(t)
 	st := ticket.Open(root)
-	tk := mk(t, st, "aninhado")
+	tk := mk(t, st, "nested")
 	r := newRouter(t, root, func(o *Options) { o.AgentCmd = sh("mkdir -p a/b/c && echo 'gitdir: /x' > a/b/c/.git; echo y > f.txt") })
 	runWithTimeout(context.Background(), t, r)
-	if got := get(t, st, tk.ID); got.Status != ticket.StatusFailed || !strings.Contains(got.Result.Error, "aninhado") {
+	if got := get(t, st, tk.ID); got.Status != ticket.StatusFailed || !strings.Contains(got.Result.Error, "nested") {
 		t.Fatalf("%+v %+v", got, got.Result)
 	}
 }
@@ -75,7 +75,7 @@ func TestStagedGitmodulesIsRefused(t *testing.T) {
 	})
 	runWithTimeout(context.Background(), t, r)
 	got := get(t, st, tk.ID)
-	if got.Status != ticket.StatusFailed || got.Attempts != 1 || !strings.Contains(got.Result.Error, "gitlink ou .gitmodules") || got.Result.HeadCommit != "" {
+	if got.Status != ticket.StatusFailed || got.Attempts != 1 || !strings.Contains(got.Result.Error, "gitlink or .gitmodules") || got.Result.HeadCommit != "" {
 		t.Fatalf("%+v %+v", got, got.Result)
 	}
 }
@@ -97,7 +97,7 @@ func TestStagedGitlinkIsRefused(t *testing.T) {
 	}
 	r := newRouter(t, root, nil)
 	_, err := r.commitWorkspace(ws, &ticket.Ticket{ID: "TKT-001", Title: "x"})
-	if err == nil || !strings.Contains(err.Error(), "gitlink ou .gitmodules") {
+	if err == nil || !strings.Contains(err.Error(), "gitlink or .gitmodules") {
 		t.Fatalf("esperava recusa: %v", err)
 	}
 	if got := runGit(t, ws, "rev-parse", "HEAD"); got != head {

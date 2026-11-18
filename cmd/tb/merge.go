@@ -14,30 +14,30 @@ import (
 
 func init() {
 	rootCmd.AddCommand(mergeCmd)
-	mergeCmd.Flags().String("strategy", "fail", "Estratégia de conflito: fail (padrão) ou last_wins")
-	mergeCmd.Flags().Bool("dry-run", false, "Integra num worktree temporário, reporta e descarta")
-	mergeCmd.Flags().String("output", "", "Escreve o diff alvo..integrado neste arquivo .patch sem mover refs")
-	mergeCmd.Flags().String("into", "", "Branch alvo (padrão: branch atual)")
-	mergeCmd.Flags().Bool("force", false, "Permite refazer o merge de tickets já mergeados")
-	mergeCmd.Flags().Bool("allow-sensitive", false, "Permite aplicar tickets que alteram hooks, .toolbelt, workflows, .gitmodules, gitlinks ou .gitattributes")
-	mergeCmd.Flags().Bool("json", false, "Saída em JSON")
+	mergeCmd.Flags().String("strategy", "fail", "Conflict strategy: fail (default) or last_wins")
+	mergeCmd.Flags().Bool("dry-run", false, "Integrates in a temporary worktree, reports and discards")
+	mergeCmd.Flags().String("output", "", "Writes the target..integrated diff to this .patch file without moving refs")
+	mergeCmd.Flags().String("into", "", "Target branch (default: current branch)")
+	mergeCmd.Flags().Bool("force", false, "Allows redoing the merge of already merged tickets")
+	mergeCmd.Flags().Bool("allow-sensitive", false, "Allows applying tickets that change hooks, .toolbelt, workflows, .gitmodules, gitlinks or .gitattributes")
+	mergeCmd.Flags().Bool("json", false, "JSON output")
 }
 
 var mergeCmd = &cobra.Command{
 	Use:   "merge <ticket-id...>",
-	Short: "Integra o trabalho de tickets done num branch alvo (fail|last_wins)",
-	Long: `Integra os commits dos tickets done (Result.BaseCommit..HeadCommit) num
-worktree temporário destacado e só então avança o branch alvo de forma atômica.
+	Short: "Integrates the work of done tickets into a target branch (fail|last_wins)",
+	Long: `Integrates the commits of done tickets (Result.BaseCommit..HeadCommit) in a
+detached temporary worktree and only then advances the target branch atomically.
 
-Ordem: dependências primeiro, depois a ordem dos argumentos.
-Estratégias: fail (padrão; aborta sem alterar refs) e last_wins (a versão do
-último ticket vence nos arquivos em conflito). prompt/semantic não são
-implementadas.
+Order: dependencies first, then the order of the arguments.
+Strategies: fail (default; aborts without changing refs) and last_wins (the
+last ticket's version wins on conflicting files). prompt/semantic are not
+implemented.
 
-Todo git roda sem hooks/fsmonitor/diff externo. Tickets que alteram caminhos
-sensíveis (hooks, .toolbelt/**, .github/workflows/**, .gitmodules, gitlinks,
-.gitattributes, paths protegidos do guard) são recusados ao aplicar, sem
-alterar refs, a menos que use --allow-sensitive (dry-run apenas reporta).`,
+Every git call runs without hooks/fsmonitor/external diff. Tickets that change
+sensitive paths (hooks, .toolbelt/**, .github/workflows/**, .gitmodules, gitlinks,
+.gitattributes, guard-protected paths) are refused when applying, without
+changing refs, unless --allow-sensitive is used (dry-run only reports).`,
 	Args: cobra.MinimumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		f := cmd.Flags()
@@ -82,41 +82,41 @@ alterar refs, a menos que use --allow-sensitive (dry-run apenas reporta).`,
 }
 
 func printMergeTable(r *merge.Result) {
-	mode := "aplicado"
+	mode := "applied"
 	switch {
 	case r.Output != "":
-		mode = "patch em " + r.Output
+		mode = "patch at " + r.Output
 	case r.DryRun:
 		mode = "dry-run"
 	case !r.Applied:
-		mode = "não aplicado"
+		mode = "not applied"
 	}
 	target := r.Target
 	if target == "" {
-		target = "(HEAD destacado)"
+		target = "(detached HEAD)"
 	}
 	fmt.Printf("merge %s -> %s (%s) [%s]\n", ticketIDs(r), target, r.Strategy, mode)
 	tw := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(tw, "ARQUIVO\tTICKETS\tSTATUS")
+	fmt.Fprintln(tw, "FILE\tTICKETS\tSTATUS")
 	for _, f := range r.Files {
 		fmt.Fprintf(tw, "%s\t%s\t%s\n", f.Path, strings.Join(f.Tickets, ","), f.Status)
 	}
 	tw.Flush()
 	for _, c := range r.Conflicts {
-		res := "não resolvido"
+		res := "unresolved"
 		if c.Resolution != "" {
-			res = "resolvido por " + c.Resolution
+			res = "resolved by " + c.Resolution
 		}
-		fmt.Printf("conflito: %s (%s, commit %.8s; também: %s) - %s\n", c.File, c.Ticket, c.Commit, strings.Join(c.Others, ","), res)
+		fmt.Printf("conflict: %s (%s, commit %.8s; also: %s) - %s\n", c.File, c.Ticket, c.Commit, strings.Join(c.Others, ","), res)
 	}
 	for _, s := range r.Sensitive {
-		fmt.Printf("sensível: %s (%s) - %s\n", s.Path, s.Ticket, s.Reason)
+		fmt.Printf("sensitive: %s (%s) - %s\n", s.Path, s.Ticket, s.Reason)
 	}
 	if r.ResultSHA != "" {
-		fmt.Printf("resultado: %s (início %.8s)\n", r.ResultSHA, r.StartSHA)
+		fmt.Printf("result: %s (start %.8s)\n", r.ResultSHA, r.StartSHA)
 	}
 	if r.NoChanges {
-		fmt.Println("nada a integrar (sem mudanças)")
+		fmt.Println("nothing to integrate (no changes)")
 	}
 }
 

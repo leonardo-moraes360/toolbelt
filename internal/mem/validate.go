@@ -11,19 +11,19 @@ import (
 
 var ValidCategories = []string{"anti_cheat", "mandate", "security"}
 
-const validRefHelp = "docs/adr/<arquivo>.md, docs/decisions/<arquivo>.md"
+const validRefHelp = "docs/adr/<file>.md, docs/decisions/<file>.md"
 
 func ValidateCategory(category string) error {
 	category = strings.TrimSpace(category)
 	if category == "" {
-		return fmt.Errorf("categoria vazia; valores válidos: %s", strings.Join(ValidCategories, ", "))
+		return fmt.Errorf("empty category; valid values: %s", strings.Join(ValidCategories, ", "))
 	}
 	for _, c := range ValidCategories {
 		if category == c {
 			return nil
 		}
 	}
-	return fmt.Errorf("categoria inválida %q; valores válidos: %s", category, strings.Join(ValidCategories, ", "))
+	return fmt.Errorf("invalid category %q; valid values: %s", category, strings.Join(ValidCategories, ", "))
 }
 
 func ValidateRef(ref string) error {
@@ -32,17 +32,17 @@ func ValidateRef(ref string) error {
 		return nil
 	}
 	if filepath.IsAbs(ref) {
-		return fmt.Errorf("ref inválido %q; use caminho relativo .md (ex: %s)", ref, validRefHelp)
+		return fmt.Errorf("invalid ref %q; use a relative .md path (e.g. %s)", ref, validRefHelp)
 	}
 	clean := filepath.ToSlash(filepath.Clean(ref))
 	if clean == "." || strings.HasPrefix(clean, "../") || clean == ".." {
-		return fmt.Errorf("ref inválido %q; use caminho relativo .md (ex: %s)", ref, validRefHelp)
+		return fmt.Errorf("invalid ref %q; use a relative .md path (e.g. %s)", ref, validRefHelp)
 	}
 	if !strings.HasSuffix(strings.ToLower(clean), ".md") {
-		return fmt.Errorf("ref inválido %q; valores válidos: %s", ref, validRefHelp)
+		return fmt.Errorf("invalid ref %q; valid values: %s", ref, validRefHelp)
 	}
 	if !refLooksLikeADROrDecisions(clean) {
-		return fmt.Errorf("ref inválido %q; valores válidos: %s", ref, validRefHelp)
+		return fmt.Errorf("invalid ref %q; valid values: %s", ref, validRefHelp)
 	}
 	return nil
 }

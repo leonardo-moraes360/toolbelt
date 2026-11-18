@@ -262,7 +262,7 @@ func resolveCmd(candidates ...string) DetectedCmd {
 			}
 			return DetectedCmd{
 				Cmd:     cmd,
-				Warning: fmt.Sprintf("%s não encontrado no PATH; usando %s", commandBinary(preferred), cmd),
+				Warning: fmt.Sprintf("%s not found in PATH; using %s", commandBinary(preferred), cmd),
 			}
 		}
 	}
@@ -271,7 +271,7 @@ func resolveCmd(candidates ...string) DetectedCmd {
 	}
 	return DetectedCmd{
 		Cmd:     preferred,
-		Warning: fmt.Sprintf("%s não encontrado no PATH; verify.test_cmd %q pode falhar", commandBinary(preferred), preferred),
+		Warning: fmt.Sprintf("%s not found in PATH; verify.test_cmd %q may fail", commandBinary(preferred), preferred),
 	}
 }
 

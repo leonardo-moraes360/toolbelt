@@ -667,7 +667,7 @@ func TestRunFailFastMissingCommand(t *testing.T) {
 	if !IsMissingCommand(err) {
 		t.Fatalf("expected MissingCommandError, got %T %v", err, err)
 	}
-	if !strings.Contains(err.Error(), "não encontrado") {
+	if !strings.Contains(err.Error(), "not found") {
 		t.Fatalf("error should mention missing command, got %v", err)
 	}
 	if !strings.Contains(err.Error(), "verify.test_cmd") {
@@ -713,7 +713,7 @@ func TestRunFailFastNotExecutable(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error when test_cmd is not executable")
 	}
-	if !strings.Contains(err.Error(), "não encontrado") || !strings.Contains(err.Error(), "verify.test_cmd") {
+	if !strings.Contains(err.Error(), "not found") || !strings.Contains(err.Error(), "verify.test_cmd") {
 		t.Fatalf("error should fail-fast for exit 126, got %v", err)
 	}
 }
@@ -1028,7 +1028,7 @@ func TestRunRejectsMissingSHA(t *testing.T) {
 	if err == nil {
 		t.Fatal("SHA inexistente deveria falhar")
 	}
-	if !strings.Contains(err.Error(), "inexistente") {
+	if !strings.Contains(err.Error(), "missing or invalid") {
 		t.Fatalf("erro claro esperado: %v", err)
 	}
 }

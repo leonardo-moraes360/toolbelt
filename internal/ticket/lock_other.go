@@ -34,7 +34,7 @@ func acquireLock(path string) (func(), error) {
 			continue
 		}
 		if time.Now().After(deadline) {
-			return nil, fmt.Errorf("timeout aguardando lock %s", lockPath)
+			return nil, fmt.Errorf("timed out waiting for lock %s", lockPath)
 		}
 		time.Sleep(20 * time.Millisecond)
 	}

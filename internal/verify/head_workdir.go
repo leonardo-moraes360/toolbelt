@@ -23,7 +23,7 @@ type headWorkDir struct {
 func attachHeadWorkDir(repoDir, headSHA string) (*headWorkDir, error) {
 	currentSHA, err := gitRevParse(repoDir, "HEAD")
 	if err != nil {
-		return nil, fmt.Errorf("resolver HEAD: %w", err)
+		return nil, fmt.Errorf("resolving HEAD: %w", err)
 	}
 	hw := &headWorkDir{
 		HeadSHA: headSHA,

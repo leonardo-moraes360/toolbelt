@@ -63,7 +63,7 @@ func init() {
 		return
 	}
 	if err := runLandlockChild(); err != nil {
-		fmt.Fprintf(os.Stderr, "tb sandbox: falha ao aplicar Landlock: %v\n", err)
+		fmt.Fprintf(os.Stderr, "tb sandbox: failed to apply Landlock: %v\n", err)
 		os.Exit(127)
 	}
 }
@@ -71,7 +71,7 @@ func init() {
 func CheckLandlockSupport() (supported bool, version int, err error) {
 	abi, _, errno := syscall.Syscall(sysLandlockCreateRuleset, 0, 0, landlockCreateRulesetVersion)
 	if errno == syscall.ENOSYS || errno == syscall.EOPNOTSUPP {
-		return false, 0, fmt.Errorf("kernel sem Landlock: %v", errno)
+		return false, 0, fmt.Errorf("kernel without Landlock: %v", errno)
 	}
 	if errno != 0 {
 		return false, 0, errno
@@ -111,7 +111,7 @@ func applyLandlock(workDir string, allowed []PathAccess, forbidden []string) err
 		if err == nil {
 			err = ErrUnsupported
 		}
-		return fmt.Errorf("Landlock indisponível: %w", err)
+		return fmt.Errorf("Landlock unavailable: %w", err)
 	}
 
 	ruleset, err := createRuleset(abi)
@@ -124,14 +124,14 @@ func applyLandlock(workDir string, allowed []PathAccess, forbidden []string) err
 		return err
 	}
 	if err := addRule(ruleset, workDir, false, abi); err != nil {
-		return fmt.Errorf("regra do workdir %q: %w", workDir, err)
+		return fmt.Errorf("workdir rule %q: %w", workDir, err)
 	}
 	// No rule for os.TempDir(): the shared /tmp gets no access (writes only in
 	// the workdir and AllowedPaths). Anything that needs temp space should point
 	// TMPDIR inside the workdir.
 	for _, a := range allowed {
 		if err := addRule(ruleset, a.Path, a.ReadOnly, abi); err != nil {
-			return fmt.Errorf("regra allow %q: %w", a.Path, err)
+			return fmt.Errorf("allow rule %q: %w", a.Path, err)
 		}
 	}
 	_ = forbidden
@@ -319,14 +319,14 @@ func prepareChildEnv(cfg *Config, command string, args []string) ([]string, erro
 func runLandlockChild() error {
 	raw := os.Getenv(envLandlockPayload)
 	if raw == "" {
-		return fmt.Errorf("payload Landlock ausente")
+		return fmt.Errorf("Landlock payload missing")
 	}
 	var p childPayload
 	if err := json.Unmarshal([]byte(raw), &p); err != nil {
-		return fmt.Errorf("payload Landlock inválido: %w", err)
+		return fmt.Errorf("invalid Landlock payload: %w", err)
 	}
 	if p.WorkDir == "" || p.Command == "" {
-		return fmt.Errorf("workdir/comando obrigatórios no payload")
+		return fmt.Errorf("workdir/command required in payload")
 	}
 
 	runtime.LockOSThread()

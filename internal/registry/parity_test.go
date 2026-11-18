@@ -364,7 +364,7 @@ func TestGuardCheckToolRejectsOptionInjection(t *testing.T) {
 	if !res.IsError {
 		t.Fatalf("MCP deveria rejeitar injeção: %s", res.Content[0].Text)
 	}
-	if !strings.Contains(res.Content[0].Text, "inválida") && !strings.Contains(res.Content[0].Text, "-") {
+	if !strings.Contains(res.Content[0].Text, "invalid") && !strings.Contains(res.Content[0].Text, "-") {
 		t.Fatalf("mensagem: %s", res.Content[0].Text)
 	}
 	if _, statErr := os.Stat(injected + "..HEAD"); statErr == nil {
@@ -395,7 +395,7 @@ func TestReviewToolRejectsMissingApprovedSHA(t *testing.T) {
 	if !res.IsError {
 		t.Fatalf("approved_sha inexistente deveria falhar: %s", res.Content[0].Text)
 	}
-	if !strings.Contains(res.Content[0].Text, "inexistente") {
+	if !strings.Contains(res.Content[0].Text, "missing") {
 		t.Fatalf("erro claro esperado: %s", res.Content[0].Text)
 	}
 }
@@ -562,7 +562,7 @@ func TestReviewDriftStackMissingTicket(t *testing.T) {
 			t.Fatalf("%s deveria retornar IsError com ticket ausente", tool)
 		}
 		msg := res.Content[0].Text
-		if !strings.Contains(msg, "ticket não encontrado") {
+		if !strings.Contains(msg, "ticket not found") {
 			t.Fatalf("%s mensagem: %s", tool, msg)
 		}
 		if !strings.Contains(msg, missing) {
@@ -586,7 +586,7 @@ func TestReviewDriftStackMissingTicket(t *testing.T) {
 	if !strings.Contains(res.Content[0].Text, `"ok": false`) && !strings.Contains(res.Content[0].Text, `"ok":false`) {
 		t.Fatalf("tb_stack deveria ter ok=false: %s", res.Content[0].Text)
 	}
-	if !strings.Contains(res.Content[0].Text, "ticket não encontrado") {
+	if !strings.Contains(res.Content[0].Text, "ticket not found") {
 		t.Fatalf("tb_stack deveria citar ticket não encontrado: %s", res.Content[0].Text)
 	}
 	if !strings.Contains(res.Content[0].Text, missing) {

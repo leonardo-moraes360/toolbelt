@@ -35,8 +35,8 @@ func (e *Error) Error() string {
 		fmt.Fprintf(&b, "\nstderr: %s", stderr)
 	}
 	for _, ref := range e.MissingRefs {
-		fmt.Fprintf(&b, "\nref ausente: %s", ref)
-		fmt.Fprintf(&b, "\ndica: git fetch origin %s", ref)
+		fmt.Fprintf(&b, "\nref missing: %s", ref)
+		fmt.Fprintf(&b, "\nhint: git fetch origin %s", ref)
 	}
 	return b.String()
 }
@@ -194,12 +194,12 @@ func rangeDiffClearMessage(args []string) string {
 			break
 		}
 	}
-	msg := "fatal: need two commit ranges — intervalo inválido para range-diff"
+	msg := "fatal: need two commit ranges — invalid range for range-diff"
 	if left != "" || right != "" {
 		msg = fmt.Sprintf("%s (%s vs %s)", msg, left, right)
 	}
 	if emptyRange(left) {
-		msg += "; base..approved parece vazio (approved-sha coincide com a base?)"
+		msg += "; base..approved looks empty (approved-sha matches the base?)"
 	}
 	return msg
 }

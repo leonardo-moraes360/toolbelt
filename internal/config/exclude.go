@@ -33,7 +33,7 @@ func EnsureLocalGitExclude(repoRoot string) (string, error) {
 		return "", nil
 	}
 	if err := os.MkdirAll(filepath.Dir(excludePath), 0o755); err != nil {
-		return "", fmt.Errorf("criando .git/info: %w", err)
+		return "", fmt.Errorf("creating .git/info: %w", err)
 	}
 
 	existing, err := os.ReadFile(excludePath)
@@ -98,7 +98,7 @@ func buildExcludeSection() string {
 	var b strings.Builder
 	b.WriteString(gitExcludeBegin)
 	b.WriteByte('\n')
-	b.WriteString("# cache/derivados — config e invariantes ficam versionáveis\n")
+	b.WriteString("# cache/derived — config and invariants stay versionable\n")
 	for _, p := range LocalCacheExcludePatterns {
 		b.WriteString(p)
 		b.WriteByte('\n')

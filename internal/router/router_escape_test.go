@@ -144,7 +144,7 @@ func TestCollectEscapesUnattributable(t *testing.T) {
 		r, run := escapeRouter(t)
 		al := run(o)
 		if len(al) != 1 || al[0].kind != AlertAgentEscaped || al[0].ticket != "" ||
-			!strings.Contains(al[0].msg, "não atribuível") || !strings.Contains(al[0].msg, "TKT-001, TKT-002") {
+			!strings.Contains(al[0].msg, "unattributable") || !strings.Contains(al[0].msg, "TKT-001, TKT-002") {
 			t.Fatalf("%s: %+v", name, al)
 		}
 		if !r.takeEscaped("TKT-001") || !r.takeEscaped("TKT-002") {
@@ -359,6 +359,6 @@ func TestGlobalGitConfigFilterNeverRunsAndIdentityIsKept(t *testing.T) {
 		t.Fatal("filtro da config global do usuário rodou sobre o conteúdo do agente")
 	}
 	if who := runGit(t, root, "log", "-1", "--format=%an <%ae>", got.Result.HeadCommit); who != "Global Dev <global@example.com>" {
-		t.Fatalf("autor = %q", who)
+		t.Fatalf("author = %q", who)
 	}
 }

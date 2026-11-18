@@ -14,17 +14,17 @@ import (
 
 var graphCmd = &cobra.Command{
 	Use:   "graph",
-	Short: "Grafo de código sob demanda (ADR-011)",
-	Long: `Consulta e indexa o grafo de código sob demanda.
+	Short: "On-demand code graph (ADR-011)",
+	Long: `Queries and indexes the code graph on demand.
 
-Desabilitado por padrão. Ative com TB_GRAPH=on (ou --enable) para
-medir o ROI via A/B (bench/ab/graph-on.yaml vs graph-off.yaml).`,
+Disabled by default. Enable with TB_GRAPH=on (or --enable) to
+measure ROI via A/B (bench/ab/graph-on.yaml vs graph-off.yaml).`,
 }
 
 var graphEnable bool
 
 func init() {
-	graphCmd.PersistentFlags().BoolVar(&graphEnable, "enable", false, "habilita o grafo nesta invocação")
+	graphCmd.PersistentFlags().BoolVar(&graphEnable, "enable", false, "enables the graph for this invocation")
 	graphCmd.AddCommand(graphIndexCmd, graphRebuildCmd, graphSearchCmd, graphCallersCmd, graphDepsCmd, graphImpactCmd, graphExplainCmd, graphPathCmd, graphStatsCmd)
 }
 
@@ -60,9 +60,9 @@ func graphStoreFresh() (*graph.Store, error) {
 	if !jsonOutput {
 		switch {
 		case refreshed:
-			fmt.Fprintln(os.Stderr, "grafo reindexado (estava desatualizado)")
+			fmt.Fprintln(os.Stderr, "graph reindexed (was stale)")
 		case s.Stale():
-			fmt.Fprintln(os.Stderr, "aviso: grafo desatualizado; rode tb graph rebuild")
+			fmt.Fprintln(os.Stderr, "warning: graph is stale; run tb graph rebuild")
 		}
 	}
 	return s, nil
@@ -70,7 +70,7 @@ func graphStoreFresh() (*graph.Store, error) {
 
 var graphIndexCmd = &cobra.Command{
 	Use:   "index [path]",
-	Short: "Indexa código sob demanda",
+	Short: "Indexes code on demand",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		root := "."
 		if len(args) > 0 {
@@ -89,20 +89,20 @@ var graphIndexCmd = &cobra.Command{
 		if jsonOutput {
 			return json.NewEncoder(os.Stdout).Encode(graphStatsPayload(s))
 		}
-		fmt.Printf("grafo indexado: %d nós, %d arestas → %s\n", len(idx.Nodes), len(idx.Edges), s.Path())
+		fmt.Printf("graph indexed: %d nodes, %d edges → %s\n", len(idx.Nodes), len(idx.Edges), s.Path())
 		return nil
 	},
 }
 
 var graphRebuildCmd = &cobra.Command{
 	Use:   "rebuild [path]",
-	Short: "Reconstrói o grafo completo",
+	Short: "Rebuilds the full graph",
 	RunE:  graphIndexCmd.RunE,
 }
 
 var graphSearchCmd = &cobra.Command{
 	Use:   "search <query>",
-	Short: "Busca no grafo",
+	Short: "Searches the graph",
 	Args:  cobra.MinimumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		limit, _ := cmd.Flags().GetInt("limit")
@@ -117,12 +117,12 @@ var graphSearchCmd = &cobra.Command{
 
 var graphCallersCmd = &cobra.Command{
 	Use:   "callers",
-	Short: "Encontra chamadores de uma função",
+	Short: "Finds callers of a function",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		fn, _ := cmd.Flags().GetString("function")
 		depth, _ := cmd.Flags().GetInt("depth")
 		if fn == "" {
-			return fmt.Errorf("--function é obrigatório")
+			return fmt.Errorf("--function is required")
 		}
 		s, err := graphStoreFresh()
 		if err != nil {
@@ -140,7 +140,7 @@ var graphCallersCmd = &cobra.Command{
 
 var graphDepsCmd = &cobra.Command{
 	Use:   "deps",
-	Short: "Mostra dependências",
+	Short: "Shows dependencies",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		mod, _ := cmd.Flags().GetString("module")
 		file, _ := cmd.Flags().GetString("file")
@@ -150,7 +150,7 @@ var graphDepsCmd = &cobra.Command{
 			target = file
 		}
 		if target == "" {
-			return fmt.Errorf("--module ou --file é obrigatório")
+			return fmt.Errorf("--module or --file is required")
 		}
 		s, err := graphStoreFresh()
 		if err != nil {
@@ -162,12 +162,12 @@ var graphDepsCmd = &cobra.Command{
 
 var graphImpactCmd = &cobra.Command{
 	Use:   "impact",
-	Short: "Analisa impacto de mudanças",
+	Short: "Analyzes the impact of changes",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		file, _ := cmd.Flags().GetString("file")
 		depth, _ := cmd.Flags().GetInt("depth")
 		if file == "" {
-			return fmt.Errorf("--file é obrigatório")
+			return fmt.Errorf("--file is required")
 		}
 		s, err := graphStoreFresh()
 		if err != nil {
@@ -185,7 +185,7 @@ var graphImpactCmd = &cobra.Command{
 
 var graphExplainCmd = &cobra.Command{
 	Use:   "explain <node>",
-	Short: "Explica um nó: arestas de entrada/saída com proveniência",
+	Short: "Explains a node: incoming/outgoing edges with provenance",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		limit, _ := cmd.Flags().GetInt("limit")
@@ -208,12 +208,12 @@ var graphExplainCmd = &cobra.Command{
 				fmt.Println()
 			}
 			fmt.Printf("%s  %s  %s\n", ex.Node.ID, ex.Node.Type, ex.Node.Path)
-			fmt.Printf("  saída (%d):\n", ex.OutDegree)
+			fmt.Printf("  output (%d):\n", ex.OutDegree)
 			printNeighbors(ex.Outgoing, ex.TruncatedOut, "→")
 			if ex.UnresolvedOut > 0 {
-				fmt.Printf("    (+%d chamadas sem nó no índice: stdlib/receptor não resolvido)\n", ex.UnresolvedOut)
+				fmt.Printf("    (+%d calls with no node in the index: stdlib/unresolved receiver)\n", ex.UnresolvedOut)
 			}
-			fmt.Printf("  entrada (%d):\n", ex.InDegree)
+			fmt.Printf("  input (%d):\n", ex.InDegree)
 			printNeighbors(ex.Incoming, ex.TruncatedIn, "←")
 		}
 		return nil
@@ -226,13 +226,13 @@ func printNeighbors(ns []graph.Neighbor, truncated int, arrow string) {
 		fmt.Printf("    %s %-9s %-40s %s %.2f\n", arrow, n.Edge, n.Node.ID, n.Source, n.Confidence)
 	}
 	if truncated > 0 {
-		fmt.Printf("    … +%d omitidas\n", truncated)
+		fmt.Printf("    … +%d omitted\n", truncated)
 	}
 }
 
 var graphPathCmd = &cobra.Command{
 	Use:   "path <from> <to>",
-	Short: "Menor caminho entre dois nós (arestas em ambos os sentidos)",
+	Short: "Shortest path between two nodes (edges in both directions)",
 	Args:  cobra.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		maxDepth, _ := cmd.Flags().GetInt("max-depth")
@@ -268,7 +268,7 @@ var graphPathCmd = &cobra.Command{
 
 var graphStatsCmd = &cobra.Command{
 	Use:   "stats",
-	Short: "Estatísticas do grafo",
+	Short: "Graph statistics",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		s, err := graphStoreFresh()
 		if err != nil {
@@ -288,16 +288,16 @@ var graphStatsCmd = &cobra.Command{
 }
 
 func init() {
-	graphSearchCmd.Flags().Int("limit", 20, "máximo de resultados")
-	graphCallersCmd.Flags().String("function", "", "nome da função")
-	graphCallersCmd.Flags().Int("depth", 1, "profundidade")
-	graphDepsCmd.Flags().String("module", "", "módulo/pacote")
-	graphDepsCmd.Flags().String("file", "", "arquivo")
-	graphDepsCmd.Flags().Bool("transitive", false, "inclui transitivas")
-	graphImpactCmd.Flags().String("file", "", "arquivo modificado")
-	graphImpactCmd.Flags().Int("depth", 2, "profundidade")
-	graphExplainCmd.Flags().Int("limit", graph.DefaultExplainLimit, "máximo de nós explicados")
-	graphPathCmd.Flags().Int("max-depth", graph.DefaultPathMaxDepth, "máximo de saltos")
+	graphSearchCmd.Flags().Int("limit", 20, "maximum results")
+	graphCallersCmd.Flags().String("function", "", "function name")
+	graphCallersCmd.Flags().Int("depth", 1, "depth")
+	graphDepsCmd.Flags().String("module", "", "module/package")
+	graphDepsCmd.Flags().String("file", "", "file")
+	graphDepsCmd.Flags().Bool("transitive", false, "includes transitive dependencies")
+	graphImpactCmd.Flags().String("file", "", "modified file")
+	graphImpactCmd.Flags().Int("depth", 2, "depth")
+	graphExplainCmd.Flags().Int("limit", graph.DefaultExplainLimit, "maximum explained nodes")
+	graphPathCmd.Flags().Int("max-depth", graph.DefaultPathMaxDepth, "maximum hops")
 }
 
 func graphBuildOptions() graph.BuildOptions {
@@ -337,7 +337,7 @@ func printGraphNodes(s *graph.Store, nodes []graph.Node) error {
 		})
 	}
 	if len(nodes) == 0 {
-		fmt.Println("(vazio)")
+		fmt.Println("(empty)")
 		return nil
 	}
 	for _, n := range nodes {

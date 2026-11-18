@@ -16,7 +16,7 @@ func TestValidateCategory(t *testing.T) {
 		t.Fatal("esperava erro")
 	}
 	msg := err.Error()
-	for _, part := range []string{"categoria inválida", "anti_cheat", "mandate", "security"} {
+	for _, part := range []string{"invalid category", "anti_cheat", "mandate", "security"} {
 		if !strings.Contains(msg, part) {
 			t.Fatalf("erro sem %q: %v", part, err)
 		}
@@ -48,7 +48,7 @@ func TestValidateRef(t *testing.T) {
 			t.Fatalf("%q deveria falhar", ref)
 		}
 		msg := err.Error()
-		if !strings.Contains(msg, "ref inválido") || !strings.Contains(msg, "docs/adr/") || !strings.Contains(msg, "docs/decisions/") {
+		if !strings.Contains(msg, "invalid ref") || !strings.Contains(msg, "docs/adr/") || !strings.Contains(msg, "docs/decisions/") {
 			t.Fatalf("%q erro sem lista: %v", ref, err)
 		}
 	}

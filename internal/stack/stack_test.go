@@ -21,7 +21,7 @@ func TestParseOpUnknown(t *testing.T) {
 	if err == nil {
 		t.Fatal("esperava erro para op desconhecida")
 	}
-	if !strings.Contains(err.Error(), "operação desconhecida") {
+	if !strings.Contains(err.Error(), "unknown operation") {
 		t.Fatalf("mensagem: %v", err)
 	}
 	if strings.Contains(err.Error(), "Usage") {
@@ -261,7 +261,7 @@ func TestRunUnknownOp(t *testing.T) {
 	_, err := Run(context.Background(), &Options{
 		Ops: []Op{"bogus"},
 	})
-	if err == nil || !strings.Contains(err.Error(), "operação desconhecida") {
+	if err == nil || !strings.Contains(err.Error(), "unknown operation") {
 		t.Fatalf("err=%v", err)
 	}
 }
@@ -562,7 +562,7 @@ func TestPrepareRejectsMissingApprovedSHA(t *testing.T) {
 	if err == nil {
 		t.Fatal("approved-sha inexistente deveria falhar")
 	}
-	if !strings.Contains(err.Error(), "inexistente") {
+	if !strings.Contains(err.Error(), "missing or invalid") {
 		t.Fatalf("erro claro esperado: %v", err)
 	}
 }
@@ -822,7 +822,7 @@ func TestStackMissingTicketFails(t *testing.T) {
 		if step.OK {
 			t.Fatalf("step %s deveria falhar: %+v", step.Op, step)
 		}
-		if !strings.Contains(step.Error, "ticket não encontrado") {
+		if !strings.Contains(step.Error, "ticket not found") {
 			t.Fatalf("step %s deveria citar ticket não encontrado: %+v", step.Op, step)
 		}
 		if !strings.Contains(step.Error, missing) {

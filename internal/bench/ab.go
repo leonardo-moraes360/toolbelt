@@ -19,11 +19,11 @@ type ABVariant struct {
 func LoadABVariant(path string) (*ABVariant, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("lendo variante A/B: %w", err)
+		return nil, fmt.Errorf("reading A/B variant: %w", err)
 	}
 	var v ABVariant
 	if err := yaml.Unmarshal(data, &v); err != nil {
-		return nil, fmt.Errorf("parseando variante A/B: %w", err)
+		return nil, fmt.Errorf("parsing A/B variant: %w", err)
 	}
 	if v.Label == "" {
 		v.Label = strings.TrimSuffix(baseName(path), ".yaml")

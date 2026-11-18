@@ -97,7 +97,7 @@ func (s *Store) Load() (*File, error) {
 	}
 	var f File
 	if err := yaml.Unmarshal(data, &f); err != nil {
-		return nil, fmt.Errorf("memória corrompida: %w", err)
+		return nil, fmt.Errorf("memory corrupted: %w", err)
 	}
 	if f.Version == 0 {
 		f.Version = 1
@@ -119,7 +119,7 @@ func (s *Store) Save(f *File) error {
 func (s *Store) Add(category, rule, ref string, immutable bool) (*Invariant, error) {
 	rule = strings.TrimSpace(rule)
 	if rule == "" {
-		return nil, errors.New("regra vazia")
+		return nil, errors.New("empty rule")
 	}
 	category = strings.TrimSpace(category)
 	if err := ValidateCategory(category); err != nil {
@@ -155,7 +155,7 @@ func (s *Store) Get(id string) (*Invariant, error) {
 	}
 	idx := findInvariant(f.Invariants, id)
 	if idx < 0 {
-		return nil, fmt.Errorf("invariante %q não encontrada", id)
+		return nil, fmt.Errorf("invariant %q not found", id)
 	}
 	inv := f.Invariants[idx]
 	return &inv, nil
@@ -163,7 +163,7 @@ func (s *Store) Get(id string) (*Invariant, error) {
 
 func (s *Store) Edit(id string, fields EditFields, opts MutateOpts) (*Invariant, error) {
 	if !editFieldsProvided(fields) {
-		return nil, errors.New("nenhum campo para editar (--category/--rule/--ref)")
+		return nil, errors.New("no field to edit (--category/--rule/--ref)")
 	}
 	f, err := s.Load()
 	if err != nil {
@@ -171,7 +171,7 @@ func (s *Store) Edit(id string, fields EditFields, opts MutateOpts) (*Invariant,
 	}
 	idx := findInvariant(f.Invariants, id)
 	if idx < 0 {
-		return nil, fmt.Errorf("invariante %q não encontrada", id)
+		return nil, fmt.Errorf("invariant %q not found", id)
 	}
 	old := f.Invariants[idx]
 	if err := requireForce(&old, opts, "edit"); err != nil {
@@ -198,7 +198,7 @@ func (s *Store) Retire(id string, opts MutateOpts) (*Invariant, error) {
 	}
 	idx := findInvariant(f.Invariants, id)
 	if idx < 0 {
-		return nil, fmt.Errorf("invariante %q não encontrada", id)
+		return nil, fmt.Errorf("invariant %q not found", id)
 	}
 	old := f.Invariants[idx]
 	if old.Retired {
@@ -248,7 +248,7 @@ func (s *Store) List(category string, includeRetired bool) ([]Invariant, error) 
 func (s *Store) Search(query string, includeRetired bool) ([]Invariant, error) {
 	query = strings.TrimSpace(query)
 	if query == "" {
-		return nil, errors.New("query vazia")
+		return nil, errors.New("empty query")
 	}
 	f, err := s.Load()
 	if err != nil {
@@ -270,7 +270,7 @@ func (s *Store) Search(query string, includeRetired bool) ([]Invariant, error) {
 func (s *Store) Check(expectedSHA string, requiredIDs []string, includeRetired bool) (*CheckReport, error) {
 	data, err := os.ReadFile(s.path)
 	if err != nil {
-		return nil, fmt.Errorf("memória ilegível: %w", err)
+		return nil, fmt.Errorf("memory unreadable: %w", err)
 	}
 	sum := sha256.Sum256(data)
 	sha := hex.EncodeToString(sum[:])
@@ -321,9 +321,9 @@ func EnsureDefaultAntiCheat(toolbeltDir string) (*InitResult, error) {
 		cat  string
 		rule string
 	}{
-		{"anti_cheat", "NUNCA modifique arquivos em tests/hidden/"},
-		{"anti_cheat", "NUNCA altere thresholds em .toolbelt/thresholds.yaml"},
-		{"security", "Secrets nunca aparecem em logs ou prompts"},
+		{"anti_cheat", "NEVER modify files in tests/hidden/"},
+		{"anti_cheat", "NEVER change thresholds in .toolbelt/thresholds.yaml"},
+		{"security", "Secrets never appear in logs or prompts"},
 	}
 	created := make([]Invariant, 0, len(defaults))
 	for _, d := range defaults {
@@ -360,7 +360,7 @@ func applyEditFields(inv *Invariant, fields EditFields) error {
 	if fields.Rule != nil {
 		rule := strings.TrimSpace(*fields.Rule)
 		if rule == "" {
-			return errors.New("regra vazia")
+			return errors.New("empty rule")
 		}
 		inv.Rule = rule
 	}
@@ -393,23 +393,23 @@ func requireForce(inv *Invariant, opts MutateOpts, action string) error {
 		return nil
 	}
 	if !opts.Force {
-		return fmt.Errorf("invariante %s protegida (immutable/anti_cheat): use --force --reason para %s", inv.ID, action)
+		return fmt.Errorf("invariant %s protected (immutable/anti_cheat): use --force --reason to %s", inv.ID, action)
 	}
 	if strings.TrimSpace(opts.Reason) == "" {
-		return fmt.Errorf("invariante %s protegida: --reason é obrigatório com --force", inv.ID)
+		return fmt.Errorf("invariant %s protected: --reason is required with --force", inv.ID)
 	}
 	return nil
 }
 
 func evaluateInvariant(inv *Invariant) string {
 	if strings.TrimSpace(inv.ID) == "" {
-		return "invariante sem id"
+		return "invariant without id"
 	}
 	if strings.TrimSpace(inv.Rule) == "" {
-		return fmt.Sprintf("%s: regra vazia", inv.ID)
+		return fmt.Sprintf("%s: empty rule", inv.ID)
 	}
 	if strings.TrimSpace(inv.Category) == "" {
-		return fmt.Sprintf("%s: categoria vazia", inv.ID)
+		return fmt.Sprintf("%s: empty category", inv.ID)
 	}
 	return ""
 }
@@ -426,7 +426,7 @@ func collectUnevaluable(visible []Invariant, report *CheckReport) error {
 	}
 	report.CompactSafe = false
 	report.Retention = 0
-	return fmt.Errorf("regras não avaliáveis: %s", strings.Join(report.Errors, "; "))
+	return fmt.Errorf("rules not evaluable: %s", strings.Join(report.Errors, "; "))
 }
 
 func applyIntegrity(report *CheckReport, expectedSHA, sha string, visible []Invariant, requiredIDs []string) {
@@ -452,12 +452,12 @@ func applyIntegrity(report *CheckReport, expectedSHA, sha string, visible []Inva
 
 func integrityError(report *CheckReport, expectedSHA, sha string) error {
 	if len(report.Missing) > 0 {
-		return fmt.Errorf("invariantes ausentes: %v", report.Missing)
+		return fmt.Errorf("invariants missing: %v", report.Missing)
 	}
 	if expectedSHA != "" && !strings.EqualFold(expectedSHA, sha) {
-		return fmt.Errorf("sha256 diverge (esperado %s, obtido %s)", expectedSHA, sha)
+		return fmt.Errorf("sha256 mismatch (expected %s, got %s)", expectedSHA, sha)
 	}
-	return errors.New("integridade comprometida")
+	return errors.New("integrity compromised")
 }
 
 func findInvariant(list []Invariant, id string) int {

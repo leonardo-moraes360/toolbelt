@@ -77,7 +77,10 @@ O usuário cria o canal e autoriza cada agente explicitamente:
 
 ```bash
 tb bus channel create feature-x --owner claude-main --ttl 2h
-# canal: feature-x  convite: K7Q2-9XMD (uso único por agente, expira em 10m)
+# channel: feature-x  owner: claude-main
+# owner invite: 4MPA-2HQC (role supervisor, single-use, expires 10:10:00Z)
+tb bus invite feature-x --role worker
+# invite: K7Q2-9XMD (channel feature-x, role worker, single-use, expires 10:10:00Z)
 ```
 
 O usuário pede a cada agente: "entre no canal `feature-x`, convite `K7Q2-9XMD`, papel `worker`". O agente chama `tb bus join` (ou `bus_join` via MCP). A partir daí os agentes seguem sozinhos.

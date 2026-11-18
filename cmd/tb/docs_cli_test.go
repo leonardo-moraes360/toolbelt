@@ -140,8 +140,8 @@ func assertDocsDriftIsScopeNotVault(t *testing.T, cli string) {
 	if strings.Contains(cli, "DOCUMENTAÇÃO DESATUALIZADA") {
 		t.Error("cli.md still shows the fictional stale-docs drift report")
 	}
-	if !strings.Contains(cli, "Fora do scope") || !strings.Contains(cli, "Proibidos tocados") {
-		t.Error("cli.md must show the real drift report (Fora do scope / Proibidos tocados)")
+	if !strings.Contains(cli, "Out of scope") || !strings.Contains(cli, "Forbidden touched") {
+		t.Error("cli.md must show the real drift report (Out of scope / Forbidden touched)")
 	}
 }
 

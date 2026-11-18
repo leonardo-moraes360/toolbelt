@@ -42,10 +42,10 @@ func TestCLIGitMissingRefShowsStderrAndFetchHint(t *testing.T) {
 			if !strings.Contains(msg, "stderr:") && !strings.Contains(msg, "unknown revision") && !strings.Contains(msg, "Needed a single revision") {
 				t.Fatalf("deve incluir stderr do git:\n%s", msg)
 			}
-			if !strings.Contains(msg, "ref ausente:") {
+			if !strings.Contains(msg, "ref missing:") {
 				t.Fatalf("deve citar ref ausente:\n%s", msg)
 			}
-			if !strings.Contains(msg, "dica: git fetch origin") {
+			if !strings.Contains(msg, "hint: git fetch origin") {
 				t.Fatalf("deve sugerir fetch:\n%s", msg)
 			}
 		})
@@ -92,7 +92,7 @@ func TestCLIApprovedSHAEqualsBaseClearMessage(t *testing.T) {
 	if strings.Contains(strings.ToLower(msg), "usage: git range-diff") {
 		t.Fatalf("não deve despejar usage:\n%s", msg)
 	}
-	if !strings.Contains(msg, "coincide com a base") && !strings.Contains(msg, "vazio") {
+	if !strings.Contains(msg, "matches the base") && !strings.Contains(msg, "empty") {
 		t.Fatalf("mensagem clara esperada:\n%s", msg)
 	}
 }
@@ -120,7 +120,7 @@ func TestVerifyMissingCommandExit127JSONEnvelope(t *testing.T) {
 	if res.Error == "" {
 		t.Fatalf("JSON deve incluir error:\n%s", out)
 	}
-	if !strings.Contains(res.Error, "não encontrado") {
+	if !strings.Contains(res.Error, "not found") {
 		t.Fatalf("error=%q", res.Error)
 	}
 	if res.Verdict != verify.VerdictFail {

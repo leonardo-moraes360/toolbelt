@@ -588,7 +588,7 @@ func TestInitDetailed_WarnsWhenNoTestToolchain(t *testing.T) {
 	if detected.Warning == "" {
 		t.Fatal("expected warning when no test toolchain is detectable")
 	}
-	if !strings.Contains(detected.Warning, "vazio") {
+	if !strings.Contains(detected.Warning, "empty") {
 		t.Fatalf("warning should explain empty test_cmd, got %q", detected.Warning)
 	}
 	loaded := DefaultConfig()

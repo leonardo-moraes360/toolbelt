@@ -87,7 +87,7 @@ func TestBusMCPFlow(t *testing.T) {
 	if !strings.Contains(out, `"from": "agent:claude-main"`) {
 		t.Fatalf("send: %s", out)
 	}
-	failBus(t, "tb_bus_join", map[string]any{"channel": "fx", "invite": workerCode, "name": "x", "cwd": root}, "já está no canal")
+	failBus(t, "tb_bus_join", map[string]any{"channel": "fx", "invite": workerCode, "name": "x", "cwd": root}, "already in channel")
 	ownerSessions := busState.sessions
 
 	ResetBusSessions() // "another connection"
@@ -96,7 +96,7 @@ func TestBusMCPFlow(t *testing.T) {
 	if len(envs) != 1 || envs[0].Params.Type != bus.TypeTaskAssign {
 		t.Fatalf("recv: %+v", envs)
 	}
-	failBus(t, "tb_bus_send", map[string]any{"to": "role:worker", "type": "task.assign"}, "router ou supervisor")
+	failBus(t, "tb_bus_send", map[string]any{"to": "role:worker", "type": "task.assign"}, "router or supervisor")
 	mustBus(t, "tb_bus_claim", map[string]any{"thread": "TKT-001"})
 	mustBus(t, "tb_bus_complete", map[string]any{"thread": "TKT-001", "result": map[string]any{"verdict": "PASS"}})
 

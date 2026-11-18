@@ -96,7 +96,7 @@ func TestOpenPermissionsAndSchema(t *testing.T) {
 		t.Fatal(err)
 	}
 	_ = s.Close()
-	if _, err := Open(root); err == nil || !strings.Contains(err.Error(), "desconhecido") {
+	if _, err := Open(root); err == nil || !strings.Contains(err.Error(), "unknown") {
 		t.Fatalf("schema desconhecido deveria falhar fechado, got %v", err)
 	}
 }
@@ -201,16 +201,16 @@ func TestSendRules(t *testing.T) {
 		in   *SendInput
 		want string
 	}{
-		{worker, &SendInput{To: "role:worker", Type: TypeTaskAssign}, "router ou supervisor"},
+		{worker, &SendInput{To: "role:worker", Type: TypeTaskAssign}, "router or supervisor"},
 		{owner, &SendInput{To: "topic:board", Type: TypeTaskResult}, "complete"},
-		{owner, &SendInput{To: "agent:ninguem", Type: TypeQuery}, "não está no canal"},
-		{owner, &SendInput{To: "grok-1", Type: TypeQuery}, "destino inválido"},
-		{owner, &SendInput{To: "role:chefe", Type: TypeQuery}, "papel inválido"},
-		{owner, &SendInput{To: "topic:x", Type: "bogus"}, "tipo inválido"},
-		{owner, &SendInput{To: "topic:x", Type: TypeQuery, Payload: json.RawMessage(`[1]`)}, "objeto JSON"},
-		{owner, &SendInput{To: "topic:x", Type: TypeQuery, Payload: json.RawMessage(`{"a":"` + strings.Repeat("x", MaxPayloadBytes) + `"}`)}, "excede"},
-		{owner, &SendInput{To: "topic:x", Type: TypeQuery, TTL: "nunca"}, "ttl inválido"},
-		{owner, &SendInput{To: "topic:x", Type: TypeQuery, Thread: "tem espaço"}, "thread inválido"},
+		{owner, &SendInput{To: "agent:ninguem", Type: TypeQuery}, "is not in channel"},
+		{owner, &SendInput{To: "grok-1", Type: TypeQuery}, "invalid destination"},
+		{owner, &SendInput{To: "role:chefe", Type: TypeQuery}, "invalid role"},
+		{owner, &SendInput{To: "topic:x", Type: "bogus"}, "invalid type"},
+		{owner, &SendInput{To: "topic:x", Type: TypeQuery, Payload: json.RawMessage(`[1]`)}, "JSON object"},
+		{owner, &SendInput{To: "topic:x", Type: TypeQuery, Payload: json.RawMessage(`{"a":"` + strings.Repeat("x", MaxPayloadBytes) + `"}`)}, "exceeds"},
+		{owner, &SendInput{To: "topic:x", Type: TypeQuery, TTL: "nunca"}, "invalid ttl"},
+		{owner, &SendInput{To: "topic:x", Type: TypeQuery, Thread: "tem espaço"}, "invalid thread"},
 	}
 	for _, tc := range cases {
 		if _, err := s.Send(tc.m, tc.in); err == nil || !strings.Contains(err.Error(), tc.want) {
@@ -218,7 +218,7 @@ func TestSendRules(t *testing.T) {
 		}
 	}
 	c.add(3 * time.Hour)
-	if _, err := s.Send(owner, &SendInput{To: "topic:x", Type: TypeQuery}); err == nil || !strings.Contains(err.Error(), "expirou") {
+	if _, err := s.Send(owner, &SendInput{To: "topic:x", Type: TypeQuery}); err == nil || !strings.Contains(err.Error(), "expired") {
 		t.Fatalf("canal expirado: %v", err)
 	}
 	if _, err := s.ActiveChannel("feature-x"); !errors.Is(err, ErrChannelExpired) {
@@ -232,7 +232,7 @@ func TestSendRules(t *testing.T) {
 	if ch, err := s.ExtendChannel("feature-x", 0); err != nil || ch.ExpiresAt != nil {
 		t.Fatalf("extend sem expiração: %+v %v", ch, err)
 	}
-	if _, err := s.ExtendChannel("nada", time.Hour); err == nil || !strings.Contains(err.Error(), "não existe") {
+	if _, err := s.ExtendChannel("nada", time.Hour); err == nil || !strings.Contains(err.Error(), "does not exist") {
 		t.Fatalf("extend canal inexistente: %v", err)
 	}
 	if _, err := s.ExtendChannel("feature-x", -time.Second); err == nil {
@@ -296,7 +296,7 @@ func TestClaimComplete(t *testing.T) {
 	other, err := s.Join("feature-x", inv.Code, &AgentCard{Name: "codex-1"}, "")
 	must(t, err)
 	_, err = s.Complete(worker, "TKT-001", nil)
-	wantErr(t, err, "claim antes", "complete sem claim")
+	wantErr(t, err, "claim first", "complete sem claim")
 	_, err = s.ClaimThread(worker, "TKT-001")
 	must(t, err)
 	_, err = s.ClaimThread(worker, "TKT-001")
@@ -304,16 +304,16 @@ func TestClaimComplete(t *testing.T) {
 	_, err = s.ClaimThread(other.Member, "TKT-001")
 	wantErr(t, err, "agent:grok-1", "segundo dono")
 	_, err = s.Complete(other.Member, "TKT-001", nil)
-	wantErr(t, err, "só o dono", "complete por não dono")
+	wantErr(t, err, "only the owner", "complete por não dono")
 	res, err := s.Complete(worker, "TKT-001", json.RawMessage(`{"verdict":"PASS","commit":"a1b2c3d"}`))
 	must(t, err)
 	if res.Message.Type != TypeTaskResult || res.Message.To != "topic:board" || res.Claim.ResultID != res.Message.ID {
 		t.Fatalf("resultado: %+v", res)
 	}
 	_, err = s.Complete(worker, "TKT-001", nil)
-	wantErr(t, err, "já foi concluída", "complete duplo")
+	wantErr(t, err, "already completed", "complete duplo")
 	_, err = s.ClaimThread(other.Member, "TKT-001")
-	wantErr(t, err, "concluída", "claim após conclusão")
+	wantErr(t, err, "completed", "claim após conclusão")
 	got, _ := s.Recv(context.Background(), owner, RecvOptions{})
 	if len(got) != 1 || got[0].Type != TypeTaskResult {
 		t.Fatalf("dono deveria receber task.result: %+v", got)
@@ -443,10 +443,10 @@ func TestOwnerNameReservedForUnboundInvites(t *testing.T) {
 	must(t, err)
 	inv, _ := s.CreateInvite("c", RoleWorker, "", 0)
 	_, err = s.Join("c", inv.Code, &AgentCard{Name: "boss"}, "")
-	wantErr(t, err, "reservado", "worker tomando o nome do dono")
+	wantErr(t, err, "reserved", "worker tomando o nome do dono")
 	reserved, _ := s.CreateInvite("c", RoleReviewer, "rev", 0)
 	_, err = s.Join("c", inv.Code, &AgentCard{Name: "rev"}, "")
-	wantErr(t, err, "reservado", "nome com convite vinculado aberto")
+	wantErr(t, err, "reserved", "nome com convite vinculado aberto")
 	_, err = s.Join("c", ownerInv.Code, &AgentCard{Name: "boss"}, "")
 	must(t, err)
 	_, err = s.Join("c", reserved.Code, &AgentCard{Name: "rev"}, "")
