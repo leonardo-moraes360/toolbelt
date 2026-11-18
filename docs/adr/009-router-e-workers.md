@@ -58,7 +58,7 @@ Atomic unit of delegable work:
 ```yaml
 ticket:
   id: "TKT-001"
-  title: "Implementar handler de login"
+  title: "Implement login handler"
   mandate:
     scope: ["src/handlers/auth.go", "src/services/auth.go"]
     permissions: [read, write]
@@ -67,7 +67,7 @@ ticket:
     files: ["docs/specs/auth.md", "vault/decisions/jwt-choice.md"]
     symbols: ["User", "Session", "validateCredentials"]
   acceptance:
-    criteria: "Testes em tests/auth_test.go passam"
+    criteria: "Tests in tests/auth_test.go pass"
     timeout: "10m"
   dependencies: []
 ```
@@ -152,7 +152,7 @@ When a worker completes a ticket that has dependents, it can **subscribe** to re
 ```yaml
 ticket:
   id: "TKT-001"
-  title: "Criar modelo User"
+  title: "Create User model"
   # ... other fields ...
   
   subscription:

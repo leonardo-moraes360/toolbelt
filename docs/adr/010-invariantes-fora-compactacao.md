@@ -29,22 +29,22 @@ A separate file (`invariants.yaml` or `.toolbelt/invariants.md`) contains rules 
 version: 1
 
 anti_cheat:
-  - "NUNCA modifique arquivos em tests/hidden/"
-  - "NUNCA altere thresholds em .toolbelt/thresholds.yaml"
-  - "NUNCA edite código de pontuação em benchmarks/"
-  - "NUNCA sobrescreva __eq__ para falsificar comparações"
-  - "NUNCA guarde estado entre chamadas de teste"
+  - "NEVER modify files in tests/hidden/"
+  - "NEVER change thresholds in .toolbelt/thresholds.yaml"
+  - "NEVER edit scoring code in benchmarks/"
+  - "NEVER override __eq__ to fake comparisons"
+  - "NEVER keep state between test calls"
 
 mandate_constraints:
-  - "Scope limitado aos arquivos listados no mandate"
-  - "Permissões: apenas {permissions}"
+  - "Scope limited to the files listed in the mandate"
+  - "Permissions: only {permissions}"
   - "Timeout: {timeout}"
-  - "Recursos: CPU {cpu_limit}, memória {mem_limit}"
+  - "Resources: CPU {cpu_limit}, memory {mem_limit}"
 
 security:
-  - "Dados privados + conteúdo não confiável + saída externa = proibido"
-  - "Secrets nunca aparecem em logs ou prompts"
-  - "Rede negada exceto allowlist explícita"
+  - "Private data + untrusted content + external output = forbidden"
+  - "Secrets never appear in logs or prompts"
+  - "Network denied except an explicit allowlist"
 ```
 
 ### 2. Hybrid Compaction Process
@@ -83,7 +83,7 @@ security:
 Internal benchmark that measures invariant retention:
 
 ```
-retenção_invariantes = (invariantes preservados após N compactações) / (invariantes originais)
+invariant_retention = (invariants preserved after N compactions) / (original invariants)
 ```
 
 **Target**: 100% retention (by design, since invariants do not go through compaction).

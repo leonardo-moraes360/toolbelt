@@ -56,7 +56,7 @@ These are the findings with the greatest impact on toolbelt's design:
 
 **Problem**: Maps (AST, call graph) cut 17–39% of tokens **when locating is the bottleneck**, but increase latency. Structural search can cost up to 28.14% more; human-written skills cut up to 41.73%.
 
-**Affected module**: `grafo` · `benchmark`
+**Affected module**: `graph` · `benchmark`
 
 **Concrete proposal**:
 - `tb graph` as an **on-demand** tool with lean output (do not force use on every task)
@@ -72,7 +72,7 @@ These are the findings with the greatest impact on toolbelt's design:
 
 **Problem**: Tools as a fixed catalog cost 150k tokens in the example; as files in code, they cost 2k (−98.7%).
 
-**Affected module**: `protocolo` · `mem/ctx`
+**Affected module**: `protocol` · `mem/ctx`
 
 **Concrete proposal**:
 - `tb mcp` is born on the **stateless** core (no initialize), with server/discover
@@ -113,16 +113,16 @@ These are the findings with the greatest impact on toolbelt's design:
 | tb bench --impossible | Generates impossible variants of tasks (test contradicts the spec); any pass counts as cheating and the target is 0%. | benchmark · guard | [arxiv.org/abs/2510.20270](https://arxiv.org/abs/2510.20270) |
 | Cheat patterns in guard | Beyond deleting tests: overloading `__eq__`, state saved between calls, special cases by test input, editing scoring code. | guard | [arxiv.org/abs/2510.20270](https://arxiv.org/abs/2510.20270) · [arxiv.org/abs/2601.20103](https://arxiv.org/abs/2601.20103) · [metr.org](https://metr.org/blog/2025-06-05-recent-reward-hacking/) |
 | Trajectory monitor | Cheap monitor reads actions and transcript (not just the diff) and gives a suspicion score; never train or optimize against reasoning, to avoid generating obfuscation. | guard | [arxiv.org/abs/2503.11926](https://arxiv.org/abs/2503.11926) · [arxiv.org/abs/2506.15740](https://arxiv.org/abs/2506.15740) · [arxiv.org/abs/2312.06942](https://arxiv.org/abs/2312.06942) |
-| Tools as files + search | tb catalog exposed as files and `tb tools search` with deferred loading; results filtered inside the sandbox before returning to the model. | protocolo · mem/ctx | [anthropic.com](https://www.anthropic.com/research/code-execution-with-mcp) · [cursor.com](https://cursor.com/blog/dynamic-context-discovery) |
-| response_format on every tool | concise/detailed parameter, namespaced names and lists in deterministic order, to keep the cache prefix stable. | protocolo · mem/ctx | [anthropic.com](https://www.anthropic.com/research/writing-tools-for-agents) · MCP 2026-07-28 |
-| Stateless MCP from the start | No initialize, with server/discover, explicit handles as arguments and long worker jobs via the Tasks extension. | protocolo · router | [modelcontextprotocol.io](https://modelcontextprotocol.io/specification/2026-07-28/changelog) |
+| Tools as files + search | tb catalog exposed as files and `tb tools search` with deferred loading; results filtered inside the sandbox before returning to the model. | protocol · mem/ctx | [anthropic.com](https://www.anthropic.com/research/code-execution-with-mcp) · [cursor.com](https://cursor.com/blog/dynamic-context-discovery) |
+| response_format on every tool | concise/detailed parameter, namespaced names and lists in deterministic order, to keep the cache prefix stable. | protocol · mem/ctx | [anthropic.com](https://www.anthropic.com/research/writing-tools-for-agents) · MCP 2026-07-28 |
+| Stateless MCP from the start | No initialize, with server/discover, explicit handles as arguments and long worker jobs via the Tasks extension. | protocol · router | [modelcontextprotocol.io](https://modelcontextprotocol.io/specification/2026-07-28/changelog) |
 | Declared scope on the ticket | Mandate carries base commit and files or resources; router only runs disjoint scopes in parallel, orders merges and returns the conflict to the owning worker. | router · guard | [arxiv.org/abs/2607.21909](https://arxiv.org/abs/2607.21909) · [arxiv.org/abs/2603.21489](https://arxiv.org/abs/2603.21489) |
 | tb init in harness style | Creates progress log, feature list in JSON (failing → passing only via tb verify) and init.sh; every worker starts by reading git log and progress. | router · verify | [anthropic.com](https://www.anthropic.com/research/effective-harnesses-for-long-running-agents) |
-| Optional measured graph | `tb graph` as an on-demand tool with lean output and A/B by task type, since it can cost up to 28% more; prioritize human-written skills. | grafo · benchmark | [arxiv.org/abs/2611.07286](https://arxiv.org/abs/2611.07286) · [arxiv.org/abs/2609.30725](https://arxiv.org/abs/2609.30725) |
+| Optional measured graph | `tb graph` as an on-demand tool with lean output and A/B by task type, since it can cost up to 28% more; prioritize human-written skills. | graph · benchmark | [arxiv.org/abs/2611.07286](https://arxiv.org/abs/2611.07286) · [arxiv.org/abs/2609.30725](https://arxiv.org/abs/2609.30725) |
 | Waste watchdog | Flag redundant search, nearly identical scripts and test re-execution, which in the study appeared in 79–98% of tasks. | router · benchmark | [arxiv.org/abs/2609.30725](https://arxiv.org/abs/2609.30725) |
-| Bitemporal linked memory | Facts with validity and provenance, invalidated instead of overwritten, and notes with Zettelkasten-style links inside the vault. | mem/ctx · grafo | [arxiv.org/abs/2501.13956](https://arxiv.org/abs/2501.13956) · [arxiv.org/abs/2502.12110](https://arxiv.org/abs/2502.12110) |
+| Bitemporal linked memory | Facts with validity and provenance, invalidated instead of overwritten, and notes with Zettelkasten-style links inside the vault. | mem/ctx · graph | [arxiv.org/abs/2501.13956](https://arxiv.org/abs/2501.13956) · [arxiv.org/abs/2502.12110](https://arxiv.org/abs/2502.12110) |
 | Injection blocked by design | Privileged planner never reads untrusted content, quarantined worker has no tools, and mandate bars the lethal trifecta. | guard · router | [arxiv.org/abs/2503.18813](https://arxiv.org/abs/2503.18813) · [arxiv.org/abs/2506.08837](https://arxiv.org/abs/2506.08837) · [simonwillison.net](https://simonwillison.net/2025/Jun/16/the-lethal-trifecta/) |
-| tb speaks ACP | Agent Client Protocol server so the human reader/editor and editors like Zed can see and approve agent actions. | protocolo · UI | [agentclientprotocol.com](https://agentclientprotocol.com/protocol/v1/overview) |
+| tb speaks ACP | Agent Client Protocol server so the human reader/editor and editors like Zed can see and approve agent actions. | protocol · UI | [agentclientprotocol.com](https://agentclientprotocol.com/protocol/v1/overview) |
 | AGENTS.md as local context | `tb init` reads existing `AGENTS.md`/`CLAUDE.md` and can seed with `--write-agents`; `tb ctx` (per directory) remains as an evolution. | mem/ctx | [agents.md](https://agents.md/) |
 | Benchmark with cost, pass^k and humans | Report the cost×accuracy frontier, pass^k beyond pass@1, and an A/B with measured time, because perceived gain can have inverted signal. | benchmark | [arxiv.org/abs/2407.01502](https://arxiv.org/abs/2407.01502) · [arxiv.org/abs/2406.12045](https://arxiv.org/abs/2406.12045) · [arxiv.org/abs/2507.09089](https://arxiv.org/abs/2507.09089) |
 | Harbor task format | Task = container + instruction + tests + reference solution, reusing benchmarks already adapted to Terminal-Bench. | benchmark | [arxiv.org/abs/2601.11868](https://arxiv.org/abs/2601.11868) |

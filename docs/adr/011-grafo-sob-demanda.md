@@ -25,16 +25,16 @@ We adopt an **on-demand graph with A/B measurement** approach:
 # The graph is a tool the agent can choose to use
 tools:
   - name: tb_graph_search
-    description: "Busca semântica no grafo de código"
+    description: "Semantic search over the code graph"
     optional: true
     
   - name: tb_graph_callers
-    description: "Encontra chamadores de uma função"
+    description: "Finds callers of a function"
     optional: true
     
   - name: tb_graph_impact
   - name: tb_graph_deps
-    description: "Lista dependências de um módulo"
+    description: "Lists a module's dependencies"
     optional: true
 ```
 
@@ -44,15 +44,15 @@ tools:
 
 ```bash
 # Before (verbose)
-tb graph search "autenticação"
-# Retorna: título, descrição, código, contexto, arquivos relacionados...
+tb graph search "authentication"
+# Returns: title, description, code, context, related files...
 
 # After (lean)
-tb graph search "autenticação" --format compact
-# Retorna: [file:line] título (1 linha por resultado)
+tb graph search "authentication" --format compact
+# Returns: [file:line] title (1 line per result)
 
 # Details on demand
-tb graph search "autenticação" --file src/auth.go --expand
+tb graph search "authentication" --file src/auth.go --expand
 ```
 
 ### 3. A/B by Task Type
@@ -75,10 +75,10 @@ The router detects inefficiency patterns identified in the study:
 ```yaml
 # Patterns to detect (appeared in 79–98% of tasks in the study)
 inefficiency_patterns:
-  - redundant_search: "Mesma query executada 2+ vezes"
-  - similar_scripts: "Scripts com >80% de similaridade executados"
-  - test_reexecution: "Mesmos testes executados sem mudança de código"
-  - excessive_graph_calls: ">10 chamadas de grafo sem leitura de arquivo"
+  - redundant_search: "Same query run 2+ times"
+  - similar_scripts: "Scripts with >80% similarity run"
+  - test_reexecution: "Same tests rerun with no code change"
+  - excessive_graph_calls: ">10 graph calls with no file read"
 ```
 
 The watchdog reports waste metrics as KPIs.
@@ -90,13 +90,13 @@ Based on the finding that human-written skills cut up to 41.73% of cost:
 ```yaml
 # Skills have priority over automatic search
 skills:
-  - name: "localizar-handler-go"
-    description: "Localiza handlers HTTP em projetos Go"
-    trigger: "busca por handler, endpoint, rota em projeto Go"
+  - name: "locate-go-handler"
+    description: "Locates HTTP handlers in Go projects"
+    trigger: "search for handler, endpoint, route in a Go project"
     steps:
       - "grep -r 'func.*Handler' --include='*.go'"
-      - "filtrar por padrão http.HandleFunc ou chi.Route"
-    # Skill humana evita N chamadas de grafo
+      - "filter by http.HandleFunc or chi.Route pattern"
+    # A human skill avoids N graph calls
 ```
 
 ## Consequences

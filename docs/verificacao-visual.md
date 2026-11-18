@@ -76,11 +76,11 @@ When the capture and the reference have different sizes:
 4. Report as `SIZE≠` in the report
 
 ```
-Referência: 1920×1080
-Captura:    1920×1050  (30px mais baixa)
+Reference: 1920×1080
+Capture:   1920×1050  (30px shorter)
 
-Padding: 30 linhas de #FF00FF na captura
-Diff: 30 × 1920 = 57,600 pixels = ~2.8% de diferença só por altura
+Padding: 30 rows of #FF00FF in the capture
+Diff: 30 × 1920 = 57,600 pixels = ~2.8% difference from height alone
 ```
 
 ---
@@ -121,18 +121,18 @@ Masks are **cheating** if used to:
 ### Mask Format
 
 ```yaml
-# no manifesto de tela
+# in the screen manifest
 masks:
   - region: [x, y, width, height]
-    reason: "Timestamp atualizado a cada segundo"
+    reason: "Timestamp updated every second"
     type: dynamic_data
     
   - region: [100, 50, 40, 40]
-    reason: "Avatar do usuário logado"
+    reason: "Logged-in user avatar"
     type: user_content
     
   - region: [200, 300, 100, 20]
-    reason: "Desvio aprovado: fonte fallback"
+    reason: "Approved deviation: fallback font"
     type: approved_deviation
     decision: "vault/decisions/font-fallback.md"
 ```
@@ -219,7 +219,7 @@ visual:
 
 reference_stability:
   runs: 2
-  max_diff: 0.1%  # referências devem ser idênticas entre runs
+  max_diff: 0.1%  # references must be identical across runs
 ```
 
 ### Reference Pipeline
@@ -279,7 +279,7 @@ screens:
       
     masks:
       - region: [850, 620, 200, 30]
-        reason: "Ano no copyright muda"
+        reason: "Copyright year changes"
         type: dynamic_data
         
     expected_height: 1080
@@ -303,17 +303,17 @@ screens:
       
     masks:
       - region: [100, 50, 40, 40]
-        reason: "Avatar do usuário"
+        reason: "User avatar"
         type: user_content
       - region: [1800, 20, 100, 20]
-        reason: "Hora atual"
+        reason: "Current time"
         type: dynamic_data
         
     wcag:
       level: AA
       exceptions:
         - selector: ".decorative-icon"
-          reason: "Elemento decorativo, não informativo"
+          reason: "Decorative, non-informative element"
 
 thresholds:
   min_similarity: 95
@@ -389,7 +389,7 @@ Text differences are **reported**, not forced:
 text_differences:
   - location: "login.title"
     reference: "Bem-vindo de volta"
-    captured: "Bem vindo de volta"  # falta hífen
+    captured: "Bem vindo de volta"  # missing hyphen
     source: "i18n/pt-BR.json"
     action: report
     
