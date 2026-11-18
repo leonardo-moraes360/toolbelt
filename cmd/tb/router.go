@@ -39,7 +39,7 @@ func routerRoot() (string, error) {
 	return ticket.FindRoot(cwd), nil
 }
 
-// loadRouterConfig lê a seção router: (global + local, ou -c) e valida.
+// Reads the router: section from global + local config, or from -c.
 func loadRouterConfig(root string) (config.RouterConfig, *config.Config, error) {
 	cfg, err := config.Load()
 	if err != nil {

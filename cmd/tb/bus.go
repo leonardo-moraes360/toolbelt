@@ -21,7 +21,7 @@ func openBusStore() (*bus.Store, error) {
 	return bus.Open(ticket.FindRoot(cwd))
 }
 
-// busMember abre o store e autentica --channel/--as pela sessão CLI.
+// busMember authenticates --channel/--as against the CLI session.
 func busMember(cmd *cobra.Command) (*bus.Store, bus.Member, error) {
 	channel, _ := cmd.Flags().GetString("channel")
 	as, _ := cmd.Flags().GetString("as")
@@ -45,7 +45,7 @@ func addMemberFlags(c *cobra.Command) {
 	c.Flags().String("as", "", "nome do agente (sessão criada por tb bus join)")
 }
 
-// printBusJSON imprime JSON indentado sem escapar <, > e &.
+// Indented JSON without escaping <, > and &.
 func printBusJSON(v any) error {
 	b, err := bus.MarshalIndent(v)
 	if err != nil {
@@ -55,7 +55,7 @@ func printBusJSON(v any) error {
 	return err
 }
 
-// readPayload aceita JSON literal ou @arquivo.
+// Accepts literal JSON or @file.
 func readPayload(v string) (json.RawMessage, error) {
 	if v == "" {
 		return nil, nil

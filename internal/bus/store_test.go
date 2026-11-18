@@ -37,7 +37,7 @@ func openTest(t *testing.T) (*Store, *clock) {
 	return s, c
 }
 
-// setup cria canal, dono (supervisor) e um worker.
+// setup creates a channel, its owner (supervisor) and a worker.
 func setup(t *testing.T) (s *Store, c *clock, owner, worker Member) {
 	t.Helper()
 	s, c = openTest(t)
@@ -88,7 +88,7 @@ func TestOpenPermissionsAndSchema(t *testing.T) {
 			t.Errorf("%s: modo %o, quer %o", p, st.Mode().Perm(), want)
 		}
 	}
-	s, err = Open(root) // reabre sem recriar schema
+	s, err = Open(root) // reopen without recreating the schema
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -173,7 +173,7 @@ func TestSendRecvRoutingCursorAndPeek(t *testing.T) {
 	if len(got) != 2 {
 		t.Fatalf("since: %s", ids(got))
 	}
-	// o dono não recebe as próprias mensagens, só as dos outros
+	// The owner gets only others' messages, never its own.
 	if got, _ = s.Recv(ctx, owner, RecvOptions{}); len(got) != 0 {
 		t.Fatalf("dono recebeu as próprias: %s", ids(got))
 	}
@@ -228,7 +228,7 @@ func TestSendRules(t *testing.T) {
 	if err != nil || ch.ExpiresAt == nil || !ch.ExpiresAt.After(c.now()) {
 		t.Fatalf("extend: %+v %v", ch, err)
 	}
-	send(t, s, owner, &SendInput{To: "topic:x", Type: TypeQuery}) // reaberto, sessões intactas
+	send(t, s, owner, &SendInput{To: "topic:x", Type: TypeQuery}) // reopened, sessions intact
 	if ch, err := s.ExtendChannel("feature-x", 0); err != nil || ch.ExpiresAt != nil {
 		t.Fatalf("extend sem expiração: %+v %v", ch, err)
 	}
@@ -247,7 +247,7 @@ func TestIdempotencyAndTTL(t *testing.T) {
 	if !dup.Duplicate || dup.Message.ID != first.Message.ID || first.Duplicate {
 		t.Fatalf("dedupe: first=%+v dup=%+v", first, dup)
 	}
-	// mesma chave de outro remetente não é duplicata
+	// The same key from another sender is not a duplicate.
 	if r := send(t, s, worker, &SendInput{To: "topic:board", Type: TypeTaskStatus, IdempotencyKey: "TKT-001/status/1"}); r.Duplicate {
 		t.Fatal("chave é por remetente")
 	}
@@ -275,7 +275,7 @@ func TestPayloadRedaction(t *testing.T) {
 	}
 }
 
-// wantErr falha se err for nil ou não contiver sub ("" aceita qualquer erro).
+// wantErr fails if err is nil or lacks sub ("" accepts any error).
 func wantErr(t *testing.T, err error, sub, what string) {
 	t.Helper()
 	if err == nil || !strings.Contains(err.Error(), sub) {
@@ -300,7 +300,7 @@ func TestClaimComplete(t *testing.T) {
 	_, err = s.ClaimThread(worker, "TKT-001")
 	must(t, err)
 	_, err = s.ClaimThread(worker, "TKT-001")
-	must(t, err) // reclaim do dono é idempotente
+	must(t, err) // owner's reclaim is idempotent
 	_, err = s.ClaimThread(other.Member, "TKT-001")
 	wantErr(t, err, "agent:grok-1", "segundo dono")
 	_, err = s.Complete(other.Member, "TKT-001", nil)

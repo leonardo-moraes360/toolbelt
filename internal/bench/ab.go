@@ -8,7 +8,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// ABVariant descreve uma variante A/B (config + feature flags).
+// ABVariant: config + feature flags.
 type ABVariant struct {
 	Label string            `yaml:"label" json:"label"`
 	Flags map[string]string `yaml:"flags,omitempty" json:"flags,omitempty"`
@@ -16,7 +16,6 @@ type ABVariant struct {
 	Agent AgentConfig       `yaml:"agent,omitempty" json:"agent,omitempty"`
 }
 
-// LoadABVariant carrega uma variante A/B de um arquivo YAML.
 func LoadABVariant(path string) (*ABVariant, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -43,7 +42,6 @@ func baseName(path string) string {
 	return path
 }
 
-// ApplyVariant anexa flags/env ao agente e rotula resultados.
 func ApplyVariant(agent *AgentConfig, variant *ABVariant) {
 	if variant == nil {
 		return
@@ -71,7 +69,6 @@ func ApplyVariant(agent *AgentConfig, variant *ABVariant) {
 	}
 }
 
-// TagResults aplica label e flags aos resultados.
 func TagResults(results []Result, variant *ABVariant) {
 	if variant == nil {
 		return
@@ -92,7 +89,6 @@ func copyStringMap(in map[string]string) map[string]string {
 	return out
 }
 
-// ABComparison agrega métricas de sucesso, tempo e tokens entre dois lados A/B.
 type ABComparison struct {
 	LabelA         string  `json:"label_a"`
 	LabelB         string  `json:"label_b"`
@@ -110,7 +106,6 @@ type ABComparison struct {
 	DeltaSuccess   float64 `json:"delta_success"`
 }
 
-// CompareAB calcula deltas de token/tempo/sucesso entre dois sumários.
 func CompareAB(a, b *Summary) *ABComparison {
 	if a == nil || b == nil {
 		return nil

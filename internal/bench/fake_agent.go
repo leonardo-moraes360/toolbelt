@@ -7,36 +7,28 @@ import (
 	"path/filepath"
 )
 
-// FakeAgentConfig configuração do agente fake para testes.
 type FakeAgentConfig struct {
-	// Behaviors define comportamentos por task ID.
-	// Se não definido para uma task, usa DefaultBehavior.
+	// Keyed by task ID; tasks not listed use DefaultBehavior.
 	Behaviors       map[string]FakeBehavior `json:"behaviors"`
 	DefaultBehavior FakeBehavior            `json:"default_behavior"`
 }
 
-// FakeBehavior define como o agente fake responde a uma tarefa.
 type FakeBehavior struct {
-	// ShouldPass se true, produz o resultado correto.
+	// ShouldPass produces the correct result.
 	ShouldPass bool `json:"should_pass"`
 
-	// DelayMs atraso artificial em milissegundos.
 	DelayMs int `json:"delay_ms"`
 
-	// TokensUsed tokens simulados.
 	TokensUsed int `json:"tokens_used"`
 
-	// ToolCalls chamadas de ferramentas simuladas.
 	ToolCalls int `json:"tool_calls"`
 
-	// FilesToCreate arquivos a criar no workdir.
+	// Paths relative to the workdir.
 	FilesToCreate map[string]string `json:"files_to_create"`
 
-	// FilesToModify modificações a fazer em arquivos existentes.
 	FilesToModify map[string]string `json:"files_to_modify"`
 }
 
-// FakeAgentOutput saída JSON do agente fake.
 type FakeAgentOutput struct {
 	Status  string `json:"status"`
 	Message string `json:"message"`
@@ -49,10 +41,8 @@ type FakeAgentOutput struct {
 	ToolCalls int `json:"tool_calls"`
 }
 
-// RunFakeAgent executa o agente fake para uma tarefa.
-// Isso é usado pelo script fake-agent para simular um agente.
+// RunFakeAgent backs the fake-agent binary used to simulate an agent.
 func RunFakeAgent(workDir, prompt, configPath string) error {
-	// Carrega configuração
 	config := FakeAgentConfig{
 		DefaultBehavior: FakeBehavior{
 			ShouldPass: true,
@@ -68,16 +58,14 @@ func RunFakeAgent(workDir, prompt, configPath string) error {
 		}
 	}
 
-	// Detecta task ID do workdir (último segmento do path temporário)
+	// Task ID comes from the workdir (last segment of the temp path).
 	taskID := detectTaskID(workDir)
 
-	// Busca comportamento específico ou usa default
 	behavior := config.DefaultBehavior
 	if b, ok := config.Behaviors[taskID]; ok {
 		behavior = b
 	}
 
-	// Aplica modificações
 	for path, content := range behavior.FilesToCreate {
 		fullPath := filepath.Join(workDir, path)
 		if err := os.MkdirAll(filepath.Dir(fullPath), 0o755); err != nil {
@@ -95,7 +83,6 @@ func RunFakeAgent(workDir, prompt, configPath string) error {
 		}
 	}
 
-	// Gera output
 	output := FakeAgentOutput{
 		Status:  "completed",
 		Message: "Task processed by fake agent",
@@ -116,11 +103,9 @@ func RunFakeAgent(workDir, prompt, configPath string) error {
 	return enc.Encode(output)
 }
 
-// detectTaskID tenta extrair o ID da tarefa do diretório de trabalho.
 func detectTaskID(workDir string) string {
 	base := filepath.Base(workDir)
-	// Formato: tb-bench-{taskID}-{random}
-	// Tenta extrair taskID
+	// Format: tb-bench-{taskID}-{random}
 	if len(base) > 9 && base[:9] == "tb-bench-" {
 		rest := base[9:]
 		for i := len(rest) - 1; i >= 0; i-- {

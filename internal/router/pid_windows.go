@@ -4,5 +4,5 @@ package router
 
 import "os"
 
-// PidAlive em Windows só reconhece o próprio processo (sem sinal 0).
+// On Windows PidAlive only recognizes the current process (no signal 0).
 func PidAlive(pid int) bool { return pid == os.Getpid() }

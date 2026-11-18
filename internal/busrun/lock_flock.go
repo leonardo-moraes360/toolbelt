@@ -7,8 +7,7 @@ import (
 	"syscall"
 )
 
-// acquireLock obtém lock exclusivo (flock) sem esperar: falha se outro
-// harness já segura o lock.
+// acquireLock does not wait: it fails if another harness holds the flock.
 func acquireLock(path string) (func(), error) {
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {

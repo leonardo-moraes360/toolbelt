@@ -27,22 +27,21 @@ type Workspace struct {
 type Manager struct {
 	baseDir string
 	repoDir string
-	// gitArgs são opções "-c" prefixadas a todo git de Create/Remove (ver
-	// SetGitArgs); run, quando não nil, executa esses comandos (ver SetRunner).
+	// gitArgs: "-c" options prefixed to every git call in Create/Remove (see
+	// SetGitArgs); run, when non-nil, executes those commands (see SetRunner).
 	gitArgs []string
 	run     func(*exec.Cmd) ([]byte, error)
 }
 
-// SetGitArgs define argumentos globais do git (ex.: "-c", "core.hooksPath=/dev/null")
-// inseridos antes do subcomando em Create/Remove. Opcional e aditivo: sem
-// chamada, o comportamento é o anterior (config do usuário integral, hooks
-// inclusive). O router o usa para que worktrees criados por ele nunca rodem
-// hooks/fsmonitor do usuário.
+// SetGitArgs sets global git args (e.g. "-c", "core.hooksPath=/dev/null")
+// inserted before the subcommand in Create/Remove. Optional and additive:
+// without it, the user's full git config applies, hooks included. The router
+// uses it so worktrees it creates never run the user's hooks/fsmonitor.
 func (m *Manager) SetGitArgs(args ...string) { m.gitArgs = append([]string(nil), args...) }
 
-// SetRunner substitui a execução dos comandos git de Create/Remove (devolve a
-// saída combinada). Permite ao chamador rastrear os processos-filho (o router os
-// registra para que nunca sejam confundidos com descendentes escapados).
+// SetRunner replaces execution of the Create/Remove git commands (returning
+// combined output) so the caller can track the child processes: the router
+// registers them so they are never mistaken for escaped descendants.
 func (m *Manager) SetRunner(fn func(*exec.Cmd) ([]byte, error)) { m.run = fn }
 
 func (m *Manager) combined(cmd *exec.Cmd) ([]byte, error) {
@@ -54,7 +53,7 @@ func (m *Manager) combined(cmd *exec.Cmd) ([]byte, error) {
 
 func (m *Manager) gitCmd(dir string, args ...string) *exec.Cmd {
 	full := append(append([]string(nil), m.gitArgs...), args...)
-	cmd := exec.Command("git", full...) //nolint:gosec // argumentos controlados pelo workspace manager
+	cmd := exec.Command("git", full...) //nolint:gosec // args controlled by the workspace manager
 	cmd.Dir = dir
 	return cmd
 }
@@ -141,10 +140,10 @@ func (m *Manager) Snapshot(ws *Workspace) (string, error) {
 }
 
 func (m *Manager) Rollback(ws *Workspace, ref string) error {
-	if out, err := exec.Command("git", "-C", ws.Path, "reset", "--hard", ref).CombinedOutput(); err != nil { //nolint:gosec // ref de snapshot interno
+	if out, err := exec.Command("git", "-C", ws.Path, "reset", "--hard", ref).CombinedOutput(); err != nil { //nolint:gosec // internal snapshot ref
 		return fmt.Errorf("%s: %w", string(out), err)
 	}
-	if out, err := exec.Command("git", "-C", ws.Path, "clean", "-fdx").CombinedOutput(); err != nil { //nolint:gosec // limpeza controlada do worktree
+	if out, err := exec.Command("git", "-C", ws.Path, "clean", "-fdx").CombinedOutput(); err != nil { //nolint:gosec // controlled worktree cleanup
 		return fmt.Errorf("%s: %w", string(out), err)
 	}
 	return nil

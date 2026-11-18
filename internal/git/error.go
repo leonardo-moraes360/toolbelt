@@ -73,7 +73,7 @@ func Wrap(err error, stderr []byte, args ...string) error {
 }
 
 func Output(dir string, args ...string) ([]byte, error) {
-	cmd := exec.Command("git", args...) //nolint:gosec // args do operador
+	cmd := exec.Command("git", args...) //nolint:gosec // operator-supplied args
 	cmd.Dir = dir
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
@@ -85,7 +85,7 @@ func Output(dir string, args ...string) ([]byte, error) {
 }
 
 func CombinedOutput(dir string, args ...string) ([]byte, error) {
-	cmd := exec.Command("git", args...) //nolint:gosec // args do operador
+	cmd := exec.Command("git", args...) //nolint:gosec // operator-supplied args
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	if err != nil {

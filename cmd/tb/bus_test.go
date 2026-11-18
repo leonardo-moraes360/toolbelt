@@ -80,7 +80,7 @@ func unmarshalOut(t *testing.T, out []byte, v any) {
 	}
 }
 
-// busCLISetup cria o canal fx pela CLI, faz join do dono e devolve o convite do worker.
+// busCLISetup creates channel fx via the CLI, joins the owner and returns the worker's invite.
 func busCLISetup(t *testing.T, tbBin, dir string) string {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Join(dir, ".toolbelt"), 0o755); err != nil {
@@ -133,8 +133,8 @@ type busEnvelopeOut struct {
 	} `json:"params"`
 }
 
-// TestBusCLIToMCPEndToEnd: dono via CLI (um processo por comando) e worker
-// via `tb mcp` (processo stdio de longa duração) trocam mensagens no mesmo store.
+// Owner via CLI (one process per command) and worker via `tb mcp` (long-lived
+// stdio process) exchange messages through the same store.
 func TestBusCLIToMCPEndToEnd(t *testing.T) {
 	tbBin := buildTB(t)
 	dir := t.TempDir()
@@ -142,7 +142,7 @@ func TestBusCLIToMCPEndToEnd(t *testing.T) {
 	c := startMCP(t, tbBin, dir)
 	c.must("tb_bus_join", map[string]any{"channel": "fx", "invite": workerCode, "name": "grok-1", "vendor": "xai", "wake": "notify"})
 
-	// worker espera em long-poll; o dono envia de outro processo durante a espera.
+	// Worker long-polls; the owner sends from another process while it waits.
 	done := make(chan string, 1)
 	go func() {
 		out, isErr := c.call("tb_bus_recv", map[string]any{"wait": "10s"})

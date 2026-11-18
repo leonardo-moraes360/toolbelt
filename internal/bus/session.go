@@ -8,14 +8,12 @@ import (
 	"strings"
 )
 
-// EnvStateDir sobrepõe a base do diretório privado do bus (testes, harness).
+// EnvStateDir overrides the base of the bus private dir (tests, harness).
 const EnvStateDir = "TB_BUS_STATE_DIR"
 
-// PrivateDir devolve o diretório privado do bus para o repositório root:
-// sessões, arquivos de wake e estado do harness. Fica FORA do repositório
-// (por padrão $XDG_STATE_HOME/toolbelt/bus/<hash da raiz>) para que um agente
-// acordado com a raiz como workdir não leia tokens de outros agentes nem a
-// própria config de wake.
+// PrivateDir holds sessions, wake files and harness state. It lives OUTSIDE
+// the repo (default $XDG_STATE_HOME/toolbelt/bus/<root hash>) so an agent woken
+// with the root as workdir cannot read other agents' tokens or its own wake config.
 func PrivateDir(root string) (string, error) {
 	base := os.Getenv(EnvStateDir)
 	if base == "" {
@@ -42,8 +40,8 @@ func PrivateDir(root string) (string, error) {
 	return filepath.Join(base, hashSecret(abs)[:16]), nil
 }
 
-// AgentDir devolve <privado>/sessions/<canal>/<nome>: só o token e o
-// .mcp.json desse agente (o harness libera leitura só deste diretório).
+// AgentDir is <private>/sessions/<channel>/<name>: only that agent's token and
+// .mcp.json (the harness grants read access to this dir alone).
 func AgentDir(root, channel, name string) (string, error) {
 	if err := ValidName("canal", channel); err != nil {
 		return "", err
@@ -66,7 +64,7 @@ func sessionPath(root, channel, name string) (string, error) {
 	return filepath.Join(dir, "token"), nil
 }
 
-// SaveSession grava o token da sessão CLI com modo 0600 (diretórios 0700).
+// SaveSession writes the CLI session token with mode 0600 (dirs 0700).
 func SaveSession(root string, sess *Session) error {
 	p, err := sessionPath(root, sess.Channel, sess.Name)
 	if err != nil {
@@ -82,14 +80,13 @@ func SaveSession(root string, sess *Session) error {
 	return os.Rename(tmp, p)
 }
 
-// LoadMember lê o token da sessão CLI e autentica no store.
 func (s *Store) LoadMember(channel, name string) (Member, error) {
 	m, _, err := s.LoadSession(channel, name)
 	return m, err
 }
 
-// LoadSession é LoadMember que também retorna o token (para prender uma
-// conexão MCP à sessão CLI). O token nunca deve ser impresso.
+// LoadSession also returns the token, to pin an MCP connection to the CLI
+// session. The token must never be printed.
 func (s *Store) LoadSession(channel, name string) (Member, string, error) {
 	p, err := sessionPath(s.root, channel, name)
 	if err != nil {
@@ -107,7 +104,7 @@ func (s *Store) LoadSession(channel, name string) (Member, string, error) {
 	return m, token, err
 }
 
-// mkdirPrivate cria dir com 0700 e força 0700 no diretório final.
+// mkdirPrivate forces 0700 on the leaf dir even if it already existed.
 func mkdirPrivate(dir string) error {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err

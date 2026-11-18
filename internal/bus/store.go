@@ -13,23 +13,23 @@ import (
 	"strings"
 	"time"
 
-	_ "modernc.org/sqlite" // driver SQLite pure-Go (CGO_ENABLED=0)
+	_ "modernc.org/sqlite" // pure-Go SQLite driver (CGO_ENABLED=0)
 
 	"github.com/leonardo-moraes360/toolbelt/internal/mem"
 )
 
-// SchemaVersion é a versão do schema em PRAGMA user_version.
+// SchemaVersion is stored in PRAGMA user_version.
 const SchemaVersion = 1
 
-// setSchemaVersion grava SchemaVersion; literal para a query ser estática
-// (TestSchemaVersionPragma garante que os dois andam juntos).
+// Literal so the query is static; TestSchemaVersionPragma keeps it in sync
+// with SchemaVersion.
 const setSchemaVersion = `PRAGMA user_version = 1`
 
-// ErrInvalidInvite é a resposta genérica para convite inexistente, usado,
-// expirado ou de outro canal (não revela qual).
+// ErrInvalidInvite is the generic answer for a missing, used, expired or
+// other-channel invite (deliberately does not reveal which).
 var ErrInvalidInvite = errors.New("convite inválido ou expirado")
 
-// ErrUnauthorized indica sessão ausente ou token que não confere.
+// ErrUnauthorized: missing session or mismatched token.
 var ErrUnauthorized = errors.New("sessão do barramento inválida (faça join com um convite)")
 
 const schema = `
@@ -87,7 +87,7 @@ CREATE TABLE claims (
 );
 `
 
-// Store é o barramento persistido em <root>/.toolbelt/bus/bus.db.
+// Store is persisted at <root>/.toolbelt/bus/bus.db.
 type Store struct {
 	db   *sql.DB
 	root string
@@ -96,10 +96,8 @@ type Store struct {
 	poll time.Duration
 }
 
-// Dir devolve o diretório do barramento para a raiz root.
 func Dir(root string) string { return filepath.Join(root, ".toolbelt", "bus") }
 
-// Open abre (criando se preciso) o store do repositório em root.
 func Open(root string) (*Store, error) {
 	dir := Dir(root)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
@@ -118,14 +116,14 @@ func Open(root string) (*Store, error) {
 		return nil, err
 	}
 	q := url.Values{}
-	q.Add("_pragma", "busy_timeout(5000)") // antes do WAL: a troca de modo também espera o lock
+	q.Add("_pragma", "busy_timeout(5000)") // before WAL: the mode switch must also wait for the lock
 	q.Add("_pragma", "journal_mode(WAL)")
 	q.Add("_pragma", "foreign_keys(1)")
 	q.Add("_pragma", "synchronous(NORMAL)")
 	q.Set("_txlock", "immediate")
 	dsn := "file:" + path + "?" + q.Encode()
-	// A troca para WAL num banco novo pode devolver SQLITE_BUSY sem esperar
-	// (o SQLite evita deadlock). Reabre com backoff curto até openTimeout.
+	// Switching a new database to WAL can return SQLITE_BUSY without waiting
+	// (SQLite avoids deadlock), so reopen with a short backoff until openTimeout.
 	deadline := time.Now().Add(openTimeout)
 	for attempt := 1; ; attempt++ {
 		s, err := openOnce(dsn, root, dir)
@@ -157,18 +155,16 @@ func isBusy(err error) bool {
 	return strings.Contains(msg, "SQLITE_BUSY") || strings.Contains(msg, "database is locked")
 }
 
-// Close fecha o store.
 func (s *Store) Close() error { return s.db.Close() }
 
-// Root devolve a raiz do repositório.
 func (s *Store) Root() string { return s.root }
 
-// SetClock troca o relógio (testes).
+// SetClock is for tests.
 func (s *Store) SetClock(now func() time.Time) { s.now = now }
 
 func (s *Store) migrate() error {
-	// Lê a versão dentro da transação IMMEDIATE: dois processos abrindo um
-	// store novo ao mesmo tempo serializam aqui e só um cria o schema.
+	// Read the version inside the IMMEDIATE transaction: two processes opening
+	// a new store concurrently serialize here and only one creates the schema.
 	return s.tx(func(tx *sql.Tx) error {
 		var v int
 		if err := tx.QueryRow(`PRAGMA user_version`).Scan(&v); err != nil {
@@ -205,7 +201,6 @@ func (s *Store) nowNS() int64 { return s.now().UTC().UnixNano() }
 
 func fromNS(ns int64) time.Time { return time.Unix(0, ns).UTC() }
 
-// Channel é um canal do barramento.
 type Channel struct {
 	Name      string     `json:"name"`
 	Owner     string     `json:"owner"`
@@ -213,7 +208,7 @@ type Channel struct {
 	ExpiresAt *time.Time `json:"expires_at,omitempty"`
 }
 
-// Invite é um convite recém-emitido. Code só existe aqui: o store guarda o hash.
+// Code exists only here: the store keeps just its hash.
 type Invite struct {
 	Code      string    `json:"code"`
 	Channel   string    `json:"channel"`
@@ -222,7 +217,7 @@ type Invite struct {
 	ExpiresAt time.Time `json:"expires_at"`
 }
 
-// CreateChannel cria o canal e um convite de uso único para o dono (supervisor).
+// CreateChannel also issues a single-use invite for the owner (supervisor).
 func (s *Store) CreateChannel(name, owner string, ttl, inviteTTL time.Duration) (Channel, Invite, error) {
 	if err := ValidName("canal", name); err != nil {
 		return Channel{}, Invite{}, err
@@ -261,9 +256,9 @@ func (s *Store) CreateChannel(name, owner string, ttl, inviteTTL time.Duration) 
 	return ch, inv, err
 }
 
-// CreateInvite emite um convite de uso único com papel fixado. name, se não
-// vazio, vincula o convite a esse agente; se ele já estiver no canal, o join
-// com este convite substitui a sessão perdida (recuperação feita pelo humano).
+// CreateInvite issues a single-use invite with a fixed role. A non-empty name
+// binds it to that agent; if the agent is already in the channel, joining with
+// it replaces the lost session (human-driven recovery).
 func (s *Store) CreateInvite(channel string, role Role, name string, ttl time.Duration) (Invite, error) {
 	if _, err := ParseRole(string(role)); err != nil {
 		return Invite{}, err
@@ -313,10 +308,9 @@ type queryRower interface {
 	QueryRow(query string, args ...any) *sql.Row
 }
 
-// MaxChannelTTL limita o ttl do canal (evita overflow de expires_at).
+// Caps the channel ttl to avoid expires_at overflow.
 const MaxChannelTTL = 10 * 365 * 24 * time.Hour
 
-// ErrChannelExpired indica canal com expires_at no passado.
 var ErrChannelExpired = errors.New("canal expirou")
 
 func activeChannel(q queryRower, name string, now int64) (Channel, error) {
@@ -342,15 +336,14 @@ func activeChannel(q queryRower, name string, now int64) (Channel, error) {
 	return ch, nil
 }
 
-// ActiveChannel devolve o canal; erro com ErrChannelExpired se expirou.
-// Leitura sem transação de escrita (barata para polling).
+// ActiveChannel reads without a write transaction (cheap for polling).
 func (s *Store) ActiveChannel(name string) (Channel, error) {
 	return activeChannel(s.db, name, s.nowNS())
 }
 
-// ExtendChannel redefine a expiração do canal para agora + ttl (0 = sem
-// expiração). Vale também para canal já expirado: sessões, convites
-// vinculados e histórico continuam. Só humano (CLI), como create/invite.
+// ExtendChannel sets expiry to now + ttl (0 = never). Also works on an
+// expired channel: sessions, bound invites and history survive. Human-only
+// (CLI), like create/invite.
 func (s *Store) ExtendChannel(name string, ttl time.Duration) (Channel, error) {
 	if ttl < 0 || ttl > MaxChannelTTL {
 		return Channel{}, fmt.Errorf("ttl precisa estar entre 0 e %s", MaxChannelTTL)
@@ -377,7 +370,6 @@ func (s *Store) ExtendChannel(name string, ttl time.Duration) (Channel, error) {
 	return ch, err
 }
 
-// Channels lista os canais.
 func (s *Store) Channels() ([]Channel, error) {
 	rows, err := s.db.Query(`SELECT name, owner, created_at, expires_at FROM channels ORDER BY name`)
 	if err != nil {
@@ -402,17 +394,15 @@ func (s *Store) Channels() ([]Channel, error) {
 	return out, rows.Err()
 }
 
-// Member é um agente autenticado num canal.
 type Member struct {
 	Channel string `json:"channel"`
 	Name    string `json:"name"`
 	Role    Role   `json:"role"`
 }
 
-// ID devolve agent:<name>.
 func (m Member) ID() string { return AgentID(m.Name) }
 
-// Session é o resultado do join. Token nunca é serializado.
+// Session: Token is never serialized.
 type Session struct {
 	Member
 	AgentID string    `json:"agent_id"`
@@ -421,8 +411,7 @@ type Session struct {
 	Token   string    `json:"-"`
 }
 
-// Join consome o convite e registra o agente com o papel do convite.
-// wantRole, se não vazio, precisa coincidir com o papel do convite.
+// Join: a non-empty wantRole must match the invite's role.
 func (s *Store) Join(channel, code string, card *AgentCard, wantRole Role) (Session, error) {
 	if err := card.Validate(); err != nil {
 		return Session{}, err
@@ -472,9 +461,8 @@ func (s *Store) Join(channel, code string, card *AgentCard, wantRole Role) (Sess
 	return sess, err
 }
 
-// consumeInvite valida o convite, marca como usado e retorna o papel fixado.
-// rejoin indica convite vinculado a um agente que já está no canal.
-// Convite válido com nome ou papel errado devolve o mesmo erro genérico.
+// rejoin: the invite is bound to an agent already in the channel. A valid
+// invite with the wrong name or role returns the same generic error.
 func consumeInvite(tx *sql.Tx, channel, code, name string, wantRole Role, now int64) (role Role, rejoin bool, err error) {
 	hash := hashSecret(normalizeInvite(code))
 	var r string
@@ -509,8 +497,8 @@ func consumeInvite(tx *sql.Tx, channel, code, name string, wantRole Role, now in
 	return Role(r), n > 0, nil
 }
 
-// checkNameFree recusa, para convite não vinculado, o nome do dono do canal e
-// nomes reservados por convite vinculado ainda aberto.
+// For an unbound invite, checkNameFree rejects the channel owner's name and
+// names reserved by a still-open bound invite.
 func checkNameFree(tx *sql.Tx, channel, name string, now int64) error {
 	var n int
 	err := tx.QueryRow(`SELECT
@@ -526,7 +514,6 @@ func checkNameFree(tx *sql.Tx, channel, name string, now int64) error {
 	return nil
 }
 
-// Auth valida o token de sessão e devolve o membro.
 func (s *Store) Auth(channel, name, token string) (Member, error) {
 	if token == "" {
 		return Member{}, ErrUnauthorized
@@ -545,7 +532,6 @@ func (s *Store) Auth(channel, name, token string) (Member, error) {
 	return Member{Channel: channel, Name: name, Role: Role(role)}, nil
 }
 
-// Agents lista os agentes de um canal.
 func (s *Store) Agents(channel string) ([]AgentInfo, error) {
 	rows, err := s.db.Query(`SELECT name, role, card, joined_at FROM agents WHERE channel = ? ORDER BY joined_at`, channel)
 	if err != nil {
@@ -570,7 +556,6 @@ func (s *Store) Agents(channel string) ([]AgentInfo, error) {
 	return out, rows.Err()
 }
 
-// AgentInfo descreve um agente registrado.
 type AgentInfo struct {
 	AgentID  string    `json:"agent_id"`
 	Name     string    `json:"name"`
@@ -579,7 +564,7 @@ type AgentInfo struct {
 	JoinedAt time.Time `json:"joined_at"`
 }
 
-// SendInput é o que o remetente controla no envelope.
+// SendInput is the part of the envelope the sender controls.
 type SendInput struct {
 	To             string
 	Thread         string
@@ -590,13 +575,11 @@ type SendInput struct {
 	Payload        json.RawMessage
 }
 
-// SendResult é o resultado do envio.
 type SendResult struct {
 	Message   Message `json:"message"`
 	Duplicate bool    `json:"duplicate"`
 }
 
-// Send publica uma mensagem do membro m.
 func (s *Store) Send(m Member, in *SendInput) (SendResult, error) {
 	v, err := validateSend(m, in)
 	if err != nil {
@@ -716,7 +699,7 @@ func nullStr(s string) sql.NullString { return sql.NullString{String: s, Valid: 
 
 const selectMessage = `SELECT seq, id, channel, sender, recipient, thread, type, causation_id, idempotency_key, ttl, payload, created_at FROM messages`
 
-// Queries completas como constantes: só placeholders, valores vão em args.
+// Full queries as constants: placeholders only, values go in args.
 const (
 	selectIdempotent = selectMessage + ` WHERE channel = ? AND sender = ? AND idempotency_key = ?`
 	selectInbox      = `SELECT seq, id, channel, sender, recipient, thread, type, causation_id, idempotency_key, ttl, payload, created_at FROM messages WHERE channel = ? AND seq > ? AND sender <> ? AND (recipient = ? OR recipient = ? OR substr(recipient, 1, 6) = 'topic:') AND (expires_at IS NULL OR expires_at > ?) ORDER BY seq LIMIT ?`
@@ -739,7 +722,7 @@ func scanMessage(r rowScanner) (Message, error) {
 	return m, nil
 }
 
-// sanitizePayload garante objeto JSON ≤ MaxPayloadBytes e redige segredos.
+// sanitizePayload enforces a JSON object ≤ MaxPayloadBytes and redacts secrets.
 func sanitizePayload(raw json.RawMessage) ([]byte, error) {
 	if strings.TrimSpace(string(raw)) == "" {
 		return []byte("{}"), nil
@@ -749,7 +732,7 @@ func sanitizePayload(raw json.RawMessage) ([]byte, error) {
 	}
 	var obj map[string]any
 	dec := json.NewDecoder(bytes.NewReader(raw))
-	dec.UseNumber() // preserva inteiros grandes (IDs, números de PR)
+	dec.UseNumber() // keeps large integers (IDs, PR numbers) exact
 	if err := dec.Decode(&obj); err != nil {
 		return nil, fmt.Errorf("payload precisa ser um objeto JSON: %w", err)
 	}
@@ -790,15 +773,13 @@ func redactValue(v any) any {
 	}
 }
 
-// RecvOptions controla a leitura.
 type RecvOptions struct {
-	Wait  time.Duration // long-poll; limitado a MaxWait
-	Limit int           // padrão 50
-	Peek  bool          // não avança o cursor
-	Since int64         // >0: relê a partir deste seq (inclusive)
+	Wait  time.Duration // long-poll; capped at MaxWait
+	Limit int           // default 50
+	Peek  bool          // does not advance the cursor
+	Since int64         // >0: re-read from this seq (inclusive)
 }
 
-// Recv devolve mensagens para o membro após o cursor (ou desde Since).
 func (s *Store) Recv(ctx context.Context, m Member, opt RecvOptions) ([]Message, error) {
 	if opt.Limit <= 0 || opt.Limit > 500 {
 		opt.Limit = 50
@@ -871,7 +852,6 @@ func (s *Store) recvOnce(m Member, opt RecvOptions) ([]Message, error) {
 	return out, err
 }
 
-// Claim é o dono de uma thread.
 type Claim struct {
 	Channel     string     `json:"channel"`
 	Thread      string     `json:"thread"`
@@ -900,7 +880,7 @@ func scanClaim(r rowScanner) (Claim, error) {
 
 const selectClaim = `SELECT channel, thread, owner, claimed_at, completed_at, result_id FROM claims WHERE channel = ? AND thread = ?`
 
-// ClaimThread assume a thread (dono único). Repetir o próprio claim é idempotente.
+// ClaimThread: single owner; repeating one's own claim is idempotent.
 func (s *Store) ClaimThread(m Member, thread string) (Claim, error) {
 	if thread == "" {
 		return Claim{}, errors.New("thread é obrigatória")
@@ -937,13 +917,12 @@ func (s *Store) ClaimThread(m Member, thread string) (Claim, error) {
 	return c, err
 }
 
-// CompleteResult é o resultado de complete.
 type CompleteResult struct {
 	Claim   Claim   `json:"claim"`
 	Message Message `json:"message"`
 }
 
-// Complete encerra a thread do dono e publica task.result em topic:board.
+// Complete also publishes task.result to topic:board.
 func (s *Store) Complete(m Member, thread string, result json.RawMessage) (CompleteResult, error) {
 	if thread == "" {
 		return CompleteResult{}, errors.New("thread é obrigatória")
@@ -989,8 +968,8 @@ func (s *Store) Complete(m Member, thread string, result json.RawMessage) (Compl
 	return res, err
 }
 
-// Log devolve as últimas limit mensagens do canal (trilha de auditoria),
-// em ordem crescente de seq. thread filtra, se não vazio.
+// Log returns the last limit messages (audit trail) in ascending seq order;
+// a non-empty thread filters.
 func (s *Store) Log(channel, thread string, limit int) ([]Message, error) {
 	if limit <= 0 {
 		limit = 100
@@ -1025,7 +1004,6 @@ func (s *Store) Log(channel, thread string, limit int) ([]Message, error) {
 	return out, nil
 }
 
-// Cursor devolve o cursor de leitura do membro.
 func (s *Store) Cursor(m Member) (int64, error) {
 	var c int64
 	err := s.db.QueryRow(`SELECT cursor FROM agents WHERE channel = ? AND name = ?`, m.Channel, m.Name).Scan(&c)
@@ -1035,7 +1013,7 @@ func (s *Store) Cursor(m Member) (int64, error) {
 	return c, err
 }
 
-// DataVersion devolve PRAGMA data_version: muda quando outra conexão grava.
+// DataVersion is PRAGMA data_version: it changes when another connection writes.
 func (s *Store) DataVersion() (int64, error) {
 	var v int64
 	err := s.db.QueryRow(`PRAGMA data_version`).Scan(&v)
@@ -1047,10 +1025,10 @@ const pendingWhere = ` WHERE channel = ? AND seq > ? AND sender <> ?
 	AND (expires_at IS NULL OR expires_at > ?)
 	AND type IN (?`
 
-// Pending lista, sem avançar o cursor e sem transação de escrita, as
-// mensagens endereçadas a m com seq em (after, upto] (upto ≤ 0 = sem teto),
-// filtradas por tipo no SQL (mensagens de outros tipos não ocupam o limite).
-// topics=false ignora mensagens para topic:*.
+// Pending lists, without advancing the cursor or a write transaction, the
+// messages addressed to m with seq in (after, upto] (upto ≤ 0 = unbounded),
+// filtered by type in SQL so other types do not consume the limit.
+// topics=false skips topic:* messages.
 func (s *Store) Pending(m Member, after, upto int64, types []Type, topics bool, limit int) ([]Message, error) {
 	if len(types) == 0 {
 		return []Message{}, nil
@@ -1059,7 +1037,7 @@ func (s *Store) Pending(m Member, after, upto int64, types []Type, topics bool, 
 		limit = 500
 	}
 	placeholders := strings.Repeat(",?", len(types)-1)
-	q := selectMessage + pendingWhere + placeholders + ")" //nolint:gosec // G202: só placeholders "?"; valores vão em args
+	q := selectMessage + pendingWhere + placeholders + ")" //nolint:gosec // G202: only "?" placeholders; values go in args
 	args := []any{m.Channel, after, m.ID(), m.ID(), "role:" + string(m.Role), s.nowNS()}
 	for _, t := range types {
 		args = append(args, string(t))
@@ -1089,7 +1067,7 @@ func (s *Store) Pending(m Member, after, upto int64, types []Type, topics bool, 
 	return out, rows.Err()
 }
 
-// MaxSeq devolve o maior seq gravado no canal (0 se vazio).
+// MaxSeq is 0 for an empty channel.
 func (s *Store) MaxSeq(channel string) (int64, error) {
 	var v sql.NullInt64
 	err := s.db.QueryRow(`SELECT MAX(seq) FROM messages WHERE channel = ?`, channel).Scan(&v)

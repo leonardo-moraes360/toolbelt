@@ -153,7 +153,7 @@ func TestCoalesceFilterAndUrgent(t *testing.T) {
 		t.Fatalf("estado: %+v", h.st)
 	}
 
-	// urgent acorda sem esperar o debounce longo
+	// urgent wakes without waiting for the long debounce.
 	e2 := newEnv(t)
 	e2.writeConfig(t, "adapter: exec\nexec:\n  argv: [/bin/true]\ncoalesce:\n  debounce: 10s\n  max_delay: 20s\n")
 	e2.send(t, bus.TypeUrgent, "")
@@ -241,9 +241,8 @@ func TestExecFailureRetriesAndKeepsMessage(t *testing.T) {
 	}
 }
 
-// TestExecAdapterPacketHasNoSecrets roda o adapter exec real: o script grava
-// stdin e ambiente; nada de payload, token de sessão ou valor de pass_env vaza
-// para o packet nem para a auditoria.
+// Runs the real exec adapter: the script records stdin and env; no payload,
+// session token or pass_env value may leak into the packet or the audit.
 func TestExecAdapterPacketHasNoSecrets(t *testing.T) {
 	e := newEnv(t)
 	bin := t.TempDir()
@@ -343,7 +342,7 @@ nao json
 	}
 }
 
-// Achado 1: 500+ mensagens que não acordam não podem esconder um task.assign.
+// Finding 1: 500+ non-waking messages must not hide a task.assign.
 func TestManyNonWakingMessagesDoNotHideWake(t *testing.T) {
 	e := newEnv(t)
 	e.writeConfig(t, fastCfg)
@@ -376,14 +375,14 @@ func (f *flakyAdapter) Wake(ctx context.Context, p *Packet, st *State) (Outcome,
 	return Outcome{ExitCode: 1}, nil
 }
 
-// Achado 2: rewake que falha não pode virar laço infinito nem spam de status.
+// Finding 2: a failing rewake must not loop forever or spam status.
 func TestFailedRewakeIsBounded(t *testing.T) {
 	e := newEnv(t)
 	e.writeConfig(t, fastCfg+"rewake_after: 80ms\n")
 	e.send(t, bus.TypeQuery, "")
 	f := &flakyAdapter{okFirst: 1}
 	runFor(t, e.open(t, f), 1200*time.Millisecond)
-	if n := len(f.got()); n != 3 { // 1 ok + 2 tentativas do único rewake
+	if n := len(f.got()); n != 3 { // 1 ok + 2 attempts of the single rewake
 		t.Fatalf("despertares: %d", n)
 	}
 	log, _ := e.store.Log("ch", "", 0)
@@ -401,7 +400,7 @@ func TestFailedRewakeIsBounded(t *testing.T) {
 	}
 }
 
-// Achado 6: depois que o agente leu, o harness volta a ficar ocioso.
+// Finding 6: once the agent has read, the harness goes idle again.
 func TestIdleAfterReadPastRewake(t *testing.T) {
 	e := newEnv(t)
 	e.writeConfig(t, fastCfg+"rewake_after: 300ms\n")
@@ -419,7 +418,7 @@ func TestIdleAfterReadPastRewake(t *testing.T) {
 	}
 }
 
-// Achado 8: estado de outro store (seq acima do máximo atual) é descartado.
+// Finding 8: state from another store (seq above the current max) is discarded.
 func TestStaleStateIsReset(t *testing.T) {
 	e := newEnv(t)
 	e.writeConfig(t, fastCfg)
@@ -452,7 +451,6 @@ func TestPrivateDirOutsideRepo(t *testing.T) {
 	}
 }
 
-// writeScript grava um executável sh em dir/name.
 func writeScript(t *testing.T, dir, name, body string) string {
 	t.Helper()
 	p := filepath.Join(dir, name)
@@ -462,9 +460,9 @@ func writeScript(t *testing.T, dir, name, body string) string {
 	return p
 }
 
-// Achados 3, 4 e 5: preset claude achado no PATH (comando relativo) roda no
-// sandbox; o filho não lê token de outro agente nem a config de wake; a
-// auditoria não guarda o stream (que traz payloads).
+// Findings 3, 4 and 5: the claude preset found on PATH (relative command) runs
+// sandboxed; the child cannot read another agent's token or the wake config;
+// the audit does not keep the stream (which carries payloads).
 func TestClaudePresetFromPathIsolatedAndQuiet(t *testing.T) {
 	e := newEnv(t)
 	bin := t.TempDir()

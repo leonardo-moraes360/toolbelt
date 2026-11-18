@@ -45,7 +45,7 @@ func busEnvelopes(t *testing.T, out string) []bus.Envelope {
 	return envs
 }
 
-// busChannel cria o canal fx (como o humano faria na CLI) e devolve os convites.
+// busChannel creates channel fx (as a human would via the CLI) and returns the invites.
 func busChannel(t *testing.T) (root, ownerCode, workerCode string) {
 	t.Helper()
 	root = t.TempDir()
@@ -68,8 +68,8 @@ func busChannel(t *testing.T) (root, ownerCode, workerCode string) {
 	return root, ownerInv.Code, workerInv.Code
 }
 
-// TestBusMCPFlow: dois agentes MCP (simulados trocando as sessões em memória
-// da conexão) conversam e fecham uma thread.
+// TestBusMCPFlow: two MCP agents (simulated by swapping the connection's
+// in-memory sessions) talk and close a thread.
 func TestBusMCPFlow(t *testing.T) {
 	ResetBusSessions()
 	t.Cleanup(ResetBusSessions)
@@ -90,7 +90,7 @@ func TestBusMCPFlow(t *testing.T) {
 	failBus(t, "tb_bus_join", map[string]any{"channel": "fx", "invite": workerCode, "name": "x", "cwd": root}, "já está no canal")
 	ownerSessions := busState.sessions
 
-	ResetBusSessions() // "outra conexão"
+	ResetBusSessions() // "another connection"
 	mustBus(t, "tb_bus_join", map[string]any{"channel": "fx", "invite": workerCode, "name": "grok-1", "role": "worker", "cwd": root})
 	envs := busEnvelopes(t, mustBus(t, "tb_bus_recv", map[string]any{"wait": "1s"}))
 	if len(envs) != 1 || envs[0].Params.Type != bus.TypeTaskAssign {

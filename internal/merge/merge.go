@@ -1,8 +1,8 @@
-// Package merge integra o trabalho de vários tickets (branches de worktrees)
-// num único alvo, detectando sobreposição e conflitos (Fase 3).
+// Package merge integrates the work of several tickets (worktree branches)
+// into a single target, detecting overlap and conflicts (Phase 3).
 //
-// A integração acontece num worktree temporário destacado; refs só mudam no
-// final, de forma atômica (ff-only ou compare-and-swap via update-ref).
+// Integration happens in a temporary detached worktree; refs only change at
+// the end, atomically (ff-only or compare-and-swap via update-ref).
 package merge
 
 import (
@@ -20,7 +20,6 @@ import (
 	"github.com/leonardo-moraes360/toolbelt/internal/ticket"
 )
 
-// Strategy define o que fazer diante de conflito.
 type Strategy string
 
 const (
@@ -28,7 +27,7 @@ const (
 	StrategyLastWins Strategy = "last_wins"
 )
 
-// ParseStrategy valida a estratégia ("" = fail).
+// ParseStrategy treats "" as fail.
 func ParseStrategy(s string) (Strategy, error) {
 	switch v := strings.ToLower(strings.TrimSpace(s)); v {
 	case "", "fail":
@@ -42,42 +41,38 @@ func ParseStrategy(s string) (Strategy, error) {
 	}
 }
 
-// ErrConflict é devolvido (embrulhado) quando a estratégia fail encontra conflito.
+// ErrConflict is returned (wrapped) when the fail strategy hits a conflict.
 var ErrConflict = errors.New("conflito de merge")
 
-// Options configura Run.
 type Options struct {
-	Repo     string        // diretório dentro do repositório git
-	Store    *ticket.Store // store de tickets
-	IDs      []string      // IDs posicionais (formas normalizáveis)
-	Strategy Strategy      // "" = fail
-	DryRun   bool          // integra, reporta e descarta
-	Output   string        // escreve diff alvo..integrado neste arquivo, sem mover refs
-	Into     string        // branch alvo (default: branch atual)
-	Force    bool          // permite re-merge de tickets já mergeados
+	Repo     string // any directory inside the git repository
+	Store    *ticket.Store
+	IDs      []string // positional IDs (normalizable forms)
+	Strategy Strategy // "" = fail
+	DryRun   bool     // integrate, report and discard
+	Output   string   // write the target..integrated diff to this file, without moving refs
+	Into     string   // default: current branch
+	Force    bool     // allow re-merging already merged tickets
 
-	// AllowSensitive permite aplicar tickets que alteram caminhos sensíveis
+	// AllowSensitive allows applying tickets that change sensitive paths
 	// (hooks, .toolbelt, workflows, .gitmodules, gitlinks, .gitattributes...).
 	AllowSensitive bool
 }
 
-// File descreve um arquivo tocado por tickets.
 type File struct {
 	Path    string   `json:"path"`
 	Tickets []string `json:"tickets"`
 	Status  string   `json:"status"` // merge | conflict | last_wins
 }
 
-// Conflict descreve um conflito encontrado.
 type Conflict struct {
 	File       string   `json:"file"`
 	Ticket     string   `json:"ticket"`
 	Commit     string   `json:"commit"`
 	Others     []string `json:"others,omitempty"`
-	Resolution string   `json:"resolution"` // "" (não resolvido) ou last_wins
+	Resolution string   `json:"resolution"` // "" (unresolved) or last_wins
 }
 
-// TicketInfo resume um ticket integrado.
 type TicketInfo struct {
 	ID      string   `json:"id"`
 	Branch  string   `json:"branch,omitempty"`
@@ -85,7 +80,6 @@ type TicketInfo struct {
 	Files   []string `json:"files"`
 }
 
-// Result é o relatório de uma integração.
 type Result struct {
 	Strategy  Strategy     `json:"strategy"`
 	Target    string       `json:"target"`
@@ -107,7 +101,7 @@ var (
 	gitErr  error
 )
 
-// gitPath resolve o git uma única vez para caminho absoluto (evita busca em PATH a cada chamada).
+// gitPath resolves git to an absolute path once (avoids a PATH lookup on every call).
 func gitPath() (string, error) {
 	gitOnce.Do(func() {
 		p, err := exec.LookPath("git")
@@ -149,8 +143,8 @@ func (r runner) git(dir string, args ...string) (string, error) {
 	return stdout.String(), nil
 }
 
-// wtGit é mantido por legibilidade: git já roda sempre endurecido (sem hooks,
-// fsmonitor, diff externo, pager e assinatura GPG).
+// wtGit is kept for readability: git always runs hardened (no hooks,
+// fsmonitor, external diff, pager or GPG signing).
 func (r runner) wtGit(dir string, args ...string) (string, error) {
 	return r.git(dir, args...)
 }
@@ -168,7 +162,6 @@ type prepared struct {
 	files   []string
 }
 
-// Run executa a integração.
 func Run(opts *Options) (*Result, error) {
 	strategy, err := validateOptions(opts)
 	if err != nil {
@@ -179,7 +172,6 @@ func Run(opts *Options) (*Result, error) {
 		return nil, err
 	}
 
-	// Alvo.
 	target, startSHA, err := resolveTarget(r, opts.Into)
 	if err != nil {
 		return nil, err
@@ -189,7 +181,6 @@ func Run(opts *Options) (*Result, error) {
 		return nil, fmt.Errorf("HEAD destacado: informe --into <branch> (ou use --dry-run/--output)")
 	}
 
-	// Tickets.
 	prep, err := prepare(r, opts)
 	if err != nil {
 		return nil, err
@@ -198,7 +189,7 @@ func Run(opts *Options) (*Result, error) {
 	res := &Result{Strategy: strategy, Target: target, StartSHA: startSHA, DryRun: opts.DryRun, Conflicts: []Conflict{}}
 	byFile := indexTickets(res, prep)
 
-	// Gate de confiança: caminhos que viram execução de código fora do sandbox.
+	// Trust gate: paths that lead to code execution outside the sandbox.
 	if err := checkSensitive(r, prep, res, canApply && !opts.AllowSensitive); err != nil {
 		if errors.Is(err, ErrSensitive) {
 			return res, err
@@ -206,7 +197,6 @@ func Run(opts *Options) (*Result, error) {
 		return nil, err
 	}
 
-	// Worktree temporário destacado.
 	wt, cleanup, err := addTempWorktree(r, top, startSHA)
 	if err != nil {
 		return nil, err
@@ -226,8 +216,9 @@ func Run(opts *Options) (*Result, error) {
 	return finalize(r, top, wt, opts, target, startSHA, prep, res)
 }
 
-// finalize registra o SHA resultante e, conforme as opções, grava o patch
-// (--output), só reporta (--dry-run) ou avança o alvo e marca os tickets.
+// finalize records the resulting SHA and then, depending on options, writes the
+// patch (--output), only reports (--dry-run) or advances the target and marks
+// the tickets.
 func finalize(r runner, top, wt string, opts *Options, target, startSHA string, prep []prepared, res *Result) (*Result, error) {
 	sha, err := r.out(wt, "rev-parse", "HEAD")
 	if err != nil {
@@ -245,8 +236,9 @@ func finalize(r runner, top, wt string, opts *Options, target, startSHA string, 
 	return applyAndMark(r, top, opts, target, startSHA, prep, res)
 }
 
-// checkSensitive preenche res.Sensitive e, quando enforce, recusa a integração
-// se houver caminhos sensíveis (erro embrulha ErrSensitive; res é preservado).
+// checkSensitive fills res.Sensitive and, when enforce is set, refuses the
+// integration if sensitive paths exist (the error wraps ErrSensitive; res is
+// preserved).
 func checkSensitive(r runner, prep []prepared, res *Result, enforce bool) (err error) {
 	res.Sensitive, err = detectSensitive(r, prep)
 	if err != nil {
@@ -262,7 +254,6 @@ func checkSensitive(r runner, prep []prepared, res *Result, enforce bool) (err e
 	return nil
 }
 
-// validateOptions valida as opções e devolve a estratégia efetiva.
 func validateOptions(opts *Options) (Strategy, error) {
 	strategy := opts.Strategy
 	if strategy == "" {
@@ -280,7 +271,7 @@ func validateOptions(opts *Options) (Strategy, error) {
 	return strategy, nil
 }
 
-// newRunner resolve o toplevel do repositório e o fallback de identidade git.
+// newRunner resolves the repository toplevel and the git identity fallback.
 func newRunner(opts *Options) (r runner, top string, err error) {
 	repoDir := opts.Repo
 	if repoDir == "" {
@@ -298,7 +289,7 @@ func newRunner(opts *Options) (r runner, top string, err error) {
 	return r, top, nil
 }
 
-// indexTickets preenche res.Tickets e devolve arquivo -> tickets que o tocam.
+// indexTickets fills res.Tickets and returns file -> tickets that touch it.
 func indexTickets(res *Result, prep []prepared) map[string][]string {
 	byFile := map[string][]string{}
 	for i := range prep {
@@ -311,7 +302,6 @@ func indexTickets(res *Result, prep []prepared) map[string][]string {
 	return byFile
 }
 
-// addTempWorktree cria o worktree destacado temporário; cleanup o remove.
 func addTempWorktree(r runner, top, startSHA string) (wt string, cleanup func(), err error) {
 	tmp, err := os.MkdirTemp("", "tb-merge-")
 	if err != nil {
@@ -330,9 +320,8 @@ func addTempWorktree(r runner, top, startSHA string) (wt string, cleanup func(),
 	return wt, cleanup, nil
 }
 
-// pickAll aplica os commits de todos os tickets no worktree, acumulando
-// conflitos em res e status por arquivo. failed=true quando a estratégia fail
-// encontrou conflito (interrompe no primeiro).
+// pickAll accumulates conflicts in res and per-file status. failed=true when
+// the fail strategy hit a conflict (it stops at the first one).
 func pickAll(r runner, wt string, prep []prepared, strategy Strategy, byFile map[string][]string, res *Result, status map[string]string) (failed bool, err error) {
 	for i := range prep {
 		p := &prep[i]
@@ -357,7 +346,6 @@ func pickAll(r runner, wt string, prep []prepared, strategy Strategy, byFile map
 	return false, nil
 }
 
-// fileEntries monta a lista ordenada de arquivos tocados com seu status.
 func fileEntries(byFile map[string][]string, status map[string]string) []File {
 	paths := make([]string, 0, len(byFile))
 	for f := range byFile {
@@ -375,7 +363,7 @@ func fileEntries(byFile map[string][]string, status map[string]string) []File {
 	return files
 }
 
-// writeOutputPatch grava o diff alvo..integrado em output, sem mover refs.
+// writeOutputPatch writes the target..integrated diff without moving refs.
 func writeOutputPatch(r runner, top, output, startSHA string, res *Result) (*Result, error) {
 	diff, err := r.git(top, "diff", "--no-ext-diff", "--binary", startSHA, res.ResultSHA)
 	if err != nil {
@@ -388,7 +376,6 @@ func writeOutputPatch(r runner, top, output, startSHA string, res *Result) (*Res
 	return res, nil
 }
 
-// applyAndMark avança o alvo e marca os tickets como mergeados.
 func applyAndMark(r runner, top string, opts *Options, target, startSHA string, prep []prepared, res *Result) (*Result, error) {
 	if !res.NoChanges {
 		if err := advance(r, top, target, startSHA, res.ResultSHA); err != nil {
@@ -416,7 +403,7 @@ func nonNil(s []string) []string {
 	return s
 }
 
-// resolveTarget devolve (branch, sha). branch vazio = HEAD destacado.
+// resolveTarget returns (branch, sha); an empty branch means detached HEAD.
 func resolveTarget(r runner, into string) (branch, sha string, err error) {
 	if into != "" {
 		if err := gitref.Validate(into); err != nil {
@@ -470,7 +457,7 @@ func prepare(r runner, opts *Options) ([]prepared, error) {
 	return prep, nil
 }
 
-// prepareOne valida um ticket done e resolve base/head, commits e arquivos.
+// prepareOne requires a done ticket and resolves base/head, commits and files.
 func prepareOne(r runner, opts *Options, id string) (prepared, error) {
 	t, err := opts.Store.Get(id)
 	if err != nil {
@@ -511,12 +498,11 @@ func prepareOne(r runner, opts *Options, id string) (prepared, error) {
 	return p, nil
 }
 
-// pick aplica um commit no worktree e devolve os conflitos encontrados
-// (resolvidos ou não, conforme a estratégia).
+// pick returns the conflicts found, resolved or not depending on the strategy.
 //
-// last_wins: em conflito, a versão INTEIRA do arquivo no commit do ticket
-// posterior substitui a acumulada (não há merge por hunk); alterações de
-// tickets anteriores nesse mesmo arquivo são descartadas.
+// last_wins: on conflict, the WHOLE file from the later ticket's commit
+// replaces the accumulated one (no per-hunk merge); earlier tickets' changes
+// to that same file are discarded.
 func pick(r runner, wt, commit string, p *prepared, strategy Strategy, byFile map[string][]string) ([]Conflict, error) {
 	_, err := r.wtGit(wt, "cherry-pick", "--allow-empty", "--keep-redundant-commits", commit)
 	if err == nil {
@@ -565,16 +551,16 @@ func pick(r runner, wt, commit string, p *prepared, strategy Strategy, byFile ma
 	return out, nil
 }
 
-// resolveTheirs resolve o arquivo f em favor do commit do ticket (last_wins):
-// checkout --theirs (fallback: conteúdo do commit) + add, ou rm quando o
-// arquivo não existe no commit.
+// resolveTheirs resolves f in favor of the ticket's commit (last_wins):
+// checkout --theirs (fallback: the commit's content) + add, or rm when the
+// file does not exist in the commit.
 func resolveTheirs(r runner, wt, commit, f string) error {
 	if _, e := r.git(wt, "cat-file", "-e", commit+":"+f); e != nil {
 		_, e := r.git(wt, "rm", "-f", "--quiet", "--", f)
 		return e
 	}
 	if _, e := r.git(wt, "checkout", "--theirs", "--", f); e != nil {
-		// fallback: conteúdo do commit
+		// fallback: the commit's content
 		if _, e2 := r.git(wt, "checkout", commit, "--", f); e2 != nil {
 			return e2
 		}
@@ -583,9 +569,9 @@ func resolveTheirs(r runner, wt, commit, f string) error {
 	return e
 }
 
-// finishPick conclui o cherry-pick resolvido. Só vira skip quando o pick ficou
-// vazio após a resolução (nada staged contra HEAD). Qualquer outra falha do
-// continue é devolvida (o chamador aborta, sem perder commit).
+// finishPick only skips when the pick became empty after resolution (nothing
+// staged against HEAD). Any other continue failure is returned (the caller
+// aborts without losing a commit).
 func finishPick(r runner, wt string) error {
 	if _, e := r.git(wt, "diff", "--no-ext-diff", "--cached", "--quiet"); e == nil {
 		_, e2 := r.wtGit(wt, "cherry-pick", "--skip")
@@ -595,7 +581,7 @@ func finishPick(r runner, wt string) error {
 	return e
 }
 
-// advance move o alvo de old para new de forma atômica.
+// advance moves the target from old to new atomically.
 func advance(r runner, top, branch, oldSHA, newSHA string) error {
 	cur, err := r.out(top, "rev-parse", "--verify", "refs/heads/"+branch)
 	if err != nil {
@@ -630,7 +616,6 @@ func short(s string) string {
 	return s
 }
 
-// checkedOutAt devolve o diretório do worktree que tem branch em checkout.
 func checkedOutAt(r runner, top, branch string) string {
 	out, err := r.git(top, "worktree", "list", "--porcelain")
 	if err != nil {

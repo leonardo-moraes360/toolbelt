@@ -135,18 +135,15 @@ func TestInit(t *testing.T) {
 		t.Fatalf("Init failed: %v", err)
 	}
 
-	// Verifica se o diretório foi criado
 	if _, err := os.Stat(configDir); os.IsNotExist(err) {
 		t.Error(".toolbelt directory was not created")
 	}
 
-	// Verifica se o arquivo de configuração foi criado
 	configFile := filepath.Join(configDir, DefaultConfigFile)
 	if _, err := os.Stat(configFile); os.IsNotExist(err) {
 		t.Error("config.yaml was not created")
 	}
 
-	// Verifica subdiretórios
 	subdirs := []string{"vault", "logs", "bench"}
 	for _, sub := range subdirs {
 		subpath := filepath.Join(configDir, sub)
@@ -160,12 +157,10 @@ func TestExists(t *testing.T) {
 	tmpDir := t.TempDir()
 	configDir := filepath.Join(tmpDir, ".toolbelt")
 
-	// Antes de Init
 	if Exists(configDir) {
 		t.Error("Exists should return false before Init")
 	}
 
-	// Depois de Init
 	if err := Init(configDir); err != nil {
 		t.Fatalf("Init failed: %v", err)
 	}
@@ -178,17 +173,14 @@ func TestSaveAndLoad(t *testing.T) {
 	tmpDir := t.TempDir()
 	configPath := filepath.Join(tmpDir, "config.yaml")
 
-	// Cria configuração personalizada
 	cfg := DefaultConfig()
 	cfg.Defaults.Timeout = "60s"
 	cfg.Bench.Repetitions = 10
 
-	// Salva
 	if err := Save(cfg, configPath); err != nil {
 		t.Fatalf("Save failed: %v", err)
 	}
 
-	// Carrega
 	loaded := DefaultConfig()
 	if err := loadFromFile(configPath, loaded); err != nil {
 		t.Fatalf("loadFromFile failed: %v", err)
@@ -240,7 +232,6 @@ func TestDefaultBenchOutputDir(t *testing.T) {
 func TestLocalOverridesGlobal(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	// Cria configuração "global"
 	globalDir := filepath.Join(tmpDir, "global")
 	os.MkdirAll(globalDir, 0o755)
 	globalCfg := DefaultConfig()
@@ -248,19 +239,16 @@ func TestLocalOverridesGlobal(t *testing.T) {
 	globalCfg.Bench.Repetitions = 5
 	Save(globalCfg, filepath.Join(globalDir, "config.yaml"))
 
-	// Cria configuração "local"
 	localDir := filepath.Join(tmpDir, "local")
 	os.MkdirAll(localDir, 0o755)
 	localCfg := DefaultConfig()
-	localCfg.Defaults.Timeout = "60s" // Override
+	localCfg.Defaults.Timeout = "60s"
 	Save(localCfg, filepath.Join(localDir, "config.yaml"))
 
-	// Carrega global primeiro, depois local
 	cfg := DefaultConfig()
 	loadFromFile(filepath.Join(globalDir, "config.yaml"), cfg)
 	loadFromFile(filepath.Join(localDir, "config.yaml"), cfg)
 
-	// Local deve sobrepor global
 	if cfg.Defaults.Timeout != "60s" {
 		t.Errorf("Local should override global, got timeout = %q", cfg.Defaults.Timeout)
 	}
@@ -292,7 +280,7 @@ func TestRouterConfigOverride(t *testing.T) {
 	if got.MaxWorkers != 5 || got.DirectDelivery.Enabled || got.Retry.MaxAttempts != 4 || len(got.AgentCmd) != 3 {
 		t.Fatalf("override: %+v", got)
 	}
-	// campos não mencionados mantêm o padrão
+	// Unmentioned fields keep their defaults.
 	if got.DirectDelivery.SubscriptionTTL != "30m" || got.Timeouts.PerTicket != "10m" || got.Strategy != "dependency" {
 		t.Fatalf("padrões perdidos: %+v", got)
 	}

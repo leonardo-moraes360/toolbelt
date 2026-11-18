@@ -17,7 +17,7 @@ import (
 	"github.com/leonardo-moraes360/toolbelt/internal/ticket"
 )
 
-// repoWithGitlink cria um repo cujo commit base contém um gitlink "sub".
+// repoWithGitlink creates a repo whose base commit contains a gitlink "sub".
 func repoWithGitlink(t *testing.T) string {
 	t.Helper()
 	root := newRepo(t)
@@ -27,7 +27,7 @@ func repoWithGitlink(t *testing.T) string {
 	return root
 }
 
-// Finding 1: .git aninhado dentro de um gitlink não pode virar execução de filtro.
+// Finding 1: a .git nested inside a gitlink must not lead to filter execution.
 func TestNestedGitInSubmoduleIsRefusedAndFilterNeverRuns(t *testing.T) {
 	root := repoWithGitlink(t)
 	st := ticket.Open(root)
@@ -80,9 +80,9 @@ func TestStagedGitmodulesIsRefused(t *testing.T) {
 	}
 }
 
-// Gitlink já no índice do worktree (o agente pode usar git update-index): o
-// commit é recusado. Chamado direto porque o sandbox Landlock do agente nem
-// sempre deixa o git dele rodar.
+// Gitlink already in the worktree index (the agent can use git update-index):
+// the commit is refused. Called directly because the agent's Landlock sandbox
+// does not always let its git run.
 func TestStagedGitlinkIsRefused(t *testing.T) {
 	root := newRepo(t)
 	ws := filepath.Join(t.TempDir(), "ws")
@@ -105,14 +105,14 @@ func TestStagedGitlinkIsRefused(t *testing.T) {
 	}
 }
 
-// Finding 2: descendente que faz setsid escapa do grupo; deve ser morto e o ticket falha sem git.
+// Finding 2: a descendant that calls setsid escapes the group; it must be killed and the ticket fails without git.
 func TestSetsidGrandchildIsKilledAndTicketFailsWithoutCommit(t *testing.T) {
 	root := newRepo(t)
 	st := ticket.Open(root)
 	tk := mk(t, st, "escape")
 	cfg := testCfg()
 	cfg.Retry.MaxAttempts = 3
-	// pidfile dentro do worktree (o Landlock só permite escrever lá)
+	// pidfile inside the worktree (Landlock only allows writing there)
 	script := `setsid sh -c 'echo $$ > pidfile; exec sleep 37' &
 i=0; while [ ! -s pidfile ] && [ $i -lt 500 ]; do sleep 0.01; i=$((i+1)); done
 echo x > f.txt`
@@ -166,7 +166,7 @@ func noRetryCfg() config.RouterConfig {
 	return c
 }
 
-// Finding 3: pedidos de kill de execuções anteriores não matam o primeiro worker.
+// Finding 3: kill requests from previous runs do not kill the first worker.
 func TestStaleKillRequestBeforeRunIsCleared(t *testing.T) {
 	root := newRepo(t)
 	st := ticket.Open(root)
@@ -205,7 +205,7 @@ func TestKillRequestOlderThanRunIsIgnoredDuringRun(t *testing.T) {
 	}
 }
 
-// Finding 4: ticket cancelado e devolvido a pending enquanto o slot antigo ainda o segura.
+// Finding 4: ticket canceled and returned to pending while the old slot still holds it.
 func TestScheduleSkipsTicketStillHeldBySlot(t *testing.T) {
 	root := newRepo(t)
 	st := ticket.Open(root)
@@ -213,7 +213,7 @@ func TestScheduleSkipsTicketStillHeldBySlot(t *testing.T) {
 	r := newRouter(t, root, func(o *Options) { o.Workers = 2; o.AgentCmd = sh("sleep 30") })
 	r.done = make(chan workerDone, 4)
 	r.startedAt = time.Now()
-	r.slots[0].ticket = tk.ID // agente antigo ainda sendo encerrado
+	r.slots[0].ticket = tk.ID // old agent still shutting down
 	t.Cleanup(func() {
 		for _, s := range r.slots {
 			if s.cancel != nil {
@@ -235,7 +235,7 @@ func TestScheduleSkipsTicketStillHeldBySlot(t *testing.T) {
 	}
 }
 
-// Finding 5: YAML transitoriamente inválido não derruba o router nem os agentes em execução.
+// Finding 5: transiently invalid YAML does not bring down the router or running agents.
 func TestTransientInvalidTicketKeepsWorkersRunning(t *testing.T) {
 	root := newRepo(t)
 	st := ticket.Open(root)
@@ -253,7 +253,7 @@ func TestTransientInvalidTicketKeepsWorkersRunning(t *testing.T) {
 		t.Fatal(err)
 	}
 	waitFor(t, "alerta board_unreadable", func() bool { return countKind(alertKinds(t, root), AlertBoardUnreadable) == 1 })
-	time.Sleep(100 * time.Millisecond) // vários ticks com o board ilegível
+	time.Sleep(100 * time.Millisecond) // several ticks with an unreadable board
 	if got := get(t, st, tk.ID); got.Status != ticket.StatusRunning {
 		t.Fatalf("agente derrubado: %+v", got)
 	}
@@ -299,10 +299,10 @@ func TestPersistentInvalidTicketGivesUpAsStalled(t *testing.T) {
 	}
 }
 
-// Exploit completo (nested repo REAL com filtro clean num arquivo rastreado e
-// sujo): o git do router não pode recursar no gitlink e rodar o filtro. Chama
-// commitWorkspace direto porque o git do agente não roda sob o Landlock do
-// ambiente de testes.
+// Full exploit (REAL nested repo with a clean filter on a tracked, dirty
+// file): the router's git must not recurse into the gitlink and run the filter.
+// Calls commitWorkspace directly because the agent's git does not run under the
+// test environment's Landlock.
 func TestNestedRepoCleanFilterNeverRunsOnRouterGit(t *testing.T) {
 	root := repoWithGitlink(t)
 	ws := filepath.Join(t.TempDir(), "ws")
@@ -322,7 +322,7 @@ func TestNestedRepoCleanFilterNeverRunsOnRouterGit(t *testing.T) {
 	runGit(t, sub, "add", "-A")
 	runGit(t, sub, "commit", "-q", "-m", "x")
 	_ = os.Remove(marker)
-	// torna o arquivo "sujo" (mtime/conteúdo) para o status precisar re-filtrar
+	// make the file "dirty" (mtime/content) so status has to re-filter
 	if err := os.WriteFile(filepath.Join(sub, "f"), []byte("2\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}

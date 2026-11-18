@@ -36,7 +36,6 @@ func routerTestRepo(t *testing.T) string {
 	return dir
 }
 
-// routerCLI agrupa o ambiente de um teste de CLI do router.
 type routerCLI struct {
 	t   *testing.T
 	bin string
@@ -73,7 +72,7 @@ func TestRouterWatchdogCLI(t *testing.T) {
 	c.checkCrashAlerts()
 }
 
-// checkEmptyState: sem estado, status/alerts vazios e kill recusado.
+// With no state: empty status/alerts and kill is refused.
 func (c *routerCLI) checkEmptyState() {
 	t := c.t
 	if out := c.must("router", "status"); !strings.Contains(out, "Nenhum router") {
@@ -87,7 +86,6 @@ func (c *routerCLI) checkEmptyState() {
 	}
 }
 
-// checkConfig: config efetiva em JSON e texto.
 func (c *routerCLI) checkConfig() {
 	t := c.t
 	var rc map[string]any
@@ -99,7 +97,7 @@ func (c *routerCLI) checkConfig() {
 	}
 }
 
-// checkDryRun: dry-run não executa nada; sem agent_cmd o erro é claro.
+// Dry-run executes nothing; without agent_cmd the error is explicit.
 func (c *routerCLI) checkDryRun() {
 	t := c.t
 	out := c.must("router", "run", "--dry-run", "--workers", "2")
@@ -118,7 +116,7 @@ func (c *routerCLI) checkDryRun() {
 	}
 }
 
-// checkRealRun: execução real, ticket concluído e status do router/watchdog.
+// Real run: ticket completes and router/watchdog status is reported.
 func (c *routerCLI) checkRealRun() {
 	t := c.t
 	var sum map[string]any
@@ -151,7 +149,7 @@ func (c *routerCLI) checkRealRun() {
 	}
 }
 
-// checkCrashAlerts: falha do agente gera alerta de crash visível pelo CLI.
+// An agent failure raises a crash alert visible through the CLI.
 func (c *routerCLI) checkCrashAlerts() {
 	t := c.t
 	c.must("ticket", "create", "--title", "quebra")

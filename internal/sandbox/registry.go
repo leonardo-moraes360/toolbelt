@@ -5,91 +5,90 @@ import (
 	"sync"
 )
 
-// Registry rastreia os processos-filho que ESTE processo iniciou (líderes de
-// agente e subprocessos git do router) e, no Linux com PR_SET_CHILD_SUBREAPER
-// ativo (AcquireSubreaper), identifica e mata descendentes que escaparam do
-// grupo de processos (setsid/setpgid) e foram reparentados ao router.
+// Registry tracks the child processes THIS process started (agent leaders and
+// the router's git subprocesses) and, on Linux with PR_SET_CHILD_SUBREAPER
+// active (AcquireSubreaper), identifies and kills descendants that escaped the
+// process group (setsid/setpgid) and were reparented to the router.
 //
-// Política: agentes não devem se desacoplar; qualquer processo-filho direto
-// não rastreado é encerrado (SIGKILL) e colhido (wait4). Em plataformas sem
-// subreaper (macOS/Windows) Sweep é no-op: só vale o comportamento de grupo de
-// processos (limitação documentada).
+// Policy: agents must not detach; any untracked direct child is terminated
+// (SIGKILL) and reaped (wait4). On platforms without a subreaper (macOS/Windows)
+// Sweep is a no-op: only process-group behavior applies (documented
+// limitation).
 //
-// O mutex é mantido só durante cmd.Start+registro e durante Sweep: assim um
-// filho recém-iniciado nunca é visto como órfão e o wait4 do Sweep nunca
-// compete com o Wait do os/exec (só pids não rastreados são colhidos). Quem
-// inicia processos por fora (ex.: bibliotecas que chamam exec direto) deve
-// roteá-los por Run para ficarem rastreados; não existe lock mantido durante a
-// vida do filho, então Sweep nunca fica bloqueado por um git lento.
+// The mutex is held only during cmd.Start+registration and during Sweep: so a
+// freshly started child is never seen as an orphan and Sweep's wait4 never
+// races os/exec's Wait (only untracked pids are reaped). Code that starts
+// processes elsewhere (e.g. libraries calling exec directly) must route them
+// through Run to be tracked; no lock is held for the child's lifetime, so Sweep
+// is never blocked by a slow git.
 type Registry struct {
 	mu       sync.Mutex
-	live     map[int]struct{}        // filhos diretos rastreados (entre Start e Wait)
-	groups   map[groupKey]*groupInfo // grupos de agente, chaveados por (pid, starttime)
-	found    []Orphan                // escapes detectados, ainda não entregues
-	vars     []string                // variáveis de ambiente a capturar de cada escapado
-	ownerVar string                  // variável que identifica o dono (ticket) de um grupo
-	windows  []*spawnWindow          // janelas de spawn de processos não-agente (ex.: git worktree add)
+	live     map[int]struct{}        // tracked direct children (between Start and Wait)
+	groups   map[groupKey]*groupInfo // agent groups, keyed by (pid, starttime)
+	found    []Orphan                // detected escapes not yet delivered
+	vars     []string                // env vars to capture from each escaped process
+	ownerVar string                  // variable naming a group's owner (ticket)
+	windows  []*spawnWindow          // spawn windows of non-agent processes (e.g. git worktree add)
 }
 
-// groupKey identifica um grupo de agente: o pid do líder sozinho pode ser
-// reutilizado pelo kernel depois que o grupo some; o starttime desambigua.
+// groupKey identifies an agent group: the leader pid alone may be reused by
+// the kernel after the group disappears; starttime disambiguates.
 type groupKey struct {
 	pid   int
 	start uint64
 }
 
 type groupInfo struct {
-	owner    string // valor esperado de ownerVar nos membros ("" = não verificar)
-	finished bool   // o agente líder terminou e o grupo já foi morto
+	owner    string // expected ownerVar value in members ("" = do not check)
+	finished bool   // the leader agent exited and the group was already killed
 }
 
 type spawnWindow struct {
-	from, to uint64 // ticks desde o boot (mesma base de starttime)
+	from, to uint64 // ticks since boot (same base as starttime)
 	open     bool
 }
 
-// Orphan descreve um descendente escapado encerrado por Sweep.
+// Orphan is an escaped descendant terminated by Sweep.
 type Orphan struct {
 	PID  int
 	PGID int
-	// Start é o starttime do processo (ticks desde o boot; 0 se desconhecido).
+	// Start is the process starttime (ticks since boot; 0 if unknown).
 	Start uint64
-	// Vars guarda só as variáveis de ambiente pedidas em NewRegistry
-	// (atribuição ao ticket); nunca o ambiente inteiro (pode conter segredos).
-	// nil = ambiente ilegível.
+	// Vars holds only the env vars requested in NewRegistry (ticket
+	// attribution); never the whole environment (it may contain secrets).
+	// nil = unreadable environment.
 	Vars map[string]string
-	// ForeignGroup: o processo foi achado dentro do grupo de OUTRO agente
-	// (setpgid para o pgid alheio, para se esconder), com dono diferente do
-	// grupo; GroupOwner é o dono do grupo.
+	// ForeignGroup: the process was found inside ANOTHER agent's group (setpgid
+	// to a foreign pgid, to hide), with an owner different from the group's;
+	// GroupOwner is the group's owner.
 	ForeignGroup bool
 	GroupOwner   string
-	// InSpawnWindow: nasceu dentro de uma janela de spawn (BeginSpawnWindow),
-	// ou seja, pode ser um daemon de um git hook/fsmonitor do usuário e não de um
-	// agente.
+	// InSpawnWindow: born inside a spawn window (BeginSpawnWindow), i.e. it may
+	// be a daemon from a user git hook/fsmonitor rather than from an agent.
 	InSpawnWindow bool
 }
 
-// NewRegistry cria um registro vazio. vars lista variáveis de ambiente a
-// capturar de cada processo escapado antes de matá-lo (atribuição ao ticket).
+// NewRegistry: vars lists env vars to capture from each escaped process
+// before killing it (ticket attribution).
 func NewRegistry(vars ...string) *Registry {
 	return &Registry{live: map[int]struct{}{}, groups: map[groupKey]*groupInfo{}, vars: vars}
 }
 
-// SetOwnerVar define qual variável (uma das passadas a NewRegistry) identifica o
-// dono de cada grupo de agente iniciado com RunOwned. Um descendente órfão
-// achado num grupo de agente cujo valor difere do dono do grupo é tratado como
-// escape (ver sweepLocked).
+// SetOwnerVar sets which variable (one of those passed to NewRegistry)
+// identifies the owner of each agent group started with RunOwned. An orphan
+// found in an agent group whose value differs from the group's owner is treated
+// as an escape (see sweepLocked).
 func (r *Registry) SetOwnerVar(name string) {
 	r.mu.Lock()
 	r.ownerVar = name
 	r.mu.Unlock()
 }
 
-// BeginSpawnWindow abre uma janela de tempo em que o chamador executa código de
-// terceiros (ex.: `git worktree add`, que pode disparar hooks/fsmonitor do
-// usuário) cujos daemons destacados não são culpa de nenhum agente. Descendentes
-// escapados que nasceram dentro de uma janela vêm marcados em
-// Orphan.InSpawnWindow. A função devolvida fecha a janela.
+// BeginSpawnWindow opens a time window in which the caller runs third-party
+// code (e.g. `git worktree add`, which may trigger user hooks/fsmonitor) whose
+// detached daemons are no agent's fault. Escaped descendants born inside a
+// window are flagged with Orphan.InSpawnWindow. The returned function closes
+// the window.
 func (r *Registry) BeginSpawnWindow() (end func()) {
 	w := &spawnWindow{from: sat(nowTicks(), 2), open: true}
 	r.mu.Lock()
@@ -101,7 +100,7 @@ func (r *Registry) BeginSpawnWindow() (end func()) {
 	var once sync.Once
 	return func() {
 		once.Do(func() {
-			t := nowTicks() + 2 // margem: starttime tem resolução de 10 ms
+			t := nowTicks() + 2 // margin: starttime has 10 ms resolution
 			r.mu.Lock()
 			w.to, w.open = t, false
 			r.mu.Unlock()
@@ -109,7 +108,7 @@ func (r *Registry) BeginSpawnWindow() (end func()) {
 	}
 }
 
-// sat subtrai d de v sem underflow.
+// sat subtracts d from v without underflow.
 func sat(v, d uint64) uint64 {
 	if v < d {
 		return 0
@@ -129,14 +128,14 @@ func (r *Registry) inWindowLocked(start uint64) bool {
 	return false
 }
 
-// Run inicia cmd (registrando o pid sob o mutex), espera e remove o registro.
-// group indica que o filho lidera o próprio grupo (Setpgid).
+// Run starts cmd (registering the pid under the mutex), waits and removes the
+// entry. group means the child leads its own group (Setpgid).
 func (r *Registry) Run(cmd *exec.Cmd, group bool) error {
 	return r.RunOwned(cmd, group, "")
 }
 
-// RunOwned é Run com dono: owner é o valor esperado de ownerVar (ticket) nos
-// processos do grupo; só tem efeito com group=true.
+// RunOwned is Run with an owner: owner is the expected ownerVar value (ticket)
+// in the group's processes; only effective with group=true.
 func (r *Registry) RunOwned(cmd *exec.Cmd, group bool, owner string) error {
 	if err := r.start(cmd, group, owner); err != nil {
 		return err
@@ -169,8 +168,8 @@ func (r *Registry) exited(cmd *exec.Cmd) {
 	r.mu.Unlock()
 }
 
-// findGroupLocked acha o grupo de agente com líder pgid (o mais novo, se houver
-// resíduo de um líder anterior com o mesmo pid).
+// findGroupLocked finds the agent group led by pgid (the newest, if a
+// previous leader with the same pid left a stale entry).
 func (r *Registry) findGroupLocked(pgid int) *groupInfo {
 	var best *groupInfo
 	var bestStart uint64
@@ -182,8 +181,8 @@ func (r *Registry) findGroupLocked(pgid int) *groupInfo {
 	return best
 }
 
-// finishGroup marca o grupo do agente como encerrado: órfãos nele passam a ser
-// colhidos silenciosamente (já foram mortos por reapProcessGroup).
+// finishGroup marks the agent group as finished: orphans in it are then
+// reaped silently (reapProcessGroup already killed them).
 func (r *Registry) finishGroup(pgid int) {
 	r.mu.Lock()
 	if g := r.findGroupLocked(pgid); g != nil {
@@ -192,10 +191,10 @@ func (r *Registry) finishGroup(pgid int) {
 	r.mu.Unlock()
 }
 
-// pruneGroupsLocked remove grupos encerrados cujo grupo de processos já sumiu.
-// O kernel não reutiliza um pid enquanto existir grupo com esse pgid, então
-// "grupo sumiu" é o momento seguro de esquecer a entrada (sem acúmulo nem
-// colisão por reuso de pid).
+// pruneGroupsLocked removes finished groups whose process group is gone. The
+// kernel does not reuse a pid while a group with that pgid exists, so "group
+// gone" is the safe moment to forget the entry (no buildup, no collision from
+// pid reuse).
 func (r *Registry) pruneGroupsLocked() {
 	for k, g := range r.groups {
 		if g.finished && groupGone(k.pid) {
@@ -204,8 +203,8 @@ func (r *Registry) pruneGroupsLocked() {
 	}
 }
 
-// Sweep mata e colhe todo filho direto não rastreado e devolve os escapes
-// (inclusive os já encontrados por varreduras internas desde a última chamada).
+// Sweep kills and reaps every untracked direct child and returns the escapes
+// (including those found by internal sweeps since the last call).
 func (r *Registry) Sweep() []Orphan {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -215,19 +214,20 @@ func (r *Registry) Sweep() []Orphan {
 	return out
 }
 
-// sweepLocked classifica cada filho direto não rastreado:
+// sweepLocked classifies each untracked direct child:
 //
-//   - fora de qualquer grupo de agente: escape (setsid/setpgid para fora).
-//   - em grupo de agente: um descendente de agente cujo pai morreu é reparentado
-//     ao router MESMO sem escapar (ex.: `(sleep 30 &)`), então estar num grupo
-//     de agente vivo, por si só, é normal e é deixado ao grupo. Mas um processo
-//     só chega a um grupo "vivo" de ticket T por herança (é descendente de T) ou
-//     por setpgid explícito para o pgid alheio, truque para se esconder da
-//     varredura. Por isso comparamos a variável de dono (TB_TICKET_ID) do
-//     processo com o dono do grupo: divergente, ausente ou ilegível (com o
-//     processo ainda vivo) é tratado como escape, atribuído ao dono declarado no
-//     próprio ambiente do processo (ou não atribuível, quando ausente). Zumbis
-//     (nada a esconder, ambiente inacessível) são só colhidos.
+//   - outside any agent group: escape (setsid/setpgid out).
+//   - in an agent group: an agent descendant whose parent died is reparented
+//     to the router EVEN without escaping (e.g. `(sleep 30 &)`), so being in a
+//     live agent group is, by itself, normal and left to the group. But a
+//     process only reaches a "live" group of ticket T by inheritance (it
+//     descends from T) or by an explicit setpgid to the foreign pgid, a trick to
+//     hide from the sweep. So we compare the process's owner variable
+//     (TB_TICKET_ID) with the group's owner: different, missing or unreadable
+//     (with the process still alive) is treated as an escape, attributed to the
+//     owner declared in the process's own environment (or unattributable when
+//     missing). Zombies (nothing to hide, environment inaccessible) are only
+//     reaped.
 func (r *Registry) sweepLocked() {
 	r.pruneGroupsLocked()
 	for _, c := range listChildren() {
@@ -236,8 +236,8 @@ func (r *Registry) sweepLocked() {
 		}
 		g := r.findGroupLocked(c.pgid)
 		o := Orphan{PID: c.pid, PGID: c.pgid, Start: c.start}
-		// Zumbi já morreu e não tem ambiente: nada a atribuir nem a matar, só
-		// colher (um descendente vivo dele aparece como órfão próprio).
+		// A zombie is already dead and has no environment: nothing to attribute or
+		// kill, only reap (a live descendant of it shows up as its own orphan).
 		escape := g == nil && !c.zombie
 		if g == nil {
 			o.Vars, _ = readEnvVars(c.pid, r.vars)
@@ -248,7 +248,7 @@ func (r *Registry) sweepLocked() {
 			case ok:
 				foreign = vars[r.ownerVar] != g.owner
 			default:
-				foreign = procLive(c.pid) // ilegível mas vivo: não dá para provar o dono
+				foreign = procLive(c.pid) // unreadable but alive: the owner cannot be proven
 			}
 			if foreign {
 				escape = true
@@ -256,7 +256,7 @@ func (r *Registry) sweepLocked() {
 			}
 		}
 		if !escape && g != nil && !g.finished {
-			continue // descendente órfão de agente ainda rodando: o grupo o mata no fim
+			continue // orphaned descendant of a still-running agent: the group kills it at the end
 		}
 		o.InSpawnWindow = r.inWindowLocked(c.start)
 		killAndReap(c)

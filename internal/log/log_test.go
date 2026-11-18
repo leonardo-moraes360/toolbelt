@@ -11,7 +11,7 @@ import (
 func TestInit_JSON(t *testing.T) {
 	var buf bytes.Buffer
 
-	// Reset para poder reinicializar
+	// Reset so Init can run again.
 	once = sync.Once{}
 	defaultLogger = nil
 
@@ -26,7 +26,6 @@ func TestInit_JSON(t *testing.T) {
 		t.Errorf("JSON output should contain key field, got: %s", output)
 	}
 
-	// Verify it's valid JSON
 	var data map[string]interface{}
 	if err := json.Unmarshal([]byte(output), &data); err != nil {
 		t.Errorf("Output should be valid JSON: %v", err)
@@ -36,7 +35,7 @@ func TestInit_JSON(t *testing.T) {
 func TestInit_Text(t *testing.T) {
 	var buf bytes.Buffer
 
-	// Reset para poder reinicializar
+	// Reset so Init can run again.
 	once = sync.Once{}
 	defaultLogger = nil
 	useColor = false
@@ -56,7 +55,6 @@ func TestInit_Text(t *testing.T) {
 func TestLogLevels(t *testing.T) {
 	var buf bytes.Buffer
 
-	// Reset
 	once = sync.Once{}
 	defaultLogger = nil
 
@@ -84,7 +82,6 @@ func TestLogLevels(t *testing.T) {
 }
 
 func TestShouldUseColor(t *testing.T) {
-	// Test NO_COLOR
 	t.Setenv("NO_COLOR", "1")
 	if shouldUseColor() {
 		t.Error("shouldUseColor should return false when NO_COLOR is set")
@@ -100,7 +97,6 @@ func TestShouldUseColor(t *testing.T) {
 func TestWith(t *testing.T) {
 	var buf bytes.Buffer
 
-	// Reset
 	once = sync.Once{}
 	defaultLogger = nil
 

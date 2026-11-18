@@ -44,7 +44,7 @@ func attachHeadWorkDir(repoDir, headSHA string) (*headWorkDir, error) {
 		return nil, err
 	}
 	path := filepath.Join(parent, "tree")
-	cmd := exec.Command("git", "worktree", "add", "--detach", path, headSHA) //nolint:gosec // SHA resolvido via rev-parse
+	cmd := exec.Command("git", "worktree", "add", "--detach", path, headSHA) //nolint:gosec // SHA resolved via rev-parse
 	cmd.Dir = repoDir
 	if out, runErr := cmd.CombinedOutput(); runErr != nil {
 		_ = os.RemoveAll(parent)
@@ -61,7 +61,7 @@ func (hw *headWorkDir) Cleanup() {
 		return
 	}
 	hw.cleanupOnce.Do(func() {
-		cmd := exec.Command("git", "worktree", "remove", "--force", hw.WorkDir) //nolint:gosec // path criado por MkdirTemp interno
+		cmd := exec.Command("git", "worktree", "remove", "--force", hw.WorkDir) //nolint:gosec // path created by an internal MkdirTemp
 		cmd.Dir = hw.repoDir
 		_ = cmd.Run()
 		if hw.parentDir != "" {
@@ -71,7 +71,7 @@ func (hw *headWorkDir) Cleanup() {
 }
 
 func gitRevParse(repo, ref string) (string, error) {
-	cmd := exec.Command("git", "rev-parse", "--verify", ref) //nolint:gosec // refs do operador
+	cmd := exec.Command("git", "rev-parse", "--verify", ref) //nolint:gosec // operator-supplied refs
 	cmd.Dir = repo
 	out, err := cmd.Output()
 	if err != nil {

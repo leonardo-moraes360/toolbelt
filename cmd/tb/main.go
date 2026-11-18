@@ -33,7 +33,7 @@ func main() {
 var rootCmd = &cobra.Command{
 	Use:   "tb",
 	Short: "Toolbelt - Kit de ferramentas para agentes de código IA",
-	//nolint:misspell // pt-BR: persistente
+	//nolint:misspell // pt-BR word: persistente
 	Long: `Toolbelt (tb) é um kit de ferramentas para melhorar agentes de código IA.
 
 Inclui sandbox seguro, verificação adversarial, memória persistente,
@@ -110,7 +110,6 @@ func parentHelpRunE(cmd *cobra.Command, args []string) error {
 	return cmd.Help()
 }
 
-// versionCmd mostra informações de versão
 var versionCmd = &cobra.Command{
 	Use:   "version",
 	Short: "Mostra versão do toolbelt",
@@ -125,7 +124,6 @@ var versionCmd = &cobra.Command{
 	},
 }
 
-// initCmd inicializa configuração local
 var initCmd = &cobra.Command{
 	Use:   "init",
 	Short: "Inicializa configuração local do toolbelt",

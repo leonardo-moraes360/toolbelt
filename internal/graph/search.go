@@ -28,14 +28,12 @@ const (
 	tierExact            // title equals the query (case-insensitive)
 )
 
-// SearchHit is a ranked search result.
 type SearchHit struct {
 	Node  Node
 	Score float64
 	tier  int
 }
 
-// searchStats holds per-index term statistics, computed once per index.
 type searchStats struct {
 	idx      *Index
 	nodes    int
@@ -51,7 +49,6 @@ var (
 	searchCache   *searchStats
 )
 
-// Search returns up to limit nodes ranked by relevance to query.
 // See SearchRanked for the ranking rules.
 func (s *Store) Search(query string, limit int) []Node {
 	hits := s.SearchRanked(query, limit)
@@ -163,8 +160,6 @@ func statsFor(idx *Index) *searchStats {
 	return st
 }
 
-// weightedTermFreqs returns field-weighted term frequencies and the weighted
-// document length for a node.
 func weightedTermFreqs(n *Node) (tf map[string]float64, length float64) {
 	tf = map[string]float64{}
 	add := func(text string, w float64) {

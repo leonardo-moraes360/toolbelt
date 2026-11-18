@@ -10,12 +10,12 @@ import (
 	"testing"
 )
 
-// O diretório temporário do sistema não entra no ruleset: com o workdir fora
-// de os.TempDir(), o filho não lê nem escreve em TMPDIR. Pulado (como os
-// demais testes Landlock) em host sem Landlock.
+// The system temp directory is not in the ruleset: with the workdir outside
+// os.TempDir(), the child can neither read nor write TMPDIR. Skipped (like the
+// other Landlock tests) on hosts without Landlock.
 func TestSandboxSharedTmpNoAccess(t *testing.T) {
 	work := t.TempDir()
-	tmp := t.TempDir() // irmão do workdir: não é ancestral nem descendente
+	tmp := t.TempDir() // sibling of the workdir: neither ancestor nor descendant
 	if err := os.WriteFile(filepath.Join(tmp, "seed.txt"), []byte("seed"), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -25,8 +25,8 @@ func TestSandboxSharedTmpNoAccess(t *testing.T) {
 	}
 	sb := newLandlockSandbox(t, work)
 
-	// Controle positivo: mesmo sandbox, mesmo shell, escrita no workdir passa
-	// e TMPDIR chega ao filho.
+	// Positive control: same sandbox, same shell, writing to the workdir succeeds
+	// and TMPDIR reaches the child.
 	res, err := sb.Run(context.Background(), "sh", "-c", `echo ok > ./ok.txt && printf '%s' "$TMPDIR"`)
 	if err != nil {
 		t.Fatal(err)

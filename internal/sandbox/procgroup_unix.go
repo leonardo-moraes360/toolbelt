@@ -8,9 +8,9 @@ import (
 	"time"
 )
 
-// killProcessGroup faz o filho liderar seu próprio grupo de processos e, ao
-// cancelar o contexto (timeout, watchdog, SIGINT), mata o grupo inteiro — assim
-// netos que seguram o pipe de saída não travam Run.
+// killProcessGroup makes the child lead its own process group and, when the
+// context is canceled (timeout, watchdog, SIGINT), kills the whole group, so
+// grandchildren holding the output pipe cannot hang Run.
 func killProcessGroup(cmd *exec.Cmd) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	setPdeathsig(cmd.SysProcAttr)
@@ -23,10 +23,10 @@ func killProcessGroup(cmd *exec.Cmd) {
 	cmd.WaitDelay = 2 * time.Second
 }
 
-// reapProcessGroup envia SIGKILL ao grupo do filho após Wait. ESRCH (grupo já
-// vazio) é o caso normal e ignorado. O pgid é o pid do líder (Setpgid); a
-// janela de reuso de pid entre o Wait e este kill é desprezível porque o grupo
-// só some quando todos os membros morrem.
+// reapProcessGroup sends SIGKILL to the child's group after Wait. ESRCH (group
+// already empty) is the normal case and ignored. The pgid is the leader's pid
+// (Setpgid); the pid-reuse window between Wait and this kill is negligible
+// because the group only disappears once all members die.
 func reapProcessGroup(cmd *exec.Cmd) {
 	if cmd.Process == nil {
 		return
@@ -34,23 +34,23 @@ func reapProcessGroup(cmd *exec.Cmd) {
 	_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
 }
 
-// groupGone informa se não resta nenhum processo (nem zumbi) no grupo pgid.
+// groupGone reports whether no process (not even a zombie) remains in pgid.
 func groupGone(pgid int) bool {
 	return syscall.Kill(-pgid, 0) == syscall.ESRCH
 }
 
-// settleGroup espera (até ~1s) o grupo do agente esvaziar, colhendo os zumbis
-// reparentados ao router (subreaper). Descendentes que escaparam do grupo
-// ficam no registro de escapes e são entregues por Registry.Sweep. Ao esvaziar,
-// a entrada do grupo é removida do registro (ver pruneGroupsLocked para o caso
-// do grupo que não esvaziou a tempo).
+// settleGroup waits (up to ~1s) for the agent group to drain, reaping zombies
+// reparented to the router (subreaper). Descendants that escaped the group stay
+// in the escape registry and are delivered by Registry.Sweep. Once drained, the
+// group entry is removed from the registry (see pruneGroupsLocked for a group
+// that did not drain in time).
 func settleGroup(reg *Registry, pgid int) {
 	reg.finishGroup(pgid)
 	deadline := time.Now().Add(time.Second)
 	for {
 		reg.mu.Lock()
 		reg.sweepLocked()
-		reg.pruneGroupsLocked() // grupo vazio após o sweep: reap final, esquece a entrada
+		reg.pruneGroupsLocked() // group empty after the sweep: final reap, forget the entry
 		reg.mu.Unlock()
 		if groupGone(pgid) || time.Now().After(deadline) {
 			return

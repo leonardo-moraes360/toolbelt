@@ -4,13 +4,12 @@ import (
 	"github.com/leonardo-moraes360/toolbelt/internal/bus"
 )
 
-// PacketVersion é a versão do wake packet.
 const PacketVersion = "bus-wake/0.1"
 
-// maxPacketMessages limita os cabeçalhos listados no packet.
+// Caps the headers listed in a packet.
 const maxPacketMessages = 20
 
-// Packet é o aviso entregue ao adapter. Nunca contém payload.
+// Packet is the notice handed to the adapter. It never carries payloads.
 type Packet struct {
 	V        string       `json:"v"`
 	Channel  string       `json:"channel"`
@@ -24,7 +23,6 @@ type Packet struct {
 	Recv     string       `json:"recv"`
 }
 
-// PacketItem é o cabeçalho de uma mensagem.
 type PacketItem struct {
 	ID     string   `json:"id"`
 	Seq    int64    `json:"seq"`

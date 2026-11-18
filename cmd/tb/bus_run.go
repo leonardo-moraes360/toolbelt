@@ -79,7 +79,7 @@ func runBusRun(cmd *cobra.Command, _ []string) error {
 	return h.Run(ctx, once)
 }
 
-// busRunJoin faz o join antes de rodar, se ainda não houver sessão.
+// Joins before running only when there is no session yet.
 func busRunJoin(root, channel, name, invite, roleFlag string) error {
 	s, err := bus.Open(root)
 	if err != nil {
