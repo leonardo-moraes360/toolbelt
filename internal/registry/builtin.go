@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -45,13 +44,13 @@ func RegisterBuiltins() {
 	})
 	Register(&Tool{
 		Name:        "tb_run",
-		Description: "Executa processo no shell com timeout opcional (env filtrado por allowlist)",
+		Description: "Runs a sh -c command inside the Landlock sandbox: writes only in the repository, its own TMPDIR and the toolchain caches; $HOME and /tmp stay closed (extra paths: config sandbox.read/write). Filtered env, optional timeout",
 		InputSchema: &InputSchema{
 			Type: "object",
 			Properties: map[string]Property{
 				"command": {Type: "string", Description: "Processo a executar"},
 				"timeout": {Type: "string", Description: "Timeout (ex: 30s)", Default: "30s"},
-				"cwd":     {Type: "string", Description: "Diretório de trabalho"},
+				"cwd":     {Type: "string", Description: "Working directory; must be inside the repository"},
 				"env": {
 					Type:        "array",
 					Description: "Chaves extras na allowlist de ambiente",
@@ -59,7 +58,7 @@ func RegisterBuiltins() {
 				},
 				"pass_env": {
 					Type:        "array",
-					Description: "Opt-in explícito para segredos (*TOKEN*/SECRET/KEY/PASSWORD)",
+					Description: passEnvArgDescription,
 					Items:       &Property{Type: "string"},
 				},
 			},
@@ -103,48 +102,32 @@ func handleRun(ctx context.Context, args map[string]any) (any, error) {
 		return nil, fmt.Errorf("timeout inválido: %w", err)
 	}
 	cwd, _ := args["cwd"].(string)
-
-	ctx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-
-	cmd := exec.CommandContext(ctx, "sh", "-c", command) //nolint:gosec // explicit MCP tool
-	if cwd != "" {
-		cmd.Dir = cwd
-	}
-	cmd.Env = execenv.Environ(resolveExecEnv(args))
-
-	output, err := cmd.CombinedOutput()
-	exitCode := 0
+	envOpts, err := resolveExecEnv(args)
 	if err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok {
-			exitCode = exitErr.ExitCode()
-		} else if ctx.Err() == context.DeadlineExceeded {
-			return map[string]any{
-				"exit_code": -1,
-				"output":    string(output),
-				"timeout":   true,
-			}, nil
-		} else {
-			return nil, err
-		}
+		return nil, err
 	}
-
-	return map[string]any{
-		"exit_code": exitCode,
-		"output":    string(output),
-		"timeout":   false,
-	}, nil
+	return runInSandbox(ctx, command, cwd, timeout, envOpts)
 }
 
-func resolveExecEnv(args map[string]any) execenv.Options {
+func resolveExecEnv(args map[string]any) (execenv.Options, error) {
+	pass, err := toolPassEnv(args)
+	if err != nil {
+		return execenv.Options{}, err
+	}
 	opts := execenv.Options{
 		Allow: StringSliceArg(args, "env", nil),
-		Pass:  StringSliceArg(args, "pass_env", nil),
+		Pass:  pass,
 	}
+	base := execenv.Options{}
 	if fileCfg, err := config.Load(); err == nil {
-		opts = execenv.Merge(execenv.Options{Allow: fileCfg.Env.Allow, Pass: fileCfg.Env.Pass}, opts.Allow, opts.Pass)
+		base.Allow = fileCfg.Env.Allow // allow never admits secret-named keys
 	}
-	return opts
+	// Secrets only from config the agent cannot write (see config.LoadTrusted).
+	if trusted, err := config.LoadTrusted(); err == nil {
+		base.Pass = trusted.Env.Pass
+	}
+	opts = execenv.Merge(base, opts.Allow, opts.Pass)
+	return opts, nil
 }
 
 func StringArg(args map[string]any, key string) string {

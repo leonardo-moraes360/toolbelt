@@ -12,6 +12,7 @@
   <a href="docs/arquitetura.md"><img src="https://img.shields.io/badge/Status-Phase%203%20in%20progress-yellow" alt="Status"></a>
   <a href="https://github.com/leonardo-moraes360/toolbelt/actions"><img src="https://github.com/leonardo-moraes360/toolbelt/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="https://modelcontextprotocol.io/"><img src="https://img.shields.io/badge/Protocol-MCP-purple" alt="MCP"></a>
+  <a href="https://m8ven.ai/mcp/leonardo-moraes360-toolbelt-fa03ue?s=readme"><img src="https://m8ven.ai/badge/mcp/leonardo-moraes360-toolbelt-fa03ue?v=ac65034c346c6c7522ef08b6df2496ef" alt="M8ven Score"></a>
   <a href="docs/identidade-visual.md"><img src="https://img.shields.io/badge/Theme-Synthwave-ff278c" alt="Theme"></a>
 </p>
 

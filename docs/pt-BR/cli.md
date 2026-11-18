@@ -272,6 +272,12 @@ reindexado automaticamente; se for `false`, a saída avisa e o JSON inclui
 `{"stale": false, "nodes": [...]}`; `stats`/`index` incluem `stale` no objeto
 de estatísticas.
 
+Via MCP, `tb_graph_search`/`callers`/`deps`/`impact`/`explain`/`path` nunca
+reindexam, seja qual for o `graph.index_on_change`: são anotadas com
+`readOnlyHint`, então o cliente pode aprová-las automaticamente ou rodá-las em
+paralelo. Índice obsoleto devolve `stale: true` com um `hint` para chamar
+`tb_graph_index`, a única ferramenta de grafo do MCP que escreve.
+
 ```bash
 tb graph [--enable] <subcommand>
 
@@ -1849,7 +1855,7 @@ Transporte unix/tcp e flags `--socket`/`--port`/`--tls-*` são planejados; hoje 
 | `tb_version` | `tb version` | |
 | `tb_echo` | — | smoke |
 | `tb_env` | — | cwd/os/arch |
-| `tb_run` | — | `sh -c` com timeout; env filtrado; args `env`/`pass_env` (arrays) |
+| `tb_run` | — | `sh -c` com timeout dentro do sandbox Landlock (ver [sandbox do `tb_run` no MCP](#sandbox-do-tb_run-no-mcp)); env filtrado; args `env`/`pass_env` (arrays); `cwd` precisa estar dentro do repositório |
 | `tb_mem_add` / `tb_mem_list` / `tb_mem_show` / `tb_mem_edit` / `tb_mem_retire` / `tb_mem_search` / `tb_mem_check` / `tb_mem_init` | `tb mem …` | arg opcional `cwd`; `ref`/`all` (boolean; strings legadas ok) onde aplicável |
 | `tb_verify_run` | `tb verify run` | `ruler=tests\|visual`; args espelham flags + `env`/`pass_env` |
 | `tb_review` | `tb review` | ticket/base/head/approved_sha/approved_base/require_approved_sha/reviewers/standards |
@@ -2049,10 +2055,44 @@ não repassam o ambiente completo ao `sh -c`. Só passam chaves da allowlist emb
 | `.toolbelt/config.yaml` → `env.allow` | Estende a allowlist |
 | `.toolbelt/config.yaml` → `env.pass` | Opt-in explícito de segredos |
 | Flag global `--env KEY` / arg MCP `env` | Estende a allowlist (não contorna segredos) |
-| Flag global `--pass-env KEY` / arg MCP `pass_env` | Opt-in explícito de segredos |
+| Flag global `--pass-env KEY` | Opt-in explícito de segredos |
+| Arg MCP `pass_env` | Só chaves já presentes em `env.pass` da config **global** (`~/.config/toolbelt/config.yaml` ou `-c`); qualquer outra é recusada (o modelo não libera segredos, e a config do próprio repositório não conta porque o agente pode escrevê-la) |
 
 Segredos: qualquer nome contendo `TOKEN`, `SECRET`, `KEY` ou `PASSWORD`
-(case-insensitive) é bloqueado sem opt-in.
+(case-insensitive) é bloqueado sem opt-in. No `tb_run` do MCP, o `env.pass` só é
+lido da config global.
+
+### Sandbox do `tb_run` no MCP
+
+O `tb_run` do MCP roda `sh -c` sob Landlock, como `tb router` e `tb bus run`.
+O filho pode:
+
+- **escrever** na raiz do repositório (o diretório com `.toolbelt`, ou o
+  diretório de trabalho do servidor), no próprio `TMPDIR` (criado a cada chamada e
+  apagado depois) e nos caches de toolchain que existirem: `GOCACHE`, `GOMODCACHE`,
+  `$GOPATH/pkg/sumdb`, os caches de npm, pip e uv, `$CARGO_HOME/registry`;
+- **ler** os diretórios do sistema (`/usr`, `/etc`, `/lib`...), toda entrada do
+  `PATH` exceto `/`, `$HOME` e seus ancestrais, o `GOROOT` e o diretório do
+  arquivo `GOENV`;
+- nada além disso: `$HOME` (`~/.ssh`, `~/.gitconfig`, histórico do shell), o `/tmp`
+  compartilhado e outros repositórios ficam fechados. O git funciona, mas avisa
+  que não consegue ler `~/.gitconfig`.
+
+O `cwd` precisa ser a raiz do repositório ou estar abaixo dela. Caminhos extras e
+o opt-out vêm só da config global, porque o repositório (e o
+`.toolbelt/config.yaml` dele) é gravável de dentro do sandbox:
+
+```yaml
+# ~/.config/toolbelt/config.yaml
+sandbox:
+  read: [~/.nvm]              # só leitura, absoluto ou ~/ (precisa existir)
+  write: [~/.cache/my-tool]   # leitura e escrita
+  allow_unsandboxed: false    # true: roda sem isolamento quando não há Landlock
+```
+
+Sem Landlock (macOS, Windows, kernels sem o LSM), o `tb_run` falha fechado, a
+menos que `sandbox.allow_unsandboxed: true`. O resultado traz
+`sandboxed: true|false`. A rede não é restringida.
 
 ---
 

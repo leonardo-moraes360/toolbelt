@@ -53,6 +53,14 @@ type SandboxConfig struct {
 	CPULimit  int      `yaml:"cpu_limit"`
 	MemLimit  string   `yaml:"mem_limit"`
 	TimeLimit string   `yaml:"time_limit"`
+	// Read and Write are extra absolute paths (~/ allowed) granted to the MCP
+	// tb_run sandbox, read-only and read-write, on top of the workdir, the
+	// system dirs, PATH, GOROOT and the toolchain caches.
+	Read  []string `yaml:"read,omitempty"`
+	Write []string `yaml:"write,omitempty"`
+	// AllowUnsandboxed lets MCP tb_run run without isolation when Landlock is
+	// unavailable. Off by default: tb_run fails closed.
+	AllowUnsandboxed bool `yaml:"allow_unsandboxed,omitempty"`
 }
 
 type GraphConfig struct {
@@ -264,6 +272,22 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("loading local config: %w", err)
 	}
 
+	return cfg, nil
+}
+
+// LoadTrusted loads only config an agent working in the repository cannot
+// write: the -c/--config file when set, else the global config. The local
+// .toolbelt/config.yaml lives inside the repository, so MCP security knobs
+// (env.pass, sandbox.read/write/allow_unsandboxed) never come from it.
+func LoadTrusted() (*Config, error) {
+	cfg := DefaultConfig()
+	path := overrideFile
+	if path == "" {
+		path = GlobalConfigPath()
+	}
+	if err := loadFromFile(path, cfg); err != nil && !(overrideFile == "" && errors.Is(err, os.ErrNotExist)) {
+		return nil, fmt.Errorf("loading trusted config %s: %w", path, err)
+	}
 	return cfg, nil
 }
 
