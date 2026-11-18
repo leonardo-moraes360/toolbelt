@@ -13,6 +13,7 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 - Inglês passa a ser a língua padrão do repositório: docs da raiz (`README.md`, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md`, `CHANGELOG.md`), `docs/`, `AGENTS.md`, `CLAUDE.md`, templates do `.github/`, invariantes e comentários de código; a tradução em português vai para `docs/pt-BR/` (substitui `docs/en/` e os `*.en.md` da raiz); `TestDocsTranslationMirrorComplete` substitui `TestDocsEnglishMirrorComplete`
 - Landing page abre em inglês por padrão (toggle PT mantido)
 - Comentários de código que só repetiam o que o código faz foram removidos; os restantes explicam como/por quê
+- A saída da CLI e do servidor MCP passa a ser em inglês: help do cobra (`Short`/`Long`/`Example`), uso das flags, mensagens de erro, relatórios (ex.: `guard: ok (3 rules, 0 violations)`, drift `Out of scope` / `Forbidden touched`) e descrições das tools/schemas MCP; o parsing de entrada continua aceitando os títulos em português do `rd.md` (`Escopo`, `Proibido`, `Aceite`)
 
 ### Documentação
 - README, site, `docs/cli.md`, arquitetura, índice/status dos ADRs, protocolo do bus, release, CONTRIBUTING e SECURITY atualizados para a v0.0.5 (36 tools MCP, etapas B0–B4 do `tb bus`, `tb mcp --bus-as`, `graph explain`/`path`)

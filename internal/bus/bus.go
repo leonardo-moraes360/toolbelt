@@ -46,7 +46,7 @@ func ParseRole(s string) (Role, error) {
 			return r, nil
 		}
 	}
-	return "", fmt.Errorf("papel inválido %q (use router, supervisor, worker ou reviewer)", s)
+	return "", fmt.Errorf("invalid role %q (use router, supervisor, worker or reviewer)", s)
 }
 
 type Type string
@@ -70,7 +70,7 @@ func ParseType(s string) (Type, error) {
 			return t, nil
 		}
 	}
-	return "", fmt.Errorf("tipo inválido %q (use task.assign, task.status, query, reply, ack ou urgent)", s)
+	return "", fmt.Errorf("invalid type %q (use task.assign, task.status, query, reply, ack or urgent)", s)
 }
 
 // Wake is the wake mode declared in the Agent Card.
@@ -105,7 +105,7 @@ var (
 
 func ValidName(kind, s string) error {
 	if !nameRe.MatchString(s) {
-		return fmt.Errorf("%s inválido %q (use [a-z0-9][a-z0-9._-], até 63 caracteres)", kind, s)
+		return fmt.Errorf("invalid %s %q (use [a-z0-9][a-z0-9._-], up to 63 characters)", kind, s)
 	}
 	return nil
 }
@@ -115,7 +115,7 @@ func validRef(kind, s string) error {
 		return nil
 	}
 	if !threadRe.MatchString(s) {
-		return fmt.Errorf("%s inválido %q (use [A-Za-z0-9._:/-], até 128 caracteres)", kind, s)
+		return fmt.Errorf("invalid %s %q (use [A-Za-z0-9._:/-], up to 128 characters)", kind, s)
 	}
 	return nil
 }
@@ -123,7 +123,7 @@ func validRef(kind, s string) error {
 // Validate also normalizes the card.
 func (c *AgentCard) Validate() error {
 	c.Name = strings.TrimSpace(c.Name)
-	if err := ValidName("nome de agente", c.Name); err != nil {
+	if err := ValidName("agent name", c.Name); err != nil {
 		return err
 	}
 	switch c.Wake {
@@ -131,10 +131,10 @@ func (c *AgentCard) Validate() error {
 		c.Wake = WakeManual
 	case WakeExec, WakeHarness, WakeNotify, WakeManual:
 	default:
-		return fmt.Errorf("wake inválido %q (use exec, harness, notify ou manual)", c.Wake)
+		return fmt.Errorf("invalid wake %q (use exec, harness, notify or manual)", c.Wake)
 	}
 	if c.ContextWindow < 0 || c.MaxConcurrency < 0 {
-		return errors.New("context_window e max_concurrency não podem ser negativos")
+		return errors.New("context_window and max_concurrency cannot be negative")
 	}
 	return nil
 }
@@ -144,11 +144,11 @@ func AgentID(name string) string { return "agent:" + name }
 func ParseTarget(to string) (kind, name string, err error) {
 	kind, name, ok := strings.Cut(strings.TrimSpace(to), ":")
 	if !ok {
-		return "", "", fmt.Errorf("destino inválido %q (use agent:<nome>, role:<papel> ou topic:<nome>)", to)
+		return "", "", fmt.Errorf("invalid destination %q (use agent:<name>, role:<role> or topic:<name>)", to)
 	}
 	switch kind {
 	case "agent", "topic":
-		if err := ValidName("destino", name); err != nil {
+		if err := ValidName("destination", name); err != nil {
 			return "", "", err
 		}
 	case "role":
@@ -156,7 +156,7 @@ func ParseTarget(to string) (kind, name string, err error) {
 			return "", "", err
 		}
 	default:
-		return "", "", fmt.Errorf("destino inválido %q (use agent:<nome>, role:<papel> ou topic:<nome>)", to)
+		return "", "", fmt.Errorf("invalid destination %q (use agent:<name>, role:<role> or topic:<name>)", to)
 	}
 	return kind, name, nil
 }

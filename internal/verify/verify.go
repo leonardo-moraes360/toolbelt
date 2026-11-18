@@ -31,7 +31,7 @@ const (
 
 const DefaultHiddenTestCmd = "go test ./tests/hidden/..."
 
-const errMissingCmdFmt = "comando não encontrado: %s — ajuste %s"
+const errMissingCmdFmt = "command not found: %s — adjust %s"
 
 type Config struct {
 	RepoDir        string
@@ -132,7 +132,7 @@ func Run(ctx context.Context, cfg *Config) (*Result, error) {
 	}
 	if abort {
 		if res.Reason == "" {
-			res.Reason = "guard abortou verify (path protegido)"
+			res.Reason = "guard aborted verify (protected path)"
 			res.Error = res.Reason
 		}
 		return res, nil
@@ -151,7 +151,7 @@ func Run(ctx context.Context, cfg *Config) (*Result, error) {
 		defer stop()
 	}
 	if hw.DirtyWarn {
-		log.Warn("worktree sujo com head igual ao HEAD; build/lint/test podem incluir mudanças não commitadas",
+		log.Warn("dirty worktree with head equal to HEAD; build/lint/test may include uncommitted changes",
 			"workdir", hw.WorkDir, "head_sha", hw.HeadSHA)
 	}
 
@@ -169,7 +169,7 @@ func dryRunResult(res *Result, execCfg *Config) *Result {
 	res.DryRun = true
 	res.Plan = BuildPlan(execCfg)
 	res.Verdict = VerdictSkipped
-	res.Reason = "dry-run: plano gerado sem executar"
+	res.Reason = "dry-run: plan generated without executing"
 	return res
 }
 
@@ -206,7 +206,7 @@ func runVerifyLoops(ctx context.Context, cfg *Config, res *Result) (*Result, err
 	}
 	res.Verdict = VerdictEscalate
 	if res.Reason == "" {
-		res.Reason = fmt.Sprintf("ESCALATE após %d iterações sem PASS", res.Iterations)
+		res.Reason = fmt.Sprintf("ESCALATE after %d iterations without PASS", res.Iterations)
 		res.Error = res.Reason
 	}
 	return res, nil
@@ -280,9 +280,9 @@ func guardBlocksVerify(v *guard.Violation, scope []string) bool {
 	}
 	v.Severity = guard.SeverityWarning
 	if len(scope) > 0 {
-		v.Message = "path protegido (guard.yaml) no Scope do ticket — verify continua"
+		v.Message = "protected path (guard.yaml) in ticket Scope — verify continues"
 	} else {
-		v.Message = "path protegido (guard.yaml) — verify reporta e continua (anti-cheat default ainda aborta)"
+		v.Message = "protected path (guard.yaml) — verify reports and continues (default anti-cheat still aborts)"
 	}
 	return false
 }
@@ -352,7 +352,7 @@ func runVerifyIteration(ctx context.Context, cfg *Config, res *Result, cache *cm
 		return false, true, preErr
 	}
 	if !preOK {
-		log.Info("iteração de verify falhou", "n", res.Iterations, "step", "build_or_lint")
+		log.Info("verify iteration failed", "n", res.Iterations, "step", "build_or_lint")
 		return false, deterministic, nil
 	}
 	visibleOK, out, err := runConfiguredCmd(ctx, cfg, cfg.VisibleTest, "verify.test_cmd")
@@ -381,7 +381,7 @@ func runVerifyIteration(ctx context.Context, cfg *Config, res *Result, cache *cm
 	if visibleOK && hiddenOK {
 		return true, false, nil
 	}
-	log.Info("iteração de verify falhou", "n", res.Iterations)
+	log.Info("verify iteration failed", "n", res.Iterations)
 	return false, false, nil
 }
 
@@ -424,7 +424,7 @@ func runCachedStep(ctx context.Context, cfg *Config, res *Result, done, cachedOK
 
 func setFailure(res *Result, step, reason string) {
 	if reason == "" {
-		reason = step + " falhou"
+		reason = step + " failed"
 	}
 	res.Reason = reason
 	res.Error = reason
@@ -433,12 +433,12 @@ func setFailure(res *Result, step, reason string) {
 func failReason(step, output string) string {
 	out := strings.TrimSpace(output)
 	if out == "" {
-		return step + " falhou"
+		return step + " failed"
 	}
 	if len(out) > 512 {
 		out = out[:512] + "…"
 	}
-	return step + " falhou: " + out
+	return step + " failed: " + out
 }
 
 func runConfiguredCmd(ctx context.Context, cfg *Config, command, configKey string) (ok bool, output string, err error) {
@@ -455,7 +455,7 @@ func runConfiguredCmd(ctx context.Context, cfg *Config, command, configKey strin
 	if isCommandMissing(runErr) {
 		return false, output, &MissingCommandError{Command: command, ConfigKey: configKey}
 	}
-	log.Debug("teste falhou", "output", output, "error", runErr)
+	log.Debug("test failed", "output", output, "error", runErr)
 	return false, output, nil
 }
 

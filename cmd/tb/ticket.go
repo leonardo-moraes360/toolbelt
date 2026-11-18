@@ -30,12 +30,12 @@ func printJSON(v any) error {
 
 var ticketCmd = &cobra.Command{
 	Use:   "ticket",
-	Short: "Tickets de trabalho para agentes (.toolbelt/tickets)",
+	Short: "Work tickets for agents (.toolbelt/tickets)",
 }
 
 var ticketCreateCmd = &cobra.Command{
 	Use:   "create",
-	Short: "Cria ticket (--title ou --from rd.md)",
+	Short: "Creates a ticket (--title or --from rd.md)",
 	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		f := cmd.Flags()
@@ -87,7 +87,7 @@ var ticketCreateCmd = &cobra.Command{
 			if jsonOutput {
 				return printJSON(t)
 			}
-			fmt.Printf("dry-run: ticket %q seria criado (válido)\n", t.Title)
+			fmt.Printf("dry-run: ticket %q would be created (valid)\n", t.Title)
 			return nil
 		}
 		created, err := s.Create(&t)
@@ -97,14 +97,14 @@ var ticketCreateCmd = &cobra.Command{
 		if jsonOutput {
 			return printJSON(created)
 		}
-		fmt.Printf("ticket %s criado: %s\n", created.ID, created.Title)
+		fmt.Printf("ticket %s created: %s\n", created.ID, created.Title)
 		return nil
 	},
 }
 
 var ticketListCmd = &cobra.Command{
 	Use:   "list",
-	Short: "Lista tickets",
+	Short: "Lists tickets",
 	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		statuses, _ := cmd.Flags().GetString("status")
@@ -130,7 +130,7 @@ var ticketListCmd = &cobra.Command{
 			return printJSON(list)
 		}
 		if len(list) == 0 {
-			fmt.Println("nenhum ticket")
+			fmt.Println("no tickets")
 			return nil
 		}
 		for i := range list {
@@ -142,7 +142,7 @@ var ticketListCmd = &cobra.Command{
 
 var ticketShowCmd = &cobra.Command{
 	Use:   "show <id>",
-	Short: "Mostra um ticket",
+	Short: "Shows a ticket",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		s, err := openTicketStore()
@@ -163,7 +163,7 @@ var ticketShowCmd = &cobra.Command{
 
 var ticketCancelCmd = &cobra.Command{
 	Use:   "cancel <id>",
-	Short: "Cancela ticket pending/running",
+	Short: "Cancels a pending/running ticket",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		s, err := openTicketStore()
@@ -177,14 +177,14 @@ var ticketCancelCmd = &cobra.Command{
 		if jsonOutput {
 			return printJSON(t)
 		}
-		fmt.Printf("ticket %s cancelado\n", t.ID)
+		fmt.Printf("ticket %s canceled\n", t.ID)
 		return nil
 	},
 }
 
 var ticketRetryCmd = &cobra.Command{
 	Use:   "retry <id>",
-	Short: "Recoloca ticket failed/canceled em pending",
+	Short: "Puts a failed/canceled ticket back to pending",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		s, err := openTicketStore()
@@ -198,7 +198,7 @@ var ticketRetryCmd = &cobra.Command{
 		if jsonOutput {
 			return printJSON(t)
 		}
-		fmt.Printf("ticket %s voltou para pending\n", t.ID)
+		fmt.Printf("ticket %s returned to pending\n", t.ID)
 		return nil
 	},
 }
@@ -232,34 +232,34 @@ func ticketLine(t *ticket.Ticket) string {
 func printTicketDetail(t *ticket.Ticket) {
 	fmt.Printf("%s  %s\n", t.ID, t.Title)
 	fmt.Printf("status:      %s\n", t.Status)
-	fmt.Printf("prioridade:  %d\n", t.Priority)
-	fmt.Printf("criado:      %s\n", t.CreatedAt.Format("2006-01-02 15:04:05"))
-	fmt.Printf("atualizado:  %s\n", t.UpdatedAt.Format("2006-01-02 15:04:05"))
+	fmt.Printf("priority:    %d\n", t.Priority)
+	fmt.Printf("created:     %s\n", t.CreatedAt.Format("2006-01-02 15:04:05"))
+	fmt.Printf("updated:     %s\n", t.UpdatedAt.Format("2006-01-02 15:04:05"))
 	if t.Source != "" {
-		fmt.Printf("origem:      %s\n", t.Source)
+		fmt.Printf("source:      %s\n", t.Source)
 	}
 	if len(t.Dependencies) > 0 {
 		fmt.Printf("deps:        %s\n", strings.Join(t.Dependencies, ", "))
 	}
 	if t.Worker != "" {
-		fmt.Printf("worker:      %s (tentativas: %d)\n", t.Worker, t.Attempts)
+		fmt.Printf("worker:      %s (attempts: %d)\n", t.Worker, t.Attempts)
 	} else if t.Attempts > 0 {
-		fmt.Printf("tentativas:  %d\n", t.Attempts)
+		fmt.Printf("attempts:    %d\n", t.Attempts)
 	}
 	if t.Acceptance.Timeout != "" {
 		fmt.Printf("timeout:     %s\n", t.Acceptance.Timeout)
 	}
-	printList("escopo", t.Mandate.Scope)
-	printList("proibido", t.Mandate.Forbidden)
-	printList("permissões", t.Mandate.Permissions)
-	printList("aceite", t.Acceptance.Criteria)
+	printList("scope", t.Mandate.Scope)
+	printList("forbidden", t.Mandate.Forbidden)
+	printList("permissions", t.Mandate.Permissions)
+	printList("acceptance", t.Acceptance.Criteria)
 	if t.Subscription != nil {
-		fmt.Printf("assinatura:  %s até %s\n", t.Subscription.Worker, t.Subscription.ExpiresAt.Format("15:04:05"))
+		fmt.Printf("signature:   %s until %s\n", t.Subscription.Worker, t.Subscription.ExpiresAt.Format("15:04:05"))
 	}
 	if r := t.Result; r != nil {
-		fmt.Printf("resultado:   exit=%d branch=%s head=%s\n", r.ExitCode, r.Branch, r.HeadCommit)
+		fmt.Printf("result:      exit=%d branch=%s head=%s\n", r.ExitCode, r.Branch, r.HeadCommit)
 		if r.Error != "" {
-			fmt.Printf("erro:        %s\n", r.Error)
+			fmt.Printf("error:       %s\n", r.Error)
 		}
 	}
 	if t.MergedAt != nil {
@@ -278,19 +278,19 @@ func printList(label string, items []string) {
 
 func init() {
 	c := ticketCreateCmd.Flags()
-	c.String("title", "", "título do ticket")
-	c.String("from", "", "arquivo rd.md / ticket com escopo e aceite")
-	c.String("description", "", "descrição")
-	c.StringSlice("scope", nil, "paths permitidos (repetível)")
-	c.StringSlice("forbid", nil, "paths proibidos (repetível)")
-	c.StringArray("accept", nil, "critério de aceite (repetível)")
-	c.StringSlice("dep", nil, "ID do ticket do qual depende (repetível)")
-	c.Int("priority", 0, "prioridade (maior primeiro)")
-	c.String("timeout", "", "timeout de execução (ex.: 10m)")
-	c.Bool("dry-run", false, "valida sem gravar")
+	c.String("title", "", "ticket title")
+	c.String("from", "", "rd.md file / ticket with scope and acceptance")
+	c.String("description", "", "description")
+	c.StringSlice("scope", nil, "allowed paths (repeatable)")
+	c.StringSlice("forbid", nil, "forbidden paths (repeatable)")
+	c.StringArray("accept", nil, "acceptance criterion (repeatable)")
+	c.StringSlice("dep", nil, "ID of the ticket this one depends on (repeatable)")
+	c.Int("priority", 0, "priority (higher first)")
+	c.String("timeout", "", "execution timeout (e.g. 10m)")
+	c.Bool("dry-run", false, "validates without saving")
 
-	ticketListCmd.Flags().String("status", "", "filtra por status (lista separada por vírgula)")
-	ticketListCmd.Flags().String("deps", "", "só tickets que dependem deste ID")
+	ticketListCmd.Flags().String("status", "", "filters by status (comma-separated list)")
+	ticketListCmd.Flags().String("deps", "", "only tickets that depend on this ID")
 
 	ticketCmd.AddCommand(ticketCreateCmd, ticketListCmd, ticketShowCmd, ticketCancelCmd, ticketRetryCmd)
 }

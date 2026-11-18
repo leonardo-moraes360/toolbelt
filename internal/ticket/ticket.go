@@ -35,7 +35,7 @@ func (s Status) Valid() bool {
 func ParseStatus(s string) (Status, error) {
 	st := Status(strings.ToLower(strings.TrimSpace(s)))
 	if !st.Valid() {
-		return "", fmt.Errorf("status inválido %q (use pending, running, done, failed ou canceled)", s)
+		return "", fmt.Errorf("invalid status %q (use pending, running, done, failed or canceled)", s)
 	}
 	return st, nil
 }
@@ -145,7 +145,7 @@ func NormalizeID(s string) (string, error) {
 			return FormatID(n), nil
 		}
 	}
-	return "", fmt.Errorf("ID de ticket inválido %q (esperado TKT-NNN)", s)
+	return "", fmt.Errorf("invalid ticket ID %q (expected TKT-NNN)", s)
 }
 
 // FormatID formats n as TKT-NNN (3+ digits).
@@ -163,22 +163,22 @@ func idNumber(id string) int {
 // Validate checks fields only; dependencies are not consulted.
 func (t *Ticket) Validate() error {
 	if strings.TrimSpace(t.Title) == "" {
-		return fmt.Errorf("título do ticket é obrigatório")
+		return fmt.Errorf("ticket title is required")
 	}
 	if t.Status != "" && !t.Status.Valid() {
-		return fmt.Errorf("status inválido %q", t.Status)
+		return fmt.Errorf("invalid status %q", t.Status)
 	}
 	for _, p := range t.Mandate.Permissions {
 		switch p {
 		case PermRead, PermWrite, PermRunTests:
 		default:
-			return fmt.Errorf("permissão inválida %q (use read, write ou run_tests)", p)
+			return fmt.Errorf("invalid permission %q (use read, write or run_tests)", p)
 		}
 	}
 	if t.Acceptance.Timeout != "" {
 		d, err := time.ParseDuration(t.Acceptance.Timeout)
 		if err != nil || d <= 0 {
-			return fmt.Errorf("timeout inválido %q (ex.: 10m)", t.Acceptance.Timeout)
+			return fmt.Errorf("invalid timeout %q (e.g. 10m)", t.Acceptance.Timeout)
 		}
 	}
 	return nil

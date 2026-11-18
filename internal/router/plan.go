@@ -45,7 +45,7 @@ func BuildPlan(b *ticket.Board, workers int, strategy ticket.Strategy, direct bo
 		Strategy: string(strategy), Workers: workers, DirectDelivery: direct,
 		Paused: b.Control.Paused, Draining: b.Control.Draining,
 		Rounds: []PlanRound{}, Unschedulable: []PlanUnschedulable{},
-		Note: "estimativa com duração igual por ticket; a ordem real depende de quando cada worker termina",
+		Note: "estimate assuming equal duration per ticket; the actual order depends on when each worker finishes",
 	}
 	pl := &planner{b: b, workers: workers, strategy: strategy, direct: direct, maxSubs: maxSubs,
 		status: map[string]ticket.Status{}, byID: map[string]*ticket.Ticket{}}
@@ -169,7 +169,7 @@ func (pl *planner) unschedulable() []PlanUnschedulable {
 			if dep, ok := pl.byID[d]; ok {
 				reasons = append(reasons, fmt.Sprintf("%s: %s", d, dep.Status))
 			} else {
-				reasons = append(reasons, d+": inexistente")
+				reasons = append(reasons, d+": does not exist")
 			}
 		}
 		out = append(out, PlanUnschedulable{Ticket: t.ID, Reasons: reasons})

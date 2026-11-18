@@ -146,7 +146,7 @@ type Router struct {
 // New validates options without touching tickets.
 func New(opts *Options) (*Router, error) {
 	if opts.Root == "" {
-		return nil, errors.New("raiz do repositório obrigatória")
+		return nil, errors.New("repository root is required")
 	}
 	cfg := opts.Config
 	if cfg.MaxWorkers == 0 {
@@ -250,7 +250,7 @@ func (r *Router) Run(ctx context.Context) (*Summary, error) {
 	if err := r.recover(); err != nil {
 		return nil, err
 	}
-	r.logf("router iniciado: %d workers, estratégia %s", r.workers, r.strategy)
+	r.logf("router started: %d workers, strategy %s", r.workers, r.strategy)
 
 	ticker := time.NewTicker(r.tick)
 	defer ticker.Stop()
@@ -270,14 +270,14 @@ func (r *Router) Run(ctx context.Context) (*Summary, error) {
 // preflight checks what must be in place before touching any state.
 func (r *Router) preflight() error {
 	if len(r.argv) == 0 {
-		return errors.New("agent_cmd não configurado (use router.agent_cmd em .toolbelt/config.yaml ou --agent-cmd)")
+		return errors.New("agent_cmd not configured (use router.agent_cmd in .toolbelt/config.yaml or --agent-cmd)")
 	}
 	// fail-closed: without Landlock and without explicit opt-in, nothing is touched.
 	if _, err := sandbox.New(sandbox.Config{WorkDir: r.opts.Root, AllowUnsandboxed: r.opts.AllowUnsandboxed}); err != nil {
 		return err
 	}
 	if _, err := gitOut(r.opts.Root, "rev-parse", "--verify", "HEAD"); err != nil {
-		return fmt.Errorf("repositório git sem commit (HEAD): %w", err)
+		return fmt.Errorf("git repository has no commit (HEAD): %w", err)
 	}
 	r.identityArgs() // identity read once, with normal config, before the hardened git
 	return os.MkdirAll(Dir(r.opts.Root), 0o755)
@@ -321,7 +321,7 @@ func (r *Router) boardFailure(err error) (stop bool, ferr error) {
 	r.boardFails++
 	if r.boardFails == 1 {
 		r.alert(AlertBoardUnreadable, SevWarn, "", "",
-			fmt.Sprintf("board ilegível (%v); workers mantidos, nova tentativa no próximo tick", err), ActionNone)
+			fmt.Sprintf("board unreadable (%v); workers kept, retrying on the next tick", err), ActionNone)
 	}
 	if r.boardFails >= r.maxBoardFail {
 		r.shutdown(ReasonStalled)
@@ -358,7 +358,7 @@ func (r *Router) finish() *Summary {
 	if b, err := ticket.LoadBoard(r.store); err == nil {
 		r.writeState(b, StateStopped)
 	}
-	r.logf("router encerrado (%s)", r.summary.Reason)
+	r.logf("router stopped (%s)", r.summary.Reason)
 	s := r.summary
 	return &s
 }
@@ -382,7 +382,7 @@ func (r *Router) recover() error {
 			}); err != nil {
 				return err
 			}
-			r.logf("%s estava running sem router ativo; devolvido para pending", t.ID)
+			r.logf("%s was running with no active router; returned to pending", t.ID)
 		case t.Status == ticket.StatusPending && t.Subscription != nil:
 			if _, err := r.store.Update(t.ID, func(x *ticket.Ticket) error {
 				x.Subscription = nil
@@ -526,7 +526,7 @@ func (r *Router) baseFor(s *slot, pick *ticket.Ticket, head string, byID map[str
 		}
 		if len(unmerged) > 0 {
 			r.alert(AlertMultiDepBase, SevWarn, s.id, pick.ID,
-				fmt.Sprintf("%s tem %d dependências e base em HEAD; dependências sem merge: %s (rode `tb merge` nelas antes)",
+				fmt.Sprintf("%s has %d dependencies and is based on HEAD; unmerged dependencies: %s (run `tb merge` on them first)",
 					pick.ID, len(pick.Dependencies), strings.Join(unmerged, ", ")),
 				ActionNone)
 		}
@@ -539,7 +539,7 @@ func (r *Router) start(s *slot, t *ticket.Ticket, via, base string) {
 	var attempts int
 	_, err := r.store.Update(t.ID, func(x *ticket.Ticket) error {
 		if x.Status != ticket.StatusPending {
-			return fmt.Errorf("%s não está mais pending (%s)", x.ID, x.Status)
+			return fmt.Errorf("%s is no longer pending (%s)", x.ID, x.Status)
 		}
 		x.Status = ticket.StatusRunning
 		x.Worker = s.id
@@ -551,7 +551,7 @@ func (r *Router) start(s *slot, t *ticket.Ticket, via, base string) {
 		return nil
 	})
 	if err != nil {
-		r.logf("não atribuí %s: %v", t.ID, err)
+		r.logf("did not assign %s: %v", t.ID, err)
 		return
 	}
 	timeout := t.TimeoutDuration()
@@ -561,7 +561,7 @@ func (r *Router) start(s *slot, t *ticket.Ticket, via, base string) {
 	wctx, cancel := context.WithCancel(context.Background())
 	*s = slot{id: s.id, ticket: t.ID, title: t.Title, started: now, timeout: timeout, attempts: attempts, cancel: cancel}
 	r.summary.Assignments = append(r.summary.Assignments, Assignment{Ticket: t.ID, Worker: s.id, Via: via, Base: base, Attempt: attempts})
-	r.logf("[%s] %s iniciado (%s, base %s, tentativa %d)", s.id, t.ID, via, short(base), attempts)
+	r.logf("[%s] %s started (%s, base %s, attempt %d)", s.id, t.ID, via, short(base), attempts)
 	tk := *t // copy: the goroutine does not share the board's slice
 	wid := s.id
 	go func() { r.done <- r.execute(wctx, s, wid, &tk, base) }()
@@ -576,7 +576,7 @@ func short(sha string) string {
 
 // errNotMine signals the ticket is no longer running on this worker (e.g.
 // canceled via `tb ticket cancel`); the result is dropped without a transition.
-var errNotMine = errors.New("ticket não está mais running neste worker")
+var errNotMine = errors.New("ticket is no longer running on this worker")
 
 // updateMine applies fn only if the ticket is still running and assigned to worker.
 func (r *Router) updateMine(id, worker string, fn func(*ticket.Ticket)) error {
@@ -629,7 +629,7 @@ func (r *Router) complete(ev *workerDone) {
 	if escapedMark && ev.err == nil {
 		// escape attributed to this ticket by a tick (or by another worker) after
 		// execute's last sweep: fail anyway
-		ev.err = fmt.Errorf("%w: processo escapou do grupo do agente durante a execução", errAgentEscaped)
+		ev.err = fmt.Errorf("%w: process escaped the agent group during execution", errAgentEscaped)
 	}
 	finishedOK := ev.err == nil && ev.exit == 0 && !ev.canceled && !ev.timedOut
 	switch {
@@ -643,7 +643,7 @@ func (r *Router) complete(ev *workerDone) {
 }
 
 func (r *Router) discard(worker, id string) {
-	r.logf("[%s] %s não está mais running neste worker (cancelado?); resultado descartado", worker, id)
+	r.logf("[%s] %s is no longer running on this worker (canceled?); result discarded", worker, id)
 }
 
 func (r *Router) completeOK(ev *workerDone, c *completion, res *ticket.Result) {
@@ -656,14 +656,14 @@ func (r *Router) completeOK(ev *workerDone, c *completion, res *ticket.Result) {
 		return
 	}
 	if err != nil {
-		r.logf("erro ao concluir %s: %v", ev.id, err)
+		r.logf("error completing %s: %v", ev.id, err)
 		return
 	}
 	if c.reason != "" {
-		r.logf("[%s] %s terminou com sucesso antes do cancelamento (%s); mantido como concluído", c.worker, ev.id, c.reason)
+		r.logf("[%s] %s finished successfully before the cancellation (%s); kept as done", c.worker, ev.id, c.reason)
 	}
 	r.summary.Done = append(r.summary.Done, ev.id)
-	r.logf("[%s] %s concluído (%s)", c.worker, ev.id, short(ev.head))
+	r.logf("[%s] %s done (%s)", c.worker, ev.id, short(ev.head))
 	r.subscribeDependents(ev.id, c.worker)
 }
 
@@ -683,13 +683,13 @@ func (r *Router) completeRequeue(ev *workerDone, c *completion) {
 		return
 	}
 	r.summary.Requeued = append(r.summary.Requeued, ev.id)
-	r.logf("[%s] %s devolvido para pending", c.worker, ev.id)
+	r.logf("[%s] %s returned to pending", c.worker, ev.id)
 }
 
 func failureError(ev *workerDone, c *completion) string {
 	switch {
 	case c.reason == reasonStuck:
-		return fmt.Sprintf("timeout de %s excedido (worker_stuck)", c.timeout)
+		return fmt.Sprintf("timeout of %s exceeded (worker_stuck)", c.timeout)
 	case c.reason == reasonKilled:
 		msg := "encerrado por tb watchdog kill"
 		if c.killReason != "" {
@@ -699,7 +699,7 @@ func failureError(ev *workerDone, c *completion) string {
 	case ev.err != nil:
 		return ev.err.Error()
 	default:
-		return fmt.Sprintf("agente saiu com código %d", ev.exit)
+		return fmt.Sprintf("agent exited with code %d", ev.exit)
 	}
 }
 
@@ -715,7 +715,7 @@ func (r *Router) completeFailure(ev *workerDone, c *completion, res *ticket.Resu
 		if action == ActionEscalate {
 			sev = SevCritical
 		}
-		r.alert(AlertWorkerCrash, sev, c.worker, ev.id, fmt.Sprintf("%s em %s falhou: %s", ev.id, c.worker, res.Error), action)
+		r.alert(AlertWorkerCrash, sev, c.worker, ev.id, fmt.Sprintf("%s on %s failed: %s", ev.id, c.worker, res.Error), action)
 	}
 	r.clearSubscriptions(c.worker)
 	retry := action == ActionRetry
@@ -789,7 +789,7 @@ func (r *Router) subscribeDependents(doneID, worker string) {
 		exp := now.Add(r.ttl).UTC()
 		if _, err := r.store.Update(t.ID, func(x *ticket.Ticket) error {
 			if x.Status != ticket.StatusPending {
-				return fmt.Errorf("mudou de status")
+				return fmt.Errorf("status changed")
 			}
 			x.Subscription = &ticket.Subscription{Worker: worker, DirectDelivery: true, ExpiresAt: exp}
 			return nil
@@ -863,7 +863,7 @@ func (r *Router) writeState(b *ticket.Board, status string) {
 		return
 	}
 	if _, err := writeState(r.opts.Root, st); err != nil {
-		r.logf("aviso: state.json: %v", err)
+		r.logf("warning: state.json: %v", err)
 		return
 	}
 	r.lastState = data

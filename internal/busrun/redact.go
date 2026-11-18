@@ -142,17 +142,17 @@ func secretCandidates(v string, minLen int) []string {
 // error (fail-closed: without the values, the audit would leak).
 func readSecretFile(path string) ([]string, error) {
 	if !filepath.IsAbs(path) {
-		return nil, fmt.Errorf("secret_files: caminho %q precisa ser absoluto", path)
+		return nil, fmt.Errorf("secret_files: path %q must be absolute", path)
 	}
 	st, err := os.Stat(path)
 	if err != nil {
 		return nil, fmt.Errorf("secret_files: %w", err)
 	}
 	if !st.Mode().IsRegular() {
-		return nil, fmt.Errorf("secret_files: %s não é arquivo regular", path)
+		return nil, fmt.Errorf("secret_files: %s is not a regular file", path)
 	}
 	if st.Mode().Perm()&0o077 != 0 {
-		return nil, fmt.Errorf("secret_files: %s com permissão %o: use chmod 600", path, st.Mode().Perm())
+		return nil, fmt.Errorf("secret_files: %s has permission %o: use chmod 600", path, st.Mode().Perm())
 	}
 	f, err := os.Open(path)
 	if err != nil {

@@ -53,7 +53,7 @@ func TestTicketToolsFlow(t *testing.T) {
 		t.Fatal(text)
 	}
 	res, text = callTool(t, "tb_ticket_create", with(map[string]any{"title": "ruim", "dep": []any{"TKT-099"}}))
-	if !res.IsError || !strings.Contains(text, "desconhecida") {
+	if !res.IsError || !strings.Contains(text, "unknown dependency") {
 		t.Fatalf("dep desconhecida deveria falhar: %v %s", res.IsError, text)
 	}
 	res, text = callTool(t, "tb_ticket_create", with(map[string]any{"title": "dry", "dry_run": true}))

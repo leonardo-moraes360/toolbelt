@@ -13,7 +13,7 @@ import (
 
 // ErrSensitive is returned (wrapped) when a ticket changes paths that can lead
 // to code execution outside the sandbox (hooks, config, CI...).
-var ErrSensitive = errors.New("caminhos sensíveis alterados")
+var ErrSensitive = errors.New("sensitive paths changed")
 
 // hardenedGitArgs neutralize code execution via config/hooks: merge runs git
 // OUTSIDE the sandbox over agent-written content.
@@ -86,18 +86,18 @@ func hooksDirs(r runner) []string {
 func sensitiveReason(p string, c change, hooks []string) string {
 	lp := strings.ToLower(p)
 	if c.gitlink {
-		return "gitlink/submódulo"
+		return "gitlink/submodule"
 	}
 	for _, h := range hooks {
 		if strings.HasPrefix(lp, strings.ToLower(h)) {
-			return "diretório de hooks (" + strings.TrimSuffix(h, "/") + ")"
+			return "hooks directory (" + strings.TrimSuffix(h, "/") + ")"
 		}
 	}
 	switch {
 	case strings.HasPrefix(lp, ".toolbelt/"):
-		return "configuração do toolbelt"
+		return "toolbelt configuration"
 	case strings.HasPrefix(lp, ".github/workflows/"):
-		return "workflow de CI"
+		return "CI workflow"
 	case lp == ".gitmodules":
 		return ".gitmodules"
 	case path.Base(lp) == ".gitattributes":
@@ -128,7 +128,7 @@ func detectSensitive(r runner, prep []prepared) ([]Sensitive, error) {
 			for _, v := range gr.Violations {
 				if v.Type == guard.ViolationProtectedPath {
 					if _, ok := reasons[v.File]; !ok {
-						reasons[v.File] = "path protegido (guard)"
+						reasons[v.File] = "protected path (guard)"
 					}
 				}
 			}

@@ -72,30 +72,30 @@ ainda é você quem escreve o `rd.md`.
 ## Visão Geral
 
 ```
-tb  (implementado hoje)
-├── init         Inicializa configuração local/global
-├── bench        Harness de benchmark (run|list|report|compare)
-├── drift        Drift de escopo / commit base
-├── graph        Grafo sob demanda (TB_GRAPH=on ou --enable)
-├── guard        Proteções anti-trapaça (check)
-├── mcp          Servidor MCP sobre stdio
-├── mem          Invariantes (add|list|show|edit|retire|search|check|init)
-├── review       Revisão fresh-context
-├── sandbox      Isolamento Landlock (check|run)
-├── stack        Empilha ops de verificação (verify/review/drift/guard); não é stack de branches
-├── verify       Verificação adversarial (run; rulers tests|visual)
-├── workspace    Workspaces via git worktree (create|list|remove; alias: ws)
-├── version      Mostra versão (também: tb --version)
-├── ticket       Tickets de trabalho (create|list|show|cancel|retry)       ✓ Fase 3
-├── board        Board de tickets (list|watch|pause|resume|drain)          ✓ Fase 3
-├── router       Scheduler em primeiro plano (run|status|config)           ✓ Fase 3
-├── watchdog     Alertas e controle de workers (status|alerts|kill)       ✓ Fase 3
-├── merge        Integra tickets done (fail|last_wins)                     ✓ Fase 3
-└── bus          Barramento entre agentes (channel|invite|join|send|recv|claim|complete|log|run)  ✓ B1
+tb  (implemented today)
+├── init         Initializes local toolbelt configuration
+├── bench        Benchmark harness (run|list|report|compare)
+├── drift        Detects scope and base commit drift
+├── graph        On-demand code graph (TB_GRAPH=on or --enable)
+├── guard        Anti-cheat protections (check)
+├── mcp          Starts an MCP server over stdio
+├── mem          Invariants (add|list|show|edit|retire|search|check|init)
+├── review       Fresh-context review (Elephant-Goldfish)
+├── sandbox      Execution with Landlock isolation (check|run)
+├── stack        Stacks verification operations (verify/review/drift/guard), not branches
+├── verify       Adversarial verification (run; rulers tests|visual)
+├── workspace    Isolated workspaces via git worktree (create|list|remove; alias: ws)
+├── version      Shows the toolbelt version (also: tb --version)
+├── ticket       Work tickets (create|list|show|cancel|retry)       ✓ Phase 3
+├── board        Ticket board (list|watch|pause|resume|drain)          ✓ Phase 3
+├── router       Foreground scheduler (run|status|config)           ✓ Phase 3
+├── watchdog     Worker alerts and control (status|alerts|kill)       ✓ Phase 3
+├── merge        Merges done tickets (fail|last_wins)                     ✓ Phase 3
+└── bus          Agent bus (channel|invite|join|send|recv|claim|complete|log|run)  ✓ B1
 
-tb  (planejado)
+tb  (planned)
 ├── run / proc / md / agent
-└── serve        (hoje use: tb mcp)
+└── serve        (today use: tb mcp)
 ```
 
 ---
@@ -112,14 +112,14 @@ Executa comandos com isolamento opcional.
 tb run [flags] <command>
 
 Flags:
-  --timeout <duration>    Tempo máximo de execução (default: 30s)
-  --sandbox               Executa em sandbox isolado (default: false)
-  --allow-net <hosts>     Hosts permitidos na rede (requer --sandbox)
-  --allow-read <paths>    Caminhos adicionais de leitura (requer --sandbox)
-  --allow-write <paths>   Caminhos adicionais de escrita (requer --sandbox)
-  --cgroup-cpu <percent>  Limite de CPU em % (default: 100)
-  --cgroup-mem <bytes>    Limite de memória (default: 1G)
-  --json                  Saída em JSON
+  --timeout <duration>    Maximum execution time (default: 30s)
+  --sandbox               Runs in an isolated sandbox (default: false)
+  --allow-net <hosts>     Hosts allowed on the network (requires --sandbox)
+  --allow-read <paths>    Additional read paths (requires --sandbox)
+  --allow-write <paths>   Additional write paths (requires --sandbox)
+  --cgroup-cpu <percent>  CPU limit in % (default: 100)
+  --cgroup-mem <bytes>    Memory limit (default: 1G)
+  --json                  JSON output
 ```
 
 **Exemplos:**
@@ -152,13 +152,13 @@ Gerencia processos de longa duração (servidores, watchers).
 ```bash
 tb proc <subcommand>
 
-Subcomandos:
-  start     Inicia um processo
-  stop      Para um processo
-  restart   Reinicia um processo
-  list      Lista processos ativos
-  logs      Exibe logs de um processo
-  status    Status de um processo específico
+Subcommands:
+  start     Starts a process
+  stop      Stops a process
+  restart   Restarts a process
+  list      Lists active processes
+  logs      Shows a process's logs
+  status    Status of a specific process
 ```
 
 **`tb proc start`:**
@@ -167,11 +167,11 @@ Subcomandos:
 tb proc start [flags] <command>
 
 Flags:
-  --name <name>           Nome do processo (obrigatório)
-  --log <path>            Arquivo de log (default: .tb/logs/<name>.log)
-  --restart <policy>      Política de restart: never|on-failure|always
-  --max-restarts <n>      Máximo de restarts automáticos
-  --sandbox               Executa em sandbox
+  --name <name>           Process name (required)
+  --log <path>            Log file (default: .tb/logs/<name>.log)
+  --restart <policy>      Restart policy: never|on-failure|always
+  --max-restarts <n>      Maximum automatic restarts
+  --sandbox               Runs in a sandbox
 ```
 
 **Exemplos:**
@@ -205,7 +205,7 @@ tb proc stop --all
 
 Consulta e indexa o grafo de código **sob demanda**. Desabilitado por padrão;
 ative com `TB_GRAPH=on` ou `--enable` (sem isso, CLI e MCP respondem
-`grafo desabilitado (ative com --enable ou TB_GRAPH=on; ADR-011)`). Medir ROI via
+`graph disabled (enable with --enable or TB_GRAPH=on; ADR-011)`). Medir ROI via
 `tb bench compare --config-a bench/ab/graph-off.yaml --config-b bench/ab/graph-on.yaml`.
 
 Linguagens e docs (extensível via `LanguageIndexer`, regex leve, sem cgo):
@@ -275,16 +275,16 @@ de estatísticas.
 ```bash
 tb graph [--enable] <subcommand>
 
-Subcomandos:
-  search    Busca no grafo ✅
-  callers   Encontra chamadores de uma função ✅
-  deps      Mostra dependências ✅
-  impact    Analisa impacto de mudanças ✅
-  explain   Explica um nó (arestas + proveniência) ✅
-  path      Menor caminho entre dois nós ✅
-  index     Indexa código sob demanda ✅
-  rebuild   Reconstrói grafo completo ✅
-  stats     Estatísticas do grafo ✅
+Subcommands:
+  search    Searches the graph ✅
+  callers   Finds callers of a function ✅
+  deps      Shows dependencies ✅
+  impact    Analyzes the impact of changes ✅
+  explain   Explains a node: incoming/outgoing edges with provenance ✅
+  path      Shortest path between two nodes (edges in both directions) ✅
+  index     Indexes code on demand ✅
+  rebuild   Rebuilds the full graph ✅
+  stats     Graph statistics ✅
 ```
 
 Ferramentas MCP de grafo (chamada requer `TB_GRAPH=on`): `tb_graph_search`,
@@ -299,8 +299,8 @@ Não há `tb graph query` — use `tb graph search`.
 tb graph search <query> [flags]
 
 Flags:
-  --limit <n>         Máximo de resultados (default: 20)
-  --json              Saída em JSON (flag global)
+  --limit <n>         Maximum results (default: 20)
+  --json              JSON output (global flag)
 ```
 
 Ordem em três faixas: (1) título idêntico à consulta; (2) nós que contêm a consulta como substring de título/path/pacote/ID — o que a busca antiga trazia; (3) nós que só casam termos. Dentro de cada faixa, ranking BM25 sobre título, path e pacote (título pesa 3×), com camelCase, `snake_case` e separadores de path quebrados em termos; consulta com várias palavras casa qualquer termo. Empates ordenam por ID. Com mais resultados que `--limit`, o corte é feito nessa ordem.
@@ -311,8 +311,8 @@ Ordem em três faixas: (1) título idêntico à consulta; (2) nós que contêm a
 tb graph callers [flags]
 
 Flags:
-  --function <name>   Nome da função (aceita sufixo qualificado, ex. scrubber.redact_secrets)
-  --depth <n>         Profundidade do grafo (default: 1)
+  --function <name>   Function name (accepts a qualified suffix, e.g. scrubber.redact_secrets)
+  --depth <n>         Depth (default: 1)
 ```
 
 Não há `--file` em `callers` (use `--function`). Para impacto por arquivo, use `tb graph impact --file`.
@@ -332,9 +332,9 @@ alimentam `callers`/`impact` (incluindo funções em arquivos de teste).
 tb graph deps [flags]
 
 Flags:
-  --module <name>     Nome do módulo/pacote
-  --file <path>       Arquivo para analisar
-  --transitive        Inclui dependências transitivas
+  --module <name>     Module/package
+  --file <path>       File
+  --transitive        Includes transitive dependencies
 ```
 
 **`tb graph impact`:**
@@ -343,17 +343,17 @@ Flags:
 tb graph impact [flags]
 
 Flags:
-  --file <path>       Arquivo modificado
-  --depth <n>         Profundidade da análise (default: 2)
+  --file <path>       Modified file
+  --depth <n>         Depth (default: 2)
 ```
 
 **`tb graph explain`:**
 
 ```bash
-tb graph explain <nó> [flags]
+tb graph explain <node> [flags]
 
 Flags:
-  --limit <n>         Máximo de nós explicados (default: 5)
+  --limit <n>         Maximum explained nodes (default: 5)
 ```
 
 Mostra o nó com as arestas de saída e entrada (`source`, `confidence`). O nó
@@ -364,10 +364,10 @@ contadas em `unresolved_out`. Até 50 vizinhos por sentido (`truncated_*`).
 **`tb graph path`:**
 
 ```bash
-tb graph path <origem> <destino> [flags]
+tb graph path <from> <to> [flags]
 
 Flags:
-  --max-depth <n>     Máximo de saltos (default: 6)
+  --max-depth <n>     Max hops (default: 6)
 ```
 
 Menor caminho (BFS) andando arestas nos dois sentidos; cada passo indica
@@ -420,22 +420,22 @@ Gerencia o arquivo `.toolbelt/invariants.yaml` (fora da compactação, ADR-010).
 ```bash
 tb mem <subcommand>
 
-Subcomandos:
-  add       Adiciona regra invariante
-  list      Lista invariantes (omite retired; --all inclui)
-  show      Exibe invariante por id
-  edit      Edita category/rule/ref
-  retire    Soft-retire (omitida de list/check/search por padrão)
-  search    Busca em id/categoria/regra/ref
-  check     Verifica integridade (hash e retenção)
-  init      Cria conjunto padrão anti-trapaça
+Subcommands:
+  add       Adds an invariant
+  list      Lists invariants (omits retired; --all includes them)
+  show      Shows an invariant by id
+  edit      Edits fields of an invariant
+  retire    Retires an invariant (soft-retire; omitted from list/check/search by default)
+  search    Searches invariants
+  check     Checks the integrity of the invariants file
+  init      Creates default anti-cheat invariants
 
-Subcomandos (planejados — vault Markdown):
-  link      Cria link entre entradas
-  tag       Gerencia tags
-  export    Exporta memória
-  import    Importa memória
-  sync      Sincroniza vault → SQLite
+Subcommands (planned — Markdown vault):
+  link      Creates a link between entries
+  tag       Manages tags
+  export    Exports memory
+  import    Imports memory
+  sync      Syncs vault → SQLite
 ```
 
 Subcomando desconhecido (`tb mem foo`) sai com código ≠ 0 e mensagem `unknown command`.
@@ -443,12 +443,12 @@ Subcomando desconhecido (`tb mem foo`) sai com código ≠ 0 e mensagem `unknown
 **`tb mem add`:**
 
 ```bash
-tb mem add <regra> [flags]
+tb mem add <rule> [flags]
 
 Flags:
-  --category <cat>    Categoria: anti_cheat|mandate|security (default: anti_cheat)
-  --ref <path>        Vínculo com ADR/decisions.md (ex: docs/adr/0001.md)
-  --immutable         Marca como imutável (default: mutável)
+  --category <cat>    Category: anti_cheat, mandate, security (default: anti_cheat)
+  --ref <path>        ADR/decisions.md path (e.g. docs/adr/0001.md)
+  --immutable         Marks the invariant as immutable (default: mutable)
 ```
 
 **Default de imutabilidade:** novas invariantes nascem **mutáveis**. Use `--immutable` (CLI) ou `immutable: true` (MCP) para protegê-las. `tb mem init` grava o conjunto anti-trapaça já com `immutable: true`. Categoria `anti_cheat` e `immutable: true` exigem `--force --reason` para `edit`/`retire`.
@@ -471,12 +471,12 @@ tb mem check [--expect-sha <sha>] [--all]
 
 ```bash
 tb mem show <id>
-tb mem edit <id> [--category <cat>] [--rule <texto>] [--ref <path>] [--force] [--reason <motivo>]
-tb mem retire <id> [--force] [--reason <motivo>]
+tb mem edit <id> [--category <cat>] [--rule <text>] [--ref <path>] [--force] [--reason <reason>]
+tb mem retire <id> [--force] [--reason <reason>]
 ```
 
 **`tb mem init`:** cria o conjunto padrão anti-trapaça e imprime o caminho + as
-invariantes criadas (ou `já existiam N…` se o arquivo já tinha entradas). Com
+invariantes criadas (ou `N invariants already existed in <path>` se o arquivo já tinha entradas). Com
 `--json`, emite `path`/`created`/`count`/`invariants`.
 
 **`tb mem check` (implementado):**
@@ -485,8 +485,8 @@ invariantes criadas (ou `já existiam N…` se o arquivo já tinha entradas). Co
 tb mem check [flags]
 
 Flags:
-  --expect-sha <sha>  Hash esperado pós-compactação
-  --all               Inclui invariantes aposentadas
+  --expect-sha <sha>  Expected hash after compaction
+  --all               Include retired invariants
 ```
 
 `mem check` **falha fechado**: arquivo ausente/ilegível/corrompido, SHA divergente, IDs ausentes ou regra não avaliável (id/categoria/regra vazios) → exit ≠ 0. Não cria defaults automaticamente (use `tb mem init`).
@@ -535,9 +535,9 @@ Interface TUI para navegar e editar o vault.
 tb md [flags] [path]
 
 Flags:
-  --obsidian          Abre no Obsidian ao invés da TUI
-  --read-only         Modo somente leitura
-  --graph             Inicia na visualização de grafo
+  --obsidian          Opens in Obsidian instead of the TUI
+  --read-only         Read-only mode
+  --graph             Starts in graph view
 ```
 
 **Exemplos:**
@@ -582,15 +582,15 @@ Gerencia agentes na hierarquia.
 ```bash
 tb agent <subcommand>
 
-Subcomandos:
-  spawn     Cria novo agente
-  list      Lista agentes ativos
-  status    Status de agente específico
-  logs      Logs de agente
-  stop      Para agente
-  budget    Exibe/modifica orçamento
-  approve   Aprova ação pendente
-  reject    Rejeita ação pendente
+Subcommands:
+  spawn     Creates a new agent
+  list      Lists active agents
+  status    Status of a specific agent
+  logs      Agent logs
+  stop      Stops an agent
+  budget    Shows/changes the budget
+  approve   Approves a pending action
+  reject    Rejects a pending action
 ```
 
 **`tb agent spawn`:**
@@ -599,11 +599,11 @@ Subcomandos:
 tb agent spawn [flags]
 
 Flags:
-  --role <role>       Role/persona do agente (obrigatório)
-  --parent <id>       ID do agente pai
-  --task <task>       Tarefa inicial
-  --budget <tokens>   Orçamento de tokens
-  --timeout <dur>     Timeout máximo
+  --role <role>       Agent role/persona (required)
+  --parent <id>       Parent agent ID
+  --task <task>       Initial task
+  --budget <tokens>   Token budget
+  --timeout <dur>     Maximum timeout
 ```
 
 **Exemplos:**
@@ -659,28 +659,28 @@ operações de verificação/revisão com contexto compartilhado.
 tb stack <op> [<op>...] [flags]
 
 Flags:
-  --base <ref>           Ref base compartilhada (default: HEAD~1; validada/resolvida)
-  --head <ref>           Ref head compartilhada (default: HEAD; validada/resolvida)
-  --fail-fast            Cancela as demais etapas via context na primeira falha
-  --jobs <n>             Limite de concorrência (default: nº de CPUs, máx. 32; 1 = serial)
+  --base <ref>           Shared base ref (default: HEAD~1; validated/resolved)
+  --head <ref>           Shared head ref (default: HEAD; validated/resolved)
+  --fail-fast            Cancel remaining steps via context on the first failure
+  --jobs <n>             Concurrency limit (default: CPU count, max 32; 1 = serial)
   --ticket <path>        Ticket/rd.md (review/drift/verify; default: rd.md)
-  --approved-sha <sha>   SHA aprovado; patch-id verbatim (review/drift; validado/resolvido)
-  --approved-base <ref>  Base do range aprovado (default: merge-base(approved, base); validada/resolvida)
-  --require-approved-sha Falha se --approved-sha estiver ausente (ou `review.require_approved_sha`)
-  --warn-only            guard: exit 0 mesmo com SeverityError
-  --test-cmd <cmd>       verify: testes visíveis
-  --hidden-test-cmd <cmd> verify: testes ocultos
-  --build-cmd <cmd>      verify: build (vazio + flag explícita ou --no-build para pular o do config)
-  --lint-cmd <cmd>       verify: lint (vazio + flag explícita ou --no-lint para pular)
-  --no-build             verify: não roda build_cmd
-  --no-lint              verify: não roda lint_cmd
-  --dry-run              verify: mostra o plano (comandos/dir) sem executar
-  --max-iter <n>         verify: máximo de iterações
+  --approved-sha <sha>   Approved SHA; verbatim patch-id (review/drift; validated/resolved)
+  --approved-base <ref>  Base of the approved range (default: merge-base(approved, base); validated/resolved)
+  --require-approved-sha Fail if --approved-sha is missing (or `review.require_approved_sha`)
+  --warn-only            guard: exit 0 even with SeverityError
+  --test-cmd <cmd>       verify: visible tests
+  --hidden-test-cmd <cmd> verify: hidden tests
+  --build-cmd <cmd>      verify: build command (empty + explicit flag or --no-build to skip the config one)
+  --lint-cmd <cmd>       verify: lint command (empty + explicit flag or --no-lint to skip)
+  --no-build             verify: skips build_cmd
+  --no-lint              verify: skips lint_cmd
+  --dry-run              verify: shows the plan (cmds/dir) without executing
+  --max-iter <n>         verify: max iterations
   --timeout <duration>   verify: timeout (default: 10m)
-  --reviewers <n>        review: máximo de goldfish
-  --standards <csv>      review: papéis (scope,quality,acceptance)
-  --env <KEY>            (global) allowlist extra para o verify empilhado
-  --pass-env <KEY>       (global) opt-in explícito de segredo para o verify
+  --reviewers <n>        review: max goldfish
+  --standards <csv>      review: roles (scope,quality,acceptance)
+  --env <KEY>            (global) extra allowlist for stacked verify
+  --pass-env <KEY>       (global) explicit secret opt-in for verify
 ```
 
 Sem operação, ou com operação desconhecida, sai com erro curto listando as ops
@@ -721,11 +721,11 @@ Analisa o diff entre commits em busca de paths protegidos e padrões anti-trapa�
 tb guard check [base..head] [flags]
 
 Flags:
-  --base <ref>   Ref base (default: HEAD~1; validada/resolvida para SHA)
-  --head <ref>   Ref head (default: HEAD; validada/resolvida para SHA)
-  --warn-only    Exit 0 mesmo com SeverityError (opt-out do default CI-safe)
-  --strict       Deprecated: falha em SeverityError já é o default; use --warn-only para opt-out
-  --json         Saída em JSON (flag global)
+  --base <ref>   Base ref (default: HEAD~1)
+  --head <ref>   Head ref (default: HEAD)
+  --warn-only    Do not fail the exit code on SeverityError (opt-out of the CI-safe default)
+  --strict       Deprecated: failing on SeverityError is already the default; use --warn-only to opt out
+  --json         JSON output (global flag)
 ```
 
 Refs que começam com `-` ou SHA inexistente saem com erro claro (sem chamar
@@ -733,7 +733,7 @@ Refs que começam com `-` ou SHA inexistente saem com erro claro (sem chamar
 Por default, exit ≠ 0 quando há `SeverityError` (comportamento estrito).
 `--strict` é **deprecated** (alias sem efeito: o default já falha em
 `SeverityError`); prefira omitir a flag ou usar `--warn-only` para opt-out.
-No modo texto limpo imprime `guard: ok (N regras, 0 violações)` (`N` = regras
+No modo texto limpo imprime `guard: ok (N rules, 0 violations)` (`N` = regras
 válidas da base + defaults).
 
 **Exemplos:**
@@ -759,20 +759,20 @@ Não há clones do mesmo checker — `--reviewers` só limita quantos papéis ro
 tb review [ticket] [flags]
 
 Flags:
-  --base <ref>          Commit base (default: HEAD~1 ou base_commit do ticket)
-  --head <ref>          Commit head (default: HEAD)
-  --approved-sha <sha>       SHA aprovado; compara `git patch-id --verbatim` de approved_base..approved vs head_base..head
-  --approved-base <ref>      Base do range aprovado (default: `git merge-base <approved> <base>`)
-  --require-approved-sha     Falha se `--approved-sha` estiver ausente (ou `review.require_approved_sha` na config)
+  --base <ref>               Base commit/ref (default: HEAD~1 or the ticket's base_commit)
+  --head <ref>               Head commit/ref (default: HEAD)
+  --approved-sha <sha>       Approved SHA; compares `git patch-id --verbatim` of base..approved vs base..head
+  --approved-base <ref>      Base of the approved range (default: merge-base(approved, base))
+  --require-approved-sha     Fails if `--approved-sha` is missing (or `review.require_approved_sha` in config)
   --ticket <path>            Ticket/rd.md (default: rd.md)
-  --reviewers <n>            Máximo de goldfish distintos (default: 3; não clona)
-  --standards <stds>         Papéis: scope,quality,acceptance (default)
-  --output <path>            Relatório JSON (sem shorthand `-o`; use `--output`)
-  --json                     Saída em JSON (flag global)
+  --reviewers <n>            Maximum distinct goldfish (default: 3; does not clone)
+  --standards <stds>         Roles: scope,quality,acceptance (default; aliases: invariants,completeness)
+  --output <path>            JSON report (no `-o` shorthand; use `--output`)
+  --json                     JSON output (global flag)
 ```
 
 Ticket inexistente ou ilegível sai com código ≠ 0 e mensagem
-`ticket não encontrado: <caminho>` / `ticket ilegível (<caminho>): …`
+`ticket not found: <path>` / `ticket unreadable (<path>): …`
 (CLI, MCP `tb_review` e `tb stack`/`tb_stack`).
 
 Também reporta drift de escopo e commit base. Isolamento fresco é obrigatório.
@@ -823,7 +823,7 @@ Heurísticas são determinísticas e offline (sem LLM).
 Cada finding JSON inclui `role` (papel do goldfish: `scope`, `quality`, `acceptance`, `invariants`).
 Achados de aceite também trazem `criterion` e `evidence` (testes/arquivos vistos no diff).
 `agreement` conta quantos papéis distintos concordaram no mesmo achado (em geral 1).
-No modo texto, imprime `papel=<role>` (e `papéis_acordo=N` só se N>1) — não usa mais `acordo=N/M`.
+No modo texto, imprime `role=<role>` (e `agreeing_roles=N` só se N>1) — não usa mais o antigo `acordo=N/M`.
 
 **Exemplos:**
 
@@ -831,12 +831,12 @@ No modo texto, imprime `papel=<role>` (e `papéis_acordo=N` só se N>1) — não
 # Revisão padrão: 3 papéis distintos
 tb review --ticket rd.md
 # ═══════════════════════════════════════════════════════════
-#  RELATÓRIO DE REVISÃO: rd.md
-#  Base..Head: HEAD~1..HEAD | Revisores: 3 | Fresh: true
+#  REVIEW REPORT: rd.md
+#  Base..Head: <base-sha>..<head-sha> | Reviewers: 3 | Fresh: true
 # ═══════════════════════════════════════════════════════════
 # FINDINGS:
-#   [warning] (goldfish-quality/quality) TODO/FIXME/XXX/HACK adicionado em comentário no diff [src/a.go]  papel=quality
-#   [warning] (goldfish-acceptance/acceptance) critério de aceite sem evidência...  papel=acceptance
+#   [warning] (goldfish-quality/quality) TODO/FIXME/XXX/HACK added in a comment in the diff [src/a.go]  role=quality
+#   [warning] (goldfish-acceptance/acceptance) acceptance criterion without evidence in changed tests/files: works  role=acceptance
 
 # Só escopo + qualidade (sem aceite)
 tb review --ticket rd.md --standards scope,quality --reviewers 2
@@ -890,18 +890,18 @@ comum com o head).
 tb drift [ticket] [flags]
 
 Flags:
-  --base <ref>          Commit base (default: HEAD~1 ou base_commit do ticket)
-  --head <ref>          Commit head (default: HEAD)
-  --approved-sha <sha>       SHA aprovado; compara `git patch-id --verbatim` de approved_base..approved vs head_base..head
-  --approved-base <ref>      Base do range aprovado (default: `git merge-base <approved> <base>`)
-  --require-approved-sha     Falha se `--approved-sha` estiver ausente (ou `review.require_approved_sha`)
+  --base <ref>               Base commit/ref (default: HEAD~1 or the ticket's base_commit)
+  --head <ref>               Head commit/ref (default: HEAD)
+  --approved-sha <sha>       Approved SHA; compares `git patch-id --verbatim` of base..approved vs base..head
+  --approved-base <ref>      Base of the approved range (default: merge-base(approved, base))
+  --require-approved-sha     Fails if `--approved-sha` is missing (or `review.require_approved_sha`)
   --ticket <path>            Ticket/rd.md (default: rd.md)
-  --output <path>            Saída JSON (sem shorthand `-o`)
-  --json                     Saída em JSON (flag global)
+  --output <path>            JSON output (no `-o` shorthand)
+  --json                     JSON output (global flag)
 ```
 
 Ticket inexistente ou ilegível sai com código ≠ 0 e mensagem
-`ticket não encontrado: <caminho>` / `ticket ilegível (<caminho>): …`
+`ticket not found: <path>` / `ticket unreadable (<path>): …`
 (CLI, MCP `tb_drift` e `tb stack`/`tb_stack`).
 
 O JSON de drift inclui `pinned_approval` no mesmo formato do `tb review`
@@ -918,12 +918,15 @@ dump de usage).
 # Drift do diff HEAD~1..HEAD contra rd.md (default)
 tb drift
 # ═══════════════════════════════════════════════════════════
-#  RELATÓRIO DE DRIFT
+#  DRIFT REPORT
 # ═══════════════════════════════════════════════════════════
-# Base: HEAD~1 → abc1234
-# Fora do scope (1):
+# PINNED APPROVAL:
+#   checked: false
+#
+# Base: declared= actual=<sha> merge_base=<sha>
+# Out of scope (1):
 #   - b.go
-# Proibidos tocados (0):
+# Forbidden touched (0):
 
 # Ticket explícito + saída JSON para CI
 tb drift --ticket rd.md --json --output drift-report.json
@@ -953,26 +956,26 @@ Executa o loop gerador→discriminador com rulers plugáveis.
 tb verify run [flags]
 
 Flags:
-  --ruler <type>           Tipo de ruler: tests|visual (default: tests)
-  --test-cmd <cmd>         Testes visíveis (default: verify.test_cmd; `tb init` detecta go/npm/pnpm/yarn/pytest/cargo/make e também build_cmd/lint_cmd)
-  --hidden-test-cmd <cmd>  Suite oculta (verify.hidden_test_cmd; se vazio e existir tests/hidden/: detecta toolchain ou marca N/A)
-  --build-cmd <cmd>        Build (default: verify.build_cmd; vazio + flag explícita ou --no-build para pular)
-  --lint-cmd <cmd>         Lint (default: verify.lint_cmd; vazio + flag explícita ou --no-lint para pular)
-  --no-build               Não executa build_cmd
-  --no-lint                Não executa lint_cmd
-  --dry-run                Mostra o plano (comandos e diretório) sem executar
-  --max-iter <n>           Máximo de iterações (default: 3)
+  --ruler <type>           Ruler: tests|visual (default: tests)
+  --test-cmd <cmd>         Visible tests command (default: verify.test_cmd; `tb init` detects go/npm/pnpm/yarn/pytest/cargo/make and also build_cmd/lint_cmd)
+  --hidden-test-cmd <cmd>  Hidden tests command (verify.hidden_test_cmd; runs even without tests/hidden/; if the dir exists and the cmd is empty: detects the toolchain or marks N/A)
+  --build-cmd <cmd>        Build command (default: verify.build_cmd; empty + explicit flag or --no-build to skip)
+  --lint-cmd <cmd>         Lint command (default: verify.lint_cmd; empty + explicit flag or --no-lint to skip)
+  --no-build               Skips build_cmd (config and default)
+  --no-lint                Skips lint_cmd (config and default)
+  --dry-run                Shows the plan (cmds and directory) without executing
+  --max-iter <n>           Maximum iterations (default: 3)
   --timeout <dur>          Timeout (default: 10m)
-  --threshold <float>      Threshold de similaridade visual (default: 0.95)
-  --manifest <path>        Manifesto de telas (default: .toolbelt/screens.yaml)
-  --skip-unavailable       Skip gracioso sem browser/refs/telas (default: true; veredicto SKIPPED)
-  --base <ref>             Ref base
-  --head <ref>             Ref head (build/lint/test rodam neste commit)
-  --ticket <path>          Ticket com Scope (exceção de `protected_paths` custom)
-  --output <path> / -o     Arquivo de saída JSON
-  --json                   Saída em JSON (flag global)
-  --env <KEY>              (global, repetível) inclui KEY na allowlist do filho
-  --pass-env <KEY>         (global, repetível) opt-in explícito para segredo no filho
+  --threshold <float>      Visual similarity threshold (default: 0.95)
+  --manifest <path>        Screens manifest (default: .toolbelt/screens.yaml)
+  --skip-unavailable       Graceful skip (SKIPPED verdict) if browser/refs/screens are unavailable (default: true)
+  --base <ref>             Base ref
+  --head <ref>             Head ref (build/lint/test run at this commit)
+  --ticket <path>          Ticket with Scope (exception to custom `protected_paths` in guard.yaml)
+  --output <path> / -o     JSON output file
+  --json                   JSON output (global flag)
+  --env <KEY>              (global, repeatable) allows an environment variable in the child (does not bypass secret blocking)
+  --pass-env <KEY>         (global, repeatable) explicit opt-in to pass a secret to the child
 ```
 
 Quando `--head` (ou o par `--base`/`--head`) resolve para um SHA **diferente** do
@@ -1039,7 +1042,7 @@ retry de `--max-iter` (ESCALATE imediato). `--dry-run` devolve o plano
 Se o binário do `test_cmd` / `hidden_test_cmd` / `build_cmd` / `lint_cmd` não
 existe (exit 127), não é executável (exit 126) ou o `exec` falha com
 `ErrNotFound`, o verify **falha imediatamente** sem retries, com mensagem do tipo
-`comando não encontrado: X — ajuste verify.test_cmd`. O processo `tb` sai com
+`command not found: X — adjust verify.test_cmd`. O processo `tb` sai com
 código **127**. Com `--json` (ou `--output`), emite o envelope `verify.Result`
 normal incluindo `error` (e `verdict: FAIL`), em vez de sair sem JSON. Falhas
 genuínas do `test_cmd`/`hidden_test_cmd` (exit ≠ 0/126/127) continuam no loop
@@ -1200,18 +1203,18 @@ Verifica mudanças em paths protegidos entre dois commits.
 tb guard check [base..head] [flags]
 
 Flags:
-  --base <ref>          Commit/ref base (default: HEAD~1; ignorado se base..head for passado)
-  --head <ref>          Commit/ref head (default: HEAD; ignorado se base..head for passado)
-  --warn-only           Exit 0 mesmo com SeverityError (opt-out do default CI-safe)
-  --strict              Deprecated: falha em SeverityError já é o default (alias sem efeito; use --warn-only)
-  --json                Saída em JSON
+  --base <ref>          Base ref (default: HEAD~1; ignored if base..head is passed)
+  --head <ref>          Head ref (default: HEAD; ignored if base..head is passed)
+  --warn-only           Do not fail the exit code on SeverityError (opt-out of the CI-safe default)
+  --strict              Deprecated: failing on SeverityError is already the default (no-op alias; use --warn-only)
+  --json                JSON output
 ```
 
 Aceita o intervalo posicional `base..head` (forma clássica) ou as flags `--base`/`--head`, alinhadas a `tb review` / `tb drift` / `tb verify`.
 
 Por default, exit ≠ 0 quando há `SeverityError` (CI-safe). `--strict` está
 **deprecated** (substituído pelo default estrito + `--warn-only`). No modo texto
-sem violações imprime `guard: ok (N regras, 0 violações)` (`N` = paths protegidos
+sem violações imprime `guard: ok (N rules, 0 violations)` (`N` = paths protegidos
 válidos carregados: defaults + `.toolbelt/guard.yaml` da **base**; padrões
 inválidos são ignorados e não entram em `rules_checked`).
 
@@ -1375,7 +1378,7 @@ rejeitados na criação.
 
 ```bash
 tb ticket create --title "Criar modelo User"
-# ticket TKT-001 criado: Criar modelo User
+# ticket TKT-001 created: Criar modelo User
 tb ticket list
 # TKT-001	pending  	p0	Criar modelo User
 # TKT-002	pending  	p1	JWT signing	(deps: TKT-001)
@@ -1458,7 +1461,7 @@ dependências `done` e board não pausado; BLOCKED lista o que aguarda.
 
 ```bash
 tb board list
-# board: ativo (estratégia: dependency)
+# board: active (strategy: dependency)
 #
 # RUNNING (0)
 #
@@ -1466,7 +1469,7 @@ tb board list
 #   TKT-001	pending  	p0	Criar modelo User
 #
 # BLOCKED (1)
-#   TKT-002	JWT signing	(aguardando: TKT-001: pending)
+#   TKT-002	JWT signing	(waiting: TKT-001: pending)
 #
 # DONE (0)
 # FAILED (0)
@@ -1507,8 +1510,8 @@ tb router config
 - Timeout por ticket = `acceptance.timeout` do ticket ou `router.timeouts.per_ticket`.
 - Ao sair do agente com mudanças, o router faz `git add -A` e commit `tb: <id> <título>` na worktree e grava `base_commit`/`head_commit` no ticket. Exit 0 → `done`; senão `failed`, ou volta a `pending` enquanto `attempts < router.retry.max_attempts`.
 - **Instância única:** só um `tb router run` por repositório, via lock exclusivo `.toolbelt/router/lock` (`flock`; em sistemas não-unix, lockfile `O_EXCL` — se sobrar após um crash, remova o arquivo manualmente).
-- **Integridade do worktree:** antes do commit o router verifica que `<ws>/.git` é o arquivo-ponteiro de worktree esperado e roda o git com configuração endurecida (fsmonitor e hooks desabilitados, `--no-verify`, config global/de sistema do usuário desligada — `GIT_CONFIG_GLOBAL=/dev/null` e `GIT_CONFIG_NOSYSTEM=1` —, logo filtros do usuário como git-lfs **não** rodam sobre o conteúdo do agente; `user.name`/`user.email` são lidos uma vez da raiz com a config normal e passados via `-c`, com fallback `tb <tb@localhost>`). O `git worktree add/remove` do router também roda sem hooks (`core.hooksPath=/dev/null`), fsmonitor e manutenção destacada: worktrees criados pelo router nunca executam hooks `post-checkout` do usuário. Violação ⇒ ticket `failed` sem retry (`integridade do worktree violada`).
-- **`.git` aninhado, gitlinks e `.gitmodules`:** o git do router roda fora do sandbox, então um repositório/submódulo criado pelo agente (p.ex. `sub/.git` com `filter.*.clean` dentro de um gitlink do commit base) nunca é tocado: antes de qualquer git o router percorre o worktree (sem seguir symlinks) e recusa qualquer entrada `.git` além do ponteiro raiz; depois do `git add -A` recusa commits que adicionem/alterem gitlinks (modo 160000) ou `.gitmodules`. Em ambos os casos o ticket vira `failed` sem retry (`integridade do worktree violada`). O git do router também roda com `--ignore-submodules=all` e submódulos desabilitados (`diff.ignoreSubmodules`, `submodule.recurse`, `fetch.recurseSubmodules`).
+- **Integridade do worktree:** antes do commit o router verifica que `<ws>/.git` é o arquivo-ponteiro de worktree esperado e roda o git com configuração endurecida (fsmonitor e hooks desabilitados, `--no-verify`, config global/de sistema do usuário desligada — `GIT_CONFIG_GLOBAL=/dev/null` e `GIT_CONFIG_NOSYSTEM=1` —, logo filtros do usuário como git-lfs **não** rodam sobre o conteúdo do agente; `user.name`/`user.email` são lidos uma vez da raiz com a config normal e passados via `-c`, com fallback `tb <tb@localhost>`). O `git worktree add/remove` do router também roda sem hooks (`core.hooksPath=/dev/null`), fsmonitor e manutenção destacada: worktrees criados pelo router nunca executam hooks `post-checkout` do usuário. Violação ⇒ ticket `failed` sem retry (`worktree integrity violated`).
+- **`.git` aninhado, gitlinks e `.gitmodules`:** o git do router roda fora do sandbox, então um repositório/submódulo criado pelo agente (p.ex. `sub/.git` com `filter.*.clean` dentro de um gitlink do commit base) nunca é tocado: antes de qualquer git o router percorre o worktree (sem seguir symlinks) e recusa qualquer entrada `.git` além do ponteiro raiz; depois do `git add -A` recusa commits que adicionem/alterem gitlinks (modo 160000) ou `.gitmodules`. Em ambos os casos o ticket vira `failed` sem retry (`worktree integrity violated`). O git do router também roda com `--ignore-submodules=all` e submódulos desabilitados (`diff.ignoreSubmodules`, `submodule.recurse`, `fetch.recurseSubmodules`).
 - **Processos que se desacoplam (Linux):** o router vira *subreaper* (`PR_SET_CHILD_SUBREAPER`) e rastreia os pids que ele próprio inicia (agentes e git). Após cada agente e a cada tick do watchdog, todo filho direto não rastreado — descendente do agente que fez `setsid`/`setpgid` e escapou do grupo de processos — é morto (`SIGKILL`) e colhido. Política: agentes **não devem se desacoplar**; qualquer processo escapado encontrado é morto. Se isso ocorre durante um ticket, o alerta `agent_escaped` (error) é emitido e o ticket falha **sem retry e sem rodar git no worktree**. A atribuição é pelo `TB_TICKET_ID` do ambiente do processo escapado (lido só essa variável de `/proc/<pid>/environ`): só o ticket dono falha; os demais seguem. Se o `TB_TICKET_ID` está ausente (`env -u`), ilegível ou é desconhecido, o escape é **não atribuível** e, de forma conservadora, **todos** os tickets com agente rodando no momento da detecção falham (alerta `agent_escaped` sem ticket, listando-os). Um órfão achado dentro do grupo de processos de um agente cujo `TB_TICKET_ID` difere do dono do grupo (`setpgid` para o pgid de outro agente para se esconder) também é escape. Daemons que nascem durante a criação do worktree (janela do `git worktree add`) sem `TB_TICKET_ID` são mortos com o alerta `orphan_killed` (warn) e nenhum ticket falha. Limitação: um agente que forja o `TB_TICKET_ID` de outro ticket ativo faz o escape ser atribuído a esse ticket. Fora do Linux (macOS/Windows) não há subreaper: vale só o grupo de processos (um descendente que se desacopla não é detectado nem morto — **limitação**). `tb sandbox run` não muda.
 - **Mandato não é imposto:** `Scope`, `Forbidden` e `Permissions` do mandato do ticket são **registrados**, mas o router não os impõe — as edições do agente são commitadas como estão. Rode `tb drift`, `tb review` e `tb guard` (ou `tb stack --ticket`) sobre o resultado **antes** de `tb merge`.
 - **Controle obsoleto:** pedidos `control/kill-*.json` são apagados ao iniciar `tb router run`, e pedidos com `requested_at` anterior ao início da execução são ignorados.
@@ -1531,12 +1534,12 @@ falha as assinaturas dele são limpas e o ticket volta ao board.
 
 ```bash
 tb router run --agent-cmd "sh -c 'echo x > f-$TB_TICKET_ID.txt'"
-# router iniciado: 3 workers, estratégia dependency
-# [w1] TKT-001 iniciado (board, base 356c934e, tentativa 1)
-# [w1] TKT-001 concluído (a3e62ba7)
-# [w1] TKT-002 iniciado (direct, base a3e62ba7, tentativa 1)
-# [w1] TKT-002 concluído (a6ebf42e)
-# router encerrado (completed)
+# router started: 3 workers, strategy dependency
+# [w1] TKT-001 started (board, base 356c934e, attempt 1)
+# [w1] TKT-001 done (a3e62ba7)
+# [w1] TKT-002 started (direct, base a3e62ba7, attempt 1)
+# [w1] TKT-002 done (a6ebf42e)
+# router stopped (completed)
 ```
 
 **Configuração** (`.toolbelt/config.yaml`; não existe `router.yaml`):
@@ -1608,8 +1611,8 @@ tb watchdog kill w1 --reason "travado em loop"
 
 ```bash
 tb watchdog alerts --kind worker_stuck
-# 11:57:56  critical worker_stuck   w1 TKT-001     TKT-001 em w1 excedeu o timeout de 2s; cancelando [ação: retry]
-# 11:57:59  critical worker_stuck   w1 TKT-001     TKT-001 em w1 excedeu o timeout de 2s; cancelando [ação: escalate]
+# 11:57:56  critical worker_stuck   w1 TKT-001     TKT-001 on w1 exceeded the timeout of 2s; canceling [action: retry]
+# 11:57:59  critical worker_stuck   w1 TKT-001     TKT-001 on w1 exceeded the timeout of 2s; canceling [action: escalate]
 ```
 
 ---
@@ -1682,15 +1685,15 @@ devolvido com `ok:false`.
 ```bash
 tb merge --dry-run TKT-001 TKT-002
 # merge TKT-001 TKT-002 -> main (fail) [dry-run]
-# ARQUIVO        TICKETS  STATUS
+# FILE           TICKETS  STATUS
 # f-TKT-001.txt  TKT-001  merge
 # f-TKT-002.txt  TKT-002  merge
-# resultado: a6ebf42ee47be5c4ca290b2055efe75b00f8eaf6 (início 356c934e)
+# result: a6ebf42ee47be5c4ca290b2055efe75b00f8eaf6 (start 356c934e)
 tb merge TKT-002 TKT-003
-# merge TKT-002 TKT-003 -> main (fail) [não aplicado]
-# ARQUIVO  TICKETS          STATUS
+# merge TKT-002 TKT-003 -> main (fail) [not applied]
+# FILE     TICKETS          STATUS
 # a.txt    TKT-002,TKT-003  conflict
-# Error: conflito de merge: 1 arquivo(s) em conflito; nenhuma ref foi alterada (use --strategy last_wins para resolver)
+# Error: merge conflict: 1 file(s) in conflict; no ref was changed (use --strategy last_wins to resolve)
 ```
 
 ---
@@ -1742,11 +1745,11 @@ Executa benchmarks e mede KPIs. Suporta comparação A/B entre configs/feature f
 ```bash
 tb bench <subcommand>
 
-Subcomandos:
-  run       Executa suite de benchmark ✅
-  compare   Compara resultados ou configs A/B ✅
-  report    Gera relatório ✅
-  list      Lista tarefas disponíveis ✅
+Subcommands:
+  run       Runs the benchmark ✅
+  compare   Compares two benchmarks or A/B configs ✅
+  report    Generates a Markdown report of results ✅
+  list      Lists available tasks ✅
 ```
 
 **`tb bench run`:**
@@ -1755,17 +1758,17 @@ Subcomandos:
 tb bench run [flags]
 
 Flags:
-  --fake               Usa agente fake embutido no binário `tb` (portátil, qualquer repo)
-  --fake-config <path> Arquivo de configuração do agente fake
-  -a, --agent <cmd>    Comando do agente externo (fallback: bench.default_agent)
-  -t, --tasks-dir      Diretório das tarefas (fallback: bench.tasks_dir)
-  -f, --fixtures-dir   Diretório das fixtures (fallback: bench.fixtures_dir)
-  -r, --repetitions <n> Número de repetições (default: 1)
-  -o, --output <path>  Arquivo de saída JSONL (sem flag: sob bench.output_dir)
-  --label <name>       Rótulo da variante A/B
-  --flag key=value     Feature flag (repetível)
-  --ab-config <yaml>   Variante A/B a partir de YAML
-  --task <id>          Filtra tarefas
+  --fake               Uses the fake agent built into the `tb` binary (portable, any repo)
+  --fake-config <path> Fake agent configuration file
+  -a, --agent <cmd>    External agent command (fallback: bench.default_agent)
+  -t, --tasks-dir      Tasks directory (fallback: bench.tasks_dir)
+  -f, --fixtures-dir   Fixtures directory (fallback: bench.fixtures_dir)
+  -r, --repetitions <n> Repetitions per task (default: 1)
+  -o, --output <path>  JSONL output file (without the flag: under bench.output_dir)
+  --label <name>       A/B variant label
+  --flag key=value     Feature flag (repeatable)
+  --ab-config <yaml>   A/B variant from a YAML file
+  --task <id>          Filters tasks
 ```
 
 Precedência dos paths e do agente: **flag CLI explícita** > **`config.yaml`** > **default**.
@@ -1835,9 +1838,9 @@ Inicia o toolbelt como servidor MCP sobre **stdio** (JSON-RPC 2.0). Não há `tb
 tb mcp [flags]
 
 Flags:
-  --bus-as <canal>/<nome>  Prende a conexão à sessão CLI do bus (usado por tb bus run)
-  --bus-root <path>        Raiz do repositório do bus (padrão: procura .toolbelt a partir do cwd)
-  --bus-state <dir>        Base do diretório privado do bus (padrão $XDG_STATE_HOME/toolbelt/bus)
+  --bus-as <channel>/<name>  Binds the connection to the bus session <channel>/<name> (used by tb bus run)
+  --bus-root <path>          Bus repository root (default: searches for .toolbelt from the cwd)
+  --bus-state <dir>          Base of the bus private directory (default $XDG_STATE_HOME/toolbelt/bus)
 ```
 
 Transporte unix/tcp e flags `--socket`/`--port`/`--tls-*` são planejados; hoje só stdio.
@@ -1875,9 +1878,9 @@ Schemas tipam `depth`/`limit`/`reviewers`/`max_iter` como integer, `strict`/`war
 tb init [flags]
 
 Flags:
-  --global         Inicializa em ~/.config/toolbelt
-  --write-agents   Semeia AGENTS.md mínimo se ausente (nunca sobrescreve)
-  --json           Saída em JSON (flag global)
+  --global         Initializes global configuration (~/.config/toolbelt)
+  --write-agents   Seeds a minimal AGENTS.md if missing (never overwrites)
+  --json           JSON output (global flag)
 ```
 
 Com `--json`, emite payload com `path`, `test_cmd` / `build_cmd` / `lint_cmd` detectados
@@ -2061,7 +2064,7 @@ Segredos: qualquer nome contendo `TOKEN`, `SECRET`, `KEY` ou `PASSWORD`
 - Erros esperados de domínio/runtime (`RunE`, ex.: flag de negócio obrigatória ausente, falha de git, arquivo inexistente) saem com **exit ≠ 0** e mensagem em stderr **sem** dump de `Usage` do Cobra.
 - Erros genuínos de parse de **flags** ou **args** (flag desconhecida, `ExactArgs`/`MinimumNArgs`, etc.) mantêm `Usage` no stderr para orientar a invocação.
 - Subcomando desconhecido em qualquer nível (ex.: `tb mem nao-existe`, `tb bench nope`) sai com **exit ≠ 0** e erro `unknown command "…"`, em vez de imprimir help com exit 0.
-- Falhas de git em `guard` / `review` / `drift` / `verify` (e no `stack` que os empilha) **não** mostram só `exit status 128/129`: a mensagem inclui o stderr do git, a ref ausente (`ref ausente: …`) e uma dica `git fetch origin <ref>`.
+- Falhas de git em `guard` / `review` / `drift` / `verify` (e no `stack` que os empilha) **não** mostram só `exit status 128/129`: a mensagem inclui o stderr do git, a ref ausente (`ref missing: …`) e uma dica `git fetch origin <ref>`.
 - `--approved-sha` igual à base (intervalo `base..approved` vazio) não despeja o usage do `git range-diff`; sai com mensagem clara sobre o intervalo inválido.
 
 ## Códigos de Saída

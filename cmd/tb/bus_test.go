@@ -200,7 +200,7 @@ func TestBusChannelExtendCLI(t *testing.T) {
 	}
 	cmd := exec.Command(tbBin, "bus", "channel", "extend", "fx")
 	cmd.Dir = dir
-	if out, err := cmd.CombinedOutput(); err == nil || !strings.Contains(string(out), "--ttl é obrigatório") {
+	if out, err := cmd.CombinedOutput(); err == nil || !strings.Contains(string(out), "--ttl is required") {
 		t.Fatalf("sem --ttl: %v %s", err, out)
 	}
 }

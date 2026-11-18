@@ -83,10 +83,10 @@ func ConfigPath(root, channel, name string) (string, error) {
 func LoadConfig(path string) (*Config, error) {
 	st, err := os.Stat(path)
 	if err != nil {
-		return nil, fmt.Errorf("arquivo de wake: %w", err)
+		return nil, fmt.Errorf("wake file: %w", err)
 	}
 	if st.Mode().Perm()&0o077 != 0 {
-		return nil, fmt.Errorf("arquivo de wake %s com permissão %o: use chmod 600", path, st.Mode().Perm())
+		return nil, fmt.Errorf("wake file %s has permission %o: use chmod 600", path, st.Mode().Perm())
 	}
 	raw, err := os.ReadFile(path)
 	if err != nil {
@@ -96,11 +96,11 @@ func LoadConfig(path string) (*Config, error) {
 	dec := yaml.NewDecoder(strings.NewReader(string(raw)))
 	dec.KnownFields(true)
 	if err := dec.Decode(&c); err != nil {
-		return nil, fmt.Errorf("arquivo de wake %s: %w", path, err)
+		return nil, fmt.Errorf("wake file %s: %w", path, err)
 	}
 	c.applyDefaults()
 	if err := c.Validate(); err != nil {
-		return nil, fmt.Errorf("arquivo de wake %s: %w", path, err)
+		return nil, fmt.Errorf("wake file %s: %w", path, err)
 	}
 	return &c, nil
 }
@@ -158,10 +158,10 @@ func (c *Config) Validate() error {
 		}
 	}
 	if c.Coalesce.Debounce < 0 || c.Coalesce.MaxDelay < c.Coalesce.Debounce {
-		return errors.New("coalesce: debounce ≥ 0 e max_delay ≥ debounce")
+		return errors.New("coalesce: debounce >= 0 and max_delay >= debounce")
 	}
 	if c.Budget.MaxWakes < 1 || c.Budget.Per <= 0 || c.RewakeAfter <= 0 || c.Timeout <= 0 {
-		return errors.New("budget.max_wakes, budget.per, rewake_after e timeout precisam ser positivos")
+		return errors.New("budget.max_wakes, budget.per, rewake_after e timeout must be positive")
 	}
 	if err := absPaths("secret_files", c.SecretFiles); err != nil {
 		return err
@@ -172,12 +172,12 @@ func (c *Config) Validate() error {
 	switch c.Adapter {
 	case AdapterExec:
 		if len(c.Exec.Argv) == 0 || !filepath.IsAbs(c.Exec.Argv[0]) {
-			return errors.New("exec.argv[0] precisa ser caminho absoluto")
+			return errors.New("exec.argv[0] must be an absolute path")
 		}
 	case AdapterHarness:
 		return c.Harness.validate()
 	default:
-		return fmt.Errorf("adapter %q inválido (use exec ou harness)", c.Adapter)
+		return fmt.Errorf("adapter %q invalid (use exec or harness)", c.Adapter)
 	}
 	return nil
 }
@@ -185,7 +185,7 @@ func (c *Config) Validate() error {
 func absPaths(field string, paths []string) error {
 	for _, p := range paths {
 		if !filepath.IsAbs(p) {
-			return fmt.Errorf("%s: caminho %q precisa ser absoluto", field, p)
+			return fmt.Errorf("%s: path %q must be absolute", field, p)
 		}
 	}
 	return nil
@@ -193,16 +193,16 @@ func absPaths(field string, paths []string) error {
 
 func (h *HarnessConfig) validate() error {
 	if h.Vendor != "claude" {
-		return fmt.Errorf("harness.vendor %q não suportado (presets: claude)", h.Vendor)
+		return fmt.Errorf("harness.vendor %q not supported (presets: claude)", h.Vendor)
 	}
 	if h.Command != "" && !filepath.IsAbs(h.Command) {
-		return errors.New("harness.command precisa ser caminho absoluto")
+		return errors.New("harness.command must be an absolute path")
 	}
 	if !permissionModes[h.PermissionMode] {
-		return fmt.Errorf("harness.permission_mode %q recusado (use default, acceptEdits ou plan; bypassPermissions nunca)", h.PermissionMode)
+		return fmt.Errorf("harness.permission_mode %q refused (use default, acceptEdits or plan; never bypassPermissions)", h.PermissionMode)
 	}
 	if h.Workdir != "" && !filepath.IsAbs(h.Workdir) {
-		return errors.New("harness.workdir precisa ser caminho absoluto")
+		return errors.New("harness.workdir must be an absolute path")
 	}
 	return nil
 }

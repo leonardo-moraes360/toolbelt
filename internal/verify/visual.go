@@ -101,7 +101,7 @@ func FindHeadlessBrowser() (string, error) {
 			return path, nil
 		}
 	}
-	return "", fmt.Errorf("browser headless indisponível")
+	return "", fmt.Errorf("headless browser unavailable")
 }
 
 func RunVisual(ctx context.Context, repo string, cfg VisualConfig) (*VisualReport, error) {
@@ -121,7 +121,7 @@ func RunVisual(ctx context.Context, repo string, cfg VisualConfig) (*VisualRepor
 	manifest, err := LoadScreensManifest(cfg.Manifest)
 	if err != nil {
 		if os.IsNotExist(err) && cfg.SkipOK {
-			return skipVisual(report, "manifesto de telas ausente", true), nil
+			return skipVisual(report, "screen manifest missing", true), nil
 		}
 		return nil, err
 	}
@@ -145,7 +145,7 @@ func aggregateVisualSkipped(report *VisualReport) {
 	if len(report.Screens) == 0 {
 		report.Skipped = true
 		if report.SkipReason == "" {
-			report.SkipReason = "nenhuma tela no manifesto"
+			report.SkipReason = "no screen in the manifest"
 		}
 		return
 	}
@@ -156,7 +156,7 @@ func aggregateVisualSkipped(report *VisualReport) {
 	}
 	report.Skipped = true
 	if report.SkipReason == "" {
-		report.SkipReason = "todas as telas foram skipped"
+		report.SkipReason = "all screens were skipped"
 	}
 }
 
@@ -249,7 +249,7 @@ func checkScreen(
 	res := &ScreenResult{Screen: screen.Name, Mode: mode, Reference: refPath}
 	if _, err := os.Stat(refPath); err != nil {
 		res.Skipped = true
-		res.SkipReason = "referência ausente"
+		res.SkipReason = "reference missing"
 		res.Passed = true
 		return res, nil
 	}
@@ -260,7 +260,7 @@ func checkScreen(
 	}
 	if url == "" || url == screen.Route {
 		res.Skipped = true
-		res.SkipReason = "URL/base_url ausente para captura"
+		res.SkipReason = "URL/base_url missing for capture"
 		res.Passed = true
 		return res, nil
 	}
@@ -272,7 +272,7 @@ func checkScreen(
 	}
 	if err := captureScreenshot(ctx, browser, url, capturePath, vw, vh); err != nil {
 		res.Skipped = true
-		res.SkipReason = "falha na captura: " + err.Error()
+		res.SkipReason = "capture failed: " + err.Error()
 		res.Passed = true
 		return res, nil
 	}
@@ -306,7 +306,7 @@ func captureScreenshot(ctx context.Context, browser, url, outPath string, width,
 		return fmt.Errorf("%w: %s", err, truncate(string(out), 200))
 	}
 	if _, err := os.Stat(outPath); err != nil {
-		return fmt.Errorf("screenshot não gerado")
+		return fmt.Errorf("screenshot not generated")
 	}
 	return nil
 }

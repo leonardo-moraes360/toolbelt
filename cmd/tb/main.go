@@ -32,18 +32,17 @@ func main() {
 
 var rootCmd = &cobra.Command{
 	Use:   "tb",
-	Short: "Toolbelt - Kit de ferramentas para agentes de código IA",
-	//nolint:misspell // pt-BR word: persistente
-	Long: `Toolbelt (tb) é um kit de ferramentas para melhorar agentes de código IA.
+	Short: "Toolbelt - Toolkit for AI coding agents",
+	Long: `Toolbelt (tb) is a toolkit for improving AI coding agents.
 
-Inclui sandbox seguro, verificação adversarial, memória persistente,
-grafo de dependências, roteamento multi-agente e benchmark.
+Includes a secure sandbox, adversarial verification, persistent memory,
+dependency graph, multi-agent routing and benchmark.
 
-Exemplo:
-  tb init                    Inicializa configuração local
-  tb bench run               Executa benchmark baseline
-  tb version                 Mostra versão
-  tb --version               Mostra versão (flag global)`,
+Example:
+  tb init                    Initializes local configuration
+  tb bench run               Runs baseline benchmark
+  tb version                 Shows version
+  tb --version               Shows version (global flag)`,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 		cmd.SilenceUsage = true
 
@@ -63,11 +62,11 @@ Exemplo:
 }
 
 func init() {
-	rootCmd.PersistentFlags().StringVarP(&cfgFile, "config", "c", "", "arquivo de configuração")
-	rootCmd.PersistentFlags().BoolVar(&jsonOutput, "json", false, "saída em JSON")
-	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "saída verbose")
-	rootCmd.PersistentFlags().StringArrayVar(&envAllow, "env", nil, "permite variável de ambiente no filho (repetível; não contorna bloqueio de segredos)")
-	rootCmd.PersistentFlags().StringArrayVar(&envPass, "pass-env", nil, "opt-in explícito para passar segredo (*TOKEN*/SECRET/KEY/PASSWORD) ao filho")
+	rootCmd.PersistentFlags().StringVarP(&cfgFile, "config", "c", "", "configuration file")
+	rootCmd.PersistentFlags().BoolVar(&jsonOutput, "json", false, "JSON output")
+	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "verbose output")
+	rootCmd.PersistentFlags().StringArrayVar(&envAllow, "env", nil, "allows an environment variable in the child (repeatable; does not bypass secret blocking)")
+	rootCmd.PersistentFlags().StringArrayVar(&envPass, "pass-env", nil, "explicit opt-in to pass a secret (*TOKEN*/SECRET/KEY/PASSWORD) to the child")
 
 	rootCmd.Version = version.Get().String()
 	rootCmd.SetVersionTemplate("{{.Version}}\n")
@@ -112,7 +111,7 @@ func parentHelpRunE(cmd *cobra.Command, args []string) error {
 
 var versionCmd = &cobra.Command{
 	Use:   "version",
-	Short: "Mostra versão do toolbelt",
+	Short: "Shows the toolbelt version",
 	Run: func(cmd *cobra.Command, args []string) {
 		info := version.Get()
 		if jsonOutput {
@@ -126,28 +125,28 @@ var versionCmd = &cobra.Command{
 
 var initCmd = &cobra.Command{
 	Use:   "init",
-	Short: "Inicializa configuração local do toolbelt",
-	Long: `Cria o diretório .toolbelt/ e arquivo config.yaml no diretório atual.
+	Short: "Initializes local toolbelt configuration",
+	Long: `Creates the .toolbelt/ directory and a config.yaml file in the current directory.
 
-Detecta a toolchain do repositório (go.mod, package.json + lockfiles
-pnpm/npm/yarn/bun, pyproject/uv, Cargo.toml, Makefile) e preenche
-verify.test_cmd; quando houver marcadores claros também verify.build_cmd e
-verify.lint_cmd (scripts build/typecheck/lint, golangci, ruff/mypy,
-cargo build/clippy, targets make). Sem marcador de teste, test_cmd fica
-vazio com aviso — nunca assume go test sem go.mod.
+Detects the repository toolchain (go.mod, package.json + lockfiles
+pnpm/npm/yarn/bun, pyproject/uv, Cargo.toml, Makefile) and fills in
+verify.test_cmd; when there are clear markers it also fills verify.build_cmd and
+verify.lint_cmd (build/typecheck/lint scripts, golangci, ruff/mypy,
+cargo build/clippy, make targets). Without a test marker, test_cmd stays
+empty with a warning — it never assumes go test without go.mod.
 
-Se AGENTS.md ou CLAUDE.md existirem na raiz do repositório, o init lê esses
-arquivos, registra os caminhos em .toolbelt/agent_docs.yaml e extrai dicas
-curtas de execução (ignora fences de código longos; nunca sobrescreve). O
-binário de verify.test_cmd é checado no PATH com fallback (ex. uv → pytest).
-Use --write-agents para semear um AGENTS.md mínimo que cita a toolchain
-detectada (verify.test_cmd e, se houver, build_cmd/lint_cmd) quando o
-arquivo ainda não existe.
+If AGENTS.md or CLAUDE.md exist at the repository root, init reads these
+files, records their paths in .toolbelt/agent_docs.yaml and extracts short
+run hints (ignores long code fences; never overwrites). The
+verify.test_cmd binary is checked on PATH with a fallback (e.g. uv → pytest).
+Use --write-agents to seed a minimal AGENTS.md that cites the detected
+toolchain (verify.test_cmd and, if present, build_cmd/lint_cmd) when the
+file does not exist yet.
 
-Exemplo:
-  tb init                 Cria configuração básica
-  tb init --write-agents  Também semeia AGENTS.md se ausente
-  tb init --global        Cria configuração global em ~/.config/toolbelt`,
+Example:
+  tb init                 Creates a basic configuration
+  tb init --write-agents  Also seeds AGENTS.md if missing
+  tb init --global        Creates global configuration in ~/.config/toolbelt`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		global, _ := cmd.Flags().GetBool("global")
 		writeAgents, _ := cmd.Flags().GetBool("write-agents")
@@ -179,11 +178,11 @@ Exemplo:
 		if !global && repoRoot != "" {
 			excludePath, err = config.EnsureLocalGitExclude(repoRoot)
 			if err != nil {
-				return fmt.Errorf("atualizando .git/info/exclude: %w", err)
+				return fmt.Errorf("updating .git/info/exclude: %w", err)
 			}
 			docs, err = config.HandleAgentDocs(repoRoot, dir, writeAgents)
 			if err != nil {
-				return fmt.Errorf("processando AGENTS.md/CLAUDE.md: %w", err)
+				return fmt.Errorf("processing AGENTS.md/CLAUDE.md: %w", err)
 			}
 		}
 
@@ -194,36 +193,36 @@ Exemplo:
 			return enc.Encode(payload)
 		}
 
-		log.Info("configuração inicializada", "path", dir)
+		log.Info("configuration initialized", "path", dir)
 		if detected.Cmd != "" {
-			log.Info("toolchain detectada", "test_cmd", detected.Cmd)
+			log.Info("toolchain detected", "test_cmd", detected.Cmd)
 		}
 		if detected.Warning != "" {
 			log.Warn(detected.Warning)
 		}
 
 		if excludePath != "" {
-			log.Info("estado local ignorado via .git/info/exclude",
+			log.Info("local state ignored via .git/info/exclude",
 				"path", excludePath,
 				"patterns", strings.Join(config.LocalCacheExcludePatterns, ","))
 		}
 
 		if docs != nil {
 			if docs.Seeded {
-				log.Info("AGENTS.md semeado", "path", filepath.Join(repoRoot, config.AgentsMDName))
+				log.Info("AGENTS.md seeded", "path", filepath.Join(repoRoot, config.AgentsMDName))
 			}
 			if len(docs.Sources) > 0 {
-				log.Info("documentação de agentes encontrada",
+				log.Info("agent documentation found",
 					"sources", strings.Join(docs.Sources, ","),
 					"record", docs.Record)
 				if len(docs.Hints) > 0 {
-					log.Info("dicas de execução em AGENTS.md/CLAUDE.md",
+					log.Info("run hints in AGENTS.md/CLAUDE.md",
 						"hints", strings.Join(docs.Hints, " | "))
 				}
 			} else if writeAgents {
-				log.Info("nenhum AGENTS.md/CLAUDE.md após seed")
+				log.Info("no AGENTS.md/CLAUDE.md after seed")
 			} else {
-				log.Info("nenhum AGENTS.md/CLAUDE.md na raiz; use --write-agents para semear")
+				log.Info("no AGENTS.md/CLAUDE.md at the root; use --write-agents to seed")
 			}
 		}
 
@@ -273,6 +272,6 @@ func buildInitJSON(dir string, detected config.DetectedCmd, docs *config.AgentDo
 }
 
 func init() {
-	initCmd.Flags().Bool("global", false, "inicializa configuração global")
-	initCmd.Flags().Bool("write-agents", false, "semeia AGENTS.md mínimo se ausente (nunca sobrescreve)")
+	initCmd.Flags().Bool("global", false, "initializes global configuration")
+	initCmd.Flags().Bool("write-agents", false, "seeds a minimal AGENTS.md if missing (never overwrites)")
 }

@@ -13,12 +13,12 @@ import (
 
 var guardCmd = &cobra.Command{
 	Use:   "guard",
-	Short: "Proteções anti-trapaça",
+	Short: "Anti-cheat protections",
 }
 
 var guardCheckCmd = &cobra.Command{
 	Use:   "check [base..head]",
-	Short: "Analisa diff entre commits",
+	Short: "Analyzes the diff between commits",
 	Args:  cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		base, head, err := resolveGuardRange(cmd, args)
@@ -53,7 +53,7 @@ func printGuardText(res *guard.CheckResult) {
 		fmt.Printf("%s %s %s\n", v.Severity, v.Type, v.File)
 	}
 	if len(res.Violations) == 0 {
-		fmt.Printf("guard: ok (%d regras, 0 violações)\n", res.RulesChecked)
+		fmt.Printf("guard: ok (%d rules, 0 violations)\n", res.RulesChecked)
 	}
 }
 
@@ -63,12 +63,12 @@ func resolveGuardRange(cmd *cobra.Command, args []string) (base, head string, er
 	if len(args) == 1 {
 		parts := strings.SplitN(args[0], "..", 2)
 		if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
-			return "", "", fmt.Errorf("use base..head ou --base/--head")
+			return "", "", fmt.Errorf("use base..head or --base/--head")
 		}
 		return parts[0], parts[1], nil
 	}
 	if base == "" || head == "" {
-		return "", "", fmt.Errorf("use base..head ou --base/--head")
+		return "", "", fmt.Errorf("use base..head or --base/--head")
 	}
 	return base, head, nil
 }
@@ -83,9 +83,9 @@ func hasStrictError(violations []guard.Violation) bool {
 }
 
 func init() {
-	guardCheckCmd.Flags().Bool("warn-only", false, "não falha o exit code em SeverityError (opt-out do default CI-safe)")
-	guardCheckCmd.Flags().Bool("strict", false, "falha em SeverityError (já é o default)")
-	_ = guardCheckCmd.Flags().MarkDeprecated("strict", "falha em SeverityError já é o default; use --warn-only para opt-out")
+	guardCheckCmd.Flags().Bool("warn-only", false, "do not fail the exit code on SeverityError (opt-out of the CI-safe default)")
+	guardCheckCmd.Flags().Bool("strict", false, "fail on SeverityError (already the default)")
+	_ = guardCheckCmd.Flags().MarkDeprecated("strict", "failing on SeverityError is already the default; use --warn-only to opt out")
 	guardCheckCmd.Flags().String("base", "HEAD~1", "ref base")
 	guardCheckCmd.Flags().String("head", "HEAD", "ref head")
 	guardCmd.AddCommand(guardCheckCmd)

@@ -325,7 +325,7 @@ func (s *Store) Impact(file string, depth int) []Node {
 
 func (s *Store) RequireEnabled() error {
 	if !Enabled() {
-		return fmt.Errorf("grafo desabilitado (ative com --enable ou %s=on; ADR-011)", EnvEnable)
+		return fmt.Errorf("graph disabled (enable with --enable or %s=on; ADR-011)", EnvEnable)
 	}
 	return nil
 }

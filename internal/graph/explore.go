@@ -61,8 +61,8 @@ type PathStep struct {
 }
 
 var (
-	ErrNodeNotFound = errors.New("nó não encontrado no grafo")
-	ErrNoPath       = errors.New("sem caminho entre os nós")
+	ErrNodeNotFound = errors.New("node not found in graph")
+	ErrNoPath       = errors.New("no path between nodes")
 )
 
 // edgeUsable drops low-confidence call edges, matching Callers/Impact.
@@ -228,7 +228,7 @@ func (s *Store) ShortestPath(from, to string, maxDepth int) ([]PathStep, error) 
 		}
 		frontier = next
 	}
-	return nil, fmt.Errorf("%w: %q → %q (até %d saltos)", ErrNoPath, strings.TrimSpace(from), strings.TrimSpace(to), maxDepth)
+	return nil, fmt.Errorf("%w: %q → %q (up to %d hops)", ErrNoPath, strings.TrimSpace(from), strings.TrimSpace(to), maxDepth)
 }
 
 // adjacencyList builds an undirected view of usable edges. Edges with an

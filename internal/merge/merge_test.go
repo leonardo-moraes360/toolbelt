@@ -264,7 +264,7 @@ func TestDirtyCheckedOutTargetRefused(t *testing.T) {
 	write(t, dir, "a.txt", "sujo\n")
 	start := git(t, dir, "rev-parse", "main")
 	_, err := Run(&Options{Repo: dir, Store: ticket.Open(dir), IDs: []string{"1"}})
-	if err == nil || !strings.Contains(err.Error(), "suja") {
+	if err == nil || !strings.Contains(err.Error(), "dirty") {
 		t.Fatalf("esperava recusa: %v", err)
 	}
 	if git(t, dir, "rev-parse", "main") != start {
@@ -279,7 +279,7 @@ func TestNotDoneRejected(t *testing.T) {
 	if _, err := s.Create(&ticket.Ticket{Title: "p"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Run(&Options{Repo: dir, Store: s, IDs: []string{"1"}}); err == nil || !strings.Contains(err.Error(), "não está done") {
+	if _, err := Run(&Options{Repo: dir, Store: s, IDs: []string{"1"}}); err == nil || !strings.Contains(err.Error(), "is not done") {
 		t.Fatalf("err: %v", err)
 	}
 }
@@ -322,7 +322,7 @@ func TestDependencyOrder(t *testing.T) {
 
 func TestParseStrategyAndRefs(t *testing.T) {
 	for _, s := range []string{"prompt", "semantic"} {
-		if _, err := ParseStrategy(s); err == nil || !strings.Contains(err.Error(), "não implementado") {
+		if _, err := ParseStrategy(s); err == nil || !strings.Contains(err.Error(), "not implemented") {
 			t.Errorf("%s: %v", s, err)
 		}
 	}

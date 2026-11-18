@@ -35,14 +35,14 @@ func ParseStrategy(s string) (Strategy, error) {
 	case "last_wins", "last-wins":
 		return StrategyLastWins, nil
 	case "prompt", "semantic":
-		return "", fmt.Errorf("estratégia %q não implementado (use fail ou last_wins)", v)
+		return "", fmt.Errorf("strategy %q not implemented (use fail or last_wins)", v)
 	default:
-		return "", fmt.Errorf("estratégia inválida %q (use fail ou last_wins)", s)
+		return "", fmt.Errorf("invalid strategy %q (use fail or last_wins)", s)
 	}
 }
 
 // ErrConflict is returned (wrapped) when the fail strategy hits a conflict.
-var ErrConflict = errors.New("conflito de merge")
+var ErrConflict = errors.New("merge conflict")
 
 type Options struct {
 	Repo     string // any directory inside the git repository
@@ -109,7 +109,7 @@ func gitPath() (string, error) {
 			p, err = filepath.Abs(p)
 		}
 		if err != nil {
-			gitErr = fmt.Errorf("git não encontrado no PATH: %w", err)
+			gitErr = fmt.Errorf("git not found in PATH: %w", err)
 			return
 		}
 		gitBin = p
@@ -178,7 +178,7 @@ func Run(opts *Options) (*Result, error) {
 	}
 	canApply := !opts.DryRun && opts.Output == ""
 	if canApply && target == "" {
-		return nil, fmt.Errorf("HEAD destacado: informe --into <branch> (ou use --dry-run/--output)")
+		return nil, fmt.Errorf("detached HEAD: provide --into <branch> (or use --dry-run/--output)")
 	}
 
 	prep, err := prepare(r, opts)
@@ -210,7 +210,7 @@ func Run(opts *Options) (*Result, error) {
 	}
 	res.Files = fileEntries(byFile, status)
 	if failed {
-		return res, fmt.Errorf("%w: %d arquivo(s) em conflito; nenhuma ref foi alterada (use --strategy last_wins para resolver)", ErrConflict, len(res.Conflicts))
+		return res, fmt.Errorf("%w: %d file(s) in conflict; no ref was changed (use --strategy last_wins to resolve)", ErrConflict, len(res.Conflicts))
 	}
 
 	return finalize(r, top, wt, opts, target, startSHA, prep, res)
@@ -249,7 +249,7 @@ func checkSensitive(r runner, prep []prepared, res *Result, enforce bool) (err e
 		for _, s := range res.Sensitive {
 			fmt.Fprintf(&b, "\n  %s: %s (%s)", s.Ticket, s.Path, s.Reason)
 		}
-		return fmt.Errorf("%w; nenhuma ref foi alterada (revise e use --allow-sensitive):%s", ErrSensitive, b.String())
+		return fmt.Errorf("%w; no ref was changed (review and use --allow-sensitive):%s", ErrSensitive, b.String())
 	}
 	return nil
 }
@@ -260,13 +260,13 @@ func validateOptions(opts *Options) (Strategy, error) {
 		strategy = StrategyFail
 	}
 	if strategy != StrategyFail && strategy != StrategyLastWins {
-		return "", fmt.Errorf("estratégia %q não implementado", strategy)
+		return "", fmt.Errorf("strategy %q not implemented", strategy)
 	}
 	if opts.Store == nil {
-		return "", fmt.Errorf("store de tickets ausente")
+		return "", fmt.Errorf("ticket store missing")
 	}
 	if len(opts.IDs) == 0 {
-		return "", fmt.Errorf("informe ao menos um ID de ticket")
+		return "", fmt.Errorf("provide at least one ticket ID")
 	}
 	return strategy, nil
 }
@@ -280,7 +280,7 @@ func newRunner(opts *Options) (r runner, top string, err error) {
 	r = runner{repo: repoDir}
 	top, err = r.out(repoDir, "rev-parse", "--show-toplevel")
 	if err != nil {
-		return runner{}, "", fmt.Errorf("não é um repositório git: %w", err)
+		return runner{}, "", fmt.Errorf("not a git repository: %w", err)
 	}
 	r.repo = top
 	if email, _ := r.out(top, "config", "user.email"); email == "" {
@@ -390,7 +390,7 @@ func applyAndMark(r runner, top string, opts *Options, target, startSHA string, 
 			t.MergedAt = &now
 			return nil
 		}); err != nil {
-			return res, fmt.Errorf("refs atualizadas, mas falhou marcar %s como mergeado: %w", id, err)
+			return res, fmt.Errorf("refs updated, but failed to mark %s as merged: %w", id, err)
 		}
 	}
 	return res, nil
@@ -412,13 +412,13 @@ func resolveTarget(r runner, into string) (branch, sha string, err error) {
 		into = strings.TrimPrefix(into, "refs/heads/")
 		sha, err = r.out(r.repo, "rev-parse", "--verify", "--end-of-options", "refs/heads/"+into+"^{commit}")
 		if err != nil {
-			return "", "", fmt.Errorf("branch alvo %q não existe", into)
+			return "", "", fmt.Errorf("target branch %q does not exist", into)
 		}
 		return into, sha, nil
 	}
 	sha, err = r.out(r.repo, "rev-parse", "--verify", "HEAD^{commit}")
 	if err != nil {
-		return "", "", fmt.Errorf("repositório sem commits: %w", err)
+		return "", "", fmt.Errorf("repository has no commits: %w", err)
 	}
 	br, err := r.out(r.repo, "symbolic-ref", "--quiet", "--short", "HEAD")
 	if err != nil {
@@ -464,13 +464,13 @@ func prepareOne(r runner, opts *Options, id string) (prepared, error) {
 		return prepared{}, err
 	}
 	if t.Status != ticket.StatusDone {
-		return prepared{}, fmt.Errorf("ticket %s não está done (status %s)", id, t.Status)
+		return prepared{}, fmt.Errorf("ticket %s is not done (status %s)", id, t.Status)
 	}
 	if t.Result == nil || t.Result.HeadCommit == "" || t.Result.BaseCommit == "" {
-		return prepared{}, fmt.Errorf("ticket %s sem resultado (base/head commit) para mergear", id)
+		return prepared{}, fmt.Errorf("ticket %s has no result (base/head commit) to merge", id)
 	}
 	if t.MergedAt != nil && !opts.Force {
-		return prepared{}, fmt.Errorf("ticket %s já foi mergeado em %s (use --force para refazer)", id, t.MergedAt.Format(time.RFC3339))
+		return prepared{}, fmt.Errorf("ticket %s was already merged at %s (use --force to redo)", id, t.MergedAt.Format(time.RFC3339))
 	}
 	base, head := t.Result.BaseCommit, t.Result.HeadCommit
 	if base, err = gitref.Resolve(r.repo, base); err != nil {
@@ -588,7 +588,7 @@ func advance(r runner, top, branch, oldSHA, newSHA string) error {
 		return err
 	}
 	if cur != oldSHA {
-		return fmt.Errorf("branch %s mudou durante a integração (%s != %s); refaça o merge", branch, short(cur), short(oldSHA))
+		return fmt.Errorf("branch %s changed during integration (%s != %s); redo the merge", branch, short(cur), short(oldSHA))
 	}
 	if dir := checkedOutAt(r, top, branch); dir != "" {
 		dirty, err := r.out(dir, "status", "--porcelain", "--untracked-files=no")
@@ -596,7 +596,7 @@ func advance(r runner, top, branch, oldSHA, newSHA string) error {
 			return err
 		}
 		if dirty != "" {
-			return fmt.Errorf("árvore de trabalho de %s está suja; faça commit/stash antes de mergear em %s", dir, branch)
+			return fmt.Errorf("working tree of %s is dirty; commit/stash before merging into %s", dir, branch)
 		}
 		if _, err := r.git(dir, "merge", "--ff-only", "--quiet", newSHA); err != nil {
 			return err
@@ -604,7 +604,7 @@ func advance(r runner, top, branch, oldSHA, newSHA string) error {
 		return nil
 	}
 	if _, err := r.git(top, "update-ref", "-m", "tb merge", "refs/heads/"+branch, newSHA, oldSHA); err != nil {
-		return fmt.Errorf("branch %s mudou durante a integração: %w", branch, err)
+		return fmt.Errorf("branch %s changed during integration: %w", branch, err)
 	}
 	return nil
 }

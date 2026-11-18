@@ -13,12 +13,12 @@ import (
 var workspaceCmd = &cobra.Command{
 	Use:     "workspace",
 	Aliases: []string{"ws"},
-	Short:   "Workspaces isolados via git worktree",
+	Short:   "Isolated workspaces via git worktree",
 }
 
 var wsCreateCmd = &cobra.Command{
 	Use:   "create <id>",
-	Short: "Cria workspace",
+	Short: "Creates a workspace",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cwd, err := os.Getwd()
@@ -39,14 +39,14 @@ var wsCreateCmd = &cobra.Command{
 		if jsonOutput {
 			return json.NewEncoder(os.Stdout).Encode(ws)
 		}
-		fmt.Printf("workspace %s em %s\n", ws.ID, ws.Path)
+		fmt.Printf("workspace %s at %s\n", ws.ID, ws.Path)
 		return nil
 	},
 }
 
 var wsListCmd = &cobra.Command{
 	Use:   "list",
-	Short: "Lista workspaces",
+	Short: "Lists workspaces",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cwd, _ := os.Getwd()
 		mgr, err := workspace.NewManager(cwd)
@@ -69,7 +69,7 @@ var wsListCmd = &cobra.Command{
 
 var wsRemoveCmd = &cobra.Command{
 	Use:   "remove <id>",
-	Short: "Remove workspace",
+	Short: "Removes a workspace",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cwd, _ := os.Getwd()
@@ -82,8 +82,8 @@ var wsRemoveCmd = &cobra.Command{
 }
 
 func init() {
-	wsCreateCmd.Flags().String("base", "HEAD", "ref base")
-	wsCreateCmd.Flags().StringSlice("allow", nil, "paths permitidos")
-	wsCreateCmd.Flags().StringSlice("forbid", nil, "paths proibidos")
+	wsCreateCmd.Flags().String("base", "HEAD", "base ref")
+	wsCreateCmd.Flags().StringSlice("allow", nil, "allowed paths")
+	wsCreateCmd.Flags().StringSlice("forbid", nil, "forbidden paths")
 	workspaceCmd.AddCommand(wsCreateCmd, wsListCmd, wsRemoveCmd)
 }

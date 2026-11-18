@@ -73,7 +73,7 @@ func (r *Registry) Call(ctx context.Context, name string, args map[string]any) (
 	tool, ok := r.Get(name)
 	if !ok {
 		return &ToolResult{
-			Content: []ContentBlock{{Type: "text", Text: fmt.Sprintf("ferramenta não encontrada: %s", name)}},
+			Content: []ContentBlock{{Type: "text", Text: fmt.Sprintf("tool not found: %s", name)}},
 			IsError: true,
 		}, nil
 	}

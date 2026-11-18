@@ -30,10 +30,10 @@ func TestTicketBoardCLI(t *testing.T) {
 		return out
 	}
 	must("ticket", "create", "--title", "base", "--priority", "1", "--timeout", "5m")
-	must("ticket", "create", "--title", "dependente", "--dep", "TKT-001")
+	must("ticket", "create", "--title", "dependent", "--dep", "TKT-001")
 	must("ticket", "create", "--title", "livre", "--priority", "5")
 
-	if out, err := runTB(t, bin, dir, "ticket", "create", "--title", "x", "--dep", "TKT-042"); err == nil || !strings.Contains(out, "desconhecida") {
+	if out, err := runTB(t, bin, dir, "ticket", "create", "--title", "x", "--dep", "TKT-042"); err == nil || !strings.Contains(out, "unknown") {
 		t.Fatalf("dep desconhecida deveria falhar: %v %s", err, out)
 	}
 	must("ticket", "create", "--title", "seco", "--dry-run")
@@ -59,7 +59,7 @@ func TestTicketBoardCLI(t *testing.T) {
 	}
 
 	must("board", "pause")
-	if out := must("board", "list"); !strings.Contains(out, "pausado") {
+	if out := must("board", "list"); !strings.Contains(out, "paused") {
 		t.Fatalf("board: %s", out)
 	}
 	must("board", "resume")

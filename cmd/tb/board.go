@@ -16,7 +16,7 @@ import (
 
 var boardCmd = &cobra.Command{
 	Use:   "board",
-	Short: "Quadro de tickets: pronto, bloqueado, rodando (pause/resume/drain)",
+	Short: "Ticket board: ready, blocked, running (pause/resume/drain)",
 }
 
 func boardView(cmd *cobra.Command) (ticket.View, error) {
@@ -44,16 +44,16 @@ func boardView(cmd *cobra.Command) (ticket.View, error) {
 }
 
 func renderBoard(v *ticket.View) {
-	state := "ativo"
+	state := "active"
 	switch {
 	case v.Paused && v.Draining:
-		state = "pausado, drenando"
+		state = "paused, draining"
 	case v.Paused:
-		state = "pausado"
+		state = "paused"
 	case v.Draining:
-		state = "drenando"
+		state = "draining"
 	}
-	fmt.Printf("board: %s (estratégia: %s)\n", state, v.Strategy)
+	fmt.Printf("board: %s (strategy: %s)\n", state, v.Strategy)
 	section := func(name string, list []ticket.Ticket) {
 		fmt.Printf("\n%s (%d)\n", name, len(list))
 		for i := range list {
@@ -65,19 +65,19 @@ func renderBoard(v *ticket.View) {
 	fmt.Printf("\nBLOCKED (%d)\n", len(v.Blocked))
 	for i := range v.Blocked {
 		b := &v.Blocked[i]
-		fmt.Printf("  %s\t%s\t(aguardando: %s)\n", b.Ticket.ID, b.Ticket.Title, strings.Join(b.Reasons, ", "))
+		fmt.Printf("  %s\t%s\t(waiting: %s)\n", b.Ticket.ID, b.Ticket.Title, strings.Join(b.Reasons, ", "))
 	}
 	section("DONE", v.Done)
 	section("FAILED", v.Failed)
 	section("CANCELED", v.Canceled)
 	for _, c := range v.Cycles {
-		fmt.Printf("\naviso: ciclo de dependências: %s\n", strings.Join(c, " -> "))
+		fmt.Printf("\nwarning: dependency cycle: %s\n", strings.Join(c, " -> "))
 	}
 }
 
 var boardListCmd = &cobra.Command{
 	Use:   "list",
-	Short: "Mostra o board (RUNNING / READY / BLOCKED / DONE / FAILED)",
+	Short: "Shows the board (RUNNING / READY / BLOCKED / DONE / FAILED)",
 	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		v, err := boardView(cmd)
@@ -94,12 +94,12 @@ var boardListCmd = &cobra.Command{
 
 var boardWatchCmd = &cobra.Command{
 	Use:   "watch",
-	Short: "Atualiza o board periodicamente até Ctrl+C",
+	Short: "Refreshes the board periodically until Ctrl+C",
 	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		interval, _ := cmd.Flags().GetDuration("interval")
 		if interval <= 0 {
-			return fmt.Errorf("--interval deve ser positivo")
+			return fmt.Errorf("--interval must be positive")
 		}
 		ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 		defer stop()
@@ -155,15 +155,15 @@ func boardControlCmd(use, short, done string, fn func(root string) (ticket.Contr
 }
 
 func init() {
-	boardListCmd.Flags().String("status", "", "filtra seções por status (lista separada por vírgula)")
-	boardListCmd.Flags().String("worker", "", "filtra por worker")
-	boardListCmd.Flags().String("strategy", "", "ordenação: fifo|priority|dependency (padrão dependency)")
+	boardListCmd.Flags().String("status", "", "filters sections by status (comma-separated list)")
+	boardListCmd.Flags().String("worker", "", "filters by worker")
+	boardListCmd.Flags().String("strategy", "", "ordering: fifo|priority|dependency (default dependency)")
 	boardWatchCmd.Flags().AddFlagSet(boardListCmd.Flags())
-	boardWatchCmd.Flags().Duration("interval", 2*time.Second, "intervalo de atualização")
+	boardWatchCmd.Flags().Duration("interval", 2*time.Second, "refresh interval")
 
 	boardCmd.AddCommand(boardListCmd, boardWatchCmd,
-		boardControlCmd("pause", "Pausa: nenhuma nova atribuição", "board pausado", ticket.Pause),
-		boardControlCmd("resume", "Retoma (limpa pause e drain)", "board retomado", ticket.Resume),
-		boardControlCmd("drain", "Conclui o que roda e não atribui novos", "board em drain", ticket.Drain),
+		boardControlCmd("pause", "Pause: no new assignments", "board paused", ticket.Pause),
+		boardControlCmd("resume", "Resume (clears pause and drain)", "board resumed", ticket.Resume),
+		boardControlCmd("drain", "Finish what is running and assign no new work", "board draining", ticket.Drain),
 	)
 }

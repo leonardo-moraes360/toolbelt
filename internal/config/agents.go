@@ -229,14 +229,14 @@ func MinimalAgentsMD(verify VerifyConfig) string {
 	var b strings.Builder
 	b.WriteString("# AGENTS\n\n")
 	b.WriteString("## Toolbelt\n\n")
-	b.WriteString("Este repositório pode usar [toolbelt](https://github.com/leonardo-moraes360/toolbelt) (`tb`) como harness para agentes.\n\n")
-	b.WriteString("### Toolchain detectada\n\n")
+	b.WriteString("This repository may use [toolbelt](https://github.com/leonardo-moraes360/toolbelt) (`tb`) as a harness for agents.\n\n")
+	b.WriteString("### Detected toolchain\n\n")
 	if testCmd != "" {
-		b.WriteString("- testes (`verify.test_cmd`): `")
+		b.WriteString("- tests (`verify.test_cmd`): `")
 		b.WriteString(testCmd)
 		b.WriteString("`\n")
 	} else {
-		b.WriteString("- testes (`verify.test_cmd`): _(não detectado — configure em `.toolbelt/config.yaml`)_\n")
+		b.WriteString("- tests (`verify.test_cmd`): _(not detected — configure in `.toolbelt/config.yaml`)_\n")
 	}
 	if cmd := strings.TrimSpace(verify.BuildCmd); cmd != "" {
 		b.WriteString("- build (`verify.build_cmd`): `")
@@ -248,11 +248,11 @@ func MinimalAgentsMD(verify VerifyConfig) string {
 		b.WriteString(cmd)
 		b.WriteString("`\n")
 	}
-	b.WriteString("\n### Uso do tb\n\n")
-	b.WriteString("- `tb verify` — roda test/build/lint configurados em `.toolbelt/config.yaml`\n")
-	b.WriteString("- `tb guard check` — checagens anti-trapaça no diff\n")
-	b.WriteString("- `tb mem` — invariantes fora da compactação do contexto\n\n")
-	b.WriteString("Ajuste `verify.test_cmd` (e, se houver, `build_cmd`/`lint_cmd`) se a detecção estiver incorreta.\n")
+	b.WriteString("\n### Using tb\n\n")
+	b.WriteString("- `tb verify` — runs the test/build/lint configured in `.toolbelt/config.yaml`\n")
+	b.WriteString("- `tb guard check` — anti-cheat checks on the diff\n")
+	b.WriteString("- `tb mem` — invariants kept outside context compaction\n\n")
+	b.WriteString("Adjust `verify.test_cmd` (and `build_cmd`/`lint_cmd`, if any) if detection is incorrect.\n")
 	return b.String()
 }
 

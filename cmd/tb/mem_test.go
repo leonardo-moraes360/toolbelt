@@ -186,7 +186,7 @@ func TestMemInitReportsCreatedCLI(t *testing.T) {
 		t.Fatalf("init: %v\n%s", err, out)
 	}
 	text := string(out)
-	if !strings.Contains(text, "criadas") || !strings.Contains(text, "invariants.yaml") {
+	if !strings.Contains(text, "created") || !strings.Contains(text, "invariants.yaml") {
 		t.Fatalf("init silencioso: %s", text)
 	}
 	if !strings.Contains(text, "anti_cheat") {
@@ -196,7 +196,7 @@ func TestMemInitReportsCreatedCLI(t *testing.T) {
 	if err != nil {
 		t.Fatalf("init 2: %v\n%s", err, out)
 	}
-	if !strings.Contains(string(out), "já existiam") {
+	if !strings.Contains(string(out), "already existed") {
 		t.Fatalf("segunda chamada: %s", out)
 	}
 }

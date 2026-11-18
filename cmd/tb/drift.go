@@ -12,9 +12,9 @@ import (
 
 var driftCmd = &cobra.Command{
 	Use:   "drift [ticket]",
-	Short: "Detecta drift de escopo e commit base",
-	Long: `Compara arquivos alterados em base...head (three-dot / merge-base)
-com o scope declarado no ticket/rd.md e verifica se a base é ancestral do head.`,
+	Short: "Detects scope and base commit drift",
+	Long: `Compares files changed in base...head (three-dot / merge-base)
+against the scope declared in the ticket/rd.md and checks that the base is an ancestor of head.`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: runDrift,
 }
@@ -22,11 +22,11 @@ com o scope declarado no ticket/rd.md e verifica se a base é ancestral do head.
 func init() {
 	driftCmd.Flags().String("base", "HEAD~1", "commit/ref base")
 	driftCmd.Flags().String("head", "HEAD", "commit/ref head")
-	driftCmd.Flags().String("approved-sha", "", "SHA aprovado; compara patch-id verbatim (sensível a whitespace) com o head")
-	driftCmd.Flags().String("approved-base", "", "base do range aprovado; default: merge-base(approved, base)")
-	driftCmd.Flags().Bool("require-approved-sha", false, "falha se --approved-sha estiver ausente (ou review.require_approved_sha)")
-	driftCmd.Flags().String("ticket", "rd.md", "caminho do ticket/rd.md")
-	driftCmd.Flags().String("output", "", "arquivo de saída JSON")
+	driftCmd.Flags().String("approved-sha", "", "approved SHA; compares verbatim patch-id (whitespace-sensitive) with head")
+	driftCmd.Flags().String("approved-base", "", "base of the approved range; default: merge-base(approved, base)")
+	driftCmd.Flags().Bool("require-approved-sha", false, "fails if --approved-sha is missing (or review.require_approved_sha)")
+	driftCmd.Flags().String("ticket", "rd.md", "path to the ticket/rd.md")
+	driftCmd.Flags().String("output", "", "JSON output file")
 }
 
 func runDrift(cmd *cobra.Command, args []string) error {
@@ -99,28 +99,28 @@ func emitDrift(cmd *cobra.Command, drift *review.DriftReport) error {
 
 func printDriftReport(drift *review.DriftReport) {
 	fmt.Println("═══════════════════════════════════════════════════════════")
-	fmt.Println(" RELATÓRIO DE DRIFT")
+	fmt.Println(" DRIFT REPORT")
 	fmt.Println("═══════════════════════════════════════════════════════════")
 	if drift == nil {
-		fmt.Println("Sem dados de drift.")
+		fmt.Println("No drift data.")
 		return
 	}
 	printPinnedApproval(drift.PinnedApproval)
 	fmt.Printf("Base: declared=%s actual=%s merge_base=%s\n", drift.DeclaredBase, drift.ActualBase, drift.MergeBase)
 	if drift.BaseMismatch {
-		fmt.Println("⚠ base_commit/base não é ancestral do head (merge-base --is-ancestor)")
+		fmt.Println("⚠ base_commit/base is not an ancestor of head (merge-base --is-ancestor)")
 	}
-	fmt.Printf("Fora do scope (%d):\n", len(drift.OutOfScope))
+	fmt.Printf("Out of scope (%d):\n", len(drift.OutOfScope))
 	for _, f := range drift.OutOfScope {
 		fmt.Printf("  - %s\n", f)
 	}
-	fmt.Printf("Proibidos tocados (%d):\n", len(drift.ForbiddenHit))
+	fmt.Printf("Forbidden touched (%d):\n", len(drift.ForbiddenHit))
 	for _, f := range drift.ForbiddenHit {
 		fmt.Printf("  - %s\n", f)
 	}
 	if len(drift.OutOfScope) == 0 && len(drift.ForbiddenHit) == 0 && !drift.BaseMismatch &&
 		!pinnedApprovalMismatch(drift.PinnedApproval) {
-		fmt.Println("OK: sem drift de escopo/base")
+		fmt.Println("OK: no scope/base drift")
 	}
 }
 
@@ -129,10 +129,10 @@ func driftBlockingError(drift *review.DriftReport) error {
 		return nil
 	}
 	if pinnedApprovalMismatch(drift.PinnedApproval) {
-		return fmt.Errorf("patch do head diverge do SHA aprovado")
+		return fmt.Errorf("head patch diverges from the approved SHA")
 	}
 	if len(drift.OutOfScope) > 0 || len(drift.ForbiddenHit) > 0 || drift.BaseMismatch {
-		return fmt.Errorf("drift detectado")
+		return fmt.Errorf("drift detected")
 	}
 	return nil
 }

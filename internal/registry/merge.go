@@ -12,17 +12,17 @@ import (
 func init() {
 	Register(&Tool{
 		Name:        "tb_merge",
-		Description: "Integra tickets done num branch alvo (paridade com tb merge). Dry-run por padrão; só altera refs com apply:true",
+		Description: "Merges done tickets into a target branch (parity with tb merge). Dry-run by default; only updates refs with apply:true",
 		InputSchema: &InputSchema{
 			Type: "object",
 			Properties: map[string]Property{
-				"ids":             {Type: "array", Items: &Property{Type: "string"}, Description: "IDs dos tickets (TKT-001)"},
-				"strategy":        {Type: "string", Description: "fail (padrão)|last_wins", Default: "fail"},
-				"into":            {Type: "string", Description: "Branch alvo (padrão: branch atual)"},
-				"force":           {Type: "boolean", Description: "Refaz merge de tickets já mergeados", Default: false},
-				"allow_sensitive": {Type: "boolean", Description: "Permite aplicar tickets que alteram hooks/.toolbelt/workflows/.gitmodules/gitlinks/.gitattributes", Default: false},
-				"apply":           {Type: "boolean", Description: "Aplica de verdade (sem isso é dry-run)", Default: false},
-				"cwd":             {Type: "string", Description: "Diretório do repositório"},
+				"ids":             {Type: "array", Items: &Property{Type: "string"}, Description: "Ticket IDs (TKT-001)"},
+				"strategy":        {Type: "string", Description: "fail (default)|last_wins", Default: "fail"},
+				"into":            {Type: "string", Description: "Target branch (default: current branch)"},
+				"force":           {Type: "boolean", Description: "Re-merges tickets that were already merged", Default: false},
+				"allow_sensitive": {Type: "boolean", Description: "Allows applying tickets that change hooks/.toolbelt/workflows/.gitmodules/gitlinks/.gitattributes", Default: false},
+				"apply":           {Type: "boolean", Description: "Actually applies the merge (without this it is a dry-run)", Default: false},
+				"cwd":             {Type: "string", Description: "Repository directory"},
 			},
 			Required: []string{"ids"},
 		},
@@ -37,7 +37,7 @@ func handleMerge(_ context.Context, args map[string]any) (any, error) {
 	}
 	ids := StringSliceArg(args, "ids", nil)
 	if len(ids) == 0 {
-		return nil, fmt.Errorf("ids é obrigatório")
+		return nil, fmt.Errorf("ids is required")
 	}
 	strategy, err := merge.ParseStrategy(StringArg(args, "strategy"))
 	if err != nil {

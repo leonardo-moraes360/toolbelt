@@ -12,7 +12,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-var ErrNotFound = errors.New("ticket não encontrado")
+var ErrNotFound = errors.New("ticket not found")
 
 // Store persists tickets in <root>/.toolbelt/tickets/TKT-NNN.yaml.
 type Store struct {
@@ -153,13 +153,13 @@ func (s *Store) Update(id string, fn func(*Ticket) error) (Ticket, error) {
 		return Ticket{}, err
 	}
 	if next.ID != cur.ID {
-		return Ticket{}, fmt.Errorf("ID do ticket é imutável")
+		return Ticket{}, fmt.Errorf("ticket ID is immutable")
 	}
 	if err := next.Validate(); err != nil {
 		return Ticket{}, err
 	}
 	if next.Status != cur.Status && !CanTransition(cur.Status, next.Status) {
-		return Ticket{}, fmt.Errorf("transição inválida %s -> %s para %s", cur.Status, next.Status, cur.ID)
+		return Ticket{}, fmt.Errorf("invalid transition %s -> %s for %s", cur.Status, next.Status, cur.ID)
 	}
 	if !equalStrings(cur.Dependencies, next.Dependencies) {
 		deps, err := normalizeDeps(next.Dependencies)
@@ -198,7 +198,7 @@ func (s *Store) Transition(id string, to Status) (Ticket, error) {
 func (s *Store) Cancel(id string) (Ticket, error) {
 	return s.Update(id, func(t *Ticket) error {
 		if t.Status != StatusPending && t.Status != StatusRunning {
-			return fmt.Errorf("ticket %s está %s; só pending ou running pode ser cancelado", t.ID, t.Status)
+			return fmt.Errorf("ticket %s is %s; only pending or running can be canceled", t.ID, t.Status)
 		}
 		t.Status = StatusCanceled
 		t.Subscription = nil
@@ -211,7 +211,7 @@ func (s *Store) Cancel(id string) (Ticket, error) {
 func (s *Store) Retry(id string) (Ticket, error) {
 	return s.Update(id, func(t *Ticket) error {
 		if t.Status != StatusFailed && t.Status != StatusCanceled {
-			return fmt.Errorf("ticket %s está %s; retry só vale para failed ou canceled", t.ID, t.Status)
+			return fmt.Errorf("ticket %s is %s; retry only applies to failed or canceled", t.ID, t.Status)
 		}
 		t.Status = StatusPending
 		t.Worker = ""
@@ -230,10 +230,10 @@ func (s *Store) read(id string) (Ticket, error) {
 	}
 	var t Ticket
 	if err := yaml.Unmarshal(data, &t); err != nil {
-		return Ticket{}, fmt.Errorf("ticket %s ilegível: %w", id, err)
+		return Ticket{}, fmt.Errorf("ticket %s unreadable: %w", id, err)
 	}
 	if t.ID != id {
-		return Ticket{}, fmt.Errorf("ticket %s ilegível: id %q no YAML difere do nome do arquivo %q", id, t.ID, id)
+		return Ticket{}, fmt.Errorf("ticket %s unreadable: id %q in YAML differs from file name %q", id, t.ID, id)
 	}
 	return t, nil
 }
@@ -332,10 +332,10 @@ func normalizeDeps(deps []string) ([]string, error) {
 func checkDeps(t *Ticket, byID map[string]Ticket) error {
 	for _, d := range t.Dependencies {
 		if d == t.ID {
-			return fmt.Errorf("ticket %s não pode depender de si mesmo", t.ID)
+			return fmt.Errorf("ticket %s cannot depend on itself", t.ID)
 		}
 		if _, ok := byID[d]; !ok {
-			return fmt.Errorf("dependência desconhecida: %s", d)
+			return fmt.Errorf("unknown dependency: %s", d)
 		}
 	}
 	all := make([]Ticket, 0, len(byID))
@@ -344,7 +344,7 @@ func checkDeps(t *Ticket, byID map[string]Ticket) error {
 	}
 	for _, cyc := range FindCycles(all) {
 		if contains(cyc, t.ID) {
-			return fmt.Errorf("ciclo de dependências: %s", strings.Join(cyc, " -> "))
+			return fmt.Errorf("dependency cycle: %s", strings.Join(cyc, " -> "))
 		}
 	}
 	return nil

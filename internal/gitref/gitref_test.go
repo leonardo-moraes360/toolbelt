@@ -37,7 +37,7 @@ func TestResolveRejectsMissingSHA(t *testing.T) {
 	if err == nil {
 		t.Fatal("SHA de 40 hex inexistente deveria falhar")
 	}
-	if !strings.Contains(err.Error(), "inexistente") {
+	if !strings.Contains(err.Error(), "missing or invalid") {
 		t.Fatalf("erro deveria ser claro: %v", err)
 	}
 }

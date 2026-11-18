@@ -51,7 +51,7 @@ func TestWorkspaceGitReplacedByAgentIsNeverExecuted(t *testing.T) {
 	if got.Status != ticket.StatusFailed || got.Attempts != 1 {
 		t.Fatalf("esperava failed sem retry: %+v", got)
 	}
-	if got.Result == nil || !strings.Contains(got.Result.Error, "integridade") {
+	if got.Result == nil || !strings.Contains(got.Result.Error, "integrity") {
 		t.Fatalf("erro sem explicação clara: %+v", got.Result)
 	}
 	if got.Result.HeadCommit != "" {
@@ -169,7 +169,7 @@ func TestSecondRunFailsWhileFirstActive(t *testing.T) {
 	waitFor(t, "running", func() bool { return get(t, st, tk.ID).Status == ticket.StatusRunning })
 	r2 := newRouter(t, root, nil)
 	_, err := r2.Run(context.Background())
-	if err == nil || !strings.Contains(err.Error(), "outro tb router run ativo") {
+	if err == nil || !strings.Contains(err.Error(), "another tb router run is active") {
 		t.Fatalf("esperava recusa: %v", err)
 	}
 	cancel()

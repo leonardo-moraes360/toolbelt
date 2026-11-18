@@ -87,19 +87,19 @@ func (r *Router) classifyEscapes(orphans []sandbox.Orphan) []pendingAlert {
 	}
 	for _, o := range orphans {
 		id := o.Vars[ticketIDVar]
-		where := fmt.Sprintf("processo %d", o.PID)
+		where := fmt.Sprintf("process %d", o.PID)
 		if o.ForeignGroup {
-			where += fmt.Sprintf(" (infiltrado no grupo do agente de %s)", o.GroupOwner)
+			where += fmt.Sprintf(" (infiltrated into the agent group of %s)", o.GroupOwner)
 		}
 		if o.InSpawnWindow && id == "" && !o.ForeignGroup {
 			out = append(out, pendingAlert{AlertOrphanKilled, SevWarn, "", "",
-				fmt.Sprintf("%s nasceu durante a criação de worktree (daemon de hook/fsmonitor do usuário?) e sem TB_TICKET_ID; encerrado, nenhum ticket foi falhado", where), ActionNone})
+				fmt.Sprintf("%s was spawned during worktree creation (user hook/fsmonitor daemon?) without TB_TICKET_ID; terminated, no ticket was failed", where), ActionNone})
 			continue
 		}
 		if worker, ok := r.active[id]; ok && id != "" {
 			mark(id)
 			out = append(out, pendingAlert{AlertAgentEscaped, SevError, worker, id,
-				fmt.Sprintf("%s escapou do grupo do agente de %s (setsid/setpgid) e foi encerrado; worktree não foi tocado", where, id), ActionEscalate})
+				fmt.Sprintf("%s escaped the agent group of %s (setsid/setpgid) and was terminated; worktree was not touched", where, id), ActionEscalate})
 			continue
 		}
 		ids := make([]string, 0, len(r.active))
@@ -109,23 +109,23 @@ func (r *Router) classifyEscapes(orphans []sandbox.Orphan) []pendingAlert {
 		sort.Strings(ids)
 		if len(ids) == 0 {
 			out = append(out, pendingAlert{AlertOrphanKilled, SevWarn, "", "",
-				fmt.Sprintf("%s órfão sem agente em execução (TB_TICKET_ID %s); encerrado, nenhum ticket foi falhado", where, describeID(id)), ActionNone})
+				fmt.Sprintf("%s orphaned with no running agent (TB_TICKET_ID %s); terminated, no ticket was failed", where, describeID(id)), ActionNone})
 			continue
 		}
 		for _, t := range ids {
 			mark(t)
 		}
 		out = append(out, pendingAlert{AlertAgentEscaped, SevError, "", "",
-			fmt.Sprintf("%s escapou e foi encerrado, mas não atribuível (TB_TICKET_ID %s); falhando os tickets em execução: %s", where, describeID(id), strings.Join(ids, ", ")), ActionEscalate})
+			fmt.Sprintf("%s escaped and was terminated, but is unattributable (TB_TICKET_ID %s); failing the running tickets: %s", where, describeID(id), strings.Join(ids, ", ")), ActionEscalate})
 	}
 	return out
 }
 
 func describeID(id string) string {
 	if id == "" {
-		return "ausente"
+		return "missing"
 	}
-	return "desconhecido: " + id
+	return "unknown: " + id
 }
 
 // sweepTick sweeps orphans that escaped during execution (watchdog, main

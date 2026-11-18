@@ -282,10 +282,10 @@ func TestExecAdapterPacketHasNoSecrets(t *testing.T) {
 func TestConfigValidationAndLock(t *testing.T) {
 	e := newEnv(t)
 	cases := map[string]string{
-		"adapter: exec\nexec:\n  argv: [true]\n":                                               "absoluto",
+		"adapter: exec\nexec:\n  argv: [true]\n":                                               "absolute",
 		"adapter: harness\nharness:\n  vendor: claude\n  permission_mode: bypassPermissions\n": "bypassPermissions",
-		"adapter: harness\nharness:\n  vendor: codex\n":                                        "não suportado",
-		"adapter: smoke\n": "inválido",
+		"adapter: harness\nharness:\n  vendor: codex\n":                                        "not supported",
+		"adapter: smoke\n": "invalid",
 		"adapter: exec\nexec:\n  argv: [/bin/true]\nbogus: 1\n": "bogus",
 	}
 	for body, want := range cases {
@@ -303,7 +303,7 @@ func TestConfigValidationAndLock(t *testing.T) {
 	}
 	_ = os.Chmod(p, 0o600)
 	e.open(t, &fakeAdapter{})
-	if _, err := Open(&Options{Root: e.root, Channel: "ch", Name: "w", Adapter: &fakeAdapter{}}); err == nil || !strings.Contains(err.Error(), "já está rodando") {
+	if _, err := Open(&Options{Root: e.root, Channel: "ch", Name: "w", Adapter: &fakeAdapter{}}); err == nil || !strings.Contains(err.Error(), "already running") {
 		t.Fatalf("segundo harness: %v", err)
 	}
 }

@@ -101,7 +101,7 @@ func TestGuardTextOKLine(t *testing.T) {
 
 	out := runGuard(t, tbBin, dir, base+".."+head)
 	got := strings.TrimSpace(string(out))
-	if !strings.HasPrefix(got, "guard: ok (") || !strings.Contains(got, "0 violações") {
+	if !strings.HasPrefix(got, "guard: ok (") || !strings.Contains(got, "0 violations") {
 		t.Fatalf("esperava linha OK no modo texto, got: %q", got)
 	}
 	if strings.Contains(got, "error ") || strings.Contains(got, "warning ") {

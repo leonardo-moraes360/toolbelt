@@ -687,7 +687,7 @@ func TestCommitIdentityFallbackWhenUnconfigured(t *testing.T) {
 		t.Fatalf("ticket: %+v err=%v", got, got.Result)
 	}
 	if who := runGit(t, root, "log", "-1", "--format=%an <%ae>", got.Result.HeadCommit); who != "tb <tb@localhost>" {
-		t.Fatalf("autor = %q", who)
+		t.Fatalf("author = %q", who)
 	}
 }
 

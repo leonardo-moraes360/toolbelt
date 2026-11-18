@@ -16,16 +16,16 @@ import (
 
 var mcpCmd = &cobra.Command{
 	Use:   "mcp",
-	Short: "Inicia servidor MCP sobre stdio",
-	Long: `Inicia o toolbelt como servidor MCP (Model Context Protocol).
+	Short: "Starts an MCP server over stdio",
+	Long: `Starts toolbelt as an MCP (Model Context Protocol) server.
 
-O servidor expõe ferramentas registradas via JSON-RPC 2.0 sobre stdio,
-alinhado ao MCP stateless. As mesmas ferramentas do CLI ficam disponíveis via tools/list e tools/call.`,
+The server exposes registered tools via JSON-RPC 2.0 over stdio,
+aligned with stateless MCP. The same tools as the CLI are available via tools/list and tools/call.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if err := bindBusAs(cmd); err != nil {
 			return err
 		}
-		log.Info("servidor MCP iniciado", "transport", "stdio")
+		log.Info("MCP server started", "transport", "stdio")
 		srv := mcp.NewServer(registry.Default())
 		return srv.Run(cmd.Context(), os.Stdin, os.Stdout)
 	},
@@ -40,7 +40,7 @@ func bindBusAs(cmd *cobra.Command) error {
 	}
 	channel, name, ok := strings.Cut(as, "/")
 	if !ok || channel == "" || name == "" {
-		return fmt.Errorf("--bus-as inválido %q (use <canal>/<nome>)", as)
+		return fmt.Errorf("invalid --bus-as %q (use <channel>/<name>)", as)
 	}
 	if state, _ := cmd.Flags().GetString("bus-state"); state != "" {
 		if err := os.Setenv(bus.EnvStateDir, state); err != nil {
@@ -59,7 +59,7 @@ func bindBusAs(cmd *cobra.Command) error {
 }
 
 func init() {
-	mcpCmd.Flags().String("bus-as", "", "prende a conexão à sessão do bus <canal>/<nome> (usado por tb bus run)")
-	mcpCmd.Flags().String("bus-root", "", "raiz do repositório do bus (padrão: procura .toolbelt a partir do cwd)")
-	mcpCmd.Flags().String("bus-state", "", "base do diretório privado do bus (padrão $XDG_STATE_HOME/toolbelt/bus)")
+	mcpCmd.Flags().String("bus-as", "", "binds the connection to the bus session <channel>/<name> (used by tb bus run)")
+	mcpCmd.Flags().String("bus-root", "", "bus repository root (default: searches for .toolbelt from the cwd)")
+	mcpCmd.Flags().String("bus-state", "", "base of the bus private directory (default $XDG_STATE_HOME/toolbelt/bus)")
 }

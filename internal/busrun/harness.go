@@ -13,7 +13,7 @@ import (
 	"github.com/leonardo-moraes360/toolbelt/internal/log"
 )
 
-var errLocked = errors.New("outro tb bus run já está rodando para este agente")
+var errLocked = errors.New("another tb bus run is already running for this agent")
 
 type Options struct {
 	Root             string
@@ -146,7 +146,7 @@ func (h *Harness) Check() error {
 		bin = []string{cmd}
 	}
 	if _, err := lookPath(bin[0]); err != nil {
-		return fmt.Errorf("binário do adapter: %w", err)
+		return fmt.Errorf("adapter binary: %w", err)
 	}
 	for _, p := range append(append([]string{}, h.cfg.Sandbox.Read...), h.cfg.Sandbox.Write...) {
 		if _, err := os.Stat(p); err != nil {
@@ -205,7 +205,7 @@ func (h *Harness) Run(ctx context.Context, once bool) error {
 				return err
 			}
 			h.audit(&Event{Event: "error", Detail: err.Error()})
-			log.Warn("harness do bus: erro transitório", "error", err)
+			log.Warn("bus harness: transient error", "error", err)
 		} else if once {
 			return nil
 		}
@@ -269,7 +269,7 @@ func (h *Harness) step(ctx context.Context, once bool) (bool, error) {
 	}
 	if open, err := h.channelOpen(now); err != nil || !open {
 		if err == nil && once {
-			err = fmt.Errorf("canal %q expirou: use tb bus channel extend", h.member.Channel)
+			err = fmt.Errorf("channel %q expired: use tb bus channel extend", h.member.Channel)
 		}
 		return false, err
 	}
@@ -286,7 +286,7 @@ func (h *Harness) channelOpen(now time.Time) (bool, error) {
 		if !h.expiredLog {
 			h.expiredLog = true
 			h.audit(&Event{Event: "channel_expired", Detail: err.Error()})
-			log.Warn("harness do bus: canal expirado, despertares suspensos até tb bus channel extend", "channel", h.member.Channel)
+			log.Warn("bus harness: channel expired, wakes suspended until tb bus channel extend", "channel", h.member.Channel)
 		}
 		return false, nil
 	}
@@ -297,7 +297,7 @@ func (h *Harness) channelOpen(now time.Time) (bool, error) {
 	if h.expiredLog {
 		h.expiredLog = false
 		h.audit(&Event{Event: "channel_reopened"})
-		log.Info("harness do bus: canal reaberto", "channel", h.member.Channel)
+		log.Info("bus harness: channel reopened", "channel", h.member.Channel)
 	}
 	return true, nil
 }

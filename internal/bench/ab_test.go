@@ -78,13 +78,13 @@ func TestWriteComparisonReportAB(t *testing.T) {
 		t.Fatal(err)
 	}
 	out := buf.String()
-	if !bytes.Contains(buf.Bytes(), []byte("Comparação A/B")) {
+	if !bytes.Contains(buf.Bytes(), []byte("A/B Comparison")) {
 		t.Errorf("relatório sem título A/B: %s", out)
 	}
-	if !bytes.Contains(buf.Bytes(), []byte("tokens médio")) {
+	if !bytes.Contains(buf.Bytes(), []byte("avg tokens")) {
 		t.Errorf("relatório sem tokens: %s", out)
 	}
-	if !bytes.Contains(buf.Bytes(), []byte("sucesso (pass@1)")) {
+	if !bytes.Contains(buf.Bytes(), []byte("success (pass@1)")) {
 		t.Errorf("relatório sem sucesso: %s", out)
 	}
 }

@@ -17,12 +17,12 @@ func init() {
 func RegisterGraphTools() {
 	Register(&Tool{
 		Name:        "tb_graph_search",
-		Description: "Busca no grafo de código (sob demanda; requer TB_GRAPH=on)",
+		Description: "Searches the code graph (on demand; requires TB_GRAPH=on)",
 		InputSchema: &InputSchema{
 			Type: "object",
 			Properties: map[string]Property{
-				"query": {Type: "string", Description: "Consulta"},
-				"limit": {Type: "integer", Description: "Máximo de resultados", Default: 20},
+				"query": {Type: "string", Description: "Query"},
+				"limit": {Type: "integer", Description: "Maximum results", Default: 20},
 			},
 			Required: []string{"query"},
 		},
@@ -30,12 +30,12 @@ func RegisterGraphTools() {
 	})
 	Register(&Tool{
 		Name:        "tb_graph_callers",
-		Description: "Encontra chamadores de uma função no grafo",
+		Description: "Finds callers of a function in the graph",
 		InputSchema: &InputSchema{
 			Type: "object",
 			Properties: map[string]Property{
-				"function": {Type: "string", Description: "Nome da função"},
-				"depth":    {Type: "integer", Description: "Profundidade", Default: 1},
+				"function": {Type: "string", Description: "Function name"},
+				"depth":    {Type: "integer", Description: "Depth", Default: 1},
 			},
 			Required: []string{"function"},
 		},
@@ -43,25 +43,25 @@ func RegisterGraphTools() {
 	})
 	Register(&Tool{
 		Name:        "tb_graph_deps",
-		Description: "Lista dependências de módulo/arquivo no grafo",
+		Description: "Lists module/file dependencies in the graph",
 		InputSchema: &InputSchema{
 			Type: "object",
 			Properties: map[string]Property{
-				"module":     {Type: "string", Description: "Módulo ou pacote"},
-				"file":       {Type: "string", Description: "Arquivo"},
-				"transitive": {Type: "boolean", Description: "Inclui dependências transitivas", Default: false},
+				"module":     {Type: "string", Description: "Module or package"},
+				"file":       {Type: "string", Description: "File"},
+				"transitive": {Type: "boolean", Description: "Includes transitive dependencies", Default: false},
 			},
 		},
 		Handler: handleGraphDeps,
 	})
 	Register(&Tool{
 		Name:        "tb_graph_impact",
-		Description: "Analisa impacto de mudanças em um arquivo (paridade com tb graph impact)",
+		Description: "Analyzes the impact of changes to a file (parity with tb graph impact)",
 		InputSchema: &InputSchema{
 			Type: "object",
 			Properties: map[string]Property{
-				"file":  {Type: "string", Description: "Arquivo modificado"},
-				"depth": {Type: "integer", Description: "Profundidade", Default: 2},
+				"file":  {Type: "string", Description: "Modified file"},
+				"depth": {Type: "integer", Description: "Depth", Default: 2},
 			},
 			Required: []string{"file"},
 		},
@@ -69,12 +69,12 @@ func RegisterGraphTools() {
 	})
 	Register(&Tool{
 		Name:        "tb_graph_explain",
-		Description: "Explica um nó do grafo: arestas de entrada/saída com proveniência (paridade com tb graph explain)",
+		Description: "Explains a graph node: incoming/outgoing edges with provenance (parity with tb graph explain)",
 		InputSchema: &InputSchema{
 			Type: "object",
 			Properties: map[string]Property{
-				"node":  {Type: "string", Description: "ID, título, função ou arquivo"},
-				"limit": {Type: "integer", Description: "Máximo de nós explicados", Default: graph.DefaultExplainLimit},
+				"node":  {Type: "string", Description: "ID, title, function, or file"},
+				"limit": {Type: "integer", Description: "Maximum nodes explained", Default: graph.DefaultExplainLimit},
 			},
 			Required: []string{"node"},
 		},
@@ -82,13 +82,13 @@ func RegisterGraphTools() {
 	})
 	Register(&Tool{
 		Name:        "tb_graph_path",
-		Description: "Menor caminho entre dois nós do grafo (paridade com tb graph path)",
+		Description: "Shortest path between two graph nodes (parity with tb graph path)",
 		InputSchema: &InputSchema{
 			Type: "object",
 			Properties: map[string]Property{
-				"from":      {Type: "string", Description: "Nó de origem"},
-				"to":        {Type: "string", Description: "Nó de destino"},
-				"max_depth": {Type: "integer", Description: "Máximo de saltos", Default: graph.DefaultPathMaxDepth},
+				"from":      {Type: "string", Description: "Source node"},
+				"to":        {Type: "string", Description: "Target node"},
+				"max_depth": {Type: "integer", Description: "Maximum hops", Default: graph.DefaultPathMaxDepth},
 			},
 			Required: []string{"from", "to"},
 		},
@@ -96,11 +96,11 @@ func RegisterGraphTools() {
 	})
 	Register(&Tool{
 		Name:        "tb_graph_index",
-		Description: "Indexa o grafo de código sob demanda",
+		Description: "Indexes the code graph on demand",
 		InputSchema: &InputSchema{
 			Type: "object",
 			Properties: map[string]Property{
-				"path": {Type: "string", Description: "Raiz a indexar", Default: "."},
+				"path": {Type: "string", Description: "Root to index", Default: "."},
 			},
 		},
 		Handler: handleGraphIndex,
@@ -177,7 +177,7 @@ func handleGraphDeps(_ context.Context, args map[string]any) (any, error) {
 		target = StringArg(args, "file")
 	}
 	if target == "" {
-		return nil, fmt.Errorf("module ou file é obrigatório")
+		return nil, fmt.Errorf("module or file is required")
 	}
 	transitive := BoolArg(args, "transitive", false)
 	return graphNodesPayload(s, s.Deps(target, transitive)), nil
@@ -190,7 +190,7 @@ func handleGraphImpact(_ context.Context, args map[string]any) (any, error) {
 	}
 	file := StringArg(args, "file")
 	if file == "" {
-		return nil, fmt.Errorf("file é obrigatório")
+		return nil, fmt.Errorf("file is required")
 	}
 	depth := IntArg(args, "depth", 2)
 	nodes := s.Impact(file, depth)
@@ -209,7 +209,7 @@ func handleGraphExplain(_ context.Context, args map[string]any) (any, error) {
 	}
 	node := StringArg(args, "node")
 	if node == "" {
-		return nil, fmt.Errorf("node é obrigatório")
+		return nil, fmt.Errorf("node is required")
 	}
 	exps, err := s.Explain(node, IntArg(args, "limit", graph.DefaultExplainLimit))
 	if err != nil {
@@ -225,7 +225,7 @@ func handleGraphPath(_ context.Context, args map[string]any) (any, error) {
 	}
 	from, to := StringArg(args, "from"), StringArg(args, "to")
 	if from == "" || to == "" {
-		return nil, fmt.Errorf("from e to são obrigatórios")
+		return nil, fmt.Errorf("from and to are required")
 	}
 	steps, err := s.ShortestPath(from, to, IntArg(args, "max_depth", graph.DefaultPathMaxDepth))
 	if err != nil {

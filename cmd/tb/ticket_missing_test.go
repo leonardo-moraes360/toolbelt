@@ -51,7 +51,7 @@ func TestDriftReviewStackMissingTicketExit(t *testing.T) {
 			if code == 0 {
 				t.Fatalf("ticket ausente deveria sair ≠ 0\n%s", out)
 			}
-			if !strings.Contains(out, "ticket não encontrado") {
+			if !strings.Contains(out, "ticket not found") {
 				t.Fatalf("saída deveria citar ticket não encontrado:\n%s", out)
 			}
 			if !strings.Contains(out, missing) {

@@ -26,7 +26,7 @@ func ParseStrategy(s string) (Strategy, error) {
 	case StrategyFIFO, StrategyPriority, StrategyDependency:
 		return Strategy(s), nil
 	}
-	return "", fmt.Errorf("estratégia inválida %q (use fifo, priority ou dependency)", s)
+	return "", fmt.Errorf("invalid strategy %q (use fifo, priority or dependency)", s)
 }
 
 // Control is persisted in .toolbelt/board.yaml.
@@ -48,7 +48,7 @@ func LoadControl(root string) (Control, error) {
 	}
 	var c Control
 	if err := yaml.Unmarshal(data, &c); err != nil {
-		return Control{}, fmt.Errorf("board.yaml ilegível: %w", err)
+		return Control{}, fmt.Errorf("board.yaml unreadable: %w", err)
 	}
 	return c, nil
 }
@@ -149,7 +149,7 @@ func (b *Board) unmet(t *Ticket, byID map[string]Ticket) (waiting, reasons []str
 		switch {
 		case !ok:
 			waiting = append(waiting, d)
-			reasons = append(reasons, d+": inexistente")
+			reasons = append(reasons, d+": does not exist")
 		case dep.Status != StatusDone:
 			waiting = append(waiting, d)
 			reasons = append(reasons, fmt.Sprintf("%s: %s", d, dep.Status))

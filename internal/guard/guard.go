@@ -112,7 +112,7 @@ func (c *Checker) CheckDiff(baseRef, headRef, nameStatus string) (*CheckResult, 
 	for _, cf := range parseDiff(diff) {
 		if cf.deleted && isTestFile(cf.path) {
 			res.Violations = append(res.Violations, Violation{
-				Type: ViolationTestDeletion, File: cf.path, Message: "teste removido", Severity: SeverityError,
+				Type: ViolationTestDeletion, File: cf.path, Message: "test removed", Severity: SeverityError,
 			})
 		}
 		if entry, ok := c.protectedMatch(cf.path); ok {
@@ -121,7 +121,7 @@ func (c *Checker) CheckDiff(baseRef, headRef, nameStatus string) (*CheckResult, 
 				src = SourceCustom
 			}
 			res.Violations = append(res.Violations, Violation{
-				Type: ViolationProtectedPath, File: cf.path, Message: "path protegido alterado",
+				Type: ViolationProtectedPath, File: cf.path, Message: "protected path changed",
 				Severity: SeverityError, Source: src,
 			})
 		}
@@ -152,13 +152,13 @@ func (c *Checker) loadProtectedPaths(baseRef string) ([]protectedEntry, error) {
 		if isMissingGitObject(err) {
 			return paths, nil
 		}
-		return nil, fmt.Errorf("lendo .toolbelt/guard.yaml da base %s: %w", baseRef, err)
+		return nil, fmt.Errorf("reading .toolbelt/guard.yaml from base %s: %w", baseRef, err)
 	}
 	var raw struct {
 		ProtectedPaths []any `yaml:"protected_paths"`
 	}
 	if err := yaml.Unmarshal([]byte(data), &raw); err != nil {
-		return nil, fmt.Errorf("guard.yaml malformado na base %s: %w", baseRef, err)
+		return nil, fmt.Errorf("guard.yaml malformed at base %s: %w", baseRef, err)
 	}
 	for _, item := range raw.ProtectedPaths {
 		pattern := protectedPattern(item)
@@ -317,7 +317,7 @@ func matchProtectedPattern(pattern, path string) bool {
 func compileGlob(pattern string) (*regexp.Regexp, error) {
 	pattern = filepath.ToSlash(strings.TrimSpace(pattern))
 	if pattern == "" {
-		return nil, fmt.Errorf("padrão vazio")
+		return nil, fmt.Errorf("empty pattern")
 	}
 	if strings.HasSuffix(pattern, "/") {
 		return dirPrefixRegexp(strings.TrimSuffix(pattern, "/"))
@@ -372,7 +372,7 @@ func nextGlobPiece(pattern string, i int) (next int, piece string, err error) {
 			j++
 		}
 		if j >= len(pattern) {
-			return 0, "", fmt.Errorf("classe de caracteres sem fechamento")
+			return 0, "", fmt.Errorf("unterminated character class")
 		}
 		return j + 1, pattern[i : j+1], nil
 	default:
@@ -428,7 +428,7 @@ func scanEnv(content, rel string) []Violation {
 			if re.MatchString(line) {
 				v = append(v, Violation{
 					Type: ViolationEnvDetection, File: rel, Line: i + 1,
-					Message: "detecção de ambiente de teste", Severity: SeverityWarning, Context: strings.TrimSpace(line),
+					Message: "test environment detection", Severity: SeverityWarning, Context: strings.TrimSpace(line),
 				})
 			}
 		}
@@ -460,7 +460,7 @@ func scanJS(content, rel string) []Violation {
 			if re.MatchString(line) {
 				v = append(v, Violation{
 					Type: ViolationTestSkip, File: rel, Line: i + 1,
-					Message: "teste JS/TS enfraquecido (skip/only)", Severity: SeverityWarning,
+					Message: "weakened JS/TS test (skip/only)", Severity: SeverityWarning,
 					Context: trimmed,
 				})
 				break
@@ -469,7 +469,7 @@ func scanJS(content, rel string) []Violation {
 		if trivialJSAssert(line) {
 			v = append(v, Violation{
 				Type: ViolationTrivialAssert, File: rel, Line: i + 1,
-				Message: "asserção trivial JS/TS", Severity: SeverityError,
+				Message: "trivial JS/TS assertion", Severity: SeverityError,
 				Context: trimmed,
 			})
 		}
