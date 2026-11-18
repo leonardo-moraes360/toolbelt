@@ -7,6 +7,8 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Não Lançado]
 
+## [0.0.5] - 2026-11-18
+
 ### Adicionado
 - Barramento B0/B1 (ADR-013): spec `bus/0.1` em `docs/bus-protocolo.md` (envelope JSON-RPC, Agent Card, convite) e `tb bus channel create|list|show`, `invite`, `join`, `send`, `recv`, `claim`, `complete`, `log` sobre `.toolbelt/bus/bus.db` (SQLite WAL via `modernc.org/sqlite`, sem CGO; diretório `0700`, banco e sessões `0600`)
 - Barramento: convite de uso único com papel fixado (só SHA-256 no store), `from` definido pelo broker, dedupe por `idempotency_key`, TTL de mensagem e canal, cursor por agente com `--peek`/`--since`, long-poll até 25s, dono único por thread, payload ≤ 64 KiB com redação de segredos
