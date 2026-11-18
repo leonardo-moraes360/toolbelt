@@ -90,7 +90,8 @@ tb  (implementado hoje)
 ├── board        Ticket board (list|watch|pause|resume|drain)          ✓ Phase 3
 ├── router       Foreground scheduler (run|status|config)           ✓ Phase 3
 ├── watchdog     Worker alerts and control (status|alerts|kill)       ✓ Phase 3
-└── merge        Merges done tickets (fail|last_wins)                     ✓ Phase 3
+├── merge        Merges done tickets (fail|last_wins)                     ✓ Phase 3
+└── bus          Agent bus (channel|invite|join|send|recv|claim|complete|log|run)  ✓ B1
 
 tb  (planned)
 ├── run / proc / md / agent
@@ -1651,6 +1652,45 @@ tb merge TKT-002 TKT-003
 
 ---
 
+### `tb bus` — Agent Bus (✓ B1, ADR-013)
+
+Local bus for agents from different vendors (Claude Code, Codex, Grok, ...) to exchange `bus/0.1` messages through the same store (`.toolbelt/bus/bus.db`, SQLite WAL, no daemon). Envelope, Agent Card and invite spec: [bus-protocolo.md](bus-protocolo.md). Lease/heartbeat (B2) does not exist yet; the `tb bus run` harness (B3) is in [bus-harness.md](bus-harness.md).
+
+```bash
+tb bus channel create feature-x --owner claude-main --ttl 2h
+tb bus invite feature-x --role worker
+tb bus invite feature-x --role supervisor --name claude-main
+tb bus join feature-x --invite K7Q2-9XMD --name grok-1 --vendor xai --role worker
+tb bus send --channel feature-x --as claude-main --to role:worker --type task.assign --thread TKT-001 --payload '{"ticket":"TKT-001"}'
+tb bus recv --channel feature-x --as grok-1 --wait 20s
+tb bus claim TKT-001 --channel feature-x --as grok-1
+tb bus complete TKT-001 --channel feature-x --as grok-1 --result '{"verdict":"PASS"}'
+tb bus log feature-x --thread TKT-001
+tb bus channel list
+tb bus channel show feature-x
+tb bus channel extend feature-x --ttl 2h
+tb bus run --channel feature-x --as marin --check
+tb bus run --channel feature-x --as marin
+tb bus run --channel feature-x --as claude-code --once
+```
+
+| Command | Who | Purpose |
+|---|---|---|
+| `channel create <channel> --owner N` | human | creates the channel (`--ttl`, no expiry by default) and the owner invite (role `supervisor`) |
+| `channel extend <channel> --ttl D` | human | resets the expiry to now + `D` (`0` = no expiry); reopens an expired channel keeping sessions and history |
+| `invite <channel> --role R` | human | single-use invite with a pinned role (`--ttl`, default `10m`); `--name` binds it to an agent and, if that agent is already in the channel, recovers its lost session (new token) |
+| `join <channel> --invite C` | agent | joins with an Agent Card (`--name`, `--vendor`, `--model`, `--tier`, `--wake`, `--session`, `--capability` or `--card card.json`); stores the session in the bus private directory, outside the repository (`$XDG_STATE_HOME/toolbelt/bus/`, `0600`) |
+| `send` | agent | `--to agent:\|role:\|topic:`, `--type`, `--thread`, `--causation`, `--idempotency-key`, `--ttl`, `--payload` (JSON or `@file`) |
+| `recv` | agent | reads and advances the cursor; `--wait` (max 25s), `--limit`, `--peek`, `--since` |
+| `claim <thread>` | agent | single owner of the thread |
+| `complete <thread>` | owner | `--result`; publishes `task.result` to `topic:board` |
+| `log <channel>` | human | audit trail (redacted payload); `--thread`, `--limit` |
+| `run --channel C --as N` | human | B3 harness: waits without an LLM and wakes the agent through the wake file (`exec` or `harness`); `--once`, `--check`, `--dry-run`, `--invite`, `--config`, `--allow-unsandboxed`. Spec: [bus-harness.md](bus-harness.md) |
+
+Agent commands require `--channel` and `--as`. The session token is never printed. `--json` returns JSON-RPC envelopes.
+
+---
+
 ### `tb bench` — Benchmark ✅ IMPLEMENTED (A/B in Phase 2)
 
 Runs benchmarks and measures KPIs. Supports A/B comparison between configs/feature flags.
@@ -1773,6 +1813,7 @@ Unix/tcp transport and `--socket`/`--port`/`--tls-*` flags are planned; today on
 | `tb_router_status` | `tb router status` | só leitura de `state.json` |
 | `tb_watchdog_alerts` | `tb watchdog alerts` | `since`, `kind`, `limit` (integer) |
 | `tb_merge` | `tb merge` | `ids` (array), `strategy`, `into`, `force`, `allow_sensitive` (default `false`); **dry-run por padrão** — só altera refs com `apply=true` |
+| `tb_bus_join` / `tb_bus_send` / `tb_bus_recv` / `tb_bus_claim` / `tb_bus_complete` | `tb bus …` | identity bound to the connection after `tb_bus_join` (`channel`, `invite`, `name` + Agent Card); `payload`/`result` as objects; `wait` string (max 25s); creating channels/invites does **not** exist through MCP; `tb mcp --bus-as <channel>/<name>` binds the connection to a CLI session (used by `tb bus run`) |
 | `tb_graph_search` / `tb_graph_callers` / `tb_graph_deps` / `tb_graph_impact` / `tb_graph_index` | `tb graph …` | call requires `TB_GRAPH=on`; `depth`/`limit` integer; `transitive` boolean |
 
 Schemas type `depth`/`limit`/`reviewers`/`max_iter` as integer, `strict`/`warn_only`/`transitive`/`skip_unavailable`/`all` (mem) as boolean, `threshold` as number, and `standards` as a string array; legacy string values are still accepted. verify/review/drift/guard reports come back as JSON in `content` (without a process exit code). Empty lists use `[]`; `hidden_passed` is `null` if the hidden suite does not apply.

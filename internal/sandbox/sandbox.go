@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -36,6 +37,9 @@ type Config struct {
 	// órfãos achados nesse grupo cujo ambiente aponte outro dono são tratados como
 	// escape (ver Registry.sweepLocked). Só vale com ProcessGroup e Registry.
 	GroupOwner string
+	// Stdin, quando não nil, vira a entrada padrão do filho (atravessa o
+	// trampolim Landlock: syscall.Exec preserva os descritores).
+	Stdin io.Reader
 }
 
 type PathAccess struct {
@@ -106,6 +110,7 @@ func (s *Sandbox) Run(ctx context.Context, command string, args ...string) (*Res
 func (s *Sandbox) runPlain(ctx context.Context, bin string, args ...string) (*Result, error) {
 	cmd := exec.CommandContext(ctx, bin, args...) //nolint:gosec // sandbox invocado explicitamente pelo operador
 	cmd.Dir = s.config.WorkDir
+	cmd.Stdin = s.config.Stdin
 	if s.config.Env != nil {
 		cmd.Env = s.config.Env
 	}
@@ -123,6 +128,7 @@ func (s *Sandbox) runIsolated(ctx context.Context, bin string, args ...string) (
 	}
 	cmd := exec.CommandContext(ctx, self) //nolint:gosec // re-exec do próprio binário como trampolim Landlock
 	cmd.Dir = s.config.WorkDir
+	cmd.Stdin = s.config.Stdin
 	cmd.Env = env
 	return finishRun(ctx, cmd, true, s.config.ProcessGroup, s.config.Registry, s.config.GroupOwner)
 }

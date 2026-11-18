@@ -158,6 +158,12 @@ func addSystemReadRules(ruleset, abi int) error {
 	for _, p := range roPaths {
 		_ = addRuleOptional(ruleset, p, true, abi)
 	}
+	// /etc/resolv.conf costuma ser symlink para fora de /etc (ex.:
+	// /run/systemd/resolve/stub-resolv.conf); sem ler o alvo, o filho não
+	// resolve DNS. Libera só o diretório do alvo, somente leitura.
+	if target, err := filepath.EvalSymlinks("/etc/resolv.conf"); err == nil && !strings.HasPrefix(target, "/etc/") {
+		_ = addRuleOptional(ruleset, filepath.Dir(target), true, abi)
+	}
 	addDeviceRules(ruleset, abi)
 	return nil
 }

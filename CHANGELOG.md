@@ -8,8 +8,24 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 ## [Não Lançado]
 
 ### Adicionado
+- Barramento B0/B1 (ADR-013): spec `bus/0.1` em `docs/bus-protocolo.md` (envelope JSON-RPC, Agent Card, convite) e `tb bus channel create|list|show`, `invite`, `join`, `send`, `recv`, `claim`, `complete`, `log` sobre `.toolbelt/bus/bus.db` (SQLite WAL via `modernc.org/sqlite`, sem CGO; diretório `0700`, banco e sessões `0600`)
+- Barramento: convite de uso único com papel fixado (só SHA-256 no store), `from` definido pelo broker, dedupe por `idempotency_key`, TTL de mensagem e canal, cursor por agente com `--peek`/`--since`, long-poll até 25s, dono único por thread, payload ≤ 64 KiB com redação de segredos
+- MCP: `tb_bus_join`, `tb_bus_send`, `tb_bus_recv`, `tb_bus_claim`, `tb_bus_complete` (identidade presa à conexão; criar canal/convite não é exposto)
+- Barramento: `tb bus invite --name` vincula convite a um agente e recupera sessão perdida (token rotacionado); nome do dono e nomes com convite vinculado aberto ficam reservados
+- Barramento B3: `tb bus run` (harness por agente; espera sem LLM via `PRAGMA data_version`, filtro `wake_on`, agrupamento com debounce/max_delay, orçamento de despertares, rewake/`wake_unread`, retry com backoff e `task.status` `wake_failed`) com adapters `exec` (comando local, wake packet no stdin, env filtrado + `pass_env`) e `harness` (preset `claude -p --resume --output-format stream-json`, sem `bypassPermissions`, `session_id` persistido); spec em `docs/bus-harness.md`
+- `tb mcp --bus-as <canal>/<nome> [--bus-root] [--bus-state]`: liga a conexão MCP a uma sessão CLI do bus
+- Barramento: sessões, arquivos de wake e estado do harness saem do repositório para `$XDG_STATE_HOME/toolbelt/bus/<hash>/` (`TB_BUS_STATE_DIR` sobrepõe); o agente acordado lê só o próprio token
+- Sandbox: `Config.Stdin` (entrada padrão do filho, inclusive via trampolim Landlock)
+- `tb bus run`: `wake_topics: false` ignora `topic:*`; o claude acordado usa `--strict-mcp-config` e temp próprio
+- `tb init`: `.toolbelt/bus/` entra em `.git/info/exclude`
+- `tb bus channel extend <canal> --ttl D`: redefine a expiração do canal (`0` = sem expiração) e reabre canal expirado mantendo sessões e histórico
 - `tb graph explain <nó>` e `tb graph path <origem> <destino>` (MCP `tb_graph_explain`, `tb_graph_path`): vizinhança de um nó com proveniência e menor caminho entre dois nós, reimplementando as consultas do Graphify sem LLM; arestas `calls` &lt; 0.6 e alvos sem nó no índice ficam de fora
 - ADR-014: Graphify — reimplementar, não integrar (fecha a questão aberta do ADR-006; docs de arquitetura deixam de citar tree-sitter como implementado)
+
+### Corrigido
+- Sandbox Landlock: libera leitura do diretório alvo do symlink de `/etc/resolv.conf` (ex.: `/run/systemd/resolve`); antes, filhos com rede não resolviam DNS
+- `tb bus run`: `detail` do audit (stdout/stderr do filho) é redigido por valores conhecidos (`pass_env`, variáveis de segredo do harness, novo `secret_files`) e padrões genéricos (cabeçalhos de credencial, `segredo=valor`, credencial em URL, tokens longos); antes só `pass_env` e os padrões do `mem`
+- `tb bus run`: com o canal expirado, suspende despertares e audita `channel_expired` uma vez (antes seguia calado); retoma ao `extend` (`channel_reopened`)
 
 ## [0.0.4] - 2026-11-17
 

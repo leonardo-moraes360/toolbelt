@@ -19,6 +19,7 @@ var LocalCacheExcludePatterns = []string{
 	".toolbelt/workspaces/",
 	".toolbelt/captures/",
 	".toolbelt/bench/",
+	".toolbelt/bus/",
 }
 
 func EnsureLocalGitExclude(repoRoot string) (string, error) {
