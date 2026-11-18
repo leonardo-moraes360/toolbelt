@@ -720,7 +720,7 @@ const selectMessage = `SELECT seq, id, channel, sender, recipient, thread, type,
 const (
 	selectIdempotent = selectMessage + ` WHERE channel = ? AND sender = ? AND idempotency_key = ?`
 	selectInbox      = selectMessage + ` WHERE channel = ? AND seq > ? AND sender <> ?
-			AND (recipient = ? OR recipient = ? OR recipient LIKE 'topic:%')
+			AND (recipient = ? OR recipient = ? OR substr(recipient, 1, 6) = 'topic:')
 			AND (expires_at IS NULL OR expires_at > ?)
 			ORDER BY seq LIMIT ?`
 )
@@ -1046,7 +1046,7 @@ func (s *Store) DataVersion() (int64, error) {
 }
 
 const pendingWhere = ` WHERE channel = ? AND seq > ? AND sender <> ?
-	AND (recipient = ? OR recipient = ? OR recipient LIKE 'topic:%')
+	AND (recipient = ? OR recipient = ? OR substr(recipient, 1, 6) = 'topic:')
 	AND (expires_at IS NULL OR expires_at > ?)
 	AND type IN (?`
 
@@ -1068,7 +1068,7 @@ func (s *Store) Pending(m Member, after, upto int64, types []Type, topics bool, 
 		args = append(args, string(t))
 	}
 	if !topics {
-		q += ` AND recipient NOT LIKE 'topic:%'`
+		q += ` AND substr(recipient, 1, 6) <> 'topic:'`
 	}
 	if upto > 0 {
 		q += ` AND seq <= ?`
