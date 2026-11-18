@@ -296,11 +296,11 @@ sequenceDiagram
 
 ### 3.4 Code Indexing with Provenance
 
-Inspired by Graphify, `tb graph` indexes code via tree-sitter:
+Inspired by Graphify and reimplemented in toolbelt ([ADR-014](adr/014-graphify-reimplementacao.md)), `tb graph` indexes code with `go/ast` (Go) and conservative regex extractors (TS/JS, Python, Rust, frameworks). tree-sitter remains a future option, not implemented:
 
 ```mermaid
 graph LR
-    CODE[Código Fonte] --> TS[tree-sitter Parser]
+    CODE[Código Fonte] --> TS[go/ast + extratores regex]
     TS --> AST[AST]
     AST --> EXT[Extrator]
     EXT --> NODES[Nós: funções, classes, módulos]
@@ -1248,7 +1248,7 @@ report:
 - **Graphify**: integrate via MCP or reimplement indexing?
   - Integration: less work, depends on external maintenance
   - Reimplementation: full control, can optimize for the use case
-  - **Pending decision**: try integration first, measure latency and completeness
+  - **Decided ([ADR-014](adr/014-graphify-reimplementacao.md))**: reimplement; `tb graph explain`/`path` delivered, roadmap in the ADR
 
 ### 13.2 Inference Model for Provenance
 

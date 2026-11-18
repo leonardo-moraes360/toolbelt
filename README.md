@@ -238,7 +238,7 @@ tb merge TKT-001 TKT-002
 - [x] `tb router` / `tb watchdog` — controle de delegação e saúde
 - [x] `tb merge` — agregação de resultados de workers (`fail` | `last_wins`)
 - [ ] Índice vetorial opcional
-- [ ] Integração com Graphify (ou reimplementação)
+- [x] Graphify: reimplementação própria ([ADR-014](docs/adr/014-graphify-reimplementacao.md)) — `tb graph explain`/`path`
 - [ ] Integração com Elephant-Goldfish Model (ou reimplementação)
 - [ ] Componentes opcionais em Rust para inferência local
 - [ ] Rulers adicionais para `tb verify`
