@@ -985,7 +985,7 @@ When there are clear markers, init also fills `verify.build_cmd` and
 
 | Toolchain | `build_cmd` | `lint_cmd` |
 |-----------|-------------|------------|
-| `go.mod` | `go build ./...` | `.golangci.y*ml`/`.toml` → `golangci-lint run`; else `make lint` target |
+| `go.mod` | `go build ./...` | `.golangci.y*ml`/`.toml` → `golangci-lint run` if the binary is on PATH, else `go vet ./...`; no config → `make lint` target |
 | `package.json` | `build` script, else `typecheck`/`type-check` → `npm run …` / `pnpm run …` / `yarn …` | `lint` script → analogous |
 | `Cargo.toml` | `cargo build` | `cargo clippy` |
 | Python (`pyproject`/`uv.lock`/…) | (empty) | `[tool.ruff]`/`ruff.toml` → `ruff check .` (or `uv run …`); else mypy |
@@ -1848,6 +1848,11 @@ init writes to `.git/info/exclude` (does not change the project's `.gitignore`) 
 - `.toolbelt/workspaces/`
 - `.toolbelt/captures/`
 - `.toolbelt/bench/`
+
+In a `git worktree`, the file is the common directory's `info/exclude`
+(`$GIT_COMMON_DIR`), the only one git reads. Versionable files
+(`config.yaml`, `agent_docs.yaml`, `invariants.yaml`, `AGENTS.md`) are created
+with mode `0644` (subject to umask).
 
 So `git stash -u` / `git clean` do not wipe the index/graph by mistake, without
 blocking config versioning.
