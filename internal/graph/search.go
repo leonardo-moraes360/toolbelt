@@ -102,7 +102,7 @@ func (s *Store) SearchRanked(query string, limit int) []SearchHit {
 		}
 		tier := tierTerms
 		switch {
-		case strings.ToLower(nd.Title) == q:
+		case strings.EqualFold(nd.Title, q):
 			tier = tierExact
 		case strings.Contains(st.haystack[i], q):
 			tier = tierSubstring
@@ -165,9 +165,8 @@ func statsFor(idx *Index) *searchStats {
 
 // weightedTermFreqs returns field-weighted term frequencies and the weighted
 // document length for a node.
-func weightedTermFreqs(n *Node) (map[string]float64, float64) {
-	tf := map[string]float64{}
-	var length float64
+func weightedTermFreqs(n *Node) (tf map[string]float64, length float64) {
+	tf = map[string]float64{}
 	add := func(text string, w float64) {
 		for _, t := range tokenize(text) {
 			tf[t] += w

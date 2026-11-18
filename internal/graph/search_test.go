@@ -25,7 +25,7 @@ func TestTokenize(t *testing.T) {
 		"parseHTTPRequest":    {"parsehttprequest", "parse", "http", "request"},
 		"internal/graph/x.go": {"internal", "graph", "x", "go"},
 		"snake_case_name":     {"snake", "case", "name"},
-		"Problemas novos":     {"problemas", "novos"},
+		"Busca rápida":        {"busca", "rápida"},
 		"v2api":               {"v2api", "v", "2", "api"},
 		"listAPIs":            {"listapis", "list", "apis"},
 		"IDs":                 {"ids"},
