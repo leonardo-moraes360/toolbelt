@@ -296,11 +296,11 @@ sequenceDiagram
 
 ### 3.4 Indexação de Código com Proveniência
 
-Inspirado no Graphify, o `tb graph` indexa código via tree-sitter:
+Inspirado no Graphify e reimplementado no toolbelt ([ADR-014](adr/014-graphify-reimplementacao.md)), o `tb graph` indexa código com `go/ast` (Go) e extratores regex conservadores (TS/JS, Python, Rust, frameworks). tree-sitter segue como opção futura, não implementada:
 
 ```mermaid
 graph LR
-    CODE[Código Fonte] --> TS[tree-sitter Parser]
+    CODE[Código Fonte] --> TS[go/ast + extratores regex]
     TS --> AST[AST]
     AST --> EXT[Extrator]
     EXT --> NODES[Nós: funções, classes, módulos]
@@ -1247,7 +1247,7 @@ report:
 - **Graphify**: integrar via MCP ou reimplementar a indexação? 
   - Integração: menos trabalho, depende de manutenção externa
   - Reimplementação: controle total, pode otimizar para o caso de uso
-  - **Decisão pendente**: experimentar integração primeiro, medir latência e completude
+  - **Decidido ([ADR-014](adr/014-graphify-reimplementacao.md))**: reimplementar; `tb graph explain`/`path` entregues, roadmap no ADR
 
 ### 13.2 Modelo de Inferência para Proveniência
 

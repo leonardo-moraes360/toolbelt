@@ -129,7 +129,7 @@ cons:
   - Manter parser de múltiplas linguagens
 ```
 
-**Decisão pendente**: Experimentar integração com Graphify primeiro. Se latência ou funcionalidade forem problemas, reimplementar partes críticas.
+**Decidido no [ADR-014](014-graphify-reimplementacao.md)**: reimplementar. O `tb graph` já é implementação própria (go/ast + extratores regex, sem tree-sitter nem dependência do Graphify); `tb graph explain`/`path` foram as primeiras consultas do Graphify trazidas para o toolbelt.
 
 ### Sync Bidirecional com Obsidian
 

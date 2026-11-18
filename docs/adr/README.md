@@ -30,6 +30,7 @@ Cada ADR segue o formato:
 | [009](009-router-e-workers.md) | Padrão Router e Workers para delegação | proposed |
 | [010](010-invariantes-fora-compactacao.md) | Invariantes fixados fora da compactação | proposed |
 | [011](011-grafo-sob-demanda.md) | Grafo de código sob demanda com A/B | proposed |
+| [014](014-graphify-reimplementacao.md) | Graphify: reimplementar, não integrar | accepted |
 | [013](013-barramento-multi-vendor.md) | Barramento local multi-vendor de agentes (`tb bus`) | proposed |
 
 ## Como Propor um ADR

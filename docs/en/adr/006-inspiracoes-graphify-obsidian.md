@@ -129,7 +129,7 @@ cons:
   - Maintaining parsers for multiple languages
 ```
 
-**Pending decision**: Experiment with Graphify integration first. If latency or functionality are problems, reimplement critical parts.
+**Decided in [ADR-014](014-graphify-reimplementacao.md)**: reimplement. `tb graph` is already an in-house implementation (go/ast + regex extractors, no tree-sitter and no Graphify dependency); `tb graph explain`/`path` are the first Graphify queries brought into toolbelt.
 
 ### Bidirectional Sync with Obsidian
 

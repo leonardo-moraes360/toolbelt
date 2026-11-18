@@ -279,13 +279,16 @@ Subcomandos:
   callers   Encontra chamadores de uma função ✅
   deps      Mostra dependências ✅
   impact    Analisa impacto de mudanças ✅
+  explain   Explain a node (edges + provenance) ✅
+  path      Shortest path between two nodes ✅
   index     Indexa código sob demanda ✅
   rebuild   Reconstrói grafo completo ✅
   stats     Estatísticas do grafo ✅
 ```
 
 Graph MCP tools (call requires `TB_GRAPH=on`): `tb_graph_search`,
-`tb_graph_callers`, `tb_graph_deps`, `tb_graph_impact`, `tb_graph_index`.
+`tb_graph_callers`, `tb_graph_deps`, `tb_graph_impact`, `tb_graph_explain`,
+`tb_graph_path`, `tb_graph_index`.
 
 There is no `tb graph query` — use `tb graph search`.
 
@@ -340,6 +343,34 @@ Flags:
   --file <path>       Arquivo modificado
   --depth <n>         Profundidade da análise (default: 2)
 ```
+
+**`tb graph explain`:**
+
+```bash
+tb graph explain <node> [flags]
+
+Flags:
+  --limit <n>         Max explained nodes (default: 5)
+```
+
+Shows the node with its outgoing and incoming edges (`source`, `confidence`).
+The node resolves by exact ID → exact title → function suffix → file/package.
+Calls whose target has no node in the index (stdlib, unresolved receiver) are
+counted in `unresolved_out`. Up to 50 neighbors per direction (`truncated_*`).
+
+**`tb graph path`:**
+
+```bash
+tb graph path <from> <to> [flags]
+
+Flags:
+  --max-depth <n>     Max hops (default: 6)
+```
+
+Shortest path (BFS) walking edges in both directions; each step says
+`forward` (→) or `backward` (←). JSON: `{"stale", "hops", "steps": [...]}`.
+No path or unknown node ⇒ error and exit ≠ 0. Both ignore `calls` with
+confidence &lt; 0.6 ([ADR-014](adr/014-graphify-reimplementacao.md)).
 
 **`tb graph index`:**
 

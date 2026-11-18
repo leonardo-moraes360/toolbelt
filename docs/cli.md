@@ -279,13 +279,16 @@ Subcomandos:
   callers   Encontra chamadores de uma função ✅
   deps      Mostra dependências ✅
   impact    Analisa impacto de mudanças ✅
+  explain   Explica um nó (arestas + proveniência) ✅
+  path      Menor caminho entre dois nós ✅
   index     Indexa código sob demanda ✅
   rebuild   Reconstrói grafo completo ✅
   stats     Estatísticas do grafo ✅
 ```
 
 Ferramentas MCP de grafo (chamada requer `TB_GRAPH=on`): `tb_graph_search`,
-`tb_graph_callers`, `tb_graph_deps`, `tb_graph_impact`, `tb_graph_index`.
+`tb_graph_callers`, `tb_graph_deps`, `tb_graph_impact`, `tb_graph_explain`,
+`tb_graph_path`, `tb_graph_index`.
 
 Não há `tb graph query` — use `tb graph search`.
 
@@ -340,6 +343,34 @@ Flags:
   --file <path>       Arquivo modificado
   --depth <n>         Profundidade da análise (default: 2)
 ```
+
+**`tb graph explain`:**
+
+```bash
+tb graph explain <nó> [flags]
+
+Flags:
+  --limit <n>         Máximo de nós explicados (default: 5)
+```
+
+Mostra o nó com as arestas de saída e entrada (`source`, `confidence`). O nó
+resolve por ID exato → título exato → sufixo de função → arquivo/pacote.
+Chamadas cujo alvo não tem nó no índice (stdlib, receptor não resolvido) são
+contadas em `unresolved_out`. Até 50 vizinhos por sentido (`truncated_*`).
+
+**`tb graph path`:**
+
+```bash
+tb graph path <origem> <destino> [flags]
+
+Flags:
+  --max-depth <n>     Máximo de saltos (default: 6)
+```
+
+Menor caminho (BFS) andando arestas nos dois sentidos; cada passo indica
+`forward` (→) ou `backward` (←). JSON: `{"stale", "hops", "steps": [...]}`.
+Sem caminho ou nó inexistente ⇒ erro e exit ≠ 0. Ambos ignoram `calls` com
+confiança &lt; 0.6 ([ADR-014](adr/014-graphify-reimplementacao.md)).
 
 **`tb graph index`:**
 
