@@ -1011,7 +1011,7 @@ Quando há marcadores claros, o init também preenche `verify.build_cmd` e
 
 | Toolchain | `build_cmd` | `lint_cmd` |
 |-----------|-------------|------------|
-| `go.mod` | `go build ./...` | `.golangci.y*ml`/`.toml` → `golangci-lint run`; senão target `make lint` |
+| `go.mod` | `go build ./...` | `.golangci.y*ml`/`.toml` → `golangci-lint run` se o binário estiver no PATH, senão `go vet ./...`; sem config, target `make lint` |
 | `package.json` | script `build`, senão `typecheck`/`type-check` → `npm run …` / `pnpm run …` / `yarn …` | script `lint` → análogo |
 | `Cargo.toml` | `cargo build` | `cargo clippy` |
 | Python (`pyproject`/`uv.lock`/…) | (vazio) | `[tool.ruff]`/`ruff.toml` → `ruff check .` (ou `uv run …`); senão mypy |
@@ -1895,6 +1895,11 @@ padrões de **cache/derivados**:
 - `.toolbelt/workspaces/`
 - `.toolbelt/captures/`
 - `.toolbelt/bench/`
+
+Numa `git worktree`, o arquivo é o `info/exclude` do diretório comum
+(`$GIT_COMMON_DIR`), o único que o git lê. Os arquivos versionáveis
+(`config.yaml`, `agent_docs.yaml`, `invariants.yaml`, `AGENTS.md`) são criados
+com modo `0644` (sujeito ao umask).
 
 Assim `git stash -u` / `git clean` não apagam o índice/grafo por engano, sem
 bloquear o versionamento de config.

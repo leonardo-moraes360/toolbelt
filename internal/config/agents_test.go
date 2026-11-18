@@ -357,3 +357,16 @@ func TestHandleAgentDocs_WriteAgentsDoesNotClobber(t *testing.T) {
 		t.Fatalf("sources=%v", result.Sources)
 	}
 }
+
+// Dogfood #18: comments inside a bash fence and bare tool names in prose
+// do not become hints.
+func TestExtractCommandHints_SkipsCommentsAndBareTools(t *testing.T) {
+	content := "## Setup\n\n```bash\n# `make install` sobrescreve o build local\n" +
+		"go vet ./...   # roda o vet\ntb mem check\n```\n\n" +
+		"- `golangci-lint` não está no PATH; use `go vet ./...`.\n- rode `make` para tudo.\n"
+	hints := ExtractCommandHints(content)
+	want := []string{"go vet ./...", "make"}
+	if strings.Join(hints, "|") != strings.Join(want, "|") {
+		t.Fatalf("hints = %q, want %q", hints, want)
+	}
+}

@@ -116,10 +116,16 @@ func DetectLintCmd(root string) string {
 	return detectMakeTargetCmd(root, "lint")
 }
 
+// golangci-lint is written only when the binary is on PATH; with a golangci
+// config but no binary it falls back to `go vet ./...` (the make lint target
+// would almost always call the same missing golangci-lint).
 func detectGoLintCmd(root string) string {
 	for _, name := range golangciConfigFiles {
 		if fileExists(filepath.Join(root, name)) {
-			return "golangci-lint run"
+			if _, err := lookPath("golangci-lint"); err == nil {
+				return "golangci-lint run"
+			}
+			return "go vet ./..."
 		}
 	}
 	return detectMakeTargetCmd(root, "lint")

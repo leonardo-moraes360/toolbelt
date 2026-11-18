@@ -12,6 +12,11 @@ const (
 	gitExcludeEnd   = "# <<< toolbelt local/cache"
 )
 
+// Files tb init writes to be versioned (config.yaml, agent_docs.yaml,
+// AGENTS.md) hold no secrets, so they follow the repository's default file
+// mode instead of 0600.
+const VersionedFileMode = 0o644
+
 var LocalCacheExcludePatterns = []string{
 	".toolbelt/graph.json",
 	".toolbelt/logs/",
@@ -69,7 +74,24 @@ func gitInfoExcludePath(repoRoot string) (string, bool) {
 	if !filepath.IsAbs(gitDir) {
 		gitDir = filepath.Join(repoRoot, gitDir)
 	}
-	return filepath.Join(gitDir, "info", "exclude"), true
+	return filepath.Join(gitCommonDir(gitDir), "info", "exclude"), true
+}
+
+// For a worktree (or a submodule with commondir) git only reads
+// $GIT_COMMON_DIR/info/exclude, never the info/ of the worktree's gitdir.
+func gitCommonDir(gitDir string) string {
+	data, err := os.ReadFile(filepath.Join(gitDir, "commondir"))
+	if err != nil {
+		return gitDir
+	}
+	common := strings.TrimSpace(string(data))
+	if common == "" {
+		return gitDir
+	}
+	if !filepath.IsAbs(common) {
+		common = filepath.Join(gitDir, common)
+	}
+	return filepath.Clean(common)
 }
 
 func buildExcludeSection() string {

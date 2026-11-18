@@ -17,6 +17,12 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 ### Documentação
 - README, site, `docs/cli.md`, arquitetura, índice/status dos ADRs, protocolo do bus, release, CONTRIBUTING e SECURITY atualizados para a v0.0.5 (36 tools MCP, etapas B0–B4 do `tb bus`, `tb mcp --bus-as`, `graph explain`/`path`)
 
+### Corrigido
+- `tb init`: com config do golangci mas sem `golangci-lint` no PATH, `verify.lint_cmd` vira `go vet ./...` em vez de um comando que falharia (dogfood #1)
+- `tb init` / `tb mem`: `config.yaml`, `agent_docs.yaml`, `invariants.yaml` e o `AGENTS.md` semeado são criados com `0644`, não `0600` (dogfood #7)
+- `tb init` numa `git worktree`: o exclude do estado local vai para `$GIT_COMMON_DIR/info/exclude`, o único que o git lê (dogfood #17)
+- `tb init`: dicas de `AGENTS.md`/`CLAUDE.md` ignoram comentários em fences de shell, comandos citados no meio de uma linha e nomes de ferramenta sem subcomando (`golangci-lint`, `go`) (dogfood #18)
+
 ## [0.0.5] - 2026-11-18
 
 ### Adicionado

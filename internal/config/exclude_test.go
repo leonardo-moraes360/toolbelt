@@ -112,3 +112,37 @@ func assertIgnoreSplit(t *testing.T, dir string) {
 		t.Fatalf("config/invariants não deveriam ser ignorados:\n%s", got)
 	}
 }
+
+// Dogfood #17: in a git worktree the exclude goes to $GIT_COMMON_DIR/info/exclude,
+// the only one git reads; the info/ of the worktree's gitdir is ignored.
+func TestEnsureLocalGitExcludeWorktree(t *testing.T) {
+	main := initGitRepo(t)
+	run := func(dir string, args ...string) {
+		t.Helper()
+		cmd := exec.Command(args[0], args[1:]...)
+		cmd.Dir = dir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("%v: %v\n%s", args, err, out)
+		}
+	}
+	run(main, "git", "commit", "--allow-empty", "-m", "init")
+	wt := filepath.Join(t.TempDir(), "wt")
+	run(main, "git", "worktree", "add", "-q", wt)
+
+	path, err := EnsureLocalGitExclude(wt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := filepath.EvalSymlinks(filepath.Join(main, ".git", "info", "exclude"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != want {
+		t.Fatalf("exclude em %q, want %q", got, want)
+	}
+	assertIgnoreSplit(t, wt)
+}
