@@ -20,8 +20,8 @@ against the scope declared in the ticket/rd.md and checks that the base is an an
 }
 
 func init() {
-	driftCmd.Flags().String("base", "HEAD~1", "commit/ref base")
-	driftCmd.Flags().String("head", "HEAD", "commit/ref head")
+	driftCmd.Flags().String("base", "HEAD~1", "base commit/ref")
+	driftCmd.Flags().String("head", "HEAD", "head commit/ref")
 	driftCmd.Flags().String("approved-sha", "", "approved SHA; compares verbatim patch-id (whitespace-sensitive) with head")
 	driftCmd.Flags().String("approved-base", "", "base of the approved range; default: merge-base(approved, base)")
 	driftCmd.Flags().Bool("require-approved-sha", false, "fails if --approved-sha is missing (or review.require_approved_sha)")

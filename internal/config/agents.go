@@ -156,7 +156,7 @@ func extractShellFenceHints(content string) (stripped string, hints []string) {
 			for _, line := range strings.Split(body, "\n") {
 				line = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(line), "$ "))
 				if strings.HasPrefix(line, "#") {
-					continue // comentário de shell, não comando
+					continue // shell comment, not a command
 				}
 				if idx := strings.Index(line, " #"); idx >= 0 {
 					line = line[:idx]

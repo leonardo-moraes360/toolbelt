@@ -28,8 +28,8 @@ Also reports scope and base commit drift.`,
 }
 
 func init() {
-	reviewCmd.Flags().String("base", "HEAD~1", "commit/ref base")
-	reviewCmd.Flags().String("head", "HEAD", "commit/ref head")
+	reviewCmd.Flags().String("base", "HEAD~1", "base commit/ref")
+	reviewCmd.Flags().String("head", "HEAD", "head commit/ref")
 	reviewCmd.Flags().String("approved-sha", "", "approved SHA; compares verbatim patch-id (whitespace-sensitive) with head")
 	reviewCmd.Flags().String("approved-base", "", "base of the approved range; default: merge-base(approved, base)")
 	reviewCmd.Flags().Bool("require-approved-sha", false, "fails if --approved-sha is missing (or review.require_approved_sha)")

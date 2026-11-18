@@ -161,7 +161,7 @@ func (c *Config) Validate() error {
 		return errors.New("coalesce: debounce >= 0 and max_delay >= debounce")
 	}
 	if c.Budget.MaxWakes < 1 || c.Budget.Per <= 0 || c.RewakeAfter <= 0 || c.Timeout <= 0 {
-		return errors.New("budget.max_wakes, budget.per, rewake_after e timeout must be positive")
+		return errors.New("budget.max_wakes, budget.per, rewake_after and timeout must be positive")
 	}
 	if err := absPaths("secret_files", c.SecretFiles); err != nil {
 		return err
