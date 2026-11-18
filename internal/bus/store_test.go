@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -537,5 +538,11 @@ func TestPayloadNotHTMLEscaped(t *testing.T) {
 	b, err := MarshalIndent(WrapAll([]Message{r.Message}))
 	if err != nil || !strings.Contains(string(b), `<uma frase> & mais`) {
 		t.Fatalf("saída escapada: %s (%v)", b, err)
+	}
+}
+
+func TestSchemaVersionPragma(t *testing.T) {
+	if want := fmt.Sprintf("PRAGMA user_version = %d", SchemaVersion); setSchemaVersion != want {
+		t.Fatalf("setSchemaVersion = %q, quer %q", setSchemaVersion, want)
 	}
 }

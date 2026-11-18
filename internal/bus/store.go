@@ -21,6 +21,10 @@ import (
 // SchemaVersion é a versão do schema em PRAGMA user_version.
 const SchemaVersion = 1
 
+// setSchemaVersion grava SchemaVersion; literal para a query ser estática
+// (TestSchemaVersionPragma garante que os dois andam juntos).
+const setSchemaVersion = `PRAGMA user_version = 1`
+
 // ErrInvalidInvite é a resposta genérica para convite inexistente, usado,
 // expirado ou de outro canal (não revela qual).
 var ErrInvalidInvite = errors.New("convite inválido ou expirado")
@@ -177,7 +181,7 @@ func (s *Store) migrate() error {
 			if _, err := tx.Exec(schema); err != nil {
 				return fmt.Errorf("criando schema: %w", err)
 			}
-			_, err := tx.Exec(fmt.Sprintf(`PRAGMA user_version = %d`, SchemaVersion))
+			_, err := tx.Exec(setSchemaVersion)
 			return err
 		default:
 			return fmt.Errorf("schema do barramento v%d desconhecido (este tb suporta v%d)", v, SchemaVersion)
@@ -661,7 +665,7 @@ func findIdempotent(tx *sql.Tx, m Member, key string) (Message, bool, error) {
 	if key == "" {
 		return Message{}, false, nil
 	}
-	prev, err := scanMessage(tx.QueryRow(selectMessage+` WHERE channel = ? AND sender = ? AND idempotency_key = ?`,
+	prev, err := scanMessage(tx.QueryRow(selectIdempotent,
 		m.Channel, m.ID(), key))
 	if errors.Is(err, sql.ErrNoRows) {
 		return Message{}, false, nil
@@ -711,6 +715,15 @@ func insertMessage(tx *sql.Tx, channel, from, to, thread string, typ Type, causa
 func nullStr(s string) sql.NullString { return sql.NullString{String: s, Valid: s != ""} }
 
 const selectMessage = `SELECT seq, id, channel, sender, recipient, thread, type, causation_id, idempotency_key, ttl, payload, created_at FROM messages`
+
+// Queries completas como constantes: só placeholders, valores vão em args.
+const (
+	selectIdempotent = selectMessage + ` WHERE channel = ? AND sender = ? AND idempotency_key = ?`
+	selectInbox      = selectMessage + ` WHERE channel = ? AND seq > ? AND sender <> ?
+			AND (recipient = ? OR recipient = ? OR recipient LIKE 'topic:%')
+			AND (expires_at IS NULL OR expires_at > ?)
+			ORDER BY seq LIMIT ?`
+)
 
 type rowScanner interface{ Scan(dest ...any) error }
 
@@ -829,10 +842,7 @@ func (s *Store) recvOnce(m Member, opt RecvOptions) ([]Message, error) {
 		if opt.Since > 0 {
 			after = opt.Since - 1
 		}
-		rows, err := tx.Query(selectMessage+` WHERE channel = ? AND seq > ? AND sender <> ?
-			AND (recipient = ? OR recipient = ? OR recipient LIKE 'topic:%')
-			AND (expires_at IS NULL OR expires_at > ?)
-			ORDER BY seq LIMIT ?`,
+		rows, err := tx.Query(selectInbox,
 			m.Channel, after, m.ID(), m.ID(), "role:"+string(m.Role), s.nowNS(), opt.Limit)
 		if err != nil {
 			return err
