@@ -126,9 +126,9 @@ func applyLandlock(workDir string, allowed []PathAccess, forbidden []string) err
 	if err := addRule(ruleset, workDir, false, abi); err != nil {
 		return fmt.Errorf("regra do workdir %q: %w", workDir, err)
 	}
-	if err := addTmpWriteRule(ruleset, workDir, abi); err != nil {
-		return err
-	}
+	// Sem regra para os.TempDir(): /tmp compartilhado fica somente leitura
+	// (escrita só no workdir e em AllowedPaths). Quem precisa de temp aponta
+	// TMPDIR para dentro do workdir.
 	for _, a := range allowed {
 		if err := addRule(ruleset, a.Path, a.ReadOnly, abi); err != nil {
 			return fmt.Errorf("regra allow %q: %w", a.Path, err)
@@ -210,22 +210,6 @@ func deviceFileMask(readOnly bool, abi int) uint64 {
 		}
 	}
 	return mask
-}
-
-func addTmpWriteRule(ruleset int, workDir string, abi int) error {
-	absTmp, err := filepath.Abs(os.TempDir())
-	if err != nil {
-		return nil
-	}
-	workAbs, err := filepath.Abs(workDir)
-	if err != nil {
-		return err
-	}
-	if absTmp == workAbs || isSubpath(absTmp, workAbs) || isSubpath(workAbs, absTmp) {
-		return nil
-	}
-	_ = addRuleOptional(ruleset, absTmp, false, abi)
-	return nil
 }
 
 func restrictSelf(ruleset int) error {
