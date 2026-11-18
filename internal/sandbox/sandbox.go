@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 	"time"
 )
@@ -253,12 +254,18 @@ func (s *Sandbox) ValidatePath(path string) error {
 	return fmt.Errorf("fora do escopo: %s", path)
 }
 
+// isSubpath informa se path é descendente estrito de base (base em si não
+// conta). Resultados de filepath.Rel que sobem de nível ("..", "../x") ficam
+// de fora; nomes que só começam com ".." (ex.: "..x") são filhos legítimos.
 func isSubpath(path, base string) bool {
 	rel, err := filepath.Rel(base, path)
 	if err != nil {
 		return false
 	}
-	return rel != ".." && !filepath.IsAbs(rel) && rel != "."
+	if rel == "." || rel == ".." || filepath.IsAbs(rel) {
+		return false
+	}
+	return !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
 func landlockAvailable() bool {
