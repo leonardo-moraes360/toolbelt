@@ -303,6 +303,8 @@ Flags:
   --json              Saída em JSON (flag global)
 ```
 
+Ordem em três faixas: (1) título idêntico à consulta; (2) nós que contêm a consulta como substring de título/path/pacote/ID — o que a busca antiga trazia; (3) nós que só casam termos. Dentro de cada faixa, ranking BM25 sobre título, path e pacote (título pesa 3×), com camelCase, `snake_case` e separadores de path quebrados em termos; consulta com várias palavras casa qualquer termo. Empates ordenam por ID. Com mais resultados que `--limit`, o corte é feito nessa ordem.
+
 **`tb graph callers`:**
 
 ```bash

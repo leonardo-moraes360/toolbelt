@@ -303,6 +303,8 @@ Flags:
   --json              Saída em JSON (flag global)
 ```
 
+Results come in three tiers: (1) title equal to the query; (2) nodes that contain the query as a substring of title/path/package/ID — what the old search returned; (3) nodes that only match terms. Within each tier, BM25 ranking over title, path and package (title weighs 3×), with camelCase, `snake_case` and path separators split into terms; a multi-word query matches any term. Ties are ordered by ID. With more results than `--limit`, the cut follows this order.
+
 **`tb graph callers`:**
 
 ```bash

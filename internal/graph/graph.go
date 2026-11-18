@@ -167,26 +167,6 @@ func (s *Store) Stats() map[string]int {
 	return stats
 }
 
-func (s *Store) Search(query string, limit int) []Node {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	q := strings.ToLower(strings.TrimSpace(query))
-	if q == "" || limit <= 0 {
-		return nil
-	}
-	var out []Node
-	for _, n := range s.index.Nodes {
-		hay := strings.ToLower(n.Title + " " + n.Path + " " + n.Package + " " + n.ID)
-		if strings.Contains(hay, q) {
-			out = append(out, n)
-			if len(out) >= limit {
-				break
-			}
-		}
-	}
-	return out
-}
-
 func (s *Store) Callers(function string, depth int) []Node {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
