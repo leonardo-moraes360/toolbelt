@@ -46,7 +46,7 @@ func runInSandbox(ctx context.Context, command, cwdArg string, timeout time.Dura
 	env := execenv.Environ(envOpts)
 	env = append(env, "TMPDIR="+tmp, "TMP="+tmp, "TEMP="+tmp)
 
-	paths, err := runSandboxPaths(cfg.Sandbox, root, env)
+	paths, err := runSandboxPaths(&cfg.Sandbox, root, env)
 	if err != nil {
 		return nil, err
 	}
@@ -103,20 +103,40 @@ func runDirs(cwdArg string) (root, dir string, err error) {
 }
 
 // runSandboxPaths lists what the child may touch besides the root.
-func runSandboxPaths(sc config.SandboxConfig, root string, env []string) ([]sandbox.PathAccess, error) {
+func runSandboxPaths(sc *config.SandboxConfig, root string, env []string) ([]sandbox.PathAccess, error) {
 	home, _ := os.UserHomeDir()
-	var out []sandbox.PathAccess
-	seen := map[string]bool{root: true}
-	add := func(p string, readOnly bool) {
-		p, err := realPath(p)
-		if err != nil || seen[p] || within(p, root) {
-			return // missing paths are skipped; the root is already writable
-		}
-		seen[p] = true
-		out = append(out, sandbox.PathAccess{Path: p, ReadOnly: readOnly})
-	}
-
+	ps := &pathSet{root: root, seen: map[string]bool{root: true}}
 	// Human-listed paths first: a typo must fail loudly, not be skipped.
+	if err := ps.addConfigured(sc, home); err != nil {
+		return nil, err
+	}
+	for _, p := range cachePaths(env, home) {
+		ps.add(p, false)
+	}
+	for _, p := range toolchainReadPaths(env, home) {
+		ps.add(p, true)
+	}
+	return ps.out, nil
+}
+
+// pathSet collects sandbox paths, skipping duplicates, missing paths and
+// anything under the root (already writable).
+type pathSet struct {
+	root string
+	seen map[string]bool
+	out  []sandbox.PathAccess
+}
+
+func (ps *pathSet) add(p string, readOnly bool) {
+	p, err := realPath(p)
+	if err != nil || ps.seen[p] || within(p, ps.root) {
+		return
+	}
+	ps.seen[p] = true
+	ps.out = append(ps.out, sandbox.PathAccess{Path: p, ReadOnly: readOnly})
+}
+
+func (ps *pathSet) addConfigured(sc *config.SandboxConfig, home string) error {
 	for _, list := range []struct {
 		paths    []string
 		readOnly bool
@@ -124,19 +144,23 @@ func runSandboxPaths(sc config.SandboxConfig, root string, env []string) ([]sand
 		for _, p := range list.paths {
 			abs, err := expandHome(p, home)
 			if err != nil {
-				return nil, err
+				return err
 			}
 			if _, err := os.Stat(abs); err != nil {
-				return nil, fmt.Errorf("sandbox path %s: %w", p, err)
+				return fmt.Errorf("sandbox path %s: %w", p, err)
 			}
-			add(abs, list.readOnly)
+			ps.add(abs, list.readOnly)
 		}
 	}
+	return nil
+}
 
-	// Toolchain caches, writable. A cache holds no credentials, and builds
-	// need it (go, npm, pip, uv, cargo).
+// cachePaths are the toolchain caches, granted writable: a cache holds no
+// credentials, and builds need it (go, npm, pip, uv, cargo).
+func cachePaths(env []string, home string) []string {
 	cacheDir, _ := os.UserCacheDir()
 	gopath := envOr(env, "GOPATH", filepath.Join(home, "go"))
+	var out []string
 	for _, p := range []string{
 		envOr(env, "GOCACHE", filepath.Join(cacheDir, "go-build")),
 		envOr(env, "GOMODCACHE", filepath.Join(gopath, "pkg", "mod")),
@@ -147,28 +171,33 @@ func runSandboxPaths(sc config.SandboxConfig, root string, env []string) ([]sand
 		filepath.Join(envOr(env, "CARGO_HOME", filepath.Join(home, ".cargo")), "registry"),
 	} {
 		if filepath.IsAbs(p) { // no home/cache dir: the default is relative, skip it
-			add(p, false)
+			out = append(out, p)
 		}
 	}
+	return out
+}
 
-	// Binaries on PATH and the Go toolchain, read-only. A PATH entry that is
-	// /, $HOME or an ancestor of $HOME would open the whole home: skipped.
+// toolchainReadPaths are the PATH entries, GOROOT and the GOENV dir, granted
+// read-only. A PATH entry that is /, $HOME or an ancestor of $HOME would open
+// the whole home: skipped.
+func toolchainReadPaths(env []string, home string) []string {
+	var out []string
 	pathVar := envOr(env, "PATH", "")
 	for _, d := range filepath.SplitList(pathVar) {
 		if !filepath.IsAbs(d) || d == "/" || (home != "" && (d == home || within(home, d))) {
 			continue
 		}
-		add(d, true)
+		out = append(out, d)
 	}
 	if goroot := goRoot(env, pathVar); goroot != "" {
-		add(goroot, true)
+		out = append(out, goroot)
 	}
-	// go env settings (GOPROXY, GOPRIVATE...): Landlock rules are per directory,
-	// so grant the dir holding the GOENV file.
+	// go env settings (GOPROXY, GOPRIVATE...): Landlock rules are per
+	// directory, so grant the dir holding the GOENV file.
 	if cfgDir, err := os.UserConfigDir(); err == nil {
-		add(filepath.Dir(envOr(env, "GOENV", filepath.Join(cfgDir, "go", "env"))), true)
+		out = append(out, filepath.Dir(envOr(env, "GOENV", filepath.Join(cfgDir, "go", "env"))))
 	}
-	return out, nil
+	return out
 }
 
 // goRoot finds GOROOT: from the environment, or as the parent of the bin dir
@@ -182,8 +211,8 @@ func goRoot(env []string, pathVar string) string {
 		if st, err := os.Stat(bin); err != nil || st.IsDir() {
 			continue
 		}
-		if real, err := filepath.EvalSymlinks(bin); err == nil {
-			bin = real
+		if resolved, err := filepath.EvalSymlinks(bin); err == nil {
+			bin = resolved
 		}
 		if binDir := filepath.Dir(bin); filepath.Base(binDir) == "bin" {
 			return filepath.Dir(binDir)
