@@ -42,7 +42,7 @@ func TestValidatePathScope(t *testing.T) {
 	forbiddenAbs := filepath.Join(t.TempDir(), "abs-secret")
 	sb, err := New(Config{
 		WorkDir:          work,
-		ForbiddenPaths:   []string{"secrets", forbiddenAbs},
+		ForbiddenPaths:   []string{"secrets", forbiddenAbs, filepath.Join(work, "abs-in")},
 		AllowUnsandboxed: true,
 	})
 	if err != nil {
@@ -65,6 +65,9 @@ func TestValidatePathScope(t *testing.T) {
 		{"dentro do proibido", filepath.Join(work, "secrets", "k"), false},
 		{"vizinho do proibido", filepath.Join(work, "secrets2"), true},
 		{"proibido absoluto fora", filepath.Join(forbiddenAbs, "k"), false},
+		{"proibido absoluto dentro", filepath.Join(work, "abs-in"), false},
+		{"dentro do proibido absoluto", filepath.Join(work, "abs-in", "k"), false},
+		{"vizinho do proibido absoluto", filepath.Join(work, "abs-in2"), true},
 	}
 	for _, c := range cases {
 		err := sb.ValidatePath(c.path)

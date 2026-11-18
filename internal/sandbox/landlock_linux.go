@@ -126,7 +126,7 @@ func applyLandlock(workDir string, allowed []PathAccess, forbidden []string) err
 	if err := addRule(ruleset, workDir, false, abi); err != nil {
 		return fmt.Errorf("regra do workdir %q: %w", workDir, err)
 	}
-	// Sem regra para os.TempDir(): /tmp compartilhado fica somente leitura
+	// Sem regra para os.TempDir(): /tmp compartilhado fica sem acesso
 	// (escrita só no workdir e em AllowedPaths). Quem precisa de temp aponta
 	// TMPDIR para dentro do workdir.
 	for _, a := range allowed {
