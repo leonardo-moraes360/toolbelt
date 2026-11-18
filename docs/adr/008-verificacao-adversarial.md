@@ -1,202 +1,202 @@
-🇧🇷 Português | [🇺🇸 English](../en/adr/008-verificacao-adversarial.md)
+🇺🇸 English | [🇧🇷 Português](../pt-BR/adr/008-verificacao-adversarial.md)
 
-# ADR-008: Verificação Adversarial (Gerador vs Discriminador)
+# ADR-008: Adversarial Verification (Generator vs Discriminator)
 
 ## Status
 
 accepted
 
-## Contexto
+## Context
 
-Agentes autônomos frequentemente "derivam" do objetivo original, especialmente em tarefas visuais onde o resultado deveria corresponder a uma referência de design. Mesmo com imagens de referência ou HTML verificável, implementações tendem a divergir sutilmente.
+Autonomous agents frequently "drift" from the original objective, especially in visual tasks where the result should match a design reference. Even with reference images or verifiable HTML, implementations tend to diverge subtly.
 
-Problemas observados:
-- Auto-verificação é enviesada: o agente que implementou tende a "não ver" seus próprios erros
-- Métricas de sucesso podem ser manipuladas pelo implementador
-- Testes podem ser modificados para passar artificialmente
-- Referências podem ser editadas para corresponder à implementação errada
+Observed problems:
+- Self-verification is biased: the agent that implemented tends to "not see" its own mistakes
+- Success metrics can be manipulated by the implementer
+- Tests can be modified to pass artificially
+- References can be edited to match the wrong implementation
 
-A solução é um **loop adversarial** inspirado em GANs (Generative Adversarial Networks), onde um discriminador independente tenta **falhar** o trabalho do gerador.
+The solution is an **adversarial loop** inspired by GANs (Generative Adversarial Networks), where an independent discriminator tries to **fail** the generator's work.
 
-## Decisão
+## Decision
 
-Adotar **verificação adversarial** como primitiva de primeira classe no toolbelt, generalizando o conceito para múltiplos domínios além de UI.
+Adopt **adversarial verification** as a first-class primitive in toolbelt, generalizing the concept to multiple domains beyond UI.
 
-### Arquitetura GAN-like
+### GAN-like Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                         LOOP ADVERSARIAL                        │
+│                         ADVERSARIAL LOOP                        │
 └─────────────────────────────────────────────────────────────────┘
               │
               ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                         GERADOR                                 │
-│  (implementador)                                                │
+│                         GENERATOR                               │
+│  (implementer)                                                  │
 │                                                                 │
-│  - Recebe tarefa e referências                                  │
-│  - Implementa solução                                           │
-│  - Executa verificação local (NÃO conta como prova)             │
-│  - Submete para discriminador                                   │
+│  - Receives task and references                                 │
+│  - Implements solution                                          │
+│  - Runs local verification (does NOT count as proof)            │
+│  - Submits to discriminator                                     │
 └─────────────────────────────────────────────────────────────────┘
               │
-              │ submissão
+              │ submission
               ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                       DISCRIMINADOR                             │
-│  (verificador independente, nunca viu o código)                 │
+│                       DISCRIMINATOR                             │
+│  (independent verifier, never saw the code)                     │
 │                                                                 │
-│  1. Guard check: verifica mudanças em paths protegidos          │
-│  2. Clean build: reconstrói tudo do zero                        │
-│  3. Regenera referências (se aplicável)                         │
-│  4. Captura fresh do estado atual                               │
-│  5. Executa medição com ruler configurado                       │
-│  6. Verifica trapaça (edição de refs, masks inválidas, etc)     │
-│  7. Emite PASS ou FAIL com relatório                            │
+│  1. Guard check: verifies changes in protected paths            │
+│  2. Clean build: rebuilds everything from scratch               │
+│  3. Regenerates references (if applicable)                      │
+│  4. Captures fresh current state                                │
+│  5. Runs measurement with configured ruler                      │
+│  6. Checks for cheating (ref edits, invalid masks, etc)         │
+│  7. Emits PASS or FAIL with report                              │
 └─────────────────────────────────────────────────────────────────┘
               │
-              │ resultado
+              │ result
               ▼
      ┌────────┴────────┐
      │                 │
    PASS              FAIL
      │                 │
      ▼                 ▼
-  Concluído    ┌──────────────┐
-               │ Iteração < 3? │
+  Done         ┌──────────────┐
+               │ Iteration < 3? │
                └──────┬───────┘
                       │
             ┌─────────┴─────────┐
             │                   │
-           Sim                 Não
+           Yes                 No
             │                   │
             ▼                   ▼
-    Volta ao gerador     Escala para humano
+    Back to generator    Escalate to human
 ```
 
-### Princípios Fundamentais
+### Fundamental Principles
 
-1. **Só a medição do discriminador conta como prova**
-   - Medições do gerador são informativas, não probatórias
-   - Isso elimina auto-viés e manipulação
+1. **Only the discriminator's measurement counts as proof**
+   - Generator measurements are informative, not evidentiary
+   - This eliminates self-bias and manipulation
 
-2. **O discriminador tenta FALHAR**
-   - Mentalidade adversarial: procura brechas, não confirmação
-   - Verifica trapaça além da métrica principal
+2. **The discriminator tries to FAIL**
+   - Adversarial mindset: looks for gaps, not confirmation
+   - Checks for cheating beyond the main metric
 
-3. **Máximo 3 iterações, depois escalonamento**
-   - Evita loops infinitos
-   - Humano resolve impasses genuínos
+3. **Maximum 3 iterations, then escalation**
+   - Avoids infinite loops
+   - Human resolves genuine stalemates
 
-4. **Isolamento completo**
-   - Discriminador tem sandbox, porta e DB próprios
-   - Não pode fazer push, trocar branch, ou fazer stash
-   - Não corrige nada, apenas reporta
+4. **Complete isolation**
+   - Discriminator has its own sandbox, port, and DB
+   - Cannot push, switch branch, or stash
+   - Does not fix anything, only reports
 
-### Relação com Princípios Existentes
+### Relation to Existing Principles
 
-Este padrão reforça e generaliza conceitos já presentes no toolbelt:
+This pattern reinforces and generalizes concepts already present in toolbelt:
 
-| Princípio | Como a Verificação Adversarial Reforça |
-|-----------|----------------------------------------|
-| Implementador ≠ avaliador (ADR-005) | Discriminador é estruturalmente separado do gerador |
-| Contexto fresco para revisores | Discriminador começa do zero, sem contexto do gerador |
-| Imutabilidade de testes | Guard check detecta edição de referências/comparadores |
-| Detecção de reward hacking | Trapaça é verificada explicitamente com regras definidas |
+| Principle | How Adversarial Verification Reinforces It |
+|-----------|---------------------------------------------|
+| Implementer ≠ evaluator (ADR-005) | Discriminator is structurally separate from the generator |
+| Fresh context for reviewers | Discriminator starts from scratch, without generator context |
+| Test immutability | Guard check detects reference/comparator edits |
+| Reward hacking detection | Cheating is checked explicitly with defined rules |
 
-### Rulers Plugáveis
+### Pluggable Rulers
 
-O sistema de verificação é genérico, com **rulers** específicos por domínio:
+The verification system is generic, with domain-specific **rulers**:
 
-| Ruler | Domínio | O que Mede |
-|-------|---------|------------|
-| `visual` | UI/telas | Similaridade pixel-a-pixel + contraste WCAG |
-| `tests` | Código | Taxa de passagem em testes ocultos |
-| `review` | Documentos | Cobertura e qualidade de revisão por contexto fresco |
+| Ruler | Domain | What It Measures |
+|-------|--------|------------------|
+| `visual` | UI/screens | Pixel-to-pixel similarity + WCAG contrast |
+| `tests` | Code | Pass rate on hidden tests |
+| `review` | Documents | Coverage and quality of fresh-context review |
 
-Cada ruler define:
-- Métrica principal e threshold de passagem
-- Regras específicas de trapaça
-- Formato de relatório
+Each ruler defines:
+- Main metric and pass threshold
+- Specific cheating rules
+- Report format
 
-## Consequências
+## Consequences
 
-### Positivas
+### Positive
 
-- **Eliminação de auto-viés**: medição independente é mais confiável
-- **Detecção de trapaça**: regras explícitas impedem manipulação
-- **Generalização**: mesmo padrão para UI, código e documentos
-- **Escalabilidade**: loop automático com escalação controlada
-- **Auditabilidade**: relatórios detalhados por iteração
+- **Elimination of self-bias**: independent measurement is more reliable
+- **Cheat detection**: explicit rules prevent manipulation
+- **Generalization**: same pattern for UI, code, and documents
+- **Scalability**: automatic loop with controlled escalation
+- **Auditability**: detailed reports per iteration
 
-### Negativas
+### Negative
 
-- **Overhead computacional**: cada iteração requer build/capture completo
-- **Complexidade de setup**: discriminador precisa de ambiente isolado
-- **Latência**: múltiplas iterações aumentam tempo total
-- **Falsos negativos**: discriminador muito rigoroso pode rejeitar trabalho válido
+- **Computational overhead**: each iteration requires a full build/capture
+- **Setup complexity**: discriminator needs an isolated environment
+- **Latency**: multiple iterations increase total time
+- **False negatives**: an overly strict discriminator may reject valid work
 
-## Alternativas Consideradas
+## Alternatives Considered
 
-### Auto-verificação (Self-Verify)
+### Self-Verification (Self-Verify)
 
-**Por que considerado**:
-- Mais simples, sem agente separado
-- Menor latência
+**Why considered**:
+- Simpler, no separate agent
+- Lower latency
 
-**Por que não escolhido**:
-- Auto-viés: mesmo contexto = mesmos pontos cegos
-- Fácil manipulação: gerador controla as métricas
-- Histórico mostra drift significativo sem verificação externa
+**Why not chosen**:
+- Self-bias: same context = same blind spots
+- Easy manipulation: generator controls the metrics
+- History shows significant drift without external verification
 
-### Verificação por Humano
+### Human Verification
 
-**Por que considerado**:
-- Julgamento de maior qualidade
-- Pode avaliar nuances
+**Why considered**:
+- Higher-quality judgment
+- Can evaluate nuances
 
-**Por que não escolhido como único método**:
-- Não escala
-- Subjetivo e inconsistente
-- Humano é reservado para escalação (3ª falha)
+**Why not chosen as the only method**:
+- Does not scale
+- Subjective and inconsistent
+- Human is reserved for escalation (3rd failure)
 
-### Verificação por Outro Agente Persistente
+### Verification by Another Persistent Agent
 
-**Por que considerado**:
-- Agente verificador dedicado acumula experiência
+**Why considered**:
+- Dedicated verifier agent accumulates experience
 
-**Por que não escolhido**:
-- Contexto acumulado pode criar vieses
-- Discriminador deve ser fresh por design
+**Why not chosen**:
+- Accumulated context can create biases
+- Discriminator must be fresh by design
 
-## Questões em Aberto
+## Open Questions
 
-### Threshold Ótimo por Domínio
+### Optimal Threshold per Domain
 
-- Visual: 95% é adequado? Margem de 5% cobre anti-aliasing?
-- Testes: 100% ou permitir flaky tests conhecidos?
-- Como calibrar thresholds para diferentes projetos?
+- Visual: is 95% adequate? Does a 5% margin cover anti-aliasing?
+- Tests: 100% or allow known flaky tests?
+- How to calibrate thresholds for different projects?
 
-### Custo de Iterações
+### Iteration Cost
 
-- 3 iterações máximas é suficiente?
-- Como otimizar o feedback para reduzir iterações?
-- Trade-off entre rigor do discriminador e taxa de falso-FAIL
+- Are 3 max iterations enough?
+- How to optimize feedback to reduce iterations?
+- Trade-off between discriminator rigor and false-FAIL rate
 
-### Estabilidade de Referências
+### Reference Stability
 
-- Como detectar referências instáveis (ex: animações, dados dinâmicos)?
-- Política para boards que mudam entre execuções
-- Versionamento de referências junto com código
+- How to detect unstable references (e.g. animations, dynamic data)?
+- Policy for boards that change between runs
+- Versioning references alongside code
 
-### Integração com CI
+### CI Integration
 
-- Discriminador deve rodar em CI?
-- Como paralelizar verificação de múltiplas telas/testes?
-- Caching de builds para acelerar iterações
+- Should the discriminator run in CI?
+- How to parallelize verification of multiple screens/tests?
+- Caching builds to speed up iterations
 
-## Referências
+## References
 
-- [ADR-005: Estratégia Anti-Trapaça](005-anti-trapaca.md) — princípio implementador ≠ avaliador
-- [Generative Adversarial Networks](https://arxiv.org/abs/1406.2661) — inspiração conceitual
+- [ADR-005: Anti-Cheat Strategy](005-anti-trapaca.md) — implementer ≠ evaluator principle
+- [Generative Adversarial Networks](https://arxiv.org/abs/1406.2661) — conceptual inspiration
 - [WCAG 2.1 Contrast Requirements](https://www.w3.org/WAI/WCAG21/Understanding/contrast-minimum.html)

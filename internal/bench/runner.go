@@ -14,24 +14,18 @@ import (
 	"github.com/leonardo-moraes360/toolbelt/internal/log"
 )
 
-// AgentConfig configura como invocar um agente externo.
 type AgentConfig struct {
-	// ID identificador do agente.
 	ID string `yaml:"id" json:"id"`
 
-	// Command command para invocar o agente.
-	// Pode usar placeholders: {prompt}, {workdir}, {timeout}
+	// Placeholders: {prompt}, {workdir}, {timeout} (see ExpandAgentCommand).
 	Command string `yaml:"command" json:"command"`
 
-	// OutputParser parser para extrair métricas da saída do agente.
-	// Valores: "json", "none"
+	// "json" or "none".
 	OutputParser string `yaml:"output_parser" json:"output_parser"`
 
-	// Env variáveis de ambiente adicionais.
 	Env map[string]string `yaml:"env,omitempty" json:"env,omitempty"`
 }
 
-// Runner executa benchmarks.
 type Runner struct {
 	agent       AgentConfig
 	tasksDir    string
@@ -40,7 +34,6 @@ type Runner struct {
 	repetitions int
 }
 
-// NewRunner cria um novo runner de benchmark.
 func NewRunner(agent AgentConfig, tasksDir, fixturesDir, outputDir string, repetitions int) *Runner {
 	return &Runner{
 		agent:       agent,
@@ -51,9 +44,7 @@ func NewRunner(agent AgentConfig, tasksDir, fixturesDir, outputDir string, repet
 	}
 }
 
-// Run executa o benchmark para todas as tarefas.
 func (r *Runner) Run(ctx context.Context, taskIDs []string) ([]Result, error) {
-	// Carrega tarefas
 	var tasks []*Task
 	if len(taskIDs) == 0 {
 		var err error
@@ -111,7 +102,6 @@ func (r *Runner) Run(ctx context.Context, taskIDs []string) ([]Result, error) {
 	return results, nil
 }
 
-// runTask executa uma única tarefa.
 func (r *Runner) runTask(ctx context.Context, task *Task, rep int) (*Result, error) {
 	result := &Result{
 		TaskID:     task.ID,
@@ -120,14 +110,12 @@ func (r *Runner) runTask(ctx context.Context, task *Task, rep int) (*Result, err
 		StartTime:  time.Now(),
 	}
 
-	// Cria diretório de trabalho temporário
 	workDir, err := r.prepareWorkDir(task)
 	if err != nil {
 		return nil, fmt.Errorf("preparing work dir: %w", err)
 	}
 	defer os.RemoveAll(workDir)
 
-	// Executa o agente
 	taskCtx, cancel := context.WithTimeout(ctx, task.TimeoutDuration())
 	defer cancel()
 
@@ -139,15 +127,14 @@ func (r *Runner) runTask(ctx context.Context, task *Task, rep int) (*Result, err
 		result.Error = err.Error()
 		result.EndTime = time.Now()
 		result.Duration = result.EndTime.Sub(result.StartTime).Seconds()
-		return result, nil // Não retorna erro, apenas marca como falha
+		return result, nil // agent failure is a failed result, not an error
 	}
 
-	// Parse output do agente para tokens/tool_calls
+	// Extract tokens/tool_calls from the agent output.
 	if r.agent.OutputParser == "json" {
 		r.parseAgentOutput(agentOutput, result)
 	}
 
-	// Executa verificação
 	verifyCtx, verifyCancel := context.WithTimeout(ctx, task.Verification.TimeoutDuration())
 	defer verifyCancel()
 
@@ -171,14 +158,12 @@ func (r *Runner) runTask(ctx context.Context, task *Task, rep int) (*Result, err
 	return result, nil
 }
 
-// prepareWorkDir prepara o diretório de trabalho com a fixture.
 func (r *Runner) prepareWorkDir(task *Task) (string, error) {
 	workDir, err := os.MkdirTemp("", fmt.Sprintf("tb-bench-%s-*", task.ID))
 	if err != nil {
 		return "", err
 	}
 
-	// Copia fixture se especificada
 	if task.Fixture != "" {
 		fixtureDir := filepath.Join(r.fixturesDir, task.Fixture)
 		if _, err := os.Stat(fixtureDir); err == nil {
@@ -192,8 +177,6 @@ func (r *Runner) prepareWorkDir(task *Task) (string, error) {
 	return workDir, nil
 }
 
-// executeAgent executa o agente.
-//
 //nolint:gosec // G204: command is intentionally constructed from user config
 func (r *Runner) executeAgent(ctx context.Context, task *Task, workDir string) (output string, exitCode int, err error) {
 	cmd := ExpandAgentCommand(r.agent.Command, task.Prompt, workDir, task.Timeout)
@@ -227,8 +210,8 @@ func (r *Runner) executeAgent(ctx context.Context, task *Task, workDir string) (
 	return output, exitCode, runErr
 }
 
-// ExpandAgentCommand substitui placeholders com quoting seguro para sh -c.
-// {prompt}, {workdir} e {timeout} são interpolados via aspas simples POSIX.
+// ExpandAgentCommand interpolates {prompt}, {workdir} and {timeout} with POSIX
+// single-quoting so the result is safe for sh -c.
 func ExpandAgentCommand(template, prompt, workDir, timeout string) string {
 	cmd := template
 	cmd = strings.ReplaceAll(cmd, "{prompt}", shellSingleQuote(prompt))
@@ -237,8 +220,6 @@ func ExpandAgentCommand(template, prompt, workDir, timeout string) string {
 	return cmd
 }
 
-// executeVerification executa o command de verificação.
-//
 //nolint:gosec // G204: command is intentionally from task config
 func (r *Runner) executeVerification(ctx context.Context, task *Task, workDir string) (output string, exitCode int, err error) {
 	proc := exec.CommandContext(ctx, "sh", "-c", task.Verification.Command)
@@ -260,9 +241,8 @@ func (r *Runner) executeVerification(ctx context.Context, task *Task, workDir st
 	return output, exitCode, runErr
 }
 
-// parseAgentOutput tenta extrair métricas do output JSON do agente.
 func (r *Runner) parseAgentOutput(output string, result *Result) {
-	// Tenta encontrar JSON no output
+	// The JSON may be surrounded by other output.
 	start := strings.Index(output, "{")
 	end := strings.LastIndex(output, "}")
 	if start == -1 || end == -1 || end <= start {
@@ -297,7 +277,6 @@ func (r *Runner) parseAgentOutput(output string, result *Result) {
 	result.ToolCalls = data.ToolCalls
 }
 
-// copyDir copia um diretório recursivamente.
 func copyDir(src, dst string) error {
 	return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -322,7 +301,6 @@ func copyDir(src, dst string) error {
 	})
 }
 
-// truncateString trunca uma string para o tamanho máximo.
 func truncateString(s string, maxLen int) string {
 	if len(s) <= maxLen {
 		return s

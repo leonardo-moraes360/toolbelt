@@ -37,12 +37,10 @@ func TestWriteReadJSONL(t *testing.T) {
 		t.Fatalf("WriteJSONL failed: %v", err)
 	}
 
-	// Verifica que o arquivo existe
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {
 		t.Fatal("output file not created")
 	}
 
-	// Lê de volta
 	readResults, err := ReadJSONL(filePath)
 	if err != nil {
 		t.Fatalf("ReadJSONL failed: %v", err)
@@ -78,7 +76,7 @@ func TestCalculateSummary(t *testing.T) {
 	}
 
 	// task-1: 2/3 passed, task-2: 1/3 passed
-	// pass@1 = média das taxas por tarefa = (0.666... + 0.333...) / 2 ≈ 0.5
+	// pass@1 = mean of per-task rates = (0.666... + 0.333...) / 2 ≈ 0.5
 	expectedPassAt1 := 0.5
 	if summary.Metrics.PassAt1 < expectedPassAt1-0.01 || summary.Metrics.PassAt1 > expectedPassAt1+0.01 {
 		t.Errorf("PassAt1 = %f, want ~%f", summary.Metrics.PassAt1, expectedPassAt1)

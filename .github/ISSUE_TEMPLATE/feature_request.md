@@ -1,34 +1,34 @@
 ---
 name: Feature Request
-about: Sugira uma nova funcionalidade
+about: Suggest a new feature
 title: '[FEATURE] '
 labels: enhancement
 assignees: ''
 ---
 
-## Problema ou Motivação
+## Problem or Motivation
 
-Uma descrição clara do problema que esta feature resolveria.
+A clear description of the problem this feature would solve.
 
-Ex: Eu fico frustrado quando [...]
+E.g.: I get frustrated when [...]
 
-## Solução Proposta
+## Proposed Solution
 
-Uma descrição clara do que você gostaria que acontecesse.
+A clear description of what you would like to happen.
 
-## Alternativas Consideradas
+## Alternatives Considered
 
-Outras soluções ou features que você considerou.
+Other solutions or features you have considered.
 
-## Contexto Adicional
+## Additional Context
 
-Qualquer outro contexto, screenshots, ou referências sobre a feature request.
+Any other context, screenshots, or references about the feature request.
 
-## Impacto nos Objetivos
+## Impact on Goals
 
-Como esta feature ajuda nos objetivos do toolbelt?
+How does this feature help toolbelt's goals?
 
-- [ ] Economiza tokens
-- [ ] Melhora acurácia
-- [ ] Aumenta velocidade
-- [ ] Outro: _______
+- [ ] Saves tokens
+- [ ] Improves accuracy
+- [ ] Increases speed
+- [ ] Other: _______

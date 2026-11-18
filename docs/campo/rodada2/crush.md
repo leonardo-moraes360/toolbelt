@@ -1,187 +1,187 @@
-🇧🇷 Português | [🇺🇸 English](../../en/campo/rodada2/crush.md)
+🇺🇸 English | [🇧🇷 Português](../../pt-BR/campo/rodada2/crush.md)
 
-# Campo rodada 2: charmbracelet/crush
+# Field round 2: charmbracelet/crush
 
-Estudo de campo ROUND 2 do `tb` (toolbelt @ `a46c295`) no repositório third-party **charmbracelet/crush**, grupo **with existing AI-agent instrumentation**. Clone local apenas (`/tmp/target/crush`). Sem push, issues, PRs ou interação com o upstream.
+Field study ROUND 2 of `tb` (toolbelt @ `a46c295`) on the third-party repository **charmbracelet/crush**, group **with existing AI-agent instrumentation**. Local clone only (`/tmp/target/crush`). No push, issues, PRs, or interaction with upstream.
 
-## Repositório
+## Repository
 
-| Campo | Valor |
+| Field | Value |
 |-------|-------|
-| Nome | [charmbracelet/crush](https://github.com/charmbracelet/crush) |
-| Linguagem | Go (`go 1.27.4` no `go.mod`) |
-| Tamanho (clone shallow) | ~25 MiB disco; **904** arquivos `.go`; ~**204 515** LOC Go |
-| Instrumentação AI existente | `AGENTS.md` (raiz); `internal/ui/AGENTS.md`; `internal/cmd/stats/AGENTS.md`; `internal/oauth/callback/AGENTS.md`; `.agents/skills/` (`builtin-skills`, `shell-builtins`); `crush.json`; schema/docs de skills/hooks |
-| Toolchain | **Parcialmente configurada** |
+| Name | [charmbracelet/crush](https://github.com/charmbracelet/crush) |
+| Language | Go (`go 1.27.4` in `go.mod`) |
+| Size (shallow clone) | ~25 MiB disk; **904** `.go` files; ~**204 515** Go LOC |
+| Existing AI instrumentation | `AGENTS.md` (root); `internal/ui/AGENTS.md`; `internal/cmd/stats/AGENTS.md`; `internal/oauth/callback/AGENTS.md`; `.agents/skills/` (`builtin-skills`, `shell-builtins`); `crush.json`; skills/hooks schema/docs |
+| Toolchain | **Partially configured** |
 
-Toolchain neste VM:
+Toolchain on this VM:
 
 - `GOTOOLCHAIN=go1.27.4`: `go build .` OK (~1 m16 s); `go test ./internal/stringext/` OK; `task` via `go install`; `task lint:log` OK.
-- **Não instalados**: `golangci-lint`, `gofumpt` (`task lint` / `task fmt` completos não rodados).
-- Suite completa `go test ./...` / `task test` **não** executada (custo; fora do escopo da tarefa).
+- **Not installed**: `golangci-lint`, `gofumpt` (full `task lint` / `task fmt` not run).
+- Full suite `go test ./...` / `task test` **not** run (cost; outside task scope).
 
-## Tarefa escolhida
+## Chosen task
 
-| Campo | Valor |
+| Field | Value |
 |-------|-------|
-| O quê | Corrigir `stringext.Capitalize`: trocar `cases.Title` (title-case de cada palavra, que transforma `"API"` → `"Api"`) por uppercase só da primeira rune, preservando o resto (acrônimos e casing interno). Incluir testes unitários. |
-| Por quê | Bug real e pequeno, com repro local (`Title("API")=="Api"`); call sites usam Capitalize em títulos de erro e labels de UI (`internal/agent`, `internal/ui/...`). Maintainer-plausível. |
-| Issue | Sem issue dedicada; motivada por inspeção de `internal/stringext` + call sites. Issues abertas grandes (#4193 timeout, #4242 TMPDIR, etc.) ficaram de fora. |
-| Completada? | **Sim**, no clone local (branch `campo2-local-capitalize`, commit `ca9566c`). **Não** enviada ao upstream (proibido). |
-| Checks nativos | `go test ./internal/stringext/` → PASS; `./scripts/check_log_capitalization.sh` → exit 0; `task lint:log` → exit 0; `go build .` → exit 0. `golangci-lint` / `task test` não rodados. |
-| Rodada 1 (comparação) | Lint de capitalização `slog.*Context` em `scripts/check_log_capitalization.sh` — **tarefa diferente** desta rodada. |
+| What | Fix `stringext.Capitalize`: replace `cases.Title` (title-case every word, which turns `"API"` → `"Api"`) with uppercase of only the first rune, preserving the rest (acronyms and internal casing). Include unit tests. |
+| Why | Real, small bug with a local repro (`Title("API")=="Api"`); call sites use Capitalize for error titles and UI labels (`internal/agent`, `internal/ui/...`). Maintainer-plausible. |
+| Issue | No dedicated issue; motivated by inspecting `internal/stringext` + call sites. Large open issues (#4193 timeout, #4242 TMPDIR, etc.) left out. |
+| Completed? | **Yes**, on the local clone (branch `campo2-local-capitalize`, commit `ca9566c`). **Not** sent upstream (forbidden). |
+| Native checks | `go test ./internal/stringext/` → PASS; `./scripts/check_log_capitalization.sh` → exit 0; `task lint:log` → exit 0; `go build .` → exit 0. `golangci-lint` / `task test` not run. |
+| Round 1 (comparison) | Capitalization lint for `slog.*Context` in `scripts/check_log_capitalization.sh` — **different task** from this round. |
 
-## Verificação das 12 correções
+## Verification of the 12 fixes
 
-| # | correção | resultado | evidência |
-|---|----------|-----------|-----------|
-| 1 | graph SkipDirs na raiz do walk | **funcionou** | `tb graph --enable index /tmp/target` (basename=`target`) → **5183** nós / 39091 arestas (antes zerava). Índice em `/tmp/target/crush` → 5157 nós. |
-| 2 | verify `hidden_test_cmd` sem `tests/hidden/` | **funcionou** | Sem dir: `hidden_test_cmd=false` + `test_cmd=true` → `hidden_available: true`, `hidden_passed: false`, verdict `ESCALATE`, exit 1. Com cmd real no fix → `hidden_passed: true`. Default init agora `hidden_test_cmd: ""`. |
-| 3 | guard `--strict --json` exit ≠ 0 | **funcionou** | Diff tocando path protegido: `--json` exit 0; `--strict --json` exit **1** com JSON válido no stdout. |
-| 4 | guard lê `protected_paths` de `guard.yaml` | **funcionou** | `.toolbelt/guard.yaml` com `internal/stringext/string_test.go` → `protected_path` no diff do fix. Hardcoded `.toolbelt/thresholds.yaml` e `tests/hidden/*` continuam. |
-| 5 | init detecção de toolchain | **funcionou** | `go.mod` → `verify.test_cmd: go test ./...` (não default genérico errado). |
-| 6 | review `tests/hidden` por path | **funcionou** | Ticket só *mencionando* `tests/hidden/**` → sem finding critical de invariante. Commit real em `tests/hidden/ok.go` → `critical` + guard `protected_path`. |
-| 7 | bench `default_agent` e `compare --agent` | **funcionou** | Sem `--agent`, usou `default_agent: echo AGENT-RAN {prompt}` (JSONL com `AGENT-RAN …`). `compare --agent` existe no help; `compare --config-a/--config-b --agent 'echo …'` exit 0. |
-| 8 | review `## Scope`/`## Escopo`, listas MD e globs `**` | **funcionou** | `## Escopo` + bullets + `internal/stringext/**/*.go` → drift limpo. Escopo só `string.go` → `out_of_scope: string_test.go`. `**/*_test.go` manteve o test in-scope e marcou `string.go` fora. |
-| 9 | verify `build_cmd` e `lint_cmd` | **funcionou** | Verify PASS com `build_ran/passed` e `lint_ran/passed` true (`go test -c` + `check_log_capitalization.sh`). |
-| 10 | init lê AGENTS.md/CLAUDE.md e `--write-agents` | **funcionou** (com ressalva) | Com `AGENTS.md`: gravou `.toolbelt/agent_docs.yaml` + hints; `--write-agents` **não** sobrescreveu. Em dir sem AGENTS: `--write-agents` semeou esqueleto. Ressalva: hints extraíram blocos Go grandes como “comandos”. |
-| 11 | graph Python `calls` | **não se aplica** | Repo Go; arestas `calls` Go OK (29566). Extrator Python não exercitado aqui. |
-| 12 | verify visual skipped agregado + docs CLI | **funcionou** | `screens.yaml` sem refs → `"skipped": true`, `skip_reason: "todas as telas foram skipped"`. `docs/cli.md` de `mem add` alinhado ao posicional (não mais `--type/--title`). |
+| # | fix | result | evidence |
+|---|-----|--------|----------|
+| 1 | graph SkipDirs at walk root | **worked** | `tb graph --enable index /tmp/target` (basename=`target`) → **5183** nodes / 39091 edges (previously zeroed). Index under `/tmp/target/crush` → 5157 nodes. |
+| 2 | verify `hidden_test_cmd` without `tests/hidden/` | **worked** | No dir: `hidden_test_cmd=false` + `test_cmd=true` → `hidden_available: true`, `hidden_passed: false`, verdict `ESCALATE`, exit 1. With a real cmd on the fix → `hidden_passed: true`. Init default is now `hidden_test_cmd: ""`. |
+| 3 | guard `--strict --json` exit ≠ 0 | **worked** | Diff touching a protected path: `--json` exit 0; `--strict --json` exit **1** with valid JSON on stdout. |
+| 4 | guard reads `protected_paths` from `guard.yaml` | **worked** | `.toolbelt/guard.yaml` with `internal/stringext/string_test.go` → `protected_path` on the fix diff. Hardcoded `.toolbelt/thresholds.yaml` and `tests/hidden/*` continue. |
+| 5 | init toolchain detection | **worked** | `go.mod` → `verify.test_cmd: go test ./...` (not a wrong generic default). |
+| 6 | review `tests/hidden` by path | **worked** | Ticket only *mentioning* `tests/hidden/**` → no critical invariant finding. Real commit under `tests/hidden/ok.go` → `critical` + guard `protected_path`. |
+| 7 | bench `default_agent` and `compare --agent` | **worked** | Without `--agent`, used `default_agent: echo AGENT-RAN {prompt}` (JSONL with `AGENT-RAN …`). `compare --agent` exists in help; `compare --config-a/--config-b --agent 'echo …'` exit 0. |
+| 8 | review `## Scope`/`## Escopo`, MD lists and `**` globs | **worked** | `## Escopo` + bullets + `internal/stringext/**/*.go` → clean drift. Scope only `string.go` → `out_of_scope: string_test.go`. `**/*_test.go` kept the test in-scope and marked `string.go` out. |
+| 9 | verify `build_cmd` and `lint_cmd` | **worked** | Verify PASS with `build_ran/passed` and `lint_ran/passed` true (`go test -c` + `check_log_capitalization.sh`). |
+| 10 | init reads AGENTS.md/CLAUDE.md and `--write-agents` | **worked** (with caveat) | With `AGENTS.md`: wrote `.toolbelt/agent_docs.yaml` + hints; `--write-agents` **did not** overwrite. In a dir without AGENTS: `--write-agents` seeded a skeleton. Caveat: hints extracted large Go blocks as “commands”. |
+| 11 | graph Python `calls` | **not applicable** | Go repo; Go `calls` edges OK (29566). Python extractor not exercised here. |
+| 12 | aggregated visual skipped + CLI docs | **worked** | `screens.yaml` without refs → `"skipped": true`, `skip_reason: "todas as telas foram skipped"`. `docs/cli.md` for `mem add` aligned to positional (no longer `--type/--title`). |
 
-## Uso do tb por comando
+## tb usage by command
 
-| comando | resultado | ajudou/atrapalhou/neutro | evidência |
-|---------|-----------|--------------------------|-----------|
-| `tb version` (make build) | OK `a46c295` | neutro | ldflags preenchidos |
-| `tb init` | `.toolbelt/` + detect Go + lê AGENTS.md | **ajudou** | `agent_docs.yaml`; test_cmd `go test ./...` |
-| `tb init --write-agents` (com AGENTS) | não sobrescreve | ajudou | `diff` AGENTS.md vazio |
-| `tb init --write-agents` (sem AGENTS) | semeia mínimo | ajudou | `/tmp/noagents/AGENTS.md` criado |
-| `tb mem init/add/list/check` | OK; retenção 1.00 | ajudou | 4 invariantes |
-| `tb mem add --type` | unknown flag | neutro | docs CLI já corrigidos; flag antiga só atrapalha quem memorizou rodada 1 |
-| `tb graph --enable index` | 5157–5183 nós | **ajudou** | SkipDirs raiz corrigido |
-| `tb graph search Capitalize` | achou `func:stringext.Capitalize` | ajudou | |
-| `tb graph impact --file string.go` | lista callers UI/agent | ajudou | |
-| `tb graph impact` sem `--file` | exit 1 obrigatório | atrapalhou (UX) | igual rodada 1 |
-| `tb graph callers --function Capitalize` | 5 callers | ajudou | |
-| Ticket `## Escopo` + bullets/`**` | parse OK | **ajudou** | contrastava com rodada 1 |
-| `tb drift` / `tb review` | scope + completeness | ajudou / neutro | warning de aceite “pouco evidenciado” mesmo com testes no diff |
-| `tb verify run` (build/lint/test/hidden) | PASS, 1 iter, ~0,84 s | **ajudou** | |
-| `tb verify --ruler visual` | skipped=true agregado | ajudou | |
-| `tb guard` + `guard.yaml` | violações custom | **ajudou** | |
-| `tb guard --strict --json` | exit 1 | ajudou | |
-| `tb bench run` sem `-t` | falha `bench/tasks` | atrapalhou | `tasks_dir` do YAML **não** aplicado; precisa `-t`/`-f` |
-| `tb bench run -t …` sem `--agent` | usa default_agent | ajudou | |
-| `tb bench compare --agent` | OK com `--config-a/b` | ajudou | |
-| `tb mcp` tools/list + `tb_version` | OK | ajudou | stdio JSON-RPC; tools de grafo documentam `TB_GRAPH=on` |
+| command | result | helped / hindered / neutral | evidence |
+|---------|--------|-----------------------------|----------|
+| `tb version` (make build) | OK `a46c295` | neutral | ldflags filled |
+| `tb init` | `.toolbelt/` + detect Go + reads AGENTS.md | **helped** | `agent_docs.yaml`; test_cmd `go test ./...` |
+| `tb init --write-agents` (with AGENTS) | does not overwrite | helped | empty `diff` on AGENTS.md |
+| `tb init --write-agents` (without AGENTS) | seeds minimal | helped | `/tmp/noagents/AGENTS.md` created |
+| `tb mem init/add/list/check` | OK; retention 1.00 | helped | 4 invariants |
+| `tb mem add --type` | unknown flag | neutral | CLI docs already fixed; old `--type` flag only trips people who memorized round 1 |
+| `tb graph --enable index` | 5157–5183 nodes | **helped** | Root SkipDirs fixed |
+| `tb graph search Capitalize` | found `func:stringext.Capitalize` | helped | |
+| `tb graph impact --file string.go` | lists UI/agent callers | helped | |
+| `tb graph impact` without `--file` | exit 1 required | hindered (UX) | same as round 1 |
+| `tb graph callers --function Capitalize` | 5 callers | helped | |
+| Ticket `## Escopo` + bullets/`**` | parse OK | **helped** | contrasted with round 1 |
+| `tb drift` / `tb review` | scope + completeness | helped / neutral | acceptance warning “pouco evidenciado” even with tests in the diff |
+| `tb verify run` (build/lint/test/hidden) | PASS, 1 iter, ~0.84 s | **helped** | |
+| `tb verify --ruler visual` | aggregated skipped=true | helped | |
+| `tb guard` + `guard.yaml` | custom violations | **helped** | |
+| `tb guard --strict --json` | exit 1 | helped | |
+| `tb bench run` without `-t` | fails `bench/tasks` | hindered | YAML `tasks_dir` **not** applied; needs `-t`/`-f` |
+| `tb bench run -t …` without `--agent` | uses default_agent | helped | |
+| `tb bench compare --agent` | OK with `--config-a/b` | helped | |
+| `tb mcp` tools/list + `tb_version` | OK | helped | stdio JSON-RPC; graph tools document `TB_GRAPH=on` |
 
-## Problemas que continuam
+## Problems that persist
 
-| problema (rodada 1 / crush) | status | evidência |
-|------------------------------|--------|-----------|
-| `graph impact` exige `--file` | continua | exit 1 `--file é obrigatório` |
-| Config `.toolbelt/*` mode **0600** | continua | `config.yaml` e `agent_docs.yaml` → 600 |
-| `guard.yaml` manual **0644** vs configs tb 0600 | continua | `stat` → 644 |
-| Docs/`mem add --type` na memória do agente | mitigado | CLI/docs OK; flag `--type` ainda unknown (esperado) |
-| Verify tão bom quanto o `test_cmd` configurado | continua (por desenho) | precisei setar build/lint/test focados manualmente |
-| Init não pré-preenche lint/build a partir do Taskfile/AGENTS | parcial | lê hints, mas **não** grava `lint_cmd`/`build_cmd` no YAML |
-| Suite nativa completa / golangci não no VM | continua | não instalados |
+| problem (round 1 / checklist) | status | evidence |
+|-------------------------------|--------|----------|
+| `graph impact` requires `--file` | persists | exit 1 `--file é obrigatório` |
+| Config `.toolbelt/*` mode **0600** | persists | `config.yaml` and `agent_docs.yaml` → 600 |
+| Manual `guard.yaml` **0644** vs tb configs 0600 | persists | `stat` → 644 |
+| Docs/`mem add --type` in agent memory | mitigated | CLI/docs OK; `--type` still unknown (expected) |
+| Verify only as good as configured `test_cmd` | persists (by design) | I had to set focused build/lint/test manually |
+| Init does not prefill lint/build from Taskfile/AGENTS | partial | reads hints, but **does not** write `lint_cmd`/`build_cmd` into YAML |
+| Full native suite / golangci not on VM | persists | not installed |
 
-Problemas da rodada 1 **resolvidos** neste run: SkipDirs raiz; guard.yaml ignorado; `--strict --json` exit 0; `default_agent` / `compare --agent`; Scope markdown; build/lint no verify; visual `skipped=false`; review FP `tests/hidden`; hidden gated só por dir; init cego a AGENTS.md.
+Round 1 problems **resolved** in this run: root SkipDirs; ignored guard.yaml; `--strict --json` exit 0; `default_agent` / `compare --agent`; Markdown Scope; build/lint in verify; visual `skipped=false`; review FP `tests/hidden`; hidden gated only by dir; init blind to AGENTS.md.
 
-## Problemas novos
+## New problems
 
-### P2 — Extração de “hints” do AGENTS.md puxa blocos de código Go
+### P2 — AGENTS.md “hints” extraction pulls Go code blocks
 
-- **Repro**: `tb init` na raiz do crush com `AGENTS.md` rico.
-- **Expected**: dicas de comando (`go test`, `task lint:log`, …).
-- **Actual**: `agent_docs.yaml` inclui funções inteiras (`CharmtonePantera`, template de teste mock) como `hints`, misturadas com comandos úteis.
+- **Repro**: `tb init` at the crush root with a rich `AGENTS.md`.
+- **Expected**: command tips (`go test`, `task lint:log`, …).
+- **Actual**: `agent_docs.yaml` includes whole functions (`CharmtonePantera`, mock test templates) as `hints`, mixed with useful commands.
 
-### P2 — `bench.tasks_dir` / `fixtures_dir` do `config.yaml` não entram no `tb bench run`
+### P2 — `config.yaml` `bench.tasks_dir` / `fixtures_dir` do not feed `tb bench run`
 
-- **Repro**: setar paths absolutos no YAML; rodar `tb bench run -r 1` sem `-t`/`-f`.
-- **Expected**: usar dirs do config (como `default_agent`).
-- **Actual**: `open bench/tasks: no such file or directory`; defaults relativos da CLI vencem.
+- **Repro**: set absolute paths in YAML; run `tb bench run -r 1` without `-t`/`-f`.
+- **Expected**: use config dirs (like `default_agent`).
+- **Actual**: `open bench/tasks: no such file or directory`; relative CLI defaults win.
 
-### P3 — Review “completeness” avisa aceite já coberto por testes no mesmo commit
+### P3 — Review “completeness” warns on acceptance already covered by tests in the same commit
 
-- **Repro**: `rd.md` com `- [x] go test ./internal/stringext/ passes` + diff com `string_test.go`; `tb review`.
-- **Expected**: silêncio ou evidência positiva.
+- **Repro**: `rd.md` with `- [x] go test ./internal/stringext/ passes` + diff with `string_test.go`; `tb review`.
+- **Expected**: silence or positive evidence.
 - **Actual**: warning `critério de aceite pouco evidenciado no diff`.
 
-### P3 — Bench com `echo` como `default_agent` reportou 100% em `bugfix-go`
+### P3 — Bench with `echo` as `default_agent` reported 100% on `bugfix-go`
 
 - **Repro**: `default_agent: echo AGENT-RAN {prompt}` + `tb bench run --task bugfix-go`.
-- **Expected**: falha de verificação se o agente não edita o fixture.
-- **Actual**: `passed: true` (output só ecoou o prompt). Possível gap do harness/fixture — não investigado a fundo neste repo.
+- **Expected**: verification failure if the agent does not edit the fixture.
+- **Actual**: `passed: true` (output only echoed the prompt). Possible harness/fixture gap — not deeply investigated in this repo.
 
-## O que o tb pegou e o que deixou passar
+## What tb caught and what it let slip
 
-**Pegou**
+**Caught**
 
-- Callers/impact de `Capitalize` via grafo Go (UI + agent).
-- Drift quando o scope markdown era estreito demais (`string_test.go` fora).
-- Guard custom em `string_test.go` e hardcoded em `tests/hidden` / `thresholds.yaml`.
-- Verify com build + lint + test + hidden sem pasta `tests/hidden/`.
-- Visual honestamente `skipped` no relatório raiz.
-- Presença de `AGENTS.md` no init (path + tentativa de hints).
+- Callers/impact of `Capitalize` via the Go graph (UI + agent).
+- Drift when Markdown scope was too narrow (`string_test.go` out).
+- Custom guard on `string_test.go` and hardcoded on `tests/hidden` / `thresholds.yaml`.
+- Verify with build + lint + test + hidden without a `tests/hidden/` folder.
+- Visual honestly `skipped` in the root report.
+- Presence of `AGENTS.md` in init (path + hint attempt).
 
-**Deixou passar / não cobriu**
+**Let slip / did not cover**
 
-- Não sugeriu automaticamente `task lint:log` / `go build` como `lint_cmd`/`build_cmd` a partir do AGENTS/Taskfile (só listou hints ruidosos).
-- Não impediu (nem detectou) o uso de title-case em Capitalize *antes* da tarefa — o bug veio de inspeção humana + testes novos.
-- Completeness warnings fracos (ruído, não bloqueio útil).
-- `tasks_dir` do YAML ignorado no bench até passar `-t`.
+- Did not automatically suggest `task lint:log` / `go build` as `lint_cmd`/`build_cmd` from AGENTS/Taskfile (only listed noisy hints).
+- Did not prevent (or detect) title-case use in Capitalize *before* the task — the bug came from human inspection + new tests.
+- Weak completeness warnings (noise, not a useful block).
+- YAML `tasks_dir` ignored in bench until passing `-t`.
 
-Comparando com nativo: `go test ./internal/stringext/` + `task lint:log` + `go build` foram a fonte de verdade; o tb verify refletiu isso **depois** de eu configurar os cmds.
+Compared with native: `go test ./internal/stringext/` + `task lint:log` + `go build` were the source of truth; tb verify reflected that **after** I configured the cmds.
 
-## Interação com instrumentação existente / onboarding
+## Interaction with existing instrumentation / onboarding
 
-| Aspecto | Observação |
-|---------|------------|
-| `tb init` | Agora **detecta** `AGENTS.md` e grava `agent_docs.yaml`; toolchain Go correta. |
-| `--write-agents` | Correto: não sobrescreve crush; semeia só quando ausente. |
-| Qualidade do parse | Hints misturam code samples do guia com comandos reais — pouco acionável para preencher verify. |
-| Skills `.agents/` | Continuam **fora** do onboarding do tb (não referenciadas). |
-| Duplicação mem vs AGENTS | Invariantes genéricas do `mem init` ainda paralelas às regras de capitalização/CGO do AGENTS. |
-| Graph | Indexa AGENTS aninhados (sections) e código Go com `calls` úteis. |
+| Aspect | Observation |
+|--------|-------------|
+| `tb init` | Now **detects** `AGENTS.md` and writes `agent_docs.yaml`; correct Go toolchain. |
+| `--write-agents` | Correct: does not overwrite crush; seeds only when absent. |
+| Parse quality | Hints mix guide code samples with real commands — barely actionable for filling verify. |
+| Skills `.agents/` | Still **outside** tb onboarding (not referenced). |
+| mem vs AGENTS duplication | Generic `mem init` invariants still parallel AGENTS capitalization/CGO rules. |
+| Graph | Indexes nested AGENTS (sections) and Go code with useful `calls`. |
 
-## Comparação com a rodada 1
+## Comparison with round 1
 
-| Dimensão | Rodada 1 (`c8aae04`) | Rodada 2 (`a46c295`) |
-|----------|----------------------|----------------------|
-| Tarefa | lint `slog.*Context` | `Capitalize` sentence-case |
-| SkipDirs `/tmp/target` | quebra (0 nós se raiz=target) | **corrigido** (5183 nós) |
-| Scope markdown | `scope-missing` | **parseia** `## Escopo` + bullets/`**` |
-| guard.yaml | ignorado | **honrado** |
-| `--strict --json` | exit 0 com violação | **exit 1** |
-| build/lint no verify | mortos | **rodam** |
-| hidden sem dir | ignorado | **executa** cmd |
-| default_agent / compare --agent | quebrados | **ok** |
-| AGENTS.md no init | ignorado | **lido** (hints ruidosos) |
-| visual skipped | raiz mentirosa | **agregado** |
-| Review FP tests/hidden | sim | **não** (só path real) |
-| Utilidade geral | bootstrap frágil | **melhor** no harness; onboarding de hints ainda fraco |
+| Dimension | Round 1 (`c8aae04`) | Round 2 (`a46c295`) |
+|-----------|---------------------|---------------------|
+| Task | lint `slog.*Context` | `Capitalize` sentence-case |
+| SkipDirs `/tmp/target` | breaks (0 nodes if root=target) | **fixed** (5183 nodes) |
+| Markdown Scope | `scope-missing` | **parses** `## Escopo` + bullets/`**` |
+| guard.yaml | ignored | **honored** |
+| `--strict --json` | exit 0 with violation | **exit 1** |
+| build/lint in verify | dead | **run** |
+| hidden without dir | ignored | **runs** cmd |
+| default_agent / compare --agent | broken | **ok** |
+| AGENTS.md in init | ignored | **read** (noisy hints) |
+| visual skipped | lying root | **aggregated** |
+| Review FP tests/hidden | yes | **no** (only real path) |
+| Overall usefulness | fragile bootstrap | **better** harness; hint onboarding still weak |
 
-Veredito: **melhor** de forma concreta nas 12 correções testáveis neste repo Go; novos atritos são menores (hints, `tasks_dir` do YAML, warnings de completeness).
+Verdict: **better** in concrete ways on the 12 testable fixes in this Go repo; new friction is smaller (hints, YAML `tasks_dir`, completeness warnings).
 
-## Sugestões de melhoria
+## Improvement suggestions
 
-1. **[P1][init]** Usar hints do AGENTS/Taskfile para **preencher** `verify.lint_cmd` / `build_cmd` (ex. `task lint:log`, `go build .`), não só listar texto.
-2. **[P1][init]** Filtrar extração de hints: linhas/comandos curtos; ignorar fences/code blocks longos.
-3. **[P1][bench]** Honrar `bench.tasks_dir` / `fixtures_dir` / `output_dir` do `config.yaml` como já faz `default_agent`.
-4. **[P2][review]** Completeness: se o diff toca `*_test.go` alinhado ao aceite, não emitir warning genérico.
-5. **[P2][graph]** Default de `impact` para arquivos do `git diff` quando `--file` omitido.
-6. **[P3][config]** Documentar ou unificar permissões 0600 vs arquivos manuais em `.toolbelt/`.
-7. **[P3][init]** Referenciar `.agents/skills/` no `agent_docs.yaml` quando existirem (grupo com instrumentação).
+1. **[P1][init]** Use AGENTS/Taskfile hints to **fill** `verify.lint_cmd` / `build_cmd` (e.g. `task lint:log`, `go build .`), not only list text.  
+2. **[P1][init]** Filter hint extraction: short lines/commands; ignore long fences/code blocks.  
+3. **[P1][bench]** Honor `config.yaml` `bench.tasks_dir` / `fixtures_dir` / `output_dir` as already done for `default_agent`.  
+4. **[P2][review]** Completeness: if the diff touches `*_test.go` aligned with acceptance, do not emit a generic warning.  
+5. **[P2][graph]** Default `impact` to `git diff` files when `--file` is omitted.  
+6. **[P3][config]** Document or unify 0600 permissions vs manual files under `.toolbelt/`.  
+7. **[P3][init]** Reference `.agents/skills/` in `agent_docs.yaml` when present (instrumented group).
 
-## Métricas
+## Metrics
 
-| Métrica | Rodada 2 | Rodada 1 (referência) |
-|---------|----------|------------------------|
-| Wall time (sessão instrumentada tb) | ~**2 min 30 s** (`12:39:55Z` → `12:42:24Z`), excl. build crush (~1 m16 s) e download toolchain | ~**3 min** |
-| Invocações tb (`CMD:` no evidence) | **46** | ~30+ |
-| Falhas tb (`EXIT=1`) | **14** (probes esperados: impact sem file, strict guard, drift estreito, hidden=false, bench sem `-t`, etc.) | **10** |
-| Crashes tb | **0** | **0** |
+| Metric | Round 2 | Round 1 (reference) |
+|--------|---------|---------------------|
+| Wall time (instrumented tb session) | ~**2 min 30 s** (`12:39:55Z` → `12:42:24Z`), excl. crush build (~1 m16 s) and toolchain download | ~**3 min** |
+| tb invocations (`CMD:` in evidence) | **46** | ~30+ |
+| tb failures (`EXIT=1`) | **14** (expected probes: impact without file, strict guard, narrow drift, hidden=false, bench without `-t`, etc.) | **10** |
+| tb crashes | **0** | **0** |
 | MCP | tools/list + `tb_version` OK | OK |
-| Alterações no toolbelt | **somente** este arquivo `docs/campo/rodada2/crush.md` | só `docs/campo/crush.md` |
-| Alterações no crush | locais em `/tmp/target/crush` (não push) | locais (não push) |
+| Changes in toolbelt | **only** this file `docs/campo/rodada2/crush.md` | only `docs/campo/crush.md` |
+| Changes in crush | local under `/tmp/target/crush` (no push) | local (no push) |

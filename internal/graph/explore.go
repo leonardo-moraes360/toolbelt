@@ -8,11 +8,9 @@ import (
 )
 
 const (
-	// DefaultExplainLimit caps how many matched nodes Explain returns.
 	DefaultExplainLimit = 5
 	// MaxExplainNeighbors caps neighbors per direction per explained node.
 	MaxExplainNeighbors = 50
-	// DefaultPathMaxDepth caps how many hops ShortestPath explores.
 	DefaultPathMaxDepth = 6
 )
 
@@ -38,7 +36,6 @@ type Neighbor struct {
 	Confidence float64   `json:"confidence"`
 }
 
-// Explanation is a node with its incident edges grouped by direction.
 type Explanation struct {
 	Node         Node       `json:"node"`
 	Outgoing     []Neighbor `json:"outgoing"`
@@ -53,8 +50,8 @@ type Explanation struct {
 	UnresolvedOut int `json:"unresolved_out,omitempty"`
 }
 
-// PathStep is one node of a path. Every step but the first carries the edge
-// used to reach it from the previous step.
+// Every step but the first carries the edge used to reach it from the
+// previous step.
 type PathStep struct {
 	Node       Node      `json:"node"`
 	Edge       EdgeType  `json:"edge,omitempty"`
@@ -73,7 +70,6 @@ func edgeUsable(e *Edge) bool {
 	return e.Type != EdgeCalls || e.Confidence >= MinCallsConfidence
 }
 
-// Explain returns the matched nodes for query with their incident edges.
 // Low-confidence call edges are omitted, as in callers/impact.
 func (s *Store) Explain(query string, limit int) ([]Explanation, error) {
 	s.mu.RLock()

@@ -31,8 +31,8 @@ alinhado ao MCP stateless. As mesmas ferramentas do CLI ficam disponíveis via t
 	},
 }
 
-// bindBusAs trata --bus-as <canal>/<nome>: liga a conexão à sessão CLI do
-// agente (mesmo limite de confiança da CLI; usado por tb bus run).
+// bindBusAs handles --bus-as <channel>/<name>: binds the connection to the
+// agent's CLI session (same trust boundary as the CLI; used by tb bus run).
 func bindBusAs(cmd *cobra.Command) error {
 	as, _ := cmd.Flags().GetString("bus-as")
 	if as == "" {

@@ -107,7 +107,7 @@ func handleRun(ctx context.Context, args map[string]any) (any, error) {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "sh", "-c", command) //nolint:gosec // ferramenta MCP explícita
+	cmd := exec.CommandContext(ctx, "sh", "-c", command) //nolint:gosec // explicit MCP tool
 	if cwd != "" {
 		cmd.Dir = cwd
 	}

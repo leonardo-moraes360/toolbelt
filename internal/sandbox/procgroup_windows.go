@@ -11,11 +11,11 @@ func killProcessGroup(cmd *exec.Cmd) {
 	cmd.WaitDelay = 2 * time.Second
 }
 
-// reapProcessGroup não tem equivalente sem Job Objects; no-op no Windows.
+// reapProcessGroup has no equivalent without Job Objects; no-op on Windows.
 func reapProcessGroup(*exec.Cmd) {}
 
-// settleGroup é no-op no Windows (sem subreaper).
+// settleGroup is a no-op on Windows (no subreaper).
 func settleGroup(*Registry, int) {}
 
-// groupGone: sem grupos de processos no Windows; nada a aguardar.
+// groupGone: no process groups on Windows; nothing to wait for.
 func groupGone(int) bool { return true }

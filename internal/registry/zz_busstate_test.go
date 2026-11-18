@@ -5,8 +5,8 @@ import (
 	"testing"
 )
 
-// TestMain isola o diretório privado do bus (sessões, wake, estado do
-// harness) num diretório temporário: os testes nunca escrevem no $HOME.
+// TestMain isolates the bus private directory (sessions, wake, harness
+// state) in a temp directory: tests never write to $HOME.
 func TestMain(m *testing.M) {
 	dir, err := os.MkdirTemp("", "tb-bus-state-")
 	if err != nil {

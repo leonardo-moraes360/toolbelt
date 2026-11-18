@@ -1,52 +1,52 @@
-🇧🇷 Português | [🇺🇸 English](../en/decisions/012-cli-framework-cobra.md)
+🇺🇸 English | [🇧🇷 Português](../pt-BR/decisions/012-cli-framework-cobra.md)
 
-# ADR-012: Framework CLI - Cobra
+# ADR-012: CLI Framework - Cobra
 
 ## Status
 
-Aceita
+Accepted
 
-## Contexto
+## Context
 
-O toolbelt precisa de uma interface de linha de comando robusta com:
-- Subcomandos hierárquicos (`tb bench run`, `tb sandbox exec`)
-- Flags globais e por-comando
-- Geração automática de help
-- Completions para bash/zsh/fish
-- Suporte a configuração via arquivo e variáveis de ambiente
+toolbelt needs a robust command-line interface with:
+- Hierarchical subcommands (`tb bench run`, `tb sandbox exec`)
+- Global and per-command flags
+- Automatic help generation
+- Completions for bash/zsh/fish
+- Support for configuration via file and environment variables
 
-## Decisão
+## Decision
 
-Escolhemos **Cobra** como framework CLI.
+We chose **Cobra** as the CLI framework.
 
-### Alternativas Consideradas
+### Alternatives Considered
 
-| Framework | Prós | Contras |
-|-----------|------|---------|
-| **Cobra** | Padrão de facto em Go (kubectl, hugo, gh), completions nativo, boa docs | Verboso para casos simples |
-| urfave/cli | API mais simples | Menos features, comunidade menor |
-| kingpin | Parsing poderoso | Abandonado pelo mantenedor |
-| flag (stdlib) | Zero dependências | Sem subcomandos nativos |
+| Framework | Pros | Cons |
+|-----------|------|------|
+| **Cobra** | De facto standard in Go (kubectl, hugo, gh), native completions, good docs | Verbose for simple cases |
+| urfave/cli | Simpler API | Fewer features, smaller community |
+| kingpin | Powerful parsing | Abandoned by maintainer |
+| flag (stdlib) | Zero dependencies | No native subcommands |
 
-### Justificativa
+### Rationale
 
-1. **Maturidade**: Usado por kubectl, docker, hugo, gh - battle-tested
-2. **Ecossistema**: Integração com Viper para config, geração automática de docs
-3. **UX**: Completions nativos melhoram produtividade do usuário
-4. **Manutenção**: Comunidade ativa, mantido pela Microsoft (via spf13)
+1. **Maturity**: Used by kubectl, docker, hugo, gh - battle-tested
+2. **Ecosystem**: Integration with Viper for config, automatic docs generation
+3. **UX**: Native completions improve user productivity
+4. **Maintenance**: Active community, maintained by Microsoft (via spf13)
 
-## Consequências
+## Consequences
 
-### Positivas
-- Estrutura consistente de comandos
-- Help e completions automáticos
-- Facilita adicionar novos comandos
+### Positive
+- Consistent command structure
+- Automatic help and completions
+- Makes adding new commands easier
 
-### Negativas
-- Dependência externa (aceito dado o benefício)
-- Boilerplate inicial
+### Negative
+- External dependency (accepted given the benefit)
+- Initial boilerplate
 
-## Exemplo de Uso
+## Usage Example
 
 ```go
 var benchCmd = &cobra.Command{
@@ -59,7 +59,7 @@ benchCmd.Flags().StringP("agent", "a", "", "comando do agente")
 benchCmd.Flags().Bool("fake", false, "usa agente fake")
 ```
 
-## Referências
+## References
 
 - [Cobra GitHub](https://github.com/spf13/cobra)
 - [Cobra User Guide](https://cobra.dev/)

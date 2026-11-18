@@ -18,82 +18,82 @@ invariants:
     - id: inv-1794924668487546178
       category: mandate
       rule: 'tb é 100% local: nenhum comando fala com GitHub/rede; review/drift/verify leem ticket/rd.md do disco'
-      ref: docs/en/adr/002-mcp-a2a-protocolos.md
+      ref: docs/adr/002-mcp-a2a-protocolos.md
       added_at: 2026-11-17T14:11:08.4875475Z
       immutable: false
       retired: true
       retired_at: 2026-11-17T14:11:24.830247936Z
     - id: inv-1794924668490610534
       category: security
-      rule: 'Sandbox é fail-closed: sem Landlock recusa executar; nunca adicionar fallback silencioso sem sandbox'
-      ref: docs/en/adr/004-sandbox-isolamento.md
+      rule: 'Sandbox is fail-closed: without Landlock it refuses to run; never add a silent no-sandbox fallback'
+      ref: docs/adr/004-sandbox-isolamento.md
       added_at: 2026-11-17T14:11:08.490611756Z
       immutable: false
     - id: inv-1794924668499509417
       category: mandate
-      rule: 'Grafo é sob demanda: desabilitado por padrão (TB_GRAPH=on/--enable); não ligar por default'
-      ref: docs/en/adr/011-grafo-sob-demanda.md
+      rule: 'The graph is on demand: disabled by default (TB_GRAPH=on/--enable); never turn it on by default'
+      ref: docs/adr/011-grafo-sob-demanda.md
       added_at: 2026-11-17T14:11:08.499510198Z
       immutable: false
     - id: inv-1794924668502229753
       category: mandate
-      rule: Docs PT-BR (docs/, README.md) e espelho EN (docs/en/, README.en.md) mudam juntos no mesmo PR
+      rule: English docs (README.md, docs/) and the pt-BR translation (docs/pt-BR/) change together in the same PR (docs/TRANSLATION.md)
       added_at: 2026-11-17T14:11:08.502230455Z
       immutable: false
     - id: inv-1794924668504646637
       category: mandate
-      rule: Commits em Conventional Commits; branch a partir de main (feature/, fix/, docs/, adr/, chore/)
+      rule: Conventional Commits; branch off main (feature/, fix/, docs/, adr/, chore/)
       added_at: 2026-11-17T14:11:08.504647288Z
       immutable: false
     - id: inv-1794924668507354640
       category: mandate
-      rule: 'Implementador e avaliador separados: review roda em contexto novo, nunca no mesmo agente que escreveu o código'
-      ref: docs/en/adr/007-inspiracao-elephant-goldfish.md
+      rule: 'Implementer and evaluator are separate: review runs in a fresh context, never in the agent that wrote the code'
+      ref: docs/adr/007-inspiracao-elephant-goldfish.md
       added_at: 2026-11-17T14:11:08.507355843Z
       immutable: false
     - id: inv-1794924684833006405
       category: mandate
-      rule: 'tb é 100% local: nenhum comando fala com GitHub/rede; review/drift/verify leem ticket/rd.md do disco (docs/en/cli.md#local-first-sem-github)'
+      rule: 'tb is 100% local: no command talks to GitHub/the network; review/drift/verify read ticket/rd.md from disk (docs/cli.md#local-first-no-github)'
       added_at: 2026-11-17T14:11:24.833007617Z
       immutable: false
     - id: inv-1795019844120185514
       category: security
-      rule: Harness do bus (tb bus run) nunca usa bypassPermissions/--dangerously-skip-permissions; --check recusa e o sandbox segue fail-closed
-      ref: docs/en/adr/013-barramento-multi-vendor.md
+      rule: The bus harness (tb bus run) never uses bypassPermissions/--dangerously-skip-permissions; --check refuses it and the sandbox stays fail-closed
+      ref: docs/adr/013-barramento-multi-vendor.md
       added_at: 2026-11-18T16:37:24.120186776Z
       immutable: false
     - id: inv-1795019844122559508
       category: security
-      rule: Estado privado do bus (sessões, tokens, wake, audit) fica fora do repositório ($XDG_STATE_HOME/toolbelt/bus); wake packet e audit nunca carregam payload, token ou valor de pass_env
-      ref: docs/en/adr/013-barramento-multi-vendor.md
+      rule: Private bus state (sessions, tokens, wake, audit) lives outside the repository ($XDG_STATE_HOME/toolbelt/bus); wake packets and audit never carry payload, token or pass_env values
+      ref: docs/adr/013-barramento-multi-vendor.md
       added_at: 2026-11-18T16:37:24.12256025Z
       immutable: false
     - id: inv-1795019844131303635
       category: security
-      rule: MCP do bus não expõe criar canal nem convite; identidade presa à conexão, from definido pelo broker
-      ref: docs/en/adr/013-barramento-multi-vendor.md
+      rule: The bus MCP never exposes channel or invite creation; identity is bound to the connection and the broker sets from
+      ref: docs/adr/013-barramento-multi-vendor.md
       added_at: 2026-11-18T16:37:24.131304176Z
       immutable: false
     - id: inv-1795019844133530381
       category: mandate
-      rule: Espera do bus é sem LLM (zero tokens em espera) e o tb não abre rede; rede só no processo filho configurado pelo humano
-      ref: docs/en/adr/013-barramento-multi-vendor.md
+      rule: Bus waiting uses no LLM (zero tokens while idle) and tb opens no network; network only in the child process the human configured
+      ref: docs/adr/013-barramento-multi-vendor.md
       added_at: 2026-11-18T16:37:24.133530933Z
       immutable: false
     - id: inv-1795019844135667819
       category: mandate
-      rule: Consultas do grafo (search/explain/path) são determinísticas em Go puro, sem LLM; Graphify é reimplementado, não integrado
-      ref: docs/en/adr/014-graphify-reimplementacao.md
+      rule: Graph queries (search/explain/path) are deterministic pure Go, no LLM; Graphify is reimplemented, not integrated
+      ref: docs/adr/014-graphify-reimplementacao.md
       added_at: 2026-11-18T16:37:24.13566835Z
       immutable: false
     - id: inv-1795019844137842036
       category: mandate
-      rule: 'Binário sem CGO (CGO_ENABLED=0): SQLite via modernc.org/sqlite; não adicionar dependência que exija CGO'
-      ref: docs/en/adr/003-sqlite-fts5-grafo.md
+      rule: 'No-CGO binary (CGO_ENABLED=0): SQLite via modernc.org/sqlite; never add a dependency that needs CGO'
+      ref: docs/adr/003-sqlite-fts5-grafo.md
       added_at: 2026-11-18T16:37:24.137842637Z
       immutable: false
     - id: inv-1795019844139802108
       category: mandate
-      rule: 'Release: mover [Não Lançado] do CHANGELOG para a versão antes da tag v*; nunca reutilizar tag publicada (docs/en/release.md)'
+      rule: 'Release: move [Unreleased] in CHANGELOG to the version before the v* tag; never reuse a published tag (docs/release.md)'
       added_at: 2026-11-18T16:37:24.139802619Z
       immutable: false

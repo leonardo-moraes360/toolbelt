@@ -1,7 +1,7 @@
-// fakeclaude imita `claude -p ... --output-format stream-json`: sobe o servidor
-// MCP do --mcp-config, lê a fila com tb_bus_recv, faz claim/complete da thread
-// do task.assign e imprime eventos com session_id. Registra o argv em
-// ./fakeclaude.log para o teste inspecionar.
+// fakeclaude mimics `claude -p ... --output-format stream-json`: it starts the
+// MCP server from --mcp-config, reads the queue with tb_bus_recv, claims and
+// completes the task.assign thread and prints events with session_id. It logs
+// argv to ./fakeclaude.log for the test to inspect.
 package main
 
 import (

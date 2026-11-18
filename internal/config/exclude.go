@@ -12,9 +12,9 @@ const (
 	gitExcludeEnd   = "# <<< toolbelt local/cache"
 )
 
-// VersionedFileMode é o modo dos arquivos que o tb init grava para serem
-// versionados (config.yaml, agent_docs.yaml, AGENTS.md): sem segredos, então
-// seguem o modo padrão de arquivo do repositório em vez de 0600.
+// Files tb init writes to be versioned (config.yaml, agent_docs.yaml,
+// AGENTS.md) hold no secrets, so they follow the repository's default file
+// mode instead of 0600.
 const VersionedFileMode = 0o644
 
 var LocalCacheExcludePatterns = []string{
@@ -77,9 +77,8 @@ func gitInfoExcludePath(repoRoot string) (string, bool) {
 	return filepath.Join(gitCommonDir(gitDir), "info", "exclude"), true
 }
 
-// gitCommonDir resolve o diretório comum de uma worktree (ou submódulo com
-// commondir): o git só lê $GIT_COMMON_DIR/info/exclude, nunca o info/ do
-// gitdir da worktree.
+// For a worktree (or a submodule with commondir) git only reads
+// $GIT_COMMON_DIR/info/exclude, never the info/ of the worktree's gitdir.
 func gitCommonDir(gitDir string) string {
 	data, err := os.ReadFile(filepath.Join(gitDir, "commondir"))
 	if err != nil {

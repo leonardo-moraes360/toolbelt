@@ -100,12 +100,12 @@ func TestSecretFilesFailClosed(t *testing.T) {
 	}
 }
 
-// Reproduz o incidente: wake.sh carrega o env como shell sem aspas; o sh
-// executa a palavra do token e a imprime no stderr.
+// Reproduces the incident: wake.sh sources the env unquoted, so sh executes
+// the token word and prints it to stderr.
 func TestExecStderrRedactedInAudit(t *testing.T) {
 	e := newEnv(t)
 	sec := writeSecret(t, "WAKE_AUTHORIZATION=Bearer tk7secretw\n")
-	script := filepath.Join(filepath.Dir(sec), "wake.sh") // dir do argv[0] é liberado ao filho
+	script := filepath.Join(filepath.Dir(sec), "wake.sh") // argv[0]'s dir is granted to the child
 	if err := os.WriteFile(script, []byte("#!/bin/sh\n. "+sec+"\n"), 0o700); err != nil {
 		t.Fatal(err)
 	}

@@ -1,177 +1,177 @@
-🇧🇷 Português | [🇺🇸 English](../en/campo/mcp-python-sdk.md)
+🇺🇸 English | [🇧🇷 Português](../pt-BR/campo/mcp-python-sdk.md)
 
-# Estudo de campo: modelcontextprotocol/python-sdk
+# Field study: modelcontextprotocol/python-sdk
 
-Estudo realizado em 2026-11-15 com `tb` buildado localmente deste repositório (`make build` → `toolbelt c8aae04`). O alvo foi usado só em clone local (`/tmp/target` e cópia `/tmp/python-sdk`); não houve push, issue, PR nem comentário no upstream.
+Study conducted on 2026-11-15 with `tb` built locally from this repository (`make build` → `toolbelt c8aae04`). The target was used only as a local clone (`/tmp/target` and copy `/tmp/python-sdk`); there was no push, issue, PR, or comment upstream.
 
-## Repositório
+## Repository
 
-| Campo | Valor |
+| Field | Value |
 |-------|--------|
-| Nome | [modelcontextprotocol/python-sdk](https://github.com/modelcontextprotocol/python-sdk) |
-| Linguagem | Python 3.11+ (SDK MCP; pacote `mcp`) |
-| Tamanho | ~22 MiB working tree sem `.venv` / ~292 MiB com `.venv`; shallow clone ~25 MiB antes do sync; ~419 `.py` em `src/`+`tests/`, ~3673 `.py` no tree completo pós-deps |
-| Commit base do clone | `77001c9` (`main` shallow) |
-| Instrumentação AI existente | `AGENTS.md` (166 linhas, guidelines obrigatórias), `CLAUDE.md` (`@AGENTS.md`), `.claude/commands/review-pr.md`, `.claude/skills/test-quality/`, workflow `.github/workflows/claude.yml` |
-| Toolchain | **Sim, parcial.** Instalado `uv 0.13.8`; `uv sync --frozen` OK com Python 3.12 do sistema. Rodados: `pytest` (stdio client + interaction), `ruff check` nos arquivos tocados. **Não rodados:** `./scripts/test` completo (~cobertura 100% + matrix), `pyright` full, docs (`zensical`), pre-commit completo, Windows/3.11–3.15. Motivo: tempo/escopo do estudo; suite completa é cara e o AGENTS.md já indica ~23 s só no script de cobertura default. |
+| Name | [modelcontextprotocol/python-sdk](https://github.com/modelcontextprotocol/python-sdk) |
+| Language | Python 3.11+ (MCP SDK; package `mcp`) |
+| Size | ~22 MiB working tree without `.venv` / ~292 MiB with `.venv`; shallow clone ~25 MiB before sync; ~419 `.py` under `src/`+`tests/`, ~3673 `.py` in the full post-deps tree |
+| Clone base commit | `77001c9` (shallow `main`) |
+| Existing AI instrumentation | `AGENTS.md` (166 lines, mandatory guidelines), `CLAUDE.md` (`@AGENTS.md`), `.claude/commands/review-pr.md`, `.claude/skills/test-quality/`, workflow `.github/workflows/claude.yml` |
+| Toolchain | **Yes, partial.** Installed `uv 0.13.8`; `uv sync --frozen` OK with system Python 3.12. Ran: `pytest` (stdio client + interaction), `ruff check` on touched files. **Not run:** full `./scripts/test` (~100% coverage + matrix), full `pyright`, docs (`zensical`), full pre-commit, Windows/3.11–3.15. Reason: study time/scope; the full suite is expensive and AGENTS.md already notes ~23 s just for the default coverage script. |
 
-## Tarefa escolhida
+## Chosen task
 
-| Campo | Valor |
+| Field | Value |
 |-------|--------|
-| O quê | Default de `StdioServerParameters.encoding_error_handler`: `"strict"` → `"replace"`, alinhado ao servidor (PR #2302), + testes de regressão em `tests/client/test_stdio.py` |
-| Por quê | Bug P2 `ready for work` com repro claro; mudança mínima, testável, plausível para maintainer; ainda aberto em `main` no momento do estudo |
+| What | Default of `StdioServerParameters.encoding_error_handler`: `"strict"` → `"replace"`, aligned with the server (PR #2302), + regression tests in `tests/client/test_stdio.py` |
+| Why | P2 bug `ready for work` with a clear repro; minimal, testable, maintainer-plausible change; still open on `main` at study time |
 | Issue | https://github.com/modelcontextprotocol/python-sdk/issues/2454 |
-| Completada? | **Sim, localmente** (branch local `campo-local-2454`, commit `960549b`). Não enviada ao upstream (proibido pelas regras do estudo). |
-| Native test/lint/build | `uv run --frozen pytest tests/client/test_stdio.py -q` → **37 passed**; `tests/interaction/transports/test_stdio.py` → **2 passed**; `ruff check` nos arquivos alterados → OK. Build/typecheck global e `./scripts/test` **não** executados. |
+| Completed? | **Yes, locally** (local branch `campo-local-2454`, commit `960549b`). Not sent upstream (forbidden by study rules). |
+| Native test/lint/build | `uv run --frozen pytest tests/client/test_stdio.py -q` → **37 passed**; `tests/interaction/transports/test_stdio.py` → **2 passed**; `ruff check` on changed files → OK. Global build/typecheck and `./scripts/test` **not** executed. |
 
-## Uso do tb por comando
+## tb usage by command
 
-| comando | resultado | ajudou/atrapalhou/neutro | evidência |
-|---------|-----------|--------------------------|-----------|
-| `tb init` | OK; criou `.toolbelt/` + `config.yaml` (mode **0600**); defaults de `verify` = `go test ./...` | atrapalhou | Wall 0.008 s. Defaults Go num repo Python; agente precisa reescrever `verify.test_cmd` à mão. Config 0600 confirma issue conhecido. |
-| `tb version` | Com `make build`: `c8aae04`. Com `go build` sem ldflags: `0.1.0-dev` / commit **unknown** | neutro | Ambos medidos; “unknown” só no binário sem `-ldflags`. |
-| `tb mem init/list/add/check` | OK; 5 invariantes; `mem check` sha256 + retenção 1.00 | ajudou (parcial) | Positional `tb mem add "<regra>"` funciona. Docs em `docs/cli.md` descrevem `--type/--title` inexistentes → atrito. `invariants.yaml` também 0600. |
-| `tb graph rebuild/index` em `/tmp/target` | **0 nós / 0 arestas** em ~0.006 s | atrapalhou | Diretório raiz chamado `target` está em `SkipDirs`; `filepath.Walk` dá `SkipDir` na própria raiz. |
-| `tb graph rebuild` em `/tmp/python-sdk` | **16550 nós, 43746 arestas**, 1.345 s | ajudou | Mesmo código; só o basename do cwd muda. |
-| `tb graph search encoding_error_handler` | vazio mesmo com grafo cheio | atrapalhou | Busca só em title/path/package/id; não indexa campos/atributos. |
-| `tb graph impact --file src/mcp/client/stdio.py` | vazio | neutro/atrapalhou | Impacto pouco útil aqui (poucas arestas `calls`: 100 no repo inteiro). |
-| `tb graph callers --function stdio_client` | vazio | atrapalhou | Indexador Python extrai poucas calls. |
-| `tb graph deps --file src/mcp/client/stdio.py` | lista imports (`anyio`, `mcp_types`, …) | ajudou | Único subcomando de grafo claramente útil nesta tarefa. |
-| `tb graph impact` sem `--file` | EXIT 1, “--file é obrigatório” | neutro | Confirma issue conhecido de UX. |
-| Ticket `rd.md` + Scope | YAML com `---` funciona; lista markdown sem frontmatter **não** parseia scope multilinha | atrapalhou | Sem `---`, drift marcou `tests/client/test_stdio.py` fora do scope mesmo listado. Com frontmatter: drift limpo. |
-| `tb verify run` (pytest stdio) | PASS iter=1; **Oculto: disponível=false** | ajudou (parcial) | Detecta presença de `tests/hidden/` por path, não pelo `hidden_test_cmd` configurado. Só rodou suíte visível. |
-| `tb verify` + erro de sintaxe em `examples/...` | PASS | atrapalhou | Native `py_compile` falhou; verify configurado só com pytest pontual passou. Confirma “checks parciais”. |
-| `tb verify --ruler visual` manifesto ausente + `--skip-unavailable` | PASS, `"skipped": true` | neutro | Correto. |
-| `tb verify --ruler visual` com `screens.yaml` vazio + skip | PASS, **`"skipped": false`**, `screens: null` | atrapalhou | Confirma issue do ruler visual. |
-| `tb review` (ticket frontmatter correto) | PASS, findings=[] | ajudou | Wall ~0.008 s; fresh_context true. |
-| `tb review` + touch em `tests/hidden/` | FAIL critical invariant | atrapalhou | Falso positivo para quem cria a suíte oculta (invariante default do `mem init`). |
-| `tb drift` paths literais + frontmatter | OK | ajudou | |
-| `tb drift` glob `src/**/*.py` | FAIL out_of_scope | atrapalhou | `filepath.Match` não trata `**`. Glob simples `src/mcp/client/*.py` **funcionou**. |
-| `tb guard check` no fix | OK, violations null | ajudou | |
-| `tb guard` + `.toolbelt/guard.yaml` deny | **ignorou** o YAML; ainda PASS | atrapalhou | Confirmado: guard.yaml não é lido. |
-| `tb guard` + `.toolbelt/thresholds.yaml` no diff | violation `protected_path`; `verify` FAIL iterações 0 | atrapalhou | Path hardcoded aborta o fluxo de verify. |
-| `tb bench run --fake` | OK com `-t/-f` apontando para fixtures do toolbelt | neutro | Repo alvo não tem `bench/tasks`; default_agent no config **não** dispensa `--agent/--fake`. |
-| `tb bench compare` | OK com `--fake`; **sem** flag `--agent` | neutro | Help confirma ausência de `--agent` no compare. |
-| `tb mcp` | tools/list + tools/call `tb_version` OK; `tb_graph_search` → `null` em `/tmp/target` | ajudou (parcial) | MCP sobe; grafo MCP herda o bug do `SkipDirs`/`target`. |
-| Onboarding / AGENTS.md | `tb init` **não** lê nem importa `AGENTS.md` / `.claude/` | atrapalhou | Arquitetura marca AGENTS.md como “pendente”. |
+| command | result | helped / hindered / neutral | evidence |
+|---------|--------|-----------------------------|----------|
+| `tb init` | OK; created `.toolbelt/` + `config.yaml` (mode **0600**); `verify` defaults = `go test ./...` | hindered | Wall 0.008 s. Go defaults in a Python repo; agent must rewrite `verify.test_cmd` by hand. Config 0600 confirms known issue. |
+| `tb version` | With `make build`: `c8aae04`. With `go build` without ldflags: `0.1.0-dev` / commit **unknown** | neutral | Both measured; “unknown” only on the binary without `-ldflags`. |
+| `tb mem init/list/add/check` | OK; 5 invariants; `mem check` sha256 + retention 1.00 | helped (partial) | Positional `tb mem add "<regra>"` works. Docs in `docs/cli.md` describe nonexistent `--type/--title` → friction. `invariants.yaml` also 0600. |
+| `tb graph rebuild/index` under `/tmp/target` | **0 nodes / 0 edges** in ~0.006 s | hindered | Root directory named `target` is in `SkipDirs`; `filepath.Walk` does `SkipDir` on the root itself. |
+| `tb graph rebuild` under `/tmp/python-sdk` | **16550 nodes, 43746 edges**, 1.345 s | helped | Same code; only the cwd basename changes. |
+| `tb graph search encoding_error_handler` | empty even with a full graph | hindered | Search only in title/path/package/id; does not index fields/attributes. |
+| `tb graph impact --file src/mcp/client/stdio.py` | empty | neutral/hindered | Impact not very useful here (few `calls` edges: 100 in the whole repo). |
+| `tb graph callers --function stdio_client` | empty | hindered | Python indexer extracts few calls. |
+| `tb graph deps --file src/mcp/client/stdio.py` | lists imports (`anyio`, `mcp_types`, …) | helped | Only clearly useful graph subcommand for this task. |
+| `tb graph impact` without `--file` | EXIT 1, “--file é obrigatório” | neutral | Confirms known UX issue. |
+| Ticket `rd.md` + Scope | YAML with `---` works; markdown list without frontmatter **does not** parse multiline scope | hindered | Without `---`, drift marked `tests/client/test_stdio.py` out of scope even when listed. With frontmatter: clean drift. |
+| `tb verify run` (pytest stdio) | PASS iter=1; **Hidden: disponível=false** | helped (partial) | Detects presence of `tests/hidden/` by path, not by configured `hidden_test_cmd`. Only ran the visible suite. |
+| `tb verify` + syntax error in `examples/...` | PASS | hindered | Native `py_compile` failed; verify configured with only spot pytest passed. Confirms “partial checks”. |
+| `tb verify --ruler visual` missing manifesto + `--skip-unavailable` | PASS, `"skipped": true` | neutral | Correct. |
+| `tb verify --ruler visual` with empty `screens.yaml` + skip | PASS, **`"skipped": false`**, `screens: null` | hindered | Confirms visual ruler issue. |
+| `tb review` (correct frontmatter ticket) | PASS, findings=[] | helped | Wall ~0.008 s; fresh_context true. |
+| `tb review` + touch under `tests/hidden/` | FAIL critical invariant | hindered | False positive for anyone creating the hidden suite (default `mem init` invariant). |
+| `tb drift` literal paths + frontmatter | OK | helped | |
+| `tb drift` glob `src/**/*.py` | FAIL out_of_scope | hindered | `filepath.Match` does not handle `**`. Simple glob `src/mcp/client/*.py` **worked**. |
+| `tb guard check` on the fix | OK, violations null | helped | |
+| `tb guard` + `.toolbelt/guard.yaml` deny | **ignored** the YAML; still PASS | hindered | Confirmed: guard.yaml is not read. |
+| `tb guard` + `.toolbelt/thresholds.yaml` in the diff | `protected_path` violation; `verify` FAIL iterations 0 | hindered | Hardcoded path aborts the verify flow. |
+| `tb bench run --fake` | OK with `-t/-f` pointing at toolbelt fixtures | neutral | Target repo has no `bench/tasks`; config `default_agent` **does not** waive `--agent/--fake`. |
+| `tb bench compare` | OK with `--fake`; **no** `--agent` flag | neutral | Help confirms absence of `--agent` on compare. |
+| `tb mcp` | tools/list + tools/call `tb_version` OK; `tb_graph_search` → `null` under `/tmp/target` | helped (partial) | MCP starts; MCP graph inherits the `SkipDirs`/`target` bug. |
+| Onboarding / AGENTS.md | `tb init` **does not** read or import `AGENTS.md` / `.claude/` | hindered | Architecture marks AGENTS.md as “pending”. |
 
-## Problemas conhecidos
+## Known problems
 
-| problema | confirmado/refutado/não testado | evidência |
-|----------|----------------------------------|-----------|
-| `bench compare` lacks `--agent` | **confirmado** | `tb bench compare --help` sem `--agent`; só `--fake` / JSONL. |
-| `guard.yaml` ignored | **confirmado** | Deny em `.toolbelt/guard.yaml` para `stdio.py`; `guard check` → `violations: null`. |
-| Outdated CLI docs | **confirmado** | `docs/cli.md` documenta `tb ticket`, `tb mem add --type/--title`; CLI real: sem `ticket`; `mem add <regra> --category`. |
-| Version shows `unknown` | **confirmado (parcial)** | Sem ldflags: `commit: unknown` / `0.1.0-dev`. Com `make build`: commit do git. |
-| Config files created 0600 | **confirmado** | `stat` → `config.yaml` e `invariants.yaml` mode 600; `graph.json` também 600. |
-| Visual ruler reports `skipped=false` when skipping | **confirmado** | Manifesto vazio + `--skip-unavailable` → `"skipped": false`, `screens: null`. Ausência de manifesto → `skipped: true` (OK). |
-| `default_agent` ignored | **confirmado** | Config com `default_agent: cursor-agent ...`; `tb bench run` sem flags → `--agent ou --fake é obrigatório`. |
-| Guard aborts verify when diff touches hardcoded config path | **confirmado** | Diff só com `.toolbelt/thresholds.yaml` → verify FAIL, iterações 0. |
-| Default fake agent needs `--fake-config` | **refutado (no caminho happy)** | `tb bench run --fake` sem `--fake-config` passou (100%). Flag existe para customizar; não é obrigatória. |
-| `mem add` positional | **confirmado como gap docs/UX** | Positional funciona; docs sugerem flags que não existem (`--type`, `--title`, `--rule` → unknown flag). |
-| Drift/Scope need literal paths (no globs) | **parcialmente confirmado** | `*` num segmento funciona; `**` não. Scope multilinha sem frontmatter YAML falha. |
-| `graph impact` needs `--file` | **confirmado** | Sem `--file` → EXIT 1. |
-| Review false positives on tests/hidden invariant | **confirmado** | Adicionar `tests/hidden/test_x.py` no scope → finding critical da invariante default. |
-| Verify runs only partial checks / misses build errors | **confirmado** | Syntax error em `examples/mcpserver/unicode_example.py`: native `py_compile` falha; `tb verify` com pytest pontual → PASS. Hidden suite “indisponível” mesmo com `hidden_test_cmd` setado se não existe dir `tests/hidden`. |
-| tb does not push agent toward completing whole task | **confirmado (qualitativo neste estudo)** | Init defaults Go; não importa AGENTS.md; verify não exige lint/typecheck/docs do projeto; ticket CLI ausente; grafo vazio se cwd=`target`. Agente pode “fechar” o loop tb com PASS e ainda omitir checks nativos do AGENTS.md (`pyright`, `./scripts/test`, encoding rules, etc.). |
+| problem | confirmed / refuted / not tested | evidence |
+|---------|----------------------------------|----------|
+| `bench compare` lacks `--agent` | **confirmed** | `tb bench compare --help` without `--agent`; only `--fake` / JSONL. |
+| `guard.yaml` ignored | **confirmed** | Deny in `.toolbelt/guard.yaml` for `stdio.py`; `guard check` → `violations: null`. |
+| Outdated CLI docs | **confirmed** | `docs/cli.md` documents `tb ticket`, `tb mem add --type/--title`; real CLI: no `ticket`; `mem add <regra> --category`. |
+| Version shows `unknown` | **confirmed (partial)** | Without ldflags: `commit: unknown` / `0.1.0-dev`. With `make build`: git commit. |
+| Config files created 0600 | **confirmed** | `stat` → `config.yaml` and `invariants.yaml` mode 600; `graph.json` also 600. |
+| Visual ruler reports `skipped=false` when skipping | **confirmed** | Empty manifesto + `--skip-unavailable` → `"skipped": false`, `screens: null`. Missing manifesto → `skipped: true` (OK). |
+| `default_agent` ignored | **confirmed** | Config with `default_agent: cursor-agent ...`; `tb bench run` without flags → `--agent ou --fake é obrigatório`. |
+| Guard aborts verify when diff touches hardcoded config path | **confirmed** | Diff only with `.toolbelt/thresholds.yaml` → verify FAIL, iterations 0. |
+| Default fake agent needs `--fake-config` | **refuted (on the happy path)** | `tb bench run --fake` without `--fake-config` passed (100%). Flag exists to customize; not required. |
+| `mem add` positional | **confirmed as docs/UX gap** | Positional works; docs suggest flags that do not exist (`--type`, `--title`, `--rule` → unknown flag). |
+| Drift/Scope need literal paths (no globs) | **partially confirmed** | `*` in one segment works; `**` does not. Multiline scope without YAML frontmatter fails. |
+| `graph impact` needs `--file` | **confirmed** | Without `--file` → EXIT 1. |
+| Review false positives on tests/hidden invariant | **confirmed** | Adding `tests/hidden/test_x.py` in scope → critical finding from the default invariant. |
+| Verify runs only partial checks / misses build errors | **confirmed** | Syntax error in `examples/mcpserver/unicode_example.py`: native `py_compile` fails; `tb verify` with spot pytest → PASS. Hidden suite “unavailable” even with `hidden_test_cmd` set if `tests/hidden` dir does not exist. |
+| tb does not push agent toward completing whole task | **confirmed (qualitative in this study)** | Init Go defaults; does not import AGENTS.md; verify does not require project lint/typecheck/docs; ticket CLI absent; empty graph if cwd=`target`. Agent can “close” the tb loop with PASS and still omit native AGENTS.md checks (`pyright`, `./scripts/test`, encoding rules, etc.). |
 
-## Problemas novos
+## New problems
 
-### P0 — `SkipDirs` engole a raiz se o basename for `target`/`build`/`dist`/`bin`/…
+### P0 — `SkipDirs` swallows the root if the basename is `target`/`build`/`dist`/`bin`/…
 
-- **Repro:** `git clone … /tmp/target && cd /tmp/target && tb graph rebuild --enable` → `0 nós`. Copiar para `/tmp/python-sdk` → 16550 nós.
-- **Expected:** nunca pular o root do walk; comparar paths relativos ou só filhos.
-- **Actual:** `skipDirs[info.Name()]` no próprio root → `filepath.SkipDir` imediato.
+- **Repro:** `git clone … /tmp/target && cd /tmp/target && tb graph rebuild --enable` → `0 nós`. Copy to `/tmp/python-sdk` → 16550 nodes.
+- **Expected:** never skip the walk root; compare relative paths or only children.
+- **Actual:** `skipDirs[info.Name()]` on the root itself → immediate `filepath.SkipDir`.
 
-### P1 — `tb init` defaults Go + não importa instrumentação do repo
+### P1 — `tb init` Go defaults + does not import repo instrumentation
 
-- **Repro:** `tb init` em python-sdk → `verify.test_cmd: go test ./...`; vault vazio; AGENTS.md ignorado.
-- **Expected:** detectar ecossistema (pyproject/uv) e/ou importar AGENTS.md/.claude skills como contexto inicial.
-- **Actual:** template genérico; onboarding não aponta o agente aos checks reais.
+- **Repro:** `tb init` on python-sdk → `verify.test_cmd: go test ./...`; empty vault; AGENTS.md ignored.
+- **Expected:** detect ecosystem (pyproject/uv) and/or import AGENTS.md/.claude skills as initial context.
+- **Actual:** generic template; onboarding does not point the agent at real checks.
 
-### P1 — Scope markdown multilinha sem frontmatter é silenciosamente incompleto
+### P1 — Multiline markdown scope without frontmatter is silently incomplete
 
-- **Repro:** `rd.md` com `scope:\n  - a\n  - b` sem `---`; drift acusa falso positivo.
-- **Expected:** parse YAML da lista ou erro explícito “scope ilegível”.
-- **Actual:** regex só lê `scope: ...` na mesma linha; lista ignorada.
+- **Repro:** `rd.md` with `scope:\n  - a\n  - b` without `---`; drift reports a false positive.
+- **Expected:** parse the YAML list or an explicit “unreadable scope” error.
+- **Actual:** regex only reads `scope: ...` on the same line; list ignored.
 
-### P2 — `graph search` não encontra símbolos de campo / `callers` quase vazio em Python
+### P2 — `graph search` does not find field symbols / `callers` almost empty in Python
 
-- **Repro:** após indexar 16k nós, `search encoding_error_handler` e `callers stdio_client` → vazio; só 100 arestas `calls` no SDK inteiro.
-- **Expected:** pelo menos hits em definições/atributos indexados; callers úteis em Python.
-- **Actual:** busca superficial; call-graph Python insuficiente para navegação da tarefa.
+- **Repro:** after indexing 16k nodes, `search encoding_error_handler` and `callers stdio_client` → empty; only 100 `calls` edges in the whole SDK.
+- **Expected:** at least hits on indexed definitions/attributes; useful callers in Python.
+- **Actual:** shallow search; Python call-graph insufficient for task navigation.
 
-### P2 — Visual PASS com `skipped=false` e zero screens
+### P2 — Visual PASS with `skipped=false` and zero screens
 
-- **Repro:** `.toolbelt/screens.yaml` com `screens: []` + `--skip-unavailable` → JSON `skipped: false`.
-- **Expected:** `skipped: true` (ou FAIL) quando nada foi comparado.
-- **Actual:** PASS aparentando execução real.
+- **Repro:** `.toolbelt/screens.yaml` with `screens: []` + `--skip-unavailable` → JSON `skipped: false`.
+- **Expected:** `skipped: true` (or FAIL) when nothing was compared.
+- **Actual:** PASS appearing as a real run.
 
-### P3 — MCP `tb_graph_*` herda grafo vazio / precisa `TB_GRAPH=on` sem feedback rico
+### P3 — MCP `tb_graph_*` inherits empty graph / needs `TB_GRAPH=on` without rich feedback
 
-- **Repro:** em `/tmp/target`, `tools/call tb_graph_search` → `"null"`.
-- **Expected:** erro explícito (“grafo vazio / root skipped / enable graph”).
-- **Actual:** resultado nulo silencioso.
+- **Repro:** under `/tmp/target`, `tools/call tb_graph_search` → `"null"`.
+- **Expected:** explicit error (“empty graph / root skipped / enable graph”).
+- **Actual:** silent null result.
 
-## O que o tb pegou e o que deixou passar
+## What tb caught and what it let slip
 
-**Pegou**
+**Caught**
 
-- Drift/review de escopo quando o ticket está em frontmatter YAML correto.
-- Guard em paths protegidos hardcoded (`thresholds.yaml`, `tests/hidden/`).
-- Verify rodando o `test_cmd` configurado (pytest stdio) e falhando quando o import do pacote quebra.
-- Invariantes persistentes (`mem`) e revisão fresh-context sem findings no fix limpo.
-- Bench fake + compare A/B (com fixtures do próprio toolbelt).
-- MCP tools/list e `tb_version`.
+- Scope drift/review when the ticket is in correct YAML frontmatter.
+- Guard on hardcoded protected paths (`thresholds.yaml`, `tests/hidden/`).
+- Verify running the configured `test_cmd` (pytest stdio) and failing when the package import breaks.
+- Persistent invariants (`mem`) and fresh-context review with no findings on the clean fix.
+- Fake bench + A/B compare (with toolbelt’s own fixtures).
+- MCP tools/list and `tb_version`.
 
-**Deixou passar / não cobriu**
+**Let slip / did not cover**
 
-- Erro de sintaxe em arquivo fora do `test_cmd` (example) → verify PASS.
-- Suíte “oculta” configurada por comando mas marcada indisponível sem diretório `tests/hidden/`.
-- Lint/typecheck/docs/`./scripts/test` exigidos pelo AGENTS.md — tb não os sugere nem os enfileira no init.
-- `guard.yaml` do projeto.
-- Conteúdo de AGENTS.md / skills Claude (não lidos).
-- Grafo inútil enquanto o clone vive em `/tmp/target`.
-- Completeness da tarefa além do que o ticket+test_cmd estreito medem (ex.: atualizar docs do SDK, conformance).
+- Syntax error in a file outside `test_cmd` (example) → verify PASS.
+- “Hidden” suite configured by command but marked unavailable without a `tests/hidden/` directory.
+- Lint/typecheck/docs/`./scripts/test` required by AGENTS.md — tb neither suggests nor queues them on init.
+- Project `guard.yaml`.
+- AGENTS.md / Claude skills content (unread).
+- Useless graph while the clone lives under `/tmp/target`.
+- Task completeness beyond what the narrow ticket+test_cmd measures (e.g. updating SDK docs, conformance).
 
-## Interação com instrumentação existente / onboarding
+## Interaction with existing instrumentation / onboarding
 
-O python-sdk tem instrumentação AI madura (`AGENTS.md` denso, `CLAUDE.md` alias, skill `test-quality`, comando `review-pr`).
+python-sdk has mature AI instrumentation (dense `AGENTS.md`, `CLAUDE.md` alias, `test-quality` skill, `review-pr` command).
 
-| Comportamento observado | Detalhe |
-|-------------------------|---------|
-| tb **ignora** AGENTS.md | Nenhum comando lido/importado; vault permanece vazio após init. |
-| tb **duplica** parcialmente a ideia de invariantes | `mem init` cria anti-cheat genérico (Go-ish: `tests/hidden`, `thresholds.yaml`) que **conflita** com o modelo do próprio tb (criar hidden suite) e não reflete regras do AGENTS.md (uv-only, encoding=, coverage 100%, sem `Test*` classes, etc.). |
-| tb **não substitui** o harness nativo | AGENTS.md manda `uv run --frozen`, ruff, pyright, `./scripts/test`; verify default/`test_cmd` único não cobre isso. |
-| O que o tb deveria importar | (1) Ler `AGENTS.md`/`CLAUDE.md` no `init` e materializar invariantes/mandate; (2) mapear scripts de qualidade (`scripts/test`, ruff, pyright) para `verify.test_cmd` / checklist; (3) indexar `.claude/skills/*` no vault; (4) avisar conflitos (ex. invariante “nunca toque tests/hidden” vs. necessidade de criar a suíte). |
+| Observed behavior | Detail |
+|-------------------|--------|
+| tb **ignores** AGENTS.md | No command read/imported; vault stays empty after init. |
+| tb **partially duplicates** the idea of invariants | `mem init` creates generic anti-cheat (Go-ish: `tests/hidden`, `thresholds.yaml`) that **conflicts** with tb’s own model (create a hidden suite) and does not reflect AGENTS.md rules (uv-only, encoding=, 100% coverage, no `Test*` classes, etc.). |
+| tb **does not replace** the native harness | AGENTS.md requires `uv run --frozen`, ruff, pyright, `./scripts/test`; default/`test_cmd`-only verify does not cover that. |
+| What tb should import | (1) Read `AGENTS.md`/`CLAUDE.md` on `init` and materialize invariants/mandate; (2) map quality scripts (`scripts/test`, ruff, pyright) to `verify.test_cmd` / checklist; (3) index `.claude/skills/*` in the vault; (4) warn on conflicts (e.g. “never touch tests/hidden” invariant vs need to create the suite). |
 
-## Sugestões de melhoria
+## Improvement suggestions
 
-1. **[P0][graph]** Não aplicar `SkipDirs` ao root do walk; tratar `target`/`build` só como filhos.  
-2. **[P0][init/verify]** Detectar stack (Go/Python/Node) e preencher `verify.*` com comandos reais; falhar init se defaults claramente errados.  
-3. **[P1][mem/ctx]** Importar `AGENTS.md` no onboarding; gerar invariantes a partir dele em vez do template genérico.  
-4. **[P1][drift/review]** Aceitar scope YAML multilinha sem exigir `---` **ou** erro explícito; documentar frontmatter.  
-5. **[P1][verify]** Tratar `hidden_test_cmd` configurado como disponível; não depender só de `tests/hidden/` existir. Adicionar ruler opcional `lint/build`.  
-6. **[P1][guard]** Carregar `.toolbelt/guard.yaml`; separar “touch thresholds” de abortar verify sem mensagem acionável.  
-7. **[P1][docs]** Sincronizar `docs/cli.md` com Cobra real (remover/marcar `ticket`, corrigir `mem add`).  
-8. **[P2][bench]** Honrar `bench.default_agent`; adicionar `--agent` em `compare`.  
-9. **[P2][verify/visual]** Se zero screens avaliadas → `skipped=true` (ou FAIL), nunca PASS silencioso.  
-10. **[P2][graph]** Melhorar index Python (atributos, callers) e mensagem quando rebuild produz 0 nós.  
-11. **[P2][graph]** Suporte a globs `**` no scope (ou documentar só `path/*` e `path/**`).  
-12. **[P3][config]** Revisar 0600 em monorepos compartilhados; 0644 + secrets separados.  
-13. **[P3][mcp]** Erros estruturados quando grafo desabilitado/vazio.
+1. **[P0][graph]** Do not apply `SkipDirs` to the walk root; treat `target`/`build` only as children.  
+2. **[P0][init/verify]** Detect stack (Go/Python/Node) and fill `verify.*` with real commands; fail init if defaults are clearly wrong.  
+3. **[P1][mem/ctx]** Import `AGENTS.md` on onboarding; generate invariants from it instead of the generic template.  
+4. **[P1][drift/review]** Accept multiline YAML scope without requiring `---` **or** an explicit error; document frontmatter.  
+5. **[P1][verify]** Treat configured `hidden_test_cmd` as available; do not depend only on `tests/hidden/` existing. Add optional `lint/build` ruler.  
+6. **[P1][guard]** Load `.toolbelt/guard.yaml`; separate “touch thresholds” from aborting verify without an actionable message.  
+7. **[P1][docs]** Sync `docs/cli.md` with real Cobra (remove/mark `ticket`, fix `mem add`).  
+8. **[P2][bench]** Honor `bench.default_agent`; add `--agent` to `compare`.  
+9. **[P2][verify/visual]** If zero screens evaluated → `skipped=true` (or FAIL), never silent PASS.  
+10. **[P2][graph]** Improve Python index (attributes, callers) and message when rebuild yields 0 nodes.  
+11. **[P2][graph]** Support `**` globs in scope (or document only `path/*` and `path/**`).  
+12. **[P3][config]** Revisit 0600 on shared monorepos; 0644 + separate secrets.  
+13. **[P3][mcp]** Structured errors when the graph is disabled/empty.
 
-## Métricas
+## Metrics
 
-| métrica | valor |
-|---------|--------|
-| Wall time somado dos comandos cronometrados no log | **~35,4 s** (70 amostras `WALL=`; exclui clone/`uv sync`/leitura humana) |
-| Wall time aproximado da sessão de estudo (incl. sync, cópias, exploração) | **~15–25 min** de calendário |
-| Invocações tb cronometradas | **~55–60** comandos `tb*` (resto = native/git) |
-| Falhas (EXIT≠0) entre todas as amostras timed | **25 / 70** (inclui falhas **intencionais** de repro de bugs e checks nativos negativos) |
-| Falhas tb “inesperadas” no caminho feliz do fix | poucas após ticket frontmatter correto: verify/drift/review/guard finais PASS |
-| Maior WALL individual | **9,96 s** (`pytest` nativo antes do venv apontar o patch certo) |
-| Rebuild de grafo útil | **1,345 s** / 16550 nós (`/tmp/python-sdk`) |
-| Verify final do fix | **3,518 s**, PASS |
-| MCP smoke | **<0,01 s** por request |
+| metric | value |
+|--------|--------|
+| Summed wall time of timed commands in the log | **~35.4 s** (70 `WALL=` samples; excludes clone/`uv sync`/human reading) |
+| Approximate study-session wall time (incl. sync, copies, exploration) | **~15–25 min** calendar |
+| Timed tb invocations | **~55–60** `tb*` commands (rest = native/git) |
+| Failures (EXIT≠0) among all timed samples | **25 / 70** (includes **intentional** bug-repro failures and negative native checks) |
+| “Unexpected” tb failures on the happy fix path | few after correct frontmatter ticket: final verify/drift/review/guard PASS |
+| Largest individual WALL | **9.96 s** (native `pytest` before the venv pointed at the right patch) |
+| Useful graph rebuild | **1.345 s** / 16550 nodes (`/tmp/python-sdk`) |
+| Final fix verify | **3.518 s**, PASS |
+| MCP smoke | **<0.01 s** per request |

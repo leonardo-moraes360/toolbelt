@@ -603,8 +603,8 @@ func TestInitDetailed_WarnsWhenNoTestToolchain(t *testing.T) {
 	}
 }
 
-// Dogfood #1: com config do golangci mas sem o binário no PATH, o init não
-// grava `golangci-lint run` (falharia no tb verify); cai para go vet.
+// Dogfood #1: with a golangci config but no binary on PATH, init does not
+// write `golangci-lint run` (tb verify would fail); it falls back to go vet.
 func TestDetectLintCmd_GolangciMissingFromPath(t *testing.T) {
 	withLookPath(t, map[string]bool{"go": true, "make": true})
 	root := t.TempDir()
@@ -623,7 +623,7 @@ func TestDetectLintCmd_GolangciMissingFromPath(t *testing.T) {
 	}
 }
 
-// Dogfood #7: config.yaml é versionável e não leva o modo 0600.
+// Dogfood #7: config.yaml is versioned, so it does not get mode 0600.
 func TestSaveUsesVersionedFileMode(t *testing.T) {
 	path := filepath.Join(t.TempDir(), DefaultConfigFile)
 	if err := Save(DefaultConfig(), path); err != nil {

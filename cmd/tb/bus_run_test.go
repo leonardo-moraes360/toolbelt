@@ -39,9 +39,8 @@ func buildFakeClaude(t *testing.T) string {
 	return bin
 }
 
-// TestBusRunHarnessClaudeEndToEnd: o harness acorda um "claude" fake, que
-// entra pelo MCP com --bus-as, lê a fila, faz claim/complete; o session_id
-// volta para o próximo --resume.
+// The harness wakes a fake "claude" that joins via MCP with --bus-as, reads
+// the queue and claims/completes; its session_id feeds the next --resume.
 func TestBusRunHarnessClaudeEndToEnd(t *testing.T) {
 	tbBin := buildTB(t)
 	fake := buildFakeClaude(t)
@@ -94,7 +93,7 @@ func TestBusRunHarnessClaudeEndToEnd(t *testing.T) {
 	}
 	assertFirstWakeArgv(t, dir)
 
-	// segundo despertar retoma a sessão
+	// Second wake resumes the session.
 	runBus(t, tbBin, dir, "send", "--channel", "fx", "--as", "boss", "--to", "agent:claude-w", "--type", "task.assign", "--thread", "T-2")
 	run()
 	argv, _ := os.ReadFile(filepath.Join(dir, "fakeclaude.log"))

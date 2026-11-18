@@ -11,12 +11,12 @@ import (
 	"github.com/leonardo-moraes360/toolbelt/internal/guard"
 )
 
-// ErrSensitive é devolvido (embrulhado) quando um ticket altera caminhos que
-// podem virar execução de código fora do sandbox (hooks, config, CI...).
+// ErrSensitive is returned (wrapped) when a ticket changes paths that can lead
+// to code execution outside the sandbox (hooks, config, CI...).
 var ErrSensitive = errors.New("caminhos sensíveis alterados")
 
-// hardenedGitArgs neutralizam execução de código via config/hooks: o merge
-// roda git FORA do sandbox sobre conteúdo escrito por agentes.
+// hardenedGitArgs neutralize code execution via config/hooks: merge runs git
+// OUTSIDE the sandbox over agent-written content.
 var hardenedGitArgs = []string{
 	"-c", "core.hooksPath=" + os.DevNull,
 	"-c", "core.fsmonitor=false",
@@ -28,7 +28,6 @@ var hardenedGitArgs = []string{
 	"-c", "submodule.recurse=false",
 }
 
-// Sensitive descreve um caminho sensível alterado por um ticket.
 type Sensitive struct {
 	Ticket string `json:"ticket"`
 	Path   string `json:"path"`
@@ -40,7 +39,6 @@ type change struct {
 	gitlink bool
 }
 
-// changes lista os caminhos alterados em base..head (sem renames) com modos.
 func changes(r runner, base, head string) ([]change, error) {
 	out, err := r.git(r.repo, "diff", "--raw", "--no-ext-diff", "--no-renames", "-z", "--no-abbrev", base, head)
 	if err != nil {
@@ -58,10 +56,10 @@ func changes(r runner, base, head string) ([]change, error) {
 	return res, nil
 }
 
-// hooksDirs devolve os diretórios (relativos à raiz, com "/" final) de hooks.
+// hooksDirs returns hook directories relative to the repo root, with a trailing "/".
 func hooksDirs(r runner) []string {
 	dirs := []string{".husky/", ".githooks/"}
-	// -c core.hooksPath (command scope) esconderia o valor real: lê por escopo.
+	// -c core.hooksPath (command scope) would hide the real value: read per scope.
 	hp := ""
 	for _, scope := range []string{"--system", "--global", "--local"} {
 		if v, _ := r.out(r.repo, "config", scope, "--get", "core.hooksPath"); strings.TrimSpace(v) != "" {
@@ -108,8 +106,8 @@ func sensitiveReason(p string, c change, hooks []string) string {
 	return ""
 }
 
-// detectSensitive verifica, por ticket, os caminhos sensíveis alterados.
-// Também reaproveita os paths protegidos do guard (defaults + guard.yaml da base).
+// detectSensitive also reuses guard's protected paths (defaults + the base's
+// guard.yaml).
 func detectSensitive(r runner, prep []prepared) ([]Sensitive, error) {
 	hooks := hooksDirs(r)
 	out := []Sensitive{}

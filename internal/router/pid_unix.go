@@ -7,7 +7,6 @@ import (
 	"syscall"
 )
 
-// PidAlive informa se o processo pid existe.
 func PidAlive(pid int) bool {
 	if pid <= 0 {
 		return false

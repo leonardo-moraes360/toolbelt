@@ -129,7 +129,6 @@ func TestTask_TimeoutDuration(t *testing.T) {
 func TestLoadTasksFromDir(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	// Cria duas tarefas
 	for _, id := range []string{"task-1", "task-2"} {
 		taskDir := filepath.Join(tmpDir, id)
 		os.MkdirAll(taskDir, 0o755)

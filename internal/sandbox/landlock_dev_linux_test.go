@@ -51,7 +51,7 @@ func TestSandboxDevRandomReadable(t *testing.T) {
 
 func TestSandboxDevDoesNotOpenOtherWrites(t *testing.T) {
 	sb := newLandlockSandbox(t, t.TempDir())
-	// /dev inteiro continua somente leitura: criar arquivo em /dev e gravar em /dev/urandom falham.
+	// /dev as a whole stays read-only: creating a file in /dev and writing to /dev/urandom fail.
 	for _, script := range []string{
 		"echo x > /dev/tb-sandbox-probe",
 		"echo x > /dev/urandom",
@@ -80,7 +80,7 @@ func TestSandboxGitInitStatus(t *testing.T) {
 	if !kernelLandlockPresent() {
 		t.Skip("kernel sem Landlock")
 	}
-	// HOME aponta para o workdir: o ~/.gitconfig real não é (e não deve ser) acessível no sandbox.
+	// HOME points at the workdir: the real ~/.gitconfig is not (and must not be) reachable in the sandbox.
 	sb, err := New(Config{WorkDir: work, Timeout: 20 * time.Second, Env: []string{
 		"PATH=" + os.Getenv("PATH"), "HOME=" + work, "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL=/dev/null",
 	}})
@@ -124,7 +124,7 @@ func TestDeviceRuleMaskFileScoped(t *testing.T) {
 func TestSandboxDevTTYNotWritable(t *testing.T) {
 	sb := newLandlockSandbox(t, t.TempDir())
 	var targets []string
-	// /dev/tty só conta se abrir fora do sandbox (há terminal de controle).
+	// /dev/tty only counts if it opens outside the sandbox (there is a controlling terminal).
 	if f, err := os.OpenFile("/dev/tty", os.O_WRONLY, 0); err == nil {
 		f.Close()
 		targets = append(targets, "/dev/tty")

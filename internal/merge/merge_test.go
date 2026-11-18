@@ -34,7 +34,7 @@ func write(t *testing.T, dir, name, content string) {
 	}
 }
 
-// newRepo cria um repo com branch main, commit base e .toolbelt ignorado.
+// newRepo creates a repo with a main branch, a base commit and .toolbelt ignored.
 func newRepo(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
@@ -50,13 +50,13 @@ func newRepo(t *testing.T) string {
 	return dir
 }
 
-// addTicket cria um branch a partir de main com edits e registra o ticket done.
+// addTicket branches off main with edits and registers the ticket as done.
 func addTicket(t *testing.T, dir string, deps []string, edits map[string]string) ticket.Ticket {
 	t.Helper()
 	return addTicketForce(t, dir, deps, edits, nil)
 }
 
-// addTicketForce é addTicket com `git add -f` nos caminhos listados (ignorados).
+// addTicketForce is addTicket with `git add -f` on the listed (ignored) paths.
 func addTicketForce(t *testing.T, dir string, deps []string, edits map[string]string, force []string) ticket.Ticket {
 	t.Helper()
 	s := ticket.Open(dir)
@@ -138,7 +138,7 @@ func TestDisjointMergeAdvancesBranch(t *testing.T) {
 		}
 	}
 	assertNoTempWorktree(t, dir)
-	// já mergeado exige --force
+	// already merged requires --force
 	if _, err := Run(&Options{Repo: dir, Store: s, IDs: []string{a.ID}}); err == nil || !strings.Contains(err.Error(), "--force") {
 		t.Fatalf("esperava erro de já mergeado: %v", err)
 	}
@@ -237,7 +237,6 @@ func TestDryRunAndOutput(t *testing.T) {
 		t.Fatal("--output moveu ref")
 	}
 	assertNoTempWorktree(t, dir)
-	// patch aplica limpo
 	git(t, dir, "apply", "--check", patch)
 }
 
@@ -287,7 +286,7 @@ func TestNotDoneRejected(t *testing.T) {
 
 func TestDependencyOrder(t *testing.T) {
 	dir := newRepo(t)
-	// TKT-001 depende de TKT-002 -> 002 deve vir primeiro mesmo passado por último.
+	// TKT-001 depends on TKT-002 -> 002 must come first even when passed last.
 	b := addTicket(t, dir, nil, map[string]string{"shared.txt": "base-dep\n"})
 	_ = b
 	s := ticket.Open(dir)
@@ -342,7 +341,7 @@ func TestParseStrategyAndRefs(t *testing.T) {
 
 func TestOverlapDetectedAcrossRename(t *testing.T) {
 	dir := newRepo(t)
-	// ticket A renomeia shared.txt -> moved.txt
+	// ticket A renames shared.txt -> moved.txt
 	s := ticket.Open(dir)
 	tk, err := s.Create(&ticket.Ticket{Title: "rename"})
 	if err != nil {
@@ -364,7 +363,7 @@ func TestOverlapDetectedAcrossRename(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	// ticket B edita o caminho antigo
+	// ticket B edits the old path
 	addTicket(t, dir, nil, map[string]string{"shared.txt": "l1\nl2\nl3\nl4\nl5\nl6\nl7\nl8\nL9\n"})
 	res, err := Run(&Options{Repo: dir, Store: s, IDs: []string{"TKT-001", "TKT-002"}, DryRun: true})
 	if err != nil {
@@ -386,7 +385,7 @@ func TestOverlapDetectedAcrossRename(t *testing.T) {
 
 func TestLastWinsSurvivesGPGSignAndHooks(t *testing.T) {
 	dir := conflictRepo(t)
-	// gpgsign sem chave + hook que sempre falha: o worktree interno deve ignorar ambos.
+	// gpgsign without a key + a hook that always fails: the internal worktree must ignore both.
 	git(t, dir, "config", "commit.gpgsign", "true")
 	git(t, dir, "config", "gpg.program", "false")
 	hooks := filepath.Join(dir, ".git", "hooks")
@@ -407,7 +406,7 @@ func TestLastWinsSurvivesGPGSignAndHooks(t *testing.T) {
 	if git(t, dir, "rev-parse", "main") != start {
 		t.Fatal("dry-run moveu ref")
 	}
-	// o commit do ticket 2 não pode ter sido perdido: diff alvo..resultado contém "two"
+	// ticket 2's commit must not be lost: the target..result diff contains "two"
 	if got := git(t, dir, "show", res.ResultSHA+":shared.txt"); got != "two" {
 		t.Fatalf("conteúdo do resultado: %q", got)
 	}
@@ -416,8 +415,8 @@ func TestLastWinsSurvivesGPGSignAndHooks(t *testing.T) {
 	}
 }
 
-// Hook que só falha no commit pós-conflito: antes do fix o --skip engolia o
-// commit do ticket e o resultado ficava sem "two".
+// Hook that only fails on the post-conflict commit: before the fix, --skip
+// swallowed the ticket's commit and the result lacked "two".
 func TestLastWinsContinueFailureDoesNotLoseCommit(t *testing.T) {
 	dir := conflictRepo(t)
 	hooks := filepath.Join(dir, ".git", "hooks")
@@ -438,7 +437,7 @@ func markerHook(marker string) string {
 	return "#!/bin/sh\necho pwned > " + marker + "\n"
 }
 
-// hooksRepo: core.hooksPath=.githooks com hooks rastreados; o ticket troca o hook.
+// hooksRepo: core.hooksPath=.githooks with tracked hooks; the ticket swaps the hook.
 func hooksRepo(t *testing.T, hook string, trapped bool) (dir, marker string) {
 	t.Helper()
 	dir = newRepo(t)
@@ -452,7 +451,7 @@ func hooksRepo(t *testing.T, hook string, trapped bool) (dir, marker string) {
 	git(t, dir, "add", "-A")
 	git(t, dir, "commit", "-q", "-m", "hooks")
 	git(t, dir, "config", "core.hooksPath", ".githooks")
-	_ = os.Remove(marker) // o commit acima pode ter disparado o hook
+	_ = os.Remove(marker) // the commit above may have fired the hook
 	return dir, marker
 }
 
@@ -484,7 +483,7 @@ func TestSensitiveHooksRefusedAndHardenedFF(t *testing.T) {
 		t.Fatal("MergedAt marcado")
 	}
 
-	// dry-run só reporta
+	// dry-run only reports
 	res, err = Run(&Options{Repo: dir, Store: s, IDs: []string{"TKT-001"}, DryRun: true})
 	if err != nil || len(res.Sensitive) != 1 {
 		t.Fatalf("dry-run: %v %+v", err, res)
@@ -507,7 +506,7 @@ func TestLastWinsDoesNotRunTrackedPostCheckout(t *testing.T) {
 	dir, marker := hooksRepo(t, "post-checkout", true)
 	addTicket(t, dir, nil, map[string]string{"shared.txt": "one\n"})
 	addTicket(t, dir, nil, map[string]string{"shared.txt": "two\n"})
-	_ = os.Remove(marker) // checkouts do setup dispararam o hook
+	_ = os.Remove(marker) // setup checkouts fired the hook
 	res, err := Run(&Options{Repo: dir, Store: ticket.Open(dir), IDs: []string{"TKT-001", "TKT-002"}, Strategy: StrategyLastWins, AllowSensitive: true})
 	if err != nil {
 		t.Fatal(err)

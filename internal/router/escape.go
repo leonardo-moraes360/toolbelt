@@ -8,12 +8,13 @@ import (
 	"github.com/leonardo-moraes360/toolbelt/internal/sandbox"
 )
 
-// ticketIDVar é a variável de ambiente (herdada do agente) que atribui um
-// processo escapado ao seu ticket. Só ela é lida de /proc/<pid>/environ.
+// ticketIDVar is the environment variable (inherited from the agent) that
+// attributes an escaped process to its ticket. It is the only one read from
+// /proc/<pid>/environ.
 const ticketIDVar = "TB_TICKET_ID"
 
-// pendingAlert é um alerta decidido fora da goroutine principal (worker): o
-// estado de alertas pertence à goroutine de Run, que o emite em complete.
+// pendingAlert is decided off the main goroutine (in a worker): alert state
+// belongs to the Run goroutine, which emits it in complete.
 type pendingAlert struct {
 	kind, severity, worker, ticket, msg, action string
 }
@@ -22,9 +23,9 @@ func (r *Router) emit(p *pendingAlert) {
 	r.alert(p.kind, p.severity, p.worker, p.ticket, p.msg, p.action)
 }
 
-// markActive/unmarkActive registram os tickets cujo AGENTE está executando
-// (entre o início do sandbox e o fim do execute). São os suspeitos de um escape
-// não atribuível; o worker em createWorkspace ainda não tem agente.
+// markActive/unmarkActive track tickets whose AGENT is running (from sandbox
+// start to the end of execute). They are the suspects of an unattributable
+// escape; a worker still in createWorkspace has no agent yet.
 func (r *Router) markActive(id, worker string) {
 	r.escapedMu.Lock()
 	if r.active == nil {
@@ -40,7 +41,7 @@ func (r *Router) unmarkActive(id string) {
 	r.escapedMu.Unlock()
 }
 
-// takeEscaped consome a marca de escape de um ticket (ver collectEscapes).
+// takeEscaped consumes a ticket's escape mark (see collectEscapes).
 func (r *Router) takeEscaped(id string) bool {
 	r.escapedMu.Lock()
 	defer r.escapedMu.Unlock()
@@ -49,27 +50,28 @@ func (r *Router) takeEscaped(id string) bool {
 	return ok
 }
 
-// collectEscapes varre os órfãos (já mortos pelo Registry) e decide a quem
-// atribuí-los. Seguro para qualquer goroutine; devolve alertas a emitir.
+// collectEscapes sweeps orphans (already killed by the Registry) and decides
+// whom to attribute them to. Safe from any goroutine; returns the alerts to emit.
 //
-// Atribuição (nunca "o ticket cujo execute varreu"):
-//   - benigno: nasceu numa janela de spawn do git do workspace manager (daemon de
-//     hook/fsmonitor do usuário), sem TB_TICKET_ID e sem ter invadido grupo de
-//     agente: morto, alerta orphan_killed (warn), nenhum ticket falha.
-//   - TB_TICKET_ID de um ticket com agente rodando: falha esse ticket.
-//   - TB_TICKET_ID ausente (env -u), ilegível ou desconhecido (finalizado,
-//     forjado): não atribuível. Conservador: falham TODOS os tickets com agente
-//     rodando no momento da detecção (alerta agent_escaped com a lista, motivo
-//     "não atribuível"). Sem nenhum agente rodando: orphan_killed (warn).
+// Attribution (never "the ticket whose execute ran the sweep"):
+//   - benign: born inside a spawn window of the workspace manager's git (user
+//     hook/fsmonitor daemon), with no TB_TICKET_ID and without having entered an
+//     agent group: killed, orphan_killed alert (warn), no ticket fails.
+//   - TB_TICKET_ID of a ticket with a running agent: that ticket fails.
+//   - TB_TICKET_ID missing (env -u), unreadable or unknown (finished, forged):
+//     unattributable. Conservative: ALL tickets with an agent running at
+//     detection time fail (agent_escaped alert listing them, reason
+//     "não atribuível"). With no agent running: orphan_killed (warn).
 //
-// Limitação: um agente que forja TB_TICKET_ID de outro ticket ATIVO faz o
-// escape ser atribuído a este (o ambiente é a única pista após o reparenting).
+// Limitation: an agent that forges the TB_TICKET_ID of another ACTIVE ticket gets
+// the escape attributed to that ticket (the environment is the only clue left
+// after reparenting).
 func (r *Router) collectEscapes() []pendingAlert {
 	return r.classifyEscapes(procs.Sweep())
 }
 
-// classifyEscapes aplica a política de atribuição de collectEscapes a órfãos já
-// varridos (separado para ser testável com órfãos sintéticos).
+// classifyEscapes applies collectEscapes' attribution policy to orphans that
+// were already swept (split out to be testable with synthetic orphans).
 func (r *Router) classifyEscapes(orphans []sandbox.Orphan) []pendingAlert {
 	if len(orphans) == 0 {
 		return nil
@@ -126,8 +128,8 @@ func describeID(id string) string {
 	return "desconhecido: " + id
 }
 
-// sweepTick varre órfãos escapados durante a execução (watchdog, goroutine
-// principal) e emite os alertas na hora.
+// sweepTick sweeps orphans that escaped during execution (watchdog, main
+// goroutine) and emits the alerts immediately.
 func (r *Router) sweepTick() {
 	alerts := r.collectEscapes()
 	for i := range alerts {

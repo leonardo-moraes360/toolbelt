@@ -1,4 +1,4 @@
-// Package bench fornece o harness de benchmark para medir performance de agentes.
+// Package bench is the harness for benchmarking coding agents.
 package bench
 
 import (
@@ -10,58 +10,45 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Task representa uma tarefa de benchmark.
 type Task struct {
-	// ID identificador único da tarefa.
 	ID string `yaml:"id" json:"id"`
 
-	// Name nome legível da tarefa.
 	Name string `yaml:"name" json:"name"`
 
-	// Description descrição detalhada.
 	Description string `yaml:"description" json:"description"`
 
-	// Category categoria da tarefa (bugfix, feature, refactor, etc).
+	// bugfix, feature, refactor, etc.
 	Category string `yaml:"category" json:"category"`
 
-	// Difficulty nível de dificuldade (easy, medium, hard).
+	// easy, medium or hard.
 	Difficulty string `yaml:"difficulty" json:"difficulty"`
 
-	// Prompt é a instrução para o agente.
 	Prompt string `yaml:"prompt" json:"prompt"`
 
-	// Fixture é o caminho para o diretório de fixture (código inicial).
+	// Directory holding the starting code.
 	Fixture string `yaml:"fixture" json:"fixture"`
 
-	// Verification define como verificar o resultado.
 	Verification Verification `yaml:"verification" json:"verification"`
 
-	// Timeout tempo máximo para completar a tarefa.
 	Timeout string `yaml:"timeout" json:"timeout"`
 
-	// HiddenTests caminho para testes ocultos (opcional).
 	HiddenTests string `yaml:"hidden_tests,omitempty" json:"hidden_tests,omitempty"`
 
-	// ExpectedChanges arquivos que devem ser modificados (opcional).
+	// Files that must be modified.
 	ExpectedChanges []string `yaml:"expected_changes,omitempty" json:"expected_changes,omitempty"`
 
-	// MaxTokens limite de tokens (opcional).
 	MaxTokens int `yaml:"max_tokens,omitempty" json:"max_tokens,omitempty"`
 }
 
-// Verification define como verificar o resultado de uma tarefa.
 type Verification struct {
-	// Command command shell para verificar (ex: "go test ./...")
+	// Shell command, e.g. "go test ./...".
 	Command string `yaml:"command" json:"command"`
 
-	// Timeout tempo máximo para verificação.
 	Timeout string `yaml:"timeout" json:"timeout"`
 
-	// ExpectedExitCode código de saída esperado (default: 0).
 	ExpectedExitCode int `yaml:"expected_exit_code" json:"expected_exit_code"`
 }
 
-// LoadTask carrega uma tarefa de um arquivo YAML.
 func LoadTask(path string) (*Task, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -80,7 +67,6 @@ func LoadTask(path string) (*Task, error) {
 	return &task, nil
 }
 
-// LoadTasksFromDir carrega todas as tarefas de um diretório.
 func LoadTasksFromDir(dir string) ([]*Task, error) {
 	var tasks []*Task
 
@@ -110,7 +96,6 @@ func LoadTasksFromDir(dir string) ([]*Task, error) {
 	return tasks, nil
 }
 
-// Validate verifica se a tarefa está bem formada.
 func (t *Task) Validate() error {
 	if t.ID == "" {
 		return fmt.Errorf("task ID is required")
@@ -124,7 +109,6 @@ func (t *Task) Validate() error {
 	return nil
 }
 
-// TimeoutDuration retorna o timeout como time.Duration.
 func (t *Task) TimeoutDuration() time.Duration {
 	if t.Timeout == "" {
 		return 10 * time.Minute
@@ -136,7 +120,6 @@ func (t *Task) TimeoutDuration() time.Duration {
 	return d
 }
 
-// VerificationTimeoutDuration retorna o timeout de verificação como time.Duration.
 func (v *Verification) TimeoutDuration() time.Duration {
 	if v.Timeout == "" {
 		return 2 * time.Minute

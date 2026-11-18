@@ -1,46 +1,44 @@
-🇧🇷 Português | [🇺🇸 English](en/site.md)
-
-🇧🇷 Português | [🇺🇸 English](en/site.md)
+🇺🇸 English | [🇧🇷 Português](pt-BR/site.md)
 
 # Landing page (GitHub Pages)
 
-O site estático em [`site/`](../site/) é a landing pública do toolbelt (`tb`).
+The static site in [`site/`](../site/) is toolbelt's public landing page (`tb`).
 
-URL prevista: <https://leonardo-moraes360.github.io/toolbelt/>
+Expected URL: <https://leonardo-moraes360.github.io/toolbelt/>
 
-## Conteúdo
+## Content
 
-- HTML/CSS/JS mínimo, sem framework nem build step
-- Caminhos relativos (`./styles.css`, `./assets/…`) para funcionar no subpath `/toolbelt/`
-- Tema Synthwave alinhado a [`identidade-visual.md`](identidade-visual.md)
-- Toggle PT/EN opcional (pt-BR é o idioma principal)
+- Minimal HTML/CSS/JS, no framework or build step
+- Relative paths (`./styles.css`, `./assets/…`) so it works on the `/toolbelt/` subpath
+- Synthwave theme aligned with [`identidade-visual.md`](identidade-visual.md)
+- Optional PT/EN toggle (pt-BR is the primary language)
 
-## Publicação
+## Publishing
 
-O workflow [`.github/workflows/pages.yml`](../.github/workflows/pages.yml) publica o diretório `site/` via GitHub Actions:
+The [`.github/workflows/pages.yml`](../.github/workflows/pages.yml) workflow publishes the `site/` directory via GitHub Actions:
 
-- dispara em `push` para `main` que altere `site/**` ou o próprio workflow
-- também via `workflow_dispatch`
-- permissões mínimas: `contents: read`, `pages: write`, `id-token: write`
+- triggers on `push` to `main` that changes `site/**` or the workflow itself
+- also via `workflow_dispatch`
+- minimal permissions: `contents: read`, `pages: write`, `id-token: write`
 - concurrency group `pages`
-- actions pinadas por versão (`configure-pages`, `upload-pages-artifact`, `deploy-pages`)
+- actions pinned by version (`configure-pages`, `upload-pages-artifact`, `deploy-pages`)
 
-### Habilitar Pages no repositório
+### Enable Pages on the repository
 
-O Pages **ainda precisa ser habilitado manualmente** por um admin do repositório. O workflow **não** usa `enablement: true`.
+Pages **still must be enabled manually** by a repository admin. The workflow does **not** use `enablement: true`.
 
-1. Abra **Settings → Pages**
-2. Em **Build and deployment → Source**, escolha **GitHub Actions**
-3. Faça merge na `main` (ou rode o workflow manualmente) após o site existir em `site/`
+1. Open **Settings → Pages**
+2. Under **Build and deployment → Source**, choose **GitHub Actions**
+3. Merge to `main` (or run the workflow manually) after the site exists in `site/`
 
-Até essa configuração, o workflow pode falhar no job de deploy por ambiente `github-pages` ausente — isso é esperado.
+Until that is configured, the workflow may fail on the deploy job because the `github-pages` environment is missing — that is expected.
 
-## Pré-visualização local
+## Local preview
 
 ```bash
 cd site
 python3 -m http.server 8080
-# abra http://127.0.0.1:8080/
+# open http://127.0.0.1:8080/
 ```
 
-Verifique links internos (`#problema`, `#comandos`, `#mcp`, `#instalar`, `#docs`), o botão Copiar nos blocos de comando e o layout em viewport estreita.
+Check internal links (`#problema`, `#comandos`, `#mcp`, `#instalar`, `#docs`), the Copy button on command blocks, and layout on a narrow viewport.

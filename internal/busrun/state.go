@@ -12,7 +12,7 @@ import (
 	"github.com/leonardo-moraes360/toolbelt/internal/mem"
 )
 
-// RunDir devolve <privado>/run/<canal> (fora do repositório; ver bus.PrivateDir).
+// RunDir is <private>/run/<channel>, outside the repo (see bus.PrivateDir).
 func RunDir(root, channel string) (string, error) {
 	priv, err := bus.PrivateDir(root)
 	if err != nil {
@@ -21,7 +21,6 @@ func RunDir(root, channel string) (string, error) {
 	return filepath.Join(priv, "run", channel), nil
 }
 
-// State é o estado persistido do harness de um agente.
 type State struct {
 	NotifiedSeq int64     `json:"notified_seq"`
 	NotifiedAt  time.Time `json:"notified_at,omitempty"`
@@ -30,8 +29,8 @@ type State struct {
 	Read        bool      `json:"read,omitempty"`
 	FailedSeq   int64     `json:"failed_seq,omitempty"`
 	Session     string    `json:"session,omitempty"`
-	// ConfigSession é o harness.session da config na última execução: se o
-	// humano mudar a config, ela vence a sessão gravada.
+	// harness.session from the config on the last run: if the human changes
+	// the config, it wins over the saved session.
 	ConfigSession string      `json:"config_session,omitempty"`
 	Wakes         []time.Time `json:"wakes,omitempty"`
 }
@@ -63,7 +62,7 @@ func saveState(path string, st *State) error {
 	return os.Rename(tmp, path)
 }
 
-// allowWake aplica o orçamento (janela deslizante) e registra o despertar.
+// allowWake applies the sliding-window budget and records the wake.
 func (st *State) allowWake(now time.Time, b Budget) bool {
 	kept := st.Wakes[:0]
 	for _, t := range st.Wakes {
@@ -79,7 +78,6 @@ func (st *State) allowWake(now time.Time, b Budget) bool {
 	return true
 }
 
-// Event é uma linha do log de auditoria do harness.
 type Event struct {
 	Time       time.Time `json:"time"`
 	Event      string    `json:"event"`
@@ -96,7 +94,7 @@ const maxDetail = 4 << 10
 type auditLog struct{ path string }
 
 func (a auditLog) write(ev *Event) error {
-	ev.Detail = mem.RedactText(ev.Detail) // antes de truncar: o corte não pode partir um segredo
+	ev.Detail = mem.RedactText(ev.Detail) // before truncating: the cut must not split a secret
 	if len(ev.Detail) > maxDetail {
 		ev.Detail = ev.Detail[len(ev.Detail)-maxDetail:]
 	}

@@ -14,8 +14,7 @@ const (
 	lockTimeout    = 0
 )
 
-// acquireLock usa um lockfile O_EXCL com detecção de lock obsoleto
-// (fallback para sistemas sem flock).
+// Fallback for systems without flock: O_EXCL lockfile with stale-lock detection.
 func acquireLock(path string) (func(), error) {
 	lockPath := path + ".excl"
 	deadline := time.Now().Add(lockTimeout)

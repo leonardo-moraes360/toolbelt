@@ -22,24 +22,25 @@ type Config struct {
 	ForbiddenPaths   []string
 	Timeout          time.Duration
 	AllowUnsandboxed bool
-	// Env, quando não nil, é o ambiente completo do processo filho (use
-	// execenv.Filter para remover segredos). nil mantém o comportamento
-	// anterior: o filho herda o ambiente do processo atual.
+	// Env, when non-nil, is the child's full environment (use execenv.Filter
+	// to strip secrets). nil keeps the previous behavior: the child inherits the
+	// current process environment.
 	Env []string
-	// ProcessGroup isola o filho num grupo de processos próprio e mata o grupo
-	// inteiro ao cancelar o contexto/timeout (usado pelo router/watchdog).
+	// ProcessGroup puts the child in its own process group and kills the whole
+	// group on context cancellation/timeout (used by the router/watchdog).
 	ProcessGroup bool
-	// Registry, quando não nil (só com ProcessGroup), rastreia o pid do filho e,
-	// após o agente terminar, espera o grupo esvaziar para que descendentes que
-	// escaparam (setsid/setpgid) apareçam como órfãos em Registry.Sweep. nil
-	// (padrão, `tb sandbox run`) mantém o comportamento anterior.
+	// Registry, when non-nil (only with ProcessGroup), tracks the child's pid and,
+	// after the agent exits, waits for the group to drain so descendants that
+	// escaped (setsid/setpgid) show up as orphans in Registry.Sweep. nil
+	// (default, `tb sandbox run`) keeps the previous behavior.
 	Registry *Registry
-	// GroupOwner identifica o dono do grupo (o ticket) no Registry: descendentes
-	// órfãos achados nesse grupo cujo ambiente aponte outro dono são tratados como
-	// escape (ver Registry.sweepLocked). Só vale com ProcessGroup e Registry.
+	// GroupOwner identifies the group's owner (the ticket) in the Registry:
+	// orphaned descendants found in this group whose environment names another
+	// owner are treated as an escape (see Registry.sweepLocked). Only applies with
+	// ProcessGroup and Registry.
 	GroupOwner string
-	// Stdin, quando não nil, vira a entrada padrão do filho (atravessa o
-	// trampolim Landlock: syscall.Exec preserva os descritores).
+	// Stdin, when non-nil, becomes the child's standard input (it survives the
+	// Landlock trampoline: syscall.Exec preserves descriptors).
 	Stdin io.Reader
 }
 
@@ -62,8 +63,7 @@ type Result struct {
 	Sandboxed bool          `json:"sandboxed"`
 }
 
-func New(config Config) (*Sandbox, error) { //nolint:gocritic // API pública estável por valor
-
+func New(config Config) (*Sandbox, error) { //nolint:gocritic // stable public API passed by value
 	if config.WorkDir == "" {
 		return nil, errors.New("workdir obrigatório")
 	}
@@ -109,7 +109,7 @@ func (s *Sandbox) Run(ctx context.Context, command string, args ...string) (*Res
 }
 
 func (s *Sandbox) runPlain(ctx context.Context, bin string, args ...string) (*Result, error) {
-	cmd := exec.CommandContext(ctx, bin, args...) //nolint:gosec // sandbox invocado explicitamente pelo operador
+	cmd := exec.CommandContext(ctx, bin, args...) //nolint:gosec // sandbox explicitly invoked by the operator
 	cmd.Dir = s.config.WorkDir
 	cmd.Stdin = s.config.Stdin
 	if s.config.Env != nil {
@@ -127,21 +127,21 @@ func (s *Sandbox) runIsolated(ctx context.Context, bin string, args ...string) (
 	if err != nil {
 		return nil, err
 	}
-	cmd := exec.CommandContext(ctx, self) //nolint:gosec // re-exec do próprio binário como trampolim Landlock
+	cmd := exec.CommandContext(ctx, self) //nolint:gosec // re-exec of our own binary as the Landlock trampoline
 	cmd.Dir = s.config.WorkDir
 	cmd.Stdin = s.config.Stdin
 	cmd.Env = env
 	return finishRun(ctx, cmd, true, s.config.ProcessGroup, s.config.Registry, s.config.GroupOwner)
 }
 
-// MaxOutputBytes limita a saída do filho mantida em memória/log: só o final
-// (tail) é preservado.
+// MaxOutputBytes caps the child output kept in memory/log: only the tail is
+// preserved.
 const MaxOutputBytes = 1 << 20
 
 const truncatedMarker = "[... saída anterior truncada; mantidos os últimos 1 MiB ...]\n"
 
-// tailBuffer é um io.Writer seguro entre goroutines que guarda só os últimos
-// max bytes escritos. Nunca devolve erro (não aplica backpressure ao filho).
+// tailBuffer is a goroutine-safe io.Writer that keeps only the last max bytes
+// written. It never returns an error (no backpressure on the child).
 type tailBuffer struct {
 	mu        sync.Mutex
 	max       int
@@ -178,8 +178,8 @@ func (t *tailBuffer) String() string {
 func finishRun(ctx context.Context, cmd *exec.Cmd, sandboxed, group bool, reg *Registry, owner string) (*Result, error) {
 	if group {
 		killProcessGroup(cmd)
-		// Pdeathsig (linux) vale para a thread que faz o fork: mantém esta
-		// goroutine presa à mesma thread até o filho terminar.
+		// Pdeathsig (linux) applies to the thread that forks: keep this goroutine
+		// pinned to the same thread until the child exits.
 		runtime.LockOSThread()
 		defer runtime.UnlockOSThread()
 	}
@@ -194,8 +194,8 @@ func finishRun(ctx context.Context, cmd *exec.Cmd, sandboxed, group bool, reg *R
 		err = cmd.Run()
 	}
 	if group {
-		// Em qualquer caminho (sucesso, falha, cancelamento) nada do grupo pode
-		// sobreviver ao agente: netos em segundo plano são encerrados.
+		// On every path (success, failure, cancellation) nothing in the group may
+		// outlive the agent: background grandchildren are terminated.
 		reapProcessGroup(cmd)
 		if reg != nil && cmd.Process != nil {
 			settleGroup(reg, cmd.Process.Pid)
@@ -203,8 +203,8 @@ func finishRun(ctx context.Context, cmd *exec.Cmd, sandboxed, group bool, reg *R
 	}
 	res := &Result{Output: out.String(), Duration: time.Since(start), Sandboxed: sandboxed}
 
-	// Agente saiu com 0 mas deixou um filho segurando stdout/stderr: o Go devolve
-	// ErrWaitDelay. O agente terminou com sucesso; o grupo já foi encerrado acima.
+	// The agent exited 0 but left a child holding stdout/stderr: Go returns
+	// ErrWaitDelay. The agent succeeded; the group was already terminated above.
 	if err != nil && errors.Is(err, exec.ErrWaitDelay) && cmd.ProcessState != nil && cmd.ProcessState.Success() {
 		err = nil
 	}
@@ -254,9 +254,10 @@ func (s *Sandbox) ValidatePath(path string) error {
 	return fmt.Errorf("fora do escopo: %s", path)
 }
 
-// isSubpath informa se path é descendente estrito de base (base em si não
-// conta). Resultados de filepath.Rel que sobem de nível ("..", "../x") ficam
-// de fora; nomes que só começam com ".." (ex.: "..x") são filhos legítimos.
+// isSubpath reports whether path is a strict descendant of base (base itself
+// does not count). filepath.Rel results that climb up ("..", "../x") are
+// excluded; names that merely start with ".." (e.g. "..x") are legitimate
+// children.
 func isSubpath(path, base string) bool {
 	rel, err := filepath.Rel(base, path)
 	if err != nil {
@@ -276,15 +277,15 @@ func landlockAvailable() bool {
 	return ok
 }
 
-// landlockSupported é a sonda de Landlock usada por New. É uma variável para que
-// os testes simulem um host sem Landlock (ver OverrideLandlockProbe); em
-// produção é sempre CheckLandlockSupport.
+// landlockSupported is the Landlock probe used by New. It is a variable so
+// tests can simulate a host without Landlock (see OverrideLandlockProbe); in
+// production it is always CheckLandlockSupport.
 var landlockSupported = CheckLandlockSupport
 
-// OverrideLandlockProbe substitui a sonda de Landlock e devolve a função que a
-// restaura. SOMENTE para testes (do próprio pacote e de pacotes que precisam
-// exercitar o fail-closed, como o router): permite verificar que sem Landlock e
-// sem AllowUnsandboxed nada é executado, independentemente do kernel do CI.
+// OverrideLandlockProbe replaces the Landlock probe and returns a function that
+// restores it. Tests ONLY (this package's and packages that need to exercise
+// fail-closed, like the router): it verifies that without Landlock and without
+// AllowUnsandboxed nothing runs, regardless of the CI kernel.
 func OverrideLandlockProbe(fn func() (bool, int, error)) (restore func()) {
 	prev := landlockSupported
 	landlockSupported = fn

@@ -4,9 +4,9 @@ package sandbox
 
 import "syscall"
 
-// setPdeathsig pede ao kernel que mate o filho (SIGKILL) se o processo pai
-// morrer. Atenção: Pdeathsig é atrelado à *thread* que fez o fork; por isso
-// finishRun trava a goroutine na thread (runtime.LockOSThread) até o filho
-// terminar. Cobre morte abrupta do router (kill -9); o grupo restante é
-// limitado pelo próprio filho morto + reapProcessGroup nos caminhos normais.
+// setPdeathsig asks the kernel to kill the child (SIGKILL) if the parent dies.
+// Caveat: Pdeathsig is tied to the *thread* that forked, so finishRun locks the
+// goroutine to its thread (runtime.LockOSThread) until the child exits. It
+// covers abrupt router death (kill -9); the rest of the group is bounded by the
+// dead child itself + reapProcessGroup on normal paths.
 func setPdeathsig(a *syscall.SysProcAttr) { a.Pdeathsig = syscall.SIGKILL }

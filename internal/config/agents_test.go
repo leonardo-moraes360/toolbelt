@@ -358,8 +358,8 @@ func TestHandleAgentDocs_WriteAgentsDoesNotClobber(t *testing.T) {
 	}
 }
 
-// Dogfood #18: comentário dentro de fence bash e nome de ferramenta solto
-// na prosa não viram dicas.
+// Dogfood #18: comments inside a bash fence and bare tool names in prose
+// do not become hints.
 func TestExtractCommandHints_SkipsCommentsAndBareTools(t *testing.T) {
 	content := "## Setup\n\n```bash\n# `make install` sobrescreve o build local\n" +
 		"go vet ./...   # roda o vet\ntb mem check\n```\n\n" +

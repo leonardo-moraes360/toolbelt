@@ -444,7 +444,7 @@ func failReason(step, output string) string {
 func runConfiguredCmd(ctx context.Context, cfg *Config, command, configKey string) (ok bool, output string, err error) {
 	ctx, cancel := context.WithTimeout(ctx, cfg.Timeout)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "sh", "-c", command) //nolint:gosec // ruler configurado pelo operador
+	cmd := exec.CommandContext(ctx, "sh", "-c", command) //nolint:gosec // operator-configured ruler
 	cmd.Dir = cfg.RepoDir
 	cmd.Env = execenv.Environ(execenv.Options{Allow: cfg.EnvAllow, Pass: cfg.EnvPass})
 	out, runErr := cmd.CombinedOutput()

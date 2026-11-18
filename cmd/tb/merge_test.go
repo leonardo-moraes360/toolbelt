@@ -79,7 +79,7 @@ func TestMergeCLI(t *testing.T) {
 	}
 }
 
-// mergeCLIRejections: estratégia inválida e conflito com fail não movem refs.
+// An invalid strategy and a conflict under fail must not move refs.
 func mergeCLIRejections(t *testing.T, bin, dir, start string) {
 	t.Helper()
 	if out, err := runTB(t, bin, dir, "merge", "--strategy", "semantic", "1"); err == nil || !strings.Contains(out, "não implementado") {
@@ -94,7 +94,6 @@ func mergeCLIRejections(t *testing.T, bin, dir, start string) {
 	}
 }
 
-// mergeCLIApplyLastWins: dry-run e aplicação real com last_wins.
 func mergeCLIApplyLastWins(t *testing.T, bin, dir string) {
 	t.Helper()
 	out, err := runTB(t, bin, dir, "merge", "--dry-run", "--strategy", "last_wins", "1", "2")

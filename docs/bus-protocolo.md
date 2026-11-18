@@ -1,40 +1,40 @@
-🇧🇷 Português | [🇺🇸 English](en/bus-protocolo.md)
+🇺🇸 English | [🇧🇷 Português](pt-BR/bus-protocolo.md)
 
-# Protocolo do barramento (`bus/0.1`)
+# Bus protocol (`bus/0.1`)
 
-Especificação da etapa **B0** do [ADR-013](adr/013-barramento-multi-vendor.md): envelope de mensagem, Agent Card, convite e regras do broker. A etapa **B1** implementa esta spec em `tb bus` (CLI) e nas ferramentas MCP `tb_bus_*`.
+Specification for stage **B0** of [ADR-013](adr/013-barramento-multi-vendor.md): message envelope, Agent Card, invite and broker rules. Stage **B1** implements this spec in `tb bus` (CLI) and in the `tb_bus_*` MCP tools.
 
-> O ADR cita as ferramentas como `bus_*`. No `tb mcp` elas seguem o prefixo do projeto: `tb_bus_join`, `tb_bus_send`, `tb_bus_recv`, `tb_bus_claim`, `tb_bus_complete`.
+> The ADR names the tools `bus_*`. In `tb mcp` they follow the project prefix: `tb_bus_join`, `tb_bus_send`, `tb_bus_recv`, `tb_bus_claim`, `tb_bus_complete`.
 
 ## Store
 
-- Arquivo: `.toolbelt/bus/bus.db` (SQLite em WAL), na raiz do repositório que contém `.toolbelt/`. O diretório `.toolbelt/bus/` é criado com modo `0700` (protege também `-wal`/`-shm`) e o banco com `0600`.
-- Sem daemon: todo comando abre o store, faz a operação numa transação e fecha.
-- `PRAGMA user_version` versiona o schema; versão desconhecida é recusada (fail-closed).
-- Arquivo local, ignorado via `.git/info/exclude` (`tb init`).
-- **Diretório privado** (`<privado>`): sessões, arquivos de wake e estado do harness ficam **fora do repositório**, em `$XDG_STATE_HOME/toolbelt/bus/<hash da raiz>/` (padrão `~/.local/state/...`; `TB_BUS_STATE_DIR` troca a base). Diretórios `0700`, arquivos `0600`. Assim um agente que trabalha com a raiz do repositório como workdir não alcança tokens de outros agentes.
+- File: `.toolbelt/bus/bus.db` (SQLite in WAL mode), at the root of the repository that contains `.toolbelt/`. The `.toolbelt/bus/` directory is created with mode `0700` (which also protects `-wal`/`-shm`) and the database with `0600`.
+- No daemon: every command opens the store, runs the operation in a transaction and closes it.
+- `PRAGMA user_version` versions the schema; an unknown version is refused (fail-closed).
+- Local file, ignored through `.git/info/exclude` (`tb init`).
+- **Private directory** (`<private>`): sessions, wake files and harness state live **outside the repository**, in `$XDG_STATE_HOME/toolbelt/bus/<root hash>/` (default `~/.local/state/...`; `TB_BUS_STATE_DIR` changes the base). Directories `0700`, files `0600`. That way an agent working with the repository root as its workdir cannot reach other agents' tokens.
 
 ## Envelope
 
-Toda mensagem é um objeto JSON-RPC 2.0 com `method: "bus/message"`. Campos de `params`:
+Every message is a JSON-RPC 2.0 object with `method: "bus/message"`. `params` fields:
 
-| Campo | Quem define | Regra |
+| Field | Set by | Rule |
 |---|---|---|
-| `id` | broker | ULID (26 caracteres Crockford base32); o remetente não escolhe |
-| `seq` | broker | inteiro crescente no store; dá a ordem de leitura |
+| `id` | broker | ULID (26 Crockford base32 characters); the sender does not choose it |
+| `seq` | broker | increasing integer in the store; defines read order |
 | `v` | broker | `bus/0.1` |
-| `channel` | remetente | canal existente e não expirado |
-| `from` | broker | `agent:<nome>` da sessão autenticada; nunca vem do remetente |
-| `to` | remetente | `agent:<nome>` (precisa existir no canal), `role:<papel>` ou `topic:<nome>` |
-| `thread` | remetente | opcional; `[A-Za-z0-9._:/-]{1,128}` (ex.: `TKT-001`) |
-| `type` | remetente | `task.assign`, `task.status`, `query`, `reply`, `ack`, `urgent`; `task.result` só via `complete` |
-| `causation_id` | remetente | opcional; ID da mensagem que causou esta |
-| `idempotency_key` | remetente | opcional; `[A-Za-z0-9._:/-]{1,128}` |
-| `ttl` | remetente | opcional; duração Go (`30m`); depois disso a mensagem não é entregue |
-| `payload` | remetente | um único objeto JSON, até 64 KiB; números preservados sem perda; strings com segredos conhecidos são redigidas antes de gravar |
+| `channel` | sender | existing, non-expired channel |
+| `from` | broker | `agent:<name>` of the authenticated session; never taken from the sender |
+| `to` | sender | `agent:<name>` (must exist in the channel), `role:<role>` or `topic:<name>` |
+| `thread` | sender | optional; `[A-Za-z0-9._:/-]{1,128}` (e.g. `TKT-001`) |
+| `type` | sender | `task.assign`, `task.status`, `query`, `reply`, `ack`, `urgent`; `task.result` only through `complete` |
+| `causation_id` | sender | optional; ID of the message that caused this one |
+| `idempotency_key` | sender | optional; `[A-Za-z0-9._:/-]{1,128}` |
+| `ttl` | sender | optional; Go duration (`30m`); after it the message is not delivered |
+| `payload` | sender | a single JSON object, up to 64 KiB; numbers kept without loss; strings with known secrets are redacted before being stored |
 | `created_at` | broker | RFC 3339 UTC |
 
-Exemplo como `tb bus recv --json` devolve:
+Example as returned by `tb bus recv --json`:
 
 ```json
 {
@@ -56,59 +56,59 @@ Exemplo como `tb bus recv --json` devolve:
 }
 ```
 
-### Entrega e ordem
+### Delivery and ordering
 
-- **Ordem**: crescente por `seq`; garantida dentro de uma thread.
-- **Pelo menos uma vez**: o remetente pode reenviar; com a mesma `idempotency_key` (mesmo canal e remetente) o broker devolve a mensagem já gravada com `duplicate: true` em vez de duplicar.
-- **Backlog**: o cursor começa em 0; quem entra depois recebe as mensagens anteriores endereçadas ao seu papel e a `topic:*` (inclusive `task.assign` ainda sem dono). O log é durável de propósito.
-- **Cursor**: cada agente tem um cursor por canal. `recv` devolve mensagens com `seq` acima do cursor e o avança; `recv --peek` lê sem avançar; `recv --since N` relê a partir de `N` (o log é durável).
-- **Destino**: um agente recebe mensagens para `agent:<ele>`, para `role:<papel dele>` e para qualquer `topic:*`. Nunca recebe as próprias.
-- **Long-poll**: `recv --wait D` espera até `D` (máximo 25s, abaixo do timeout de tool call dos clientes) por ao menos uma mensagem.
+- **Order**: increasing `seq`; guaranteed within a thread.
+- **At least once**: the sender may resend; with the same `idempotency_key` (same channel and sender) the broker returns the already stored message with `duplicate: true` instead of duplicating it.
+- **Backlog**: the cursor starts at 0; a late joiner receives earlier messages addressed to its role and to `topic:*` (including `task.assign`s that still have no owner). The log is durable on purpose.
+- **Cursor**: each agent has one cursor per channel. `recv` returns messages with `seq` above the cursor and advances it; `recv --peek` reads without advancing; `recv --since N` re-reads from `N` (the log is durable).
+- **Addressing**: an agent receives messages for `agent:<itself>`, for `role:<its role>` and for any `topic:*`. It never receives its own.
+- **Long-poll**: `recv --wait D` waits up to `D` (at most 25s, below clients' tool-call timeout) for at least one message.
 
 ## Agent Card
 
-Declarado no `join`. É informativo: **capacidade não é permissão**; o papel vem do convite.
+Declared on `join`. It is informational: **capability is not permission**; the role comes from the invite.
 
-| Campo | Tipo | Regra |
+| Field | Type | Rule |
 |---|---|---|
-| `name` | string | obrigatório; `[a-z0-9][a-z0-9._-]{0,62}`; vira `agent:<name>`, único no canal |
-| `vendor` | string | ex.: `anthropic`, `openai`, `xai`, `local` |
+| `name` | string | required; `[a-z0-9][a-z0-9._-]{0,62}`; becomes `agent:<name>`, unique in the channel |
+| `vendor` | string | e.g. `anthropic`, `openai`, `xai`, `local` |
 | `model` | string | |
-| `tier` | string | ex.: `cheap`, `standard`, `premium` |
-| `context_window` | inteiro | ≥ 0 |
+| `tier` | string | e.g. `cheap`, `standard`, `premium` |
+| `context_window` | integer | ≥ 0 |
 | `capabilities` | string[] | |
 | `tools` | string[] | |
-| `sandbox` | string | ex.: `landlock`, `none` |
-| `max_concurrency` | inteiro | ≥ 0 |
-| `wake` | string | `exec`, `harness`, `notify` ou `manual` (padrão `manual`; ver [bus-harness.md](bus-harness.md)) |
-| `session` | string | handle de sessão do vendor (para `--resume` no B3) |
+| `sandbox` | string | e.g. `landlock`, `none` |
+| `max_concurrency` | integer | ≥ 0 |
+| `wake` | string | `exec`, `harness`, `notify` or `manual` (default `manual`; see [bus-harness.md](bus-harness.md)) |
+| `session` | string | vendor session handle (for `--resume` in B3) |
 
-## Convite
+## Invite
 
-- `tb bus channel create` cria o canal e um convite para o dono (papel `supervisor`, nome fixado em `--owner`).
-- `tb bus invite` emite convites adicionais, um por agente, com papel fixado (`router`, `supervisor`, `worker`, `reviewer`). `--name` vincula o convite a um agente.
-- Convite **não** vinculado não aceita o nome do dono do canal nem nomes com convite vinculado ainda aberto.
-- Código: 8 caracteres Crockford base32 em dois grupos (`K7Q2-9XMD`), gerado com `crypto/rand`; o store guarda só o SHA-256.
-- Uso único; expira em `--ttl` (padrão `10m`). Convite usado, expirado, de outro canal, ou válido mas usado com nome ou papel diferentes do fixado, é recusado com a mesma mensagem genérica (e, no último caso, não é consumido).
-- Criar canal e emitir convite **não** existe via MCP: só o humano, na CLI.
+- `tb bus channel create` creates the channel and an invite for the owner (role `supervisor`, name pinned by `--owner`).
+- `tb bus invite` issues more invites, one per agent, with a pinned role (`router`, `supervisor`, `worker`, `reviewer`). `--name` binds the invite to an agent.
+- An **unbound** invite does not accept the channel owner's name nor names that still have an open bound invite.
+- Code: 8 Crockford base32 characters in two groups (`K7Q2-9XMD`), generated with `crypto/rand`; the store keeps only its SHA-256.
+- Single use; expires after `--ttl` (default `10m`). A used, expired or other-channel invite, or a valid one used with a name or role other than the pinned ones, is refused with the same generic message (and, in the last case, is not consumed).
+- Creating channels and issuing invites does **not** exist through MCP: only the human, on the CLI.
 
-## Sessão e identidade
+## Session and identity
 
-- `join` devolve `agent_id` e papel. O token de sessão é aleatório (256 bits), o store guarda o SHA-256 e o token **nunca** sai em stdout, log ou resposta MCP.
-- CLI: o token vai para `<privado>/sessions/<canal>/<nome>/token` (`0600`); os comandos seguintes usam `--as <nome>`. Limite do B1: qualquer processo do mesmo usuário lê o arquivo, então a CLI confia no usuário local.
-- MCP: a identidade fica presa à conexão stdio do `tb mcp` após `tb_bus_join`; as ferramentas `tb_bus_*` não aceitam outro agente como argumento.
-- **Sessão perdida** (servidor MCP reiniciado, arquivo de sessão apagado): o nome continua registrado. O humano emite `tb bus invite <canal> --role <papel> --name <nome>`; o `join` com esse convite substitui o token (o antigo deixa de valer) e mantém o cursor.
-- **Limite de confiança do B1**: tudo roda como o mesmo usuário. Um agente com shell (inclusive via `tb_run` no MCP) consegue ler `.toolbelt/bus/` e rodar `tb bus invite`/`channel create`. Convite e identidade por conexão protegem contra injeção de prompt e erro de roteamento, não contra um processo local hostil.
+- `join` returns `agent_id` and role. The session token is random (256 bits), the store keeps its SHA-256 and the token **never** appears on stdout, in logs or in MCP responses.
+- CLI: the token goes to `<private>/sessions/<channel>/<name>/token` (`0600`); later commands use `--as <name>`. B1 limitation: any process of the same user can read the file, so the CLI trusts the local user.
+- MCP: after `tb_bus_join` the identity is bound to the `tb mcp` stdio connection; the `tb_bus_*` tools do not accept another agent as an argument.
+- **Lost session** (MCP server restarted, session file deleted): the name stays registered. The human issues `tb bus invite <channel> --role <role> --name <name>`; a `join` with that invite replaces the token (the old one stops working) and keeps the cursor.
+- **B1 trust boundary**: everything runs as the same user. An agent with a shell (including through `tb_run` in MCP) can read `.toolbelt/bus/` and run `tb bus invite`/`channel create`. Invites and per-connection identity protect against prompt injection and misrouting, not against a hostile local process.
 
-## Regras do broker (B1)
+## Broker rules (B1)
 
-- `task.assign` só de `router` ou `supervisor`.
-- `task.result` só via `complete`, pelo dono do claim da thread.
-- `claim <thread>`: dono único; um segundo agente recebe erro com o dono atual. Reivindicar de novo a própria thread é idempotente.
-- `complete <thread>`: só o dono; grava `task.result` para `topic:board` e fecha o claim. Thread concluída não aceita novo claim.
-- Canal expirado (`--ttl` do canal) recusa `join`, `send`, `claim` e `complete`; `recv` e `log` continuam lendo. `tb bus channel extend <canal> --ttl D` (só humano) redefine a expiração para agora + `D` e reabre o canal com sessões e histórico.
-- Toda mensagem de outro agente é **dado não confiável**.
+- `task.assign` only from `router` or `supervisor`.
+- `task.result` only through `complete`, by the owner of the thread's claim.
+- `claim <thread>`: single owner; a second agent gets an error naming the current owner. Re-claiming one's own thread is idempotent.
+- `complete <thread>`: owner only; stores `task.result` for `topic:board` and closes the claim. A completed thread accepts no new claim.
+- An expired channel (channel `--ttl`) refuses `join`, `send`, `claim` and `complete`; `recv` and `log` still read. `tb bus channel extend <channel> --ttl D` (human only) resets the expiry to now + `D` and reopens the channel with sessions and history.
+- Every message from another agent is **untrusted data**.
 
-## Fora do B1
+## Out of B1
 
-Lease com expiração, heartbeat e Watchdog (B2); `tb bus run`, adapters de despertar e `tb bus discover` (B3, spec em [bus-harness.md](bus-harness.md)); integração com o Router (B4).
+Expiring lease, heartbeat and Watchdog (B2); `tb bus discover` and the rest of B3 (`tb bus run` with `exec`/`harness` adapters already exists, spec in [bus-harness.md](bus-harness.md)); Router integration (B4).

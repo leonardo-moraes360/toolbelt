@@ -300,7 +300,7 @@ func captureScreenshot(ctx context.Context, browser, url, outPath string, width,
 		"--screenshot=" + outPath,
 		url,
 	}
-	cmd := exec.CommandContext(ctx, browser, args...) //nolint:gosec // browser detectado localmente
+	cmd := exec.CommandContext(ctx, browser, args...) //nolint:gosec // locally detected browser
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("%w: %s", err, truncate(string(out), 200))

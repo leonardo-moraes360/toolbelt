@@ -1,5 +1,5 @@
-// Package busrun implementa o harness do barramento (`tb bus run`, ADR-013
-// etapa B3): espera mensagens sem LLM e acorda o agente via adapter.
+// Package busrun is the bus harness (`tb bus run`, ADR-013 stage B3): it waits
+// for messages without an LLM and wakes the agent through an adapter.
 package busrun
 
 import (
@@ -15,49 +15,46 @@ import (
 	"github.com/leonardo-moraes360/toolbelt/internal/bus"
 )
 
-// DefaultWakeOn são os tipos que acordam o agente por padrão.
 var DefaultWakeOn = []bus.Type{bus.TypeTaskAssign, bus.TypeQuery, bus.TypeReply, bus.TypeUrgent, bus.TypeTaskResult}
 
-// Config é o arquivo de wake (.toolbelt/bus/wake/<canal>/<nome>.yaml).
+// Config is the wake file (see ConfigPath).
 type Config struct {
 	Adapter     string        `yaml:"adapter"`
 	WakeOn      []bus.Type    `yaml:"wake_on"`
-	WakeTopics  *bool         `yaml:"wake_topics"` // nil = true; false: topic:* nunca acorda
+	WakeTopics  *bool         `yaml:"wake_topics"` // nil = true; false: topic:* never wakes
 	Coalesce    Coalesce      `yaml:"coalesce"`
 	Budget      Budget        `yaml:"budget"`
 	RewakeAfter time.Duration `yaml:"rewake_after"`
 	Timeout     time.Duration `yaml:"timeout"`
 	PassEnv     []string      `yaml:"pass_env"`
-	SecretFiles []string      `yaml:"secret_files"` // KEY=VALOR cujos valores o audit redige
+	SecretFiles []string      `yaml:"secret_files"` // KEY=VALUE files whose values the audit redacts
 	Sandbox     SandboxPaths  `yaml:"sandbox"`
 	Exec        ExecConfig    `yaml:"exec"`
 	Harness     HarnessConfig `yaml:"harness"`
 }
 
-// Coalesce agrupa mensagens próximas num despertar.
+// Coalesce batches nearby messages into one wake.
 type Coalesce struct {
 	Debounce time.Duration `yaml:"debounce"`
 	MaxDelay time.Duration `yaml:"max_delay"`
 }
 
-// Budget limita despertares por janela.
+// Budget caps wakes per window.
 type Budget struct {
 	MaxWakes int           `yaml:"max_wakes"`
 	Per      time.Duration `yaml:"per"`
 }
 
-// SandboxPaths são caminhos extras liberados ao filho no Landlock.
+// SandboxPaths are extra paths Landlock grants the child.
 type SandboxPaths struct {
 	Read  []string `yaml:"read"`
 	Write []string `yaml:"write"`
 }
 
-// ExecConfig configura o adapter exec.
 type ExecConfig struct {
 	Argv []string `yaml:"argv"`
 }
 
-// HarnessConfig configura o adapter harness.
 type HarnessConfig struct {
 	Vendor         string   `yaml:"vendor"`
 	Command        string   `yaml:"command"`
@@ -68,14 +65,12 @@ type HarnessConfig struct {
 	Workdir        string   `yaml:"workdir"`
 }
 
-// DefaultAllowedTools são as ferramentas liberadas ao agente acordado.
 var DefaultAllowedTools = []string{
 	"mcp__toolbelt__tb_bus_recv", "mcp__toolbelt__tb_bus_send",
 	"mcp__toolbelt__tb_bus_claim", "mcp__toolbelt__tb_bus_complete",
 }
 
-// ConfigPath devolve o caminho padrão do arquivo de wake
-// (<privado>/wake/<canal>/<nome>.yaml, fora do repositório).
+// ConfigPath: <private>/wake/<channel>/<name>.yaml, outside the repo.
 func ConfigPath(root, channel, name string) (string, error) {
 	priv, err := bus.PrivateDir(root)
 	if err != nil {
@@ -84,8 +79,7 @@ func ConfigPath(root, channel, name string) (string, error) {
 	return filepath.Join(priv, "wake", channel, name+".yaml"), nil
 }
 
-// LoadConfig lê, aplica padrões e valida. Recusa arquivo com permissão
-// mais aberta que 0600.
+// LoadConfig rejects a file with permissions looser than 0600.
 func LoadConfig(path string) (*Config, error) {
 	st, err := os.Stat(path)
 	if err != nil {
@@ -149,7 +143,6 @@ func (c *Config) applyDefaults() {
 
 func (c *Config) topics() bool { return c.WakeTopics == nil || *c.WakeTopics }
 
-// Adapters suportados.
 const (
 	AdapterExec    = "exec"
 	AdapterHarness = "harness"
@@ -157,7 +150,7 @@ const (
 
 var permissionModes = map[string]bool{"default": true, "acceptEdits": true, "plan": true}
 
-// Validate checa a config (já com padrões).
+// Validate expects defaults already applied.
 func (c *Config) Validate() error {
 	for _, t := range c.WakeOn {
 		if _, err := bus.ParseType(string(t)); err != nil {

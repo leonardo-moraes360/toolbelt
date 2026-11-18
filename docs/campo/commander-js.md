@@ -1,156 +1,156 @@
-🇧🇷 Português | [🇺🇸 English](../en/campo/commander-js.md)
+🇺🇸 English | [🇧🇷 Português](../pt-BR/campo/commander-js.md)
 
-# Estudo de campo: commander.js
+# Field study: commander.js
 
-Grupo: **sem instrumentação de agente de IA** (além de política humana).  
-Alvo local: `/tmp/target` (clone shallow de https://github.com/tj/commander.js).  
-Binário: `tb` buildado com `make build` em `c8aae04` (`./bin/tb`).  
-Data: 2026-11-15.  
-Regra: nenhum push/issue/PR/comentário no upstream; só clone local.
+Group: **without AI agent instrumentation** (aside from human policy).  
+Local target: `/tmp/target` (shallow clone of https://github.com/tj/commander.js).  
+Binary: `tb` built with `make build` at `c8aae04` (`./bin/tb`).  
+Date: 2026-11-15.  
+Rule: no push/issue/PR/comment upstream; local clone only.
 
-## Repositório
+## Repository
 
-| Campo | Valor |
+| Field | Value |
 |-------|--------|
-| Nome | `tj/commander.js` (npm: `commander` 15.1.0) |
-| Linguagem | JavaScript (ESM) + TypeScript typings (`typings/`), testes em Node test runner |
-| Tamanho | ~2.2 MiB no clone shallow; ~217 arquivos versionados; ~18 k LoC `.js` (incl. examples/tests); suite nativa **1430** testes (baseline) |
-| Instrumentação de agente | **Ausente** como tooling de agente: sem `AGENTS.md`, `.cursor/`, `.cursorrules`, Copilot instructions, etc. Existe `AI_POLICY.md` (política humana: AI ok com humano no loop; proíbe PRs autônomos/gerados em massa) + menção no `CONTRIBUTING.md` |
-| Toolchain | **OK**: Node `v22.23.4` (≥22.12), npm `10.9.9`, `npm install` (214 pkgs), `npm test` e `npm run check` (type+lint+format) verdes no baseline. Não configurei browser/Chromium extra para ruler visual além do Chrome já presente em `/usr/local/bin/google-chrome`. |
+| Name | `tj/commander.js` (npm: `commander` 15.1.0) |
+| Language | JavaScript (ESM) + TypeScript typings (`typings/`), tests on Node test runner |
+| Size | ~2.2 MiB shallow clone; ~217 versioned files; ~18 k LoC `.js` (incl. examples/tests); native suite **1430** tests (baseline) |
+| Agent instrumentation | **Absent** as agent tooling: no `AGENTS.md`, `.cursor/`, `.cursorrules`, Copilot instructions, etc. There is `AI_POLICY.md` (human policy: AI ok with human in the loop; forbids autonomous/mass-generated PRs) + mention in `CONTRIBUTING.md` |
+| Toolchain | **OK**: Node `v22.23.4` (≥22.12), npm `10.9.9`, `npm install` (214 pkgs), `npm test` and `npm run check` (type+lint+format) green at baseline. Did not configure extra browser/Chromium for visual ruler beyond Chrome already present at `/usr/local/bin/google-chrome`. |
 
-## Tarefa escolhida
+## Chosen task
 
-| Campo | Valor |
+| Field | Value |
 |-------|--------|
-| O quê | Issue [#2683](https://github.com/tj/commander.js/issues/2683): (1) `Help.groupItems` de `Map` → record (`Object.hasOwn` + `Object.entries`); (2) getter `Command.alias()` tipado/documentado como podendo retornar `undefined`; teste cobrindo getter sem alias |
-| Por quê | Bug/compat pequeno, escopo claro, maintainer-plausível, com tipagens + teste; encaixa small-to-medium |
-| Issue | https://github.com/tj/commander.js/issues/2683 (somente leitura) |
-| Completa? | **Sim, localmente** (commit `3383634` na branch local `campo-local-fix` do clone; **não** enviado ao upstream) |
-| Checks nativos | Após a correção: `npm test` → pass (1431 testes); `npm run check` → pass (type/lint/format). Probes laterais (lint-only / `tests/hidden`) foram revertidos com `git reset --hard` para o commit da tarefa |
+| What | Issue [#2683](https://github.com/tj/commander.js/issues/2683): (1) `Help.groupItems` from `Map` → record (`Object.hasOwn` + `Object.entries`); (2) getter `Command.alias()` typed/documented as possibly returning `undefined`; test covering getter without alias |
+| Why | Small bug/compat, clear scope, maintainer-plausible, with typings + test; fits small-to-medium |
+| Issue | https://github.com/tj/commander.js/issues/2683 (read-only) |
+| Complete? | **Yes, locally** (commit `3383634` on local branch `campo-local-fix` of the clone; **not** sent upstream) |
+| Native checks | After the fix: `npm test` → pass (1431 tests); `npm run check` → pass (type/lint/format). Side probes (lint-only / `tests/hidden`) were reverted with `git reset --hard` to the task commit |
 
-## Uso do tb por comando
+## tb usage by command
 
-| comando | resultado | ajudou/atrapalhou/neutro | evidência |
-|---------|-----------|--------------------------|-----------|
-| `tb version` (make build) | OK; versão=`c8aae04` | neutro | `EXIT=0` ~6 ms; com ldflags do Makefile |
-| `go build` sem ldflags → `version` | OK; `commit/built: unknown`, `0.1.0-dev` | atrapalhou (DX) | `/tmp/tb-nolink version --json` → `"commit":"unknown","build_time":"unknown"` |
-| `tb init` | OK; criou `.toolbelt/` | neutro→atrapalhou | `EXIT=0` 5 ms; `config.yaml` mode **600**; `verify.test_cmd` default **`go test ./...`** em repo JS; `default_agent: ""` depois editado manualmente; sem AGENTS.md / detecção de scripts npm |
-| `tb mem init/list/check/add` | OK para fluxo real (`add <regra>`); flags da doc falham | ajudou (invariantes) / atrapalhou (docs) | `mem add "…"` OK; `mem add --type fact …` → `unknown flag: --type`; `check` hash+retenção 1.00; arquivo mode **600** |
-| Ticket / Scope (`rd.md` manual) | OK | ajudou | Sem `tb ticket` no binário; `rd.md` com `base_commit` + `scope:` literal; drift/review consumiram |
-| `tb graph` sem `--enable`/`TB_GRAPH` | Erro esperado | neutro | `grafo desabilitado (… ADR-011)` |
-| `tb graph --enable rebuild` / `index .` | **0 nós** | atrapalhou | Clone em `/tmp/target`: `SkipDirs` inclui nome `"target"` → raiz inteira em `SkipDir` (repro unitário: dirs=1 skippedDir=1) |
-| `tb graph --enable index lib` | 46 nós / 631 arestas | ajudou parcial | Indexação por subdir funciona; `search alias` / `callers --function alias` / `impact --file …` → `(vazio)` após index útil |
-| `tb graph impact` sem `--file` | Erro | neutro | `--file é obrigatório` (EXIT=1) |
-| `tb graph query` | Inexistente | atrapalhou (docs/expectativa) | Cai no help do `tb graph`; subcomando não existe |
-| `tb verify run` (config npm) | PASS quando `tests/hidden` ausente | ajudou parcial | Com `verify.test_cmd: npm test` → PASS ~5.3 s; **`hidden_test_cmd` só roda se existir dir `tests/hidden/`** — senão `disponível: false` e ignora o comando configurado |
-| `tb verify` + probe lint-only | PASS indevido | atrapalhou | `npm run check:lint` FAIL (`__campoLintProbe` unused); `tb verify --test-cmd npm test` → **PASS** (não roda eslint) |
-| `tb verify` + diff em `tests/hidden` | FAIL iter=0 | ajudou (anti-cheat) | Guard embutido aborta antes dos testes: `Veredicto: FAIL (iterações: 0)` |
-| `tb verify --ruler visual --json` | PASS skipped | neutro | `"verdict":"PASS","skipped":true,"skip_reason":"manifesto de telas ausente"`; Chrome detectado |
-| `tb review` (diff da tarefa) | OK, 0 findings | ajudou | Fresh=true, 3 goldfish, sem drift no scope declarado |
-| `tb review` (probe `tests/hidden`) | Findings critical/error | ajudou | Detectou fora de scope + invariante `tests/hidden/` (verdadeiro positivo) |
-| `tb drift` | OK no scope; detecta fora | ajudou | Scope completo → OK; `rd-narrow` (só typings) → 4 fora do scope, EXIT=1 |
-| `tb guard check` | Hardcoded `tests/hidden` sim; `guard.yaml` não | atrapalhou | Custom `.toolbelt/guard.yaml` protegendo `lib/help.js` **ignorado**; `--manifest` **unknown flag**; toque em `tests/hidden/sentinel.js` → `error protected_path …` |
-| `tb bench run/list` no alvo | Falha sem tasks locais | neutro | `open bench/tasks: no such file`; `--agent` obrigatório mesmo com `default_agent` no config |
-| `tb bench run --fake` + tasks do toolbelt | OK 33.3% | neutro | `-t /agent/repos/toolbelt/bench/tasks` ~3.3 s; **não** precisou `--fake-config` |
-| `tb bench compare` | A/B `--fake` OK; sem `--agent` | neutro/atrapalhou | Compare configs graph-off/on OK; `compare --agent …` → `unknown flag: --agent` |
-| `tb mcp` | OK stdio JSON-RPC | ajudou parcial | `tools/list` + `tools/call` `tb_version` responderam; graph tools listadas com `TB_GRAPH=on` |
+| command | result | helped/hindered/neutral | evidence |
+|---------|--------|-------------------------|----------|
+| `tb version` (make build) | OK; version=`c8aae04` | neutral | `EXIT=0` ~6 ms; with Makefile ldflags |
+| `go build` without ldflags → `version` | OK; `commit/built: unknown`, `0.1.0-dev` | hindered (DX) | `/tmp/tb-nolink version --json` → `"commit":"unknown","build_time":"unknown"` |
+| `tb init` | OK; created `.toolbelt/` | neutral→hindered | `EXIT=0` 5 ms; `config.yaml` mode **600**; default `verify.test_cmd` **`go test ./...`** in JS repo; `default_agent: ""` later edited manually; no AGENTS.md / npm script detection |
+| `tb mem init/list/check/add` | OK for real flow (`add <regra>`); doc flags fail | helped (invariants) / hindered (docs) | `mem add "…"` OK; `mem add --type fact …` → `unknown flag: --type`; `check` hash+retention 1.00; file mode **600** |
+| Ticket / Scope (manual `rd.md`) | OK | helped | No `tb ticket` in binary; `rd.md` with `base_commit` + literal `scope:`; consumed by drift/review |
+| `tb graph` without `--enable`/`TB_GRAPH` | Expected error | neutral | `grafo desabilitado (… ADR-011)` |
+| `tb graph --enable rebuild` / `index .` | **0 nodes** | hindered | Clone at `/tmp/target`: `SkipDirs` includes name `"target"` → entire root in `SkipDir` (unit repro: dirs=1 skippedDir=1) |
+| `tb graph --enable index lib` | 46 nodes / 631 edges | helped partially | Subdir indexing works; `search alias` / `callers --function alias` / `impact --file …` → `(vazio)` after useful index |
+| `tb graph impact` without `--file` | Error | neutral | `--file é obrigatório` (EXIT=1) |
+| `tb graph query` | Nonexistent | hindered (docs/expectation) | Falls through to `tb graph` help; subcommand does not exist |
+| `tb verify run` (npm config) | PASS when `tests/hidden` absent | helped partially | With `verify.test_cmd: npm test` → PASS ~5.3 s; **`hidden_test_cmd` only runs if `tests/hidden/` dir exists** — otherwise `disponível: false` and ignores the configured command |
+| `tb verify` + lint-only probe | Improper PASS | hindered | `npm run check:lint` FAIL (`__campoLintProbe` unused); `tb verify --test-cmd npm test` → **PASS** (does not run eslint) |
+| `tb verify` + diff in `tests/hidden` | FAIL iter=0 | helped (anti-cheat) | Built-in guard aborts before tests: `Veredicto: FAIL (iterações: 0)` |
+| `tb verify --ruler visual --json` | PASS skipped | neutral | `"verdict":"PASS","skipped":true,"skip_reason":"manifesto de telas ausente"`; Chrome detected |
+| `tb review` (task diff) | OK, 0 findings | helped | Fresh=true, 3 goldfish, no drift on declared scope |
+| `tb review` (`tests/hidden` probe) | Critical/error findings | helped | Detected out of scope + `tests/hidden/` invariant (true positive) |
+| `tb drift` | OK in scope; detects outside | helped | Full scope → OK; `rd-narrow` (typings only) → 4 out of scope, EXIT=1 |
+| `tb guard check` | Hardcoded `tests/hidden` yes; `guard.yaml` no | hindered | Custom `.toolbelt/guard.yaml` protecting `lib/help.js` **ignored**; `--manifest` **unknown flag**; touch `tests/hidden/sentinel.js` → `error protected_path …` |
+| `tb bench run/list` on target | Fails without local tasks | neutral | `open bench/tasks: no such file`; `--agent` required even with `default_agent` in config |
+| `tb bench run --fake` + toolbelt tasks | OK 33.3% | neutral | `-t /agent/repos/toolbelt/bench/tasks` ~3.3 s; **did not** need `--fake-config` |
+| `tb bench compare` | A/B `--fake` OK; no `--agent` | neutral/hindered | Compare graph-off/on configs OK; `compare --agent …` → `unknown flag: --agent` |
+| `tb mcp` | OK stdio JSON-RPC | helped partially | `tools/list` + `tools/call` `tb_version` responded; graph tools listed with `TB_GRAPH=on` |
 
-## Problemas conhecidos
+## Known problems
 
-| problema | confirmado/refutado/não testado | evidência |
-|----------|----------------------------------|-----------|
-| `bench compare` lacks `--agent` | **confirmado** | Help de `compare` sem `--agent`; `tb bench compare --agent "echo hi" …` → `unknown flag: --agent` |
-| `guard.yaml` ignored | **confirmado** | Arquivo com `protected_paths: lib/help.js` não gerou violação no diff que altera `lib/help.js`; só paths hardcoded (ex. `tests/hidden`) |
-| Outdated CLI docs | **confirmado** | `docs/cli.md`: `mem add --type/--title`, `tb serve`, `guard snapshot/protect`, globs de manifesto; CLI real: `mem add <regra>`, `tb mcp`, só `guard check` |
-| version shows `unknown` | **confirmado** (build sem ldflags) | `/tmp/tb-nolink version` → commit/built `unknown`. Com `make build`, mostra hash (não “unknown”) |
-| config files created 0600 | **confirmado** | `stat`: `config.yaml`, `invariants.yaml`, `graph.json` → mode **600** |
-| visual ruler reports `skipped=false` when skipping | **refutado** | JSON: `"skipped": true`, `"skip_reason": "manifesto de telas ausente"` |
-| `default_agent` ignored | **confirmado** | Config com `default_agent: echo agent-default`; `tb bench run -r 1` → `--agent ou --fake é obrigatório` |
-| guard aborts verify when diff touches hardcoded config path | **confirmado** (para `tests/hidden`) | Diff com `tests/hidden/sentinel.js` → verify FAIL iter=0; `guard check --strict` EXIT=1 |
-| default fake agent needs `--fake-config` | **refutado** (caminho feliz) | `tb bench run --fake` com tasks do toolbelt concluiu sem `--fake-config`. Flag existe e `fake-agent --config` é opcional |
-| `mem add` positional | **confirmado** | Usage: `tb mem add <regra>`; docs com flags vault estão erradas |
-| Drift/Scope need literal paths (no globs) | **refutado** (globs simples) | Código usa `filepath.Match` e `/**`; `scope: lib/*.js` aceitou `lib/help.js`/`lib/command.js` (só tipagens/teste ficaram fora) |
-| `graph impact` needs `--file` | **confirmado** | Sem flag → `--file é obrigatório` |
-| review false positives on tests/hidden invariant | **refutado** neste run | Review do diff da tarefa: `findings: []`. Só alertou ao realmente tocar `tests/hidden/` |
-| verify runs only partial checks / misses build errors | **confirmado** | (1) lint-only FAIL nativo + verify PASS com `npm test`; (2) `hidden_test_cmd` ignorado sem dir `tests/hidden/`; (3) init default Go em repo npm |
-| tb does not push agent to complete whole task | **confirmado** (qualitativo) | Init não gera checklist/progress/AGENTS.md nem detecta `npm run check`; verify pode PASS sem lint/format; nenhum nudge de aceite do `rd.md` |
+| problem | confirmed/refuted/not tested | evidence |
+|---------|------------------------------|----------|
+| `bench compare` lacks `--agent` | **confirmed** | `compare` help without `--agent`; `tb bench compare --agent "echo hi" …` → `unknown flag: --agent` |
+| `guard.yaml` ignored | **confirmed** | File with `protected_paths: lib/help.js` did not yield violation on diff that alters `lib/help.js`; only hardcoded paths (e.g. `tests/hidden`) |
+| Outdated CLI docs | **confirmed** | `docs/cli.md`: `mem add --type/--title`, `tb serve`, `guard snapshot/protect`, manifesto globs; real CLI: `mem add <regra>`, `tb mcp`, only `guard check` |
+| version shows `unknown` | **confirmed** (build without ldflags) | `/tmp/tb-nolink version` → commit/built `unknown`. With `make build`, shows hash (not “unknown”) |
+| config files created 0600 | **confirmed** | `stat`: `config.yaml`, `invariants.yaml`, `graph.json` → mode **600** |
+| visual ruler reports `skipped=false` when skipping | **refuted** | JSON: `"skipped": true`, `"skip_reason": "manifesto de telas ausente"` |
+| `default_agent` ignored | **confirmed** | Config with `default_agent: echo agent-default`; `tb bench run -r 1` → `--agent ou --fake é obrigatório` |
+| guard aborts verify when diff touches hardcoded config path | **confirmed** (for `tests/hidden`) | Diff with `tests/hidden/sentinel.js` → verify FAIL iter=0; `guard check --strict` EXIT=1 |
+| default fake agent needs `--fake-config` | **refuted** (happy path) | `tb bench run --fake` with toolbelt tasks completed without `--fake-config`. Flag exists and `fake-agent --config` is optional |
+| `mem add` positional | **confirmed** | Usage: `tb mem add <regra>`; docs with vault flags are wrong |
+| Drift/Scope need literal paths (no globs) | **refuted** (simple globs) | Code uses `filepath.Match` and `/**`; `scope: lib/*.js` accepted `lib/help.js`/`lib/command.js` (only typings/test stayed out) |
+| `graph impact` needs `--file` | **confirmed** | Without flag → `--file é obrigatório` |
+| review false positives on tests/hidden invariant | **refuted** in this run | Review of task diff: `findings: []`. Only alerted when actually touching `tests/hidden/` |
+| verify runs only partial checks / misses build errors | **confirmed** | (1) native lint-only FAIL + verify PASS with `npm test`; (2) `hidden_test_cmd` ignored without `tests/hidden/` dir; (3) init Go default in npm repo |
+| tb does not push agent to complete whole task | **confirmed** (qualitative) | Init does not generate checklist/progress/AGENTS.md nor detect `npm run check`; verify can PASS without lint/format; no nudge of `rd.md` acceptance |
 
-## Problemas novos
+## New problems
 
-1. **P0 — `SkipDirs` inclui `target`, então `tb graph index .` / `rebuild` no clone `/tmp/target` indexa 0 nós**  
-   - Repro: `tb graph --enable index .` → `0 nós`; `index lib` → 46 nós. Teste: Walk na raiz conta `dirs=1 skippedDir=1` porque `filepath.Base(/tmp/target)=="target"`.  
-   - Esperado: pular só dirs de build Rust/Java *dentro* do repo, não a raiz do workspace.  
-   - Atual: basename da raiz em SkipDirs → grafo vazio silencioso.
+1. **P0 — `SkipDirs` includes `target`, so `tb graph index .` / `rebuild` on clone `/tmp/target` indexes 0 nodes**  
+   - Repro: `tb graph --enable index .` → `0 nós`; `index lib` → 46 nodes. Test: Walk at root counts `dirs=1 skippedDir=1` because `filepath.Base(/tmp/target)=="target"`.  
+   - Expected: skip only Rust/Java build dirs *inside* the repo, not the workspace root.  
+   - Actual: root basename in SkipDirs → silent empty graph.
 
-2. **P1 — `hidden_test_cmd` só executa se existir `tests/hidden/`**  
-   - Repro: config/`--hidden-test-cmd "npm run check"` com dir ausente → `disponível: false`, comando nunca roda, verify pode PASS. Criando o dir, `hidden_test_cmd false` → ESCALATE e `HIDDEN_RAN` aparece no log.  
-   - Esperado: comando configurado sempre (ou aviso explícito de skip).  
-   - Atual: gating por path fixo esconde suíte “oculta” configurada em monorepos JS.
+2. **P1 — `hidden_test_cmd` only runs if `tests/hidden/` exists**  
+   - Repro: config/`--hidden-test-cmd "npm run check"` with missing dir → `disponível: false`, command never runs, verify can PASS. Creating the dir, `hidden_test_cmd false` → ESCALATE and `HIDDEN_RAN` appears in the log.  
+   - Expected: configured command always (or explicit skip warning).  
+   - Actual: fixed-path gating hides configured “hidden” suite in JS monorepos.
 
-3. **P2 — `tb graph rebuild` / `index .` falha silenciosa (0 nós) sem erro**  
-   - Relacionado ao P0; UX: EXIT=0 com grafo vazio, fácil achar que indexou.
+3. **P2 — `tb graph rebuild` / `index .` silent failure (0 nodes) without error**  
+   - Related to P0; UX: EXIT=0 with empty graph, easy to think it indexed.
 
-4. **P2 — Onboarding JS: defaults Go + sem detecção de scripts**  
-   - `tb init` grava `go test ./...` / `go test ./tests/hidden/...` em repo com `package.json` scripts `test`/`check`.  
-   - Esperado: detectar npm/pnpm e preencher `verify.*` (e idealmente lembrar `npm run check`).
+4. **P2 — JS onboarding: Go defaults + no script detection**  
+   - `tb init` writes `go test ./...` / `go test ./tests/hidden/...` in a repo with `package.json` scripts `test`/`check`.  
+   - Expected: detect npm/pnpm and fill `verify.*` (and ideally remind about `npm run check`).
 
-5. **P3 — `tb graph search/callers` pouco úteis em JS deste repo**  
-   - Após indexar `lib`, buscas por `alias`/`groupItems` → `(vazio)`; impacto/deps vazios para arquivos centrais.  
-   - Esperado: achar métodos/exportações indexadas; atual: ROI baixo para localização.
+5. **P3 — `tb graph search/callers` of little use in JS of this repo**  
+   - After indexing `lib`, searches for `alias`/`groupItems` → `(vazio)`; empty impact/deps for central files.  
+   - Expected: find indexed methods/exports; actual: low ROI for location.
 
-6. **P3 — Docs ainda mencionam `tb serve` / subcomandos de guard inexistentes**  
-   - `tb serve` → `unknown command`; `guard` só tem `check`.
+6. **P3 — Docs still mention `tb serve` / nonexistent guard subcommands**  
+   - `tb serve` → `unknown command`; `guard` only has `check`.
 
-## O que o tb pegou e o que deixou passar
+## What tb caught and what it let slip
 
-**Pegou**
-- Drift de escopo quando `rd.md` era estreito demais.
-- Toque em `tests/hidden/` via `guard` + invariantes no `review`.
-- Verify rodando `npm test` de ponta a ponta quando configurado e sem violação de guard.
-- Skip gracioso do ruler visual com `skipped: true`.
-- MCP respondendo `tools/list` / `tb_version`.
+**Caught**
+- Scope drift when `rd.md` was too narrow.
+- Touch of `tests/hidden/` via `guard` + invariants in `review`.
+- Verify running `npm test` end-to-end when configured and without guard violation.
+- Graceful visual ruler skip with `skipped: true`.
+- MCP responding to `tools/list` / `tb_version`.
 
-**Deixou passar / não ajudou**
-- Erro de lint introduzido de propósito (`no-unused-vars`) com verify PASS (`npm test` só).
-- `hidden_test_cmd: npm run check:lint` no config **não executado** sem pasta `tests/hidden/`.
-- Grafo na raiz do clone `/tmp/target` (0 nós) — impacto/search não guiaram a mudança.
-- `guard.yaml` custom ignorado (não protegeu `lib/help.js`).
-- Completude da tarefa além de testes unitários: tipagens/README/examples não foram cobrados por nenhum comando além do que configurei manualmente no `rd.md` (e o review não checou aceite narrativo de forma substancial — 0 findings mesmo sendo mudança real).
+**Let slip / did not help**
+- Deliberately introduced lint error (`no-unused-vars`) with verify PASS (`npm test` only).
+- Config `hidden_test_cmd: npm run check:lint` **not executed** without `tests/hidden/` folder.
+- Graph at root of clone `/tmp/target` (0 nodes) — impact/search did not guide the change.
+- Custom `guard.yaml` ignored (did not protect `lib/help.js`).
+- Task completeness beyond unit tests: typings/README/examples were not demanded by any command beyond what I configured manually in `rd.md` (and review did not check narrative acceptance in a substantial way — 0 findings even for a real change).
 
-**Checks nativos vs tb**
-- Nativos (`npm test` + `npm run check`) validaram a correção completa.
-- tb verify ≈ `npm test` (+ guard), não ≈ `npm run check`, salvo gambiarra com dir `tests/hidden/` + hidden cmd.
+**Native checks vs tb**
+- Native (`npm test` + `npm run check`) validated the full fix.
+- tb verify ≈ `npm test` (+ guard), not ≈ `npm run check`, except for a hack with `tests/hidden/` dir + hidden cmd.
 
-## Interação com instrumentação existente / onboarding
+## Interaction with existing instrumentation / onboarding
 
-- Instrumentação de agente: **não há** arquivos tipo AGENTS.md/Cursor; só `AI_POLICY.md` (política). O tb **não leu nem referenciou** essa política.
-- `tb init` gerou: `.toolbelt/config.yaml`, dirs `bench/`, `logs/`, `vault/` vazios.  
-- `tb mem init` gerou `invariants.yaml` (regras genéricas anti-cheat).  
-- **Não gerou**: AGENTS.md, progress log, feature list JSON, `init.sh`, detecção de `npm test`/`npm run check`, ticket template, `guard.yaml` efetivo.
-- Qualidade do bootstrap: suficiente para criar pasta de config; **insuficiente** para um agente começar “do zero” em repo Node sem editar `verify.test_cmd` e escrever `rd.md` na mão.
-- Lacunas claras: deveria detectar toolchain (npm scripts), gerar AGENTS.md/`rd.md` esqueleto, e não assumir Go.
+- Agent instrumentation: **none** of AGENTS.md/Cursor-style files; only `AI_POLICY.md` (policy). tb **neither read nor referenced** that policy.
+- `tb init` generated: `.toolbelt/config.yaml`, empty dirs `bench/`, `logs/`, `vault/`.  
+- `tb mem init` generated `invariants.yaml` (generic anti-cheat rules).  
+- **Did not generate**: AGENTS.md, progress log, feature list JSON, `init.sh`, detection of `npm test`/`npm run check`, ticket template, effective `guard.yaml`.
+- Bootstrap quality: enough to create a config folder; **insufficient** for an agent to start “from scratch” in a Node repo without editing `verify.test_cmd` and writing `rd.md` by hand.
+- Clear gaps: should detect toolchain (npm scripts), generate AGENTS.md/`rd.md` skeleton, and not assume Go.
 
-## Sugestões de melhoria
+## Improvement suggestions
 
-1. **[P0][graph]** Não aplicar `SkipDirs` ao basename da *raiz* indexada; tratar `target`/`build`/`dist` só como filhos.  
-2. **[P0][verify]** Executar `hidden_test_cmd` quando configurado, independente de `tests/hidden/`; ou falhar alto se o gating bloquear.  
-3. **[P1][init/onboarding]** Detectar `package.json` scripts → preencher `verify.test_cmd` / sugerir `npm run check` como hidden ou segundo check; opcionalmente gerar `AGENTS.md` mínimo.  
-4. **[P1][guard]** Honrar `.toolbelt/guard.yaml` (ou remover das docs); expor `--manifest` se for o contrato.  
-5. **[P1][bench]** Respeitar `bench.default_agent`; adicionar `--agent` em `bench compare` no modo que roda configs.  
-6. **[P2][docs]** Alinhar `docs/cli.md` / README ao CLI real (`mcp` não `serve`; `mem add` posicional; guard só `check`).  
-7. **[P2][verify]** Permitir lista de checks (`test`+`lint`+`type`+`build`) para não PASS parcial.  
-8. **[P2][graph]** Avisar quando 0 nós após index; melhorar extração de métodos JS para search/impact.  
-9. **[P3][config]** Revisar umask 0600 se o vault for compartilhado entre processos/usuários do mesmo time.  
-10. **[P3][workflow]** `tb init` / ticket skeleton com Scope+aceitação para empurrar completude (contra o achado A/B de produto incompleto).
+1. **[P0][graph]** Do not apply `SkipDirs` to the basename of the indexed *root*; treat `target`/`build`/`dist` only as children.  
+2. **[P0][verify]** Run `hidden_test_cmd` when configured, regardless of `tests/hidden/`; or fail loudly if gating blocks.  
+3. **[P1][init/onboarding]** Detect `package.json` scripts → fill `verify.test_cmd` / suggest `npm run check` as hidden or second check; optionally generate minimal `AGENTS.md`.  
+4. **[P1][guard]** Honor `.toolbelt/guard.yaml` (or remove from docs); expose `--manifest` if that is the contract.  
+5. **[P1][bench]** Respect `bench.default_agent`; add `--agent` to `bench compare` in the mode that runs configs.  
+6. **[P2][docs]** Align `docs/cli.md` / README with real CLI (`mcp` not `serve`; positional `mem add`; guard only `check`).  
+7. **[P2][verify]** Allow a list of checks (`test`+`lint`+`type`+`build`) to avoid partial PASS.  
+8. **[P2][graph]** Warn when 0 nodes after index; improve JS method extraction for search/impact.  
+9. **[P3][config]** Revisit umask 0600 if the vault is shared across processes/users on the same team.  
+10. **[P3][workflow]** `tb init` / ticket skeleton with Scope+acceptance to push completeness (against the A/B finding of incomplete product).
 
-## Métricas
+## Metrics
 
-| métrica | valor |
-|---------|--------|
-| Wall time (workflow no alvo, log `WALL_START`→fim probes) | ~2026-11-15T20:45:54Z → 20:51:41Z (**≈5 min 47 s**); build `tb` + clone/npm install imediatamente antes (~35 s install + build ~6 s) |
-| Invocações tb registradas no evidence log | **70** blocos `=== CMD ===` parseados (+ MCP stdio e alguns graph fora do helper) |
-| Falhas (EXIT≠0) nesses blocos | **23** (muitas propositalmente para repro de issues: docs flags, graph disabled, drift esperado, guard, compare `--agent`, bench sem tasks) |
-| Crashes (panic/segfault) | **0** observados |
-| `tb verify` útil (PASS da tarefa) | ~5.3–5.5 s por run com `npm test` |
-| `tb bench run --fake` (9 tasks toolbelt) | ~3.3 s; compare A/B ~1.8 s |
-| Arquivo de evidência bruta | `/tmp/tb-campo-evidence.log` (VM; não commitado) |
+| metric | value |
+|--------|--------|
+| Wall time (workflow on target, log `WALL_START`→end of probes) | ~2026-11-15T20:45:54Z → 20:51:41Z (**≈5 min 47 s**); `tb` build + clone/npm install immediately before (~35 s install + build ~6 s) |
+| tb invocations recorded in evidence log | **70** `=== CMD ===` blocks parsed (+ MCP stdio and some graph outside the helper) |
+| Failures (EXIT≠0) in those blocks | **23** (many intentional for issue repro: docs flags, graph disabled, expected drift, guard, compare `--agent`, bench without tasks) |
+| Crashes (panic/segfault) | **0** observed |
+| Useful `tb verify` (task PASS) | ~5.3–5.5 s per run with `npm test` |
+| `tb bench run --fake` (9 toolbelt tasks) | ~3.3 s; A/B compare ~1.8 s |
+| Raw evidence file | `/tmp/tb-campo-evidence.log` (VM; not committed) |

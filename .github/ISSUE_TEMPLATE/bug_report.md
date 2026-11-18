@@ -1,44 +1,44 @@
 ---
 name: Bug Report
-about: Reporte um bug para nos ajudar a melhorar
+about: Report a bug to help us improve
 title: '[BUG] '
 labels: bug
 assignees: ''
 ---
 
-## Descrição do Bug
+## Bug Description
 
-Uma descrição clara e concisa do bug.
+A clear and concise description of the bug.
 
-## Passos para Reproduzir
+## Steps to Reproduce
 
-1. Execute '...'
-2. Com os parâmetros '...'
-3. Veja o erro
+1. Run '...'
+2. With the parameters '...'
+3. See the error
 
-## Comportamento Esperado
+## Expected Behavior
 
-O que você esperava que acontecesse.
+What you expected to happen.
 
-## Comportamento Atual
+## Actual Behavior
 
-O que realmente aconteceu.
+What actually happened.
 
 ## Screenshots/Logs
 
-Se aplicável, adicione screenshots ou logs para ajudar a explicar o problema.
+If applicable, add screenshots or logs to help explain the problem.
 
 ```
-Cole logs aqui
+Paste logs here
 ```
 
-## Ambiente
+## Environment
 
-- **OS**: [ex: Ubuntu 22.04, macOS 14]
-- **Versão do tb**: [ex: 0.1.0]
-- **Versão do Go**: [ex: 1.22.0]
-- **Kernel** (se relevante): [ex: 6.5.0]
+- **OS**: [e.g. Ubuntu 22.04, macOS 14]
+- **tb version**: [e.g. 0.1.0]
+- **Go version**: [e.g. 1.22.0]
+- **Kernel** (if relevant): [e.g. 6.5.0]
 
-## Contexto Adicional
+## Additional Context
 
-Qualquer outro contexto sobre o problema.
+Any other context about the problem.

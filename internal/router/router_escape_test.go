@@ -28,8 +28,8 @@ func alertsOf(t *testing.T, root, kind string) []Alert {
 	return as
 }
 
-// gitShim instala um "git" na frente do PATH que, para `worktree add`, roda
-// pre antes e post depois do git real.
+// gitShim puts a "git" at the front of PATH that, for `worktree add`, runs
+// pre before and post after the real git.
 func gitShim(t *testing.T, pre, post string) {
 	t.Helper()
 	realGit, err := exec.LookPath("git")
@@ -52,14 +52,14 @@ if [ -n "$IS_ADD" ]; then
 fi
 exit $rc
 `, pre, realGit, post)
-	if err := os.WriteFile(filepath.Join(dir, "git"), []byte(script), 0o755); err != nil { //nolint:gosec // teste
+	if err := os.WriteFile(filepath.Join(dir, "git"), []byte(script), 0o755); err != nil { //nolint:gosec // test
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
 }
 
-// Finding 2: o escape do ticket B, varrido pelo execute do ticket A (que termina
-// primeiro), era atribuído a A. Agora falha B (por TB_TICKET_ID) e A conclui.
+// Finding 2: ticket B's escape, swept by ticket A's execute (which finishes
+// first), used to be attributed to A. Now B fails (via TB_TICKET_ID) and A completes.
 func TestEscapeSweptByOtherTicketIsAttributedToCulprit(t *testing.T) {
 	release, ok := sandbox.AcquireSubreaper()
 	if !ok {
@@ -70,7 +70,7 @@ func TestEscapeSweptByOtherTicketIsAttributedToCulprit(t *testing.T) {
 	st := ticket.Open(root)
 	a := mk(t, st, "inocente")
 	b := mk(t, st, "culpado")
-	// o Landlock só deixa B escrever no próprio worktree; A só precisa ler o pidfile
+	// Landlock only lets B write to its own worktree; A only needs to read the pidfile
 	pidf := filepath.Join(root, ".toolbelt", "workspaces", b.ID, "pidfile")
 	script := fmt.Sprintf(`if [ "$TB_TICKET_ID" = %q ]; then
   ( setsid sh -c 'echo $$ > pidfile; exec sleep 37' & )
@@ -82,7 +82,7 @@ fi
 echo x > f.txt`, b.ID, pidf, pidf)
 	cfg := testCfg()
 	cfg.Retry.MaxAttempts = 3
-	// tick longo: só os Sweep do fim de cada execute observam o escape
+	// long tick: only the Sweeps at the end of each execute observe the escape
 	r := newRouter(t, root, func(o *Options) {
 		o.Config = cfg
 		o.Workers = 2
@@ -112,9 +112,9 @@ func newBareRouter(t *testing.T) *Router {
 	return newRouter(t, newRepo(t), nil)
 }
 
-// escapeRouter devolve um router com TKT-001 (w1) e TKT-002 (w2) executando e
-// um atalho para classificar órfãos sintéticos (classify direto: não é possível
-// substituir o Sweep global).
+// escapeRouter returns a router with TKT-001 (w1) and TKT-002 (w2) running and
+// a shortcut to classify synthetic orphans (classify directly: the global Sweep
+// cannot be replaced).
 func escapeRouter(t *testing.T) (r *Router, run func(...sandbox.Orphan) []pendingAlert) {
 	t.Helper()
 	r = newBareRouter(t)
@@ -125,7 +125,7 @@ func escapeRouter(t *testing.T) (r *Router, run func(...sandbox.Orphan) []pendin
 
 func escapeVars(id string) map[string]string { return map[string]string{ticketIDVar: id} }
 
-// Finding 2: atribuição por TB_TICKET_ID; ausente/desconhecido => conservador.
+// Finding 2: attribution via TB_TICKET_ID; missing/unknown => conservative.
 func TestCollectEscapesAttributed(t *testing.T) {
 	r, run := escapeRouter(t)
 	al := run(sandbox.Orphan{PID: 1, Vars: escapeVars("TKT-002")})
@@ -153,7 +153,7 @@ func TestCollectEscapesUnattributable(t *testing.T) {
 	}
 }
 
-// infiltrado em grupo alheio com TB_TICKET_ID próprio: culpado é o dono do env.
+// infiltrated into a foreign group with its own TB_TICKET_ID: the env owner is to blame.
 func TestCollectEscapesInfiltrated(t *testing.T) {
 	r, run := escapeRouter(t)
 	al := run(sandbox.Orphan{PID: 6, ForeignGroup: true, GroupOwner: "TKT-001", Vars: escapeVars("TKT-002")})
@@ -162,7 +162,7 @@ func TestCollectEscapesInfiltrated(t *testing.T) {
 	}
 }
 
-// sem agente rodando: nenhum ticket falha.
+// with no agent running: no ticket fails.
 func TestCollectEscapesNoActiveAgents(t *testing.T) {
 	r, run := escapeRouter(t)
 	r.unmarkActive("TKT-001")
@@ -173,7 +173,7 @@ func TestCollectEscapesNoActiveAgents(t *testing.T) {
 	}
 }
 
-// Finding 4: órfão da janela de spawn sem TB_TICKET_ID não falha ninguém.
+// Finding 4: a spawn-window orphan without TB_TICKET_ID fails nobody.
 func TestSpawnWindowOrphanIsNotAttributed(t *testing.T) {
 	r := newBareRouter(t)
 	r.markActive("TKT-001", "w1")
@@ -181,7 +181,7 @@ func TestSpawnWindowOrphanIsNotAttributed(t *testing.T) {
 	if len(al) != 1 || al[0].kind != AlertOrphanKilled || al[0].severity != SevWarn || r.takeEscaped("TKT-001") {
 		t.Fatalf("%+v", al)
 	}
-	// com TB_TICKET_ID, ou infiltrado em grupo de agente, a janela não absolve
+	// with TB_TICKET_ID, or infiltrated into an agent group, the window does not absolve
 	al = r.classifyEscapes([]sandbox.Orphan{{PID: 2, InSpawnWindow: true, Vars: map[string]string{ticketIDVar: "TKT-001"}}})
 	if len(al) != 1 || al[0].kind != AlertAgentEscaped || !r.takeEscaped("TKT-001") {
 		t.Fatalf("%+v", al)
@@ -192,12 +192,12 @@ func TestSpawnWindowOrphanIsNotAttributed(t *testing.T) {
 	}
 }
 
-// Finding 2: a marca de escape é limpa em complete (inclusive no descarte) para
-// não envenenar a nova tentativa do mesmo ticket.
+// Finding 2: the escape mark is cleared in complete (even on drop) so it does
+// not poison the next attempt of the same ticket.
 func TestCompleteClearsEscapedMarkOnDiscard(t *testing.T) {
 	root := newRepo(t)
 	st := ticket.Open(root)
-	tk := mk(t, st, "x") // pending: complete cai no caminho de descarte
+	tk := mk(t, st, "x") // pending: complete takes the drop path
 	r := newRouter(t, root, nil)
 	r.escapedTkts = map[string]bool{tk.ID: true}
 	r.complete(&workerDone{slot: &slot{id: "w1", ticket: tk.ID}, id: tk.ID})
@@ -206,8 +206,8 @@ func TestCompleteClearsEscapedMarkOnDiscard(t *testing.T) {
 	}
 }
 
-// Finding 4: um daemon destacado disparado pelo git (hook/fsmonitor) durante a
-// criação do worktree não falha o ticket nem é atribuído a ele.
+// Finding 4: a detached daemon spawned by git (hook/fsmonitor) during worktree
+// creation neither fails the ticket nor is attributed to it.
 func TestDaemonFromWorktreeCreationDoesNotFailTicket(t *testing.T) {
 	release, ok := sandbox.AcquireSubreaper()
 	if !ok {
@@ -238,12 +238,12 @@ func TestDaemonFromWorktreeCreationDoesNotFailTicket(t *testing.T) {
 	}
 }
 
-// Finding 4: o git do workspace manager não roda hooks do usuário.
+// Finding 4: the workspace manager's git does not run user hooks.
 func TestWorktreeCreationDoesNotRunUserHooks(t *testing.T) {
 	root := newRepo(t)
 	marker := filepath.Join(t.TempDir(), "hook-ran")
 	hook := filepath.Join(root, ".git", "hooks", "post-checkout")
-	if err := os.WriteFile(hook, []byte("#!/bin/sh\ntouch "+marker+"\nsetsid sleep 37 </dev/null >/dev/null 2>&1 &\n"), 0o755); err != nil { //nolint:gosec // teste
+	if err := os.WriteFile(hook, []byte("#!/bin/sh\ntouch "+marker+"\nsetsid sleep 37 </dev/null >/dev/null 2>&1 &\n"), 0o755); err != nil { //nolint:gosec // test
 		t.Fatal(err)
 	}
 	st := ticket.Open(root)
@@ -258,8 +258,8 @@ func TestWorktreeCreationDoesNotRunUserHooks(t *testing.T) {
 	}
 }
 
-// Finding 5: Sweep não espera por um `git worktree add` lento (antes, wsSpawnMu
-// ficava preso durante todo o git e parava o loop do router).
+// Finding 5: Sweep does not wait for a slow `git worktree add` (previously
+// wsSpawnMu was held for the whole git and stalled the router loop).
 func TestSweepNotBlockedBySlowWorktreeAdd(t *testing.T) {
 	release, ok := sandbox.AcquireSubreaper()
 	if !ok {
@@ -279,7 +279,7 @@ func TestSweepNotBlockedBySlowWorktreeAdd(t *testing.T) {
 	head := runGit(t, root, "rev-parse", "HEAD")
 	done := make(chan error, 1)
 	go func() { _, err := r.createWorkspace(&tk, head); done <- err }()
-	time.Sleep(400 * time.Millisecond) // dentro do git lento
+	time.Sleep(400 * time.Millisecond) // inside the slow git
 	start := time.Now()
 	if esc := procs.Sweep(); len(esc) != 0 {
 		t.Fatalf("git rastreado tomado por órfão: %+v", esc)
@@ -297,7 +297,7 @@ func TestSweepNotBlockedBySlowWorktreeAdd(t *testing.T) {
 	}
 }
 
-// Finding 7: sem Landlock e sem opt-in explícito, o router não toca em nada.
+// Finding 7: without Landlock and without explicit opt-in, the router touches nothing.
 func TestRouterRunFailsClosedWithoutLandlock(t *testing.T) {
 	restore := sandbox.OverrideLandlockProbe(func() (bool, int, error) { return false, 0, errors.New("simulado") })
 	defer restore()
@@ -321,17 +321,17 @@ func TestRouterRunFailsClosedWithoutLandlock(t *testing.T) {
 	}
 }
 
-// Finding 8: config global do usuário (filtros git-lfs etc.) não roda sobre o
-// conteúdo do agente; identidade global ainda é usada.
+// Finding 8: the user's global config (git-lfs filters etc.) does not run on
+// agent content; the global identity is still used.
 func TestGlobalGitConfigFilterNeverRunsAndIdentityIsKept(t *testing.T) {
 	home := t.TempDir()
 	marker := filepath.Join(t.TempDir(), "filter-ran")
 	attrs := filepath.Join(home, "attrs")
-	if err := os.WriteFile(attrs, []byte("*.txt filter=spy\n"), 0o644); err != nil { //nolint:gosec // teste
+	if err := os.WriteFile(attrs, []byte("*.txt filter=spy\n"), 0o644); err != nil { //nolint:gosec // test
 		t.Fatal(err)
 	}
 	gc := fmt.Sprintf("[user]\n\tname = Global Dev\n\temail = global@example.com\n[core]\n\tattributesFile = %s\n[filter \"spy\"]\n\tclean = \"sh -c 'touch %s; cat'\"\n", attrs, marker)
-	if err := os.WriteFile(filepath.Join(home, ".gitconfig"), []byte(gc), 0o644); err != nil { //nolint:gosec // teste
+	if err := os.WriteFile(filepath.Join(home, ".gitconfig"), []byte(gc), 0o644); err != nil { //nolint:gosec // test
 		t.Fatal(err)
 	}
 	t.Setenv("HOME", home)

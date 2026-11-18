@@ -1,5 +1,5 @@
-// Package ticket implementa o armazenamento de tickets (.toolbelt/tickets) e o
-// quadro (board) que ordena o que está pronto ou bloqueado (Fase 3).
+// Package ticket implements ticket storage (.toolbelt/tickets) and the board
+// that orders what is ready or blocked (Phase 3).
 package ticket
 
 import (
@@ -10,7 +10,6 @@ import (
 	"time"
 )
 
-// Status é o estado de um ticket.
 type Status string
 
 const (
@@ -21,10 +20,9 @@ const (
 	StatusCanceled Status = "canceled"
 )
 
-// AllStatuses lista os status válidos em ordem de exibição.
+// AllStatuses lists valid statuses in display order.
 var AllStatuses = []Status{StatusPending, StatusRunning, StatusDone, StatusFailed, StatusCanceled}
 
-// Valid informa se s é um status conhecido.
 func (s Status) Valid() bool {
 	for _, v := range AllStatuses {
 		if v == s {
@@ -34,7 +32,6 @@ func (s Status) Valid() bool {
 	return false
 }
 
-// ParseStatus converte texto em Status validando.
 func ParseStatus(s string) (Status, error) {
 	st := Status(strings.ToLower(strings.TrimSpace(s)))
 	if !st.Valid() {
@@ -51,7 +48,6 @@ var transitions = map[Status][]Status{
 	StatusDone:     {},
 }
 
-// CanTransition informa se from -> to é permitido.
 func CanTransition(from, to Status) bool {
 	for _, t := range transitions[from] {
 		if t == to {
@@ -61,42 +57,38 @@ func CanTransition(from, to Status) bool {
 	return false
 }
 
-// Permissões válidas do mandato.
 const (
 	PermRead     = "read"
 	PermWrite    = "write"
 	PermRunTests = "run_tests"
 )
 
-// DefaultPermissions é aplicado quando o ticket não declara permissões.
+// DefaultPermissions applies when a ticket declares no permissions.
 func DefaultPermissions() []string { return []string{PermRead, PermWrite, PermRunTests} }
 
-// Mandate delimita o que o agente pode fazer.
 type Mandate struct {
 	Scope       []string `yaml:"scope,omitempty" json:"scope"`
 	Forbidden   []string `yaml:"forbidden,omitempty" json:"forbidden"`
 	Permissions []string `yaml:"permissions,omitempty" json:"permissions"`
 }
 
-// Acceptance descreve critérios de aceite e timeout (ex.: "10m").
+// Acceptance.Timeout is a duration string (e.g. "10m").
 type Acceptance struct {
 	Criteria []string `yaml:"criteria,omitempty" json:"criteria"`
 	Timeout  string   `yaml:"timeout,omitempty" json:"timeout,omitempty"`
 }
 
-// Subscription reserva um ticket para um worker (entrega direta).
+// Subscription reserves a ticket for a worker (direct delivery).
 type Subscription struct {
 	Worker         string    `yaml:"worker" json:"worker"`
 	DirectDelivery bool      `yaml:"direct_delivery" json:"direct_delivery"`
 	ExpiresAt      time.Time `yaml:"expires_at" json:"expires_at"`
 }
 
-// Live informa se a assinatura ainda vale em now.
 func (s *Subscription) Live(now time.Time) bool {
 	return s != nil && s.Worker != "" && now.Before(s.ExpiresAt)
 }
 
-// Result registra a execução de um ticket.
 type Result struct {
 	Branch     string     `yaml:"branch,omitempty" json:"branch,omitempty"`
 	BaseCommit string     `yaml:"base_commit,omitempty" json:"base_commit,omitempty"`
@@ -109,7 +101,6 @@ type Result struct {
 	Log        string     `yaml:"log,omitempty" json:"log,omitempty"`
 }
 
-// Ticket é uma unidade de trabalho para um agente.
 type Ticket struct {
 	ID           string        `yaml:"id" json:"id"`
 	Title        string        `yaml:"title" json:"title"`
@@ -129,7 +120,7 @@ type Ticket struct {
 	Source       string        `yaml:"source,omitempty" json:"source,omitempty"`
 }
 
-// TimeoutDuration devolve o timeout do ticket (0 quando não definido).
+// TimeoutDuration returns 0 when no timeout is set.
 func (t *Ticket) TimeoutDuration() time.Duration {
 	if t.Acceptance.Timeout == "" {
 		return 0
@@ -143,7 +134,7 @@ func (t *Ticket) TimeoutDuration() time.Duration {
 
 var idRe = regexp.MustCompile(`^TKT-(\d{3,})$`)
 
-// NormalizeID aceita "TKT-001", "tkt-1" ou "1" e devolve o ID canônico.
+// NormalizeID accepts "TKT-001", "tkt-1" or "1" and returns the canonical ID.
 func NormalizeID(s string) (string, error) {
 	s = strings.ToUpper(strings.TrimSpace(s))
 	if n, err := strconv.Atoi(s); err == nil && n > 0 {
@@ -157,7 +148,7 @@ func NormalizeID(s string) (string, error) {
 	return "", fmt.Errorf("ID de ticket inválido %q (esperado TKT-NNN)", s)
 }
 
-// FormatID formata n como TKT-NNN (3+ dígitos).
+// FormatID formats n as TKT-NNN (3+ digits).
 func FormatID(n int) string { return fmt.Sprintf("TKT-%03d", n) }
 
 func idNumber(id string) int {
@@ -169,7 +160,7 @@ func idNumber(id string) int {
 	return n
 }
 
-// Validate checa campos de um ticket (sem consultar dependências).
+// Validate checks fields only; dependencies are not consulted.
 func (t *Ticket) Validate() error {
 	if strings.TrimSpace(t.Title) == "" {
 		return fmt.Errorf("título do ticket é obrigatório")

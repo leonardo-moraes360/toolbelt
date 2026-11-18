@@ -1,4 +1,4 @@
-// Package log fornece logging estruturado com suporte a cores Synthwave.
+// Package log provides structured logging with Synthwave-themed colors.
 package log
 
 import (
@@ -9,16 +9,16 @@ import (
 	"sync"
 )
 
-// Cores ANSI do tema Synthwave (de assets/theme/tokens.json)
+// Synthwave theme ANSI colors (from assets/theme/tokens.json).
 const (
 	ColorReset   = "\033[0m"
-	ColorPrimary = "\033[38;5;134m" // Roxo #982BD4
-	ColorAccent  = "\033[38;5;51m"  // Ciano #0CD7FF
-	ColorError   = "\033[38;5;198m" // Rosa #F9278C
-	ColorSuccess = "\033[38;5;43m"  // Verde #2DD4A7
-	ColorWarning = "\033[38;5;214m" // Amarelo #FFB020
-	ColorText    = "\033[38;5;15m"  // Branco #FFFFFF
-	ColorMuted   = "\033[38;5;249m" // Cinza #A099B0
+	ColorPrimary = "\033[38;5;134m" // Purple #982BD4
+	ColorAccent  = "\033[38;5;51m"  // Cyan #0CD7FF
+	ColorError   = "\033[38;5;198m" // Pink #F9278C
+	ColorSuccess = "\033[38;5;43m"  // Green #2DD4A7
+	ColorWarning = "\033[38;5;214m" // Yellow #FFB020
+	ColorText    = "\033[38;5;15m"  // White #FFFFFF
+	ColorMuted   = "\033[38;5;249m" // Gray #A099B0
 )
 
 var (
@@ -28,14 +28,11 @@ var (
 	useColor      bool
 )
 
-// Init inicializa o logger global.
-// Se json=true, usa slog.JSONHandler.
-// Se json=false, usa um handler com cores (respeitando NO_COLOR).
+// Init: json=false uses the colored handler (honoring NO_COLOR).
 func Init(json bool) {
 	InitWithWriter(os.Stderr, json)
 }
 
-// InitWithWriter inicializa o logger global com um writer específico.
 func InitWithWriter(w io.Writer, json bool) {
 	once.Do(func() {
 		useJSON = json
@@ -54,39 +51,33 @@ func InitWithWriter(w io.Writer, json bool) {
 	})
 }
 
-// shouldUseColor verifica se deve usar cores no terminal.
 func shouldUseColor() bool {
-	// Respeita NO_COLOR (https://no-color.org/)
+	// https://no-color.org/
 	if os.Getenv("NO_COLOR") != "" {
 		return false
 	}
-	// Verifica se TERM suporta cores
 	term := os.Getenv("TERM")
 	if term == "dumb" || term == "" {
 		return false
 	}
-	// Verifica se stderr é um terminal
 	stat, err := os.Stderr.Stat()
 	if err != nil {
 		return false
 	}
 	if (stat.Mode() & os.ModeCharDevice) == 0 {
-		return false // não é um terminal
+		return false
 	}
 	return true
 }
 
-// UseColor retorna true se o logger está usando cores.
 func UseColor() bool {
 	return useColor
 }
 
-// UseJSON retorna true se o logger está em modo JSON.
 func UseJSON() bool {
 	return useJSON
 }
 
-// Logger retorna o logger global.
 func Logger() *slog.Logger {
 	if defaultLogger == nil {
 		Init(false)
@@ -94,37 +85,30 @@ func Logger() *slog.Logger {
 	return defaultLogger
 }
 
-// Debug loga uma mensagem de debug.
 func Debug(msg string, args ...any) {
 	Logger().Debug(msg, args...)
 }
 
-// Info loga uma mensagem informativa.
 func Info(msg string, args ...any) {
 	Logger().Info(msg, args...)
 }
 
-// Warn loga um aviso.
 func Warn(msg string, args ...any) {
 	Logger().Warn(msg, args...)
 }
 
-// Error loga um erro.
 func Error(msg string, args ...any) {
 	Logger().Error(msg, args...)
 }
 
-// With retorna um logger com atributos adicionais.
 func With(args ...any) *slog.Logger {
 	return Logger().With(args...)
 }
 
-// WithContext retorna um logger com o contexto.
 func WithContext(ctx context.Context) *slog.Logger {
 	return Logger().With("trace_id", ctx.Value("trace_id"))
 }
 
-// SynthwaveHandler é um handler slog com cores do tema Synthwave.
 type SynthwaveHandler struct {
 	w        io.Writer
 	useColor bool
@@ -133,7 +117,6 @@ type SynthwaveHandler struct {
 	groups   []string
 }
 
-// NewSynthwaveHandler cria um novo handler com cores Synthwave.
 func NewSynthwaveHandler(w io.Writer, useColor bool) *SynthwaveHandler {
 	return &SynthwaveHandler{
 		w:        w,
@@ -142,12 +125,10 @@ func NewSynthwaveHandler(w io.Writer, useColor bool) *SynthwaveHandler {
 	}
 }
 
-// Enabled implementa slog.Handler.
 func (h *SynthwaveHandler) Enabled(_ context.Context, level slog.Level) bool {
 	return level >= h.level
 }
 
-// Handle implementa slog.Handler.
 func (h *SynthwaveHandler) Handle(_ context.Context, r slog.Record) error { //nolint:gocritic // slog.Handler interface requires value receiver
 	var levelColor, levelText string
 	switch r.Level {
@@ -170,7 +151,6 @@ func (h *SynthwaveHandler) Handle(_ context.Context, r slog.Record) error { //no
 
 	var buf []byte
 
-	// Timestamp
 	if h.useColor {
 		buf = append(buf, ColorMuted...)
 	}
@@ -180,7 +160,6 @@ func (h *SynthwaveHandler) Handle(_ context.Context, r slog.Record) error { //no
 	}
 	buf = append(buf, ' ')
 
-	// Level
 	if h.useColor {
 		buf = append(buf, levelColor...)
 	}
@@ -190,7 +169,6 @@ func (h *SynthwaveHandler) Handle(_ context.Context, r slog.Record) error { //no
 	}
 	buf = append(buf, ' ')
 
-	// Message
 	if h.useColor {
 		buf = append(buf, ColorText...)
 	}
@@ -199,7 +177,6 @@ func (h *SynthwaveHandler) Handle(_ context.Context, r slog.Record) error { //no
 		buf = append(buf, ColorReset...)
 	}
 
-	// Attributes
 	r.Attrs(func(a slog.Attr) bool {
 		buf = append(buf, ' ')
 		if h.useColor {
@@ -225,14 +202,12 @@ func (h *SynthwaveHandler) Handle(_ context.Context, r slog.Record) error { //no
 	return err
 }
 
-// WithAttrs implementa slog.Handler.
 func (h *SynthwaveHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
 	newH := *h
 	newH.attrs = append(newH.attrs, attrs...)
 	return &newH
 }
 
-// WithGroup implementa slog.Handler.
 func (h *SynthwaveHandler) WithGroup(name string) slog.Handler {
 	newH := *h
 	newH.groups = append(newH.groups, name)

@@ -113,8 +113,8 @@ func assertIgnoreSplit(t *testing.T, dir string) {
 	}
 }
 
-// Dogfood #17: numa git worktree o exclude vai para $GIT_COMMON_DIR/info/exclude,
-// o único que o git lê; o info/ do gitdir da worktree é ignorado.
+// Dogfood #17: in a git worktree the exclude goes to $GIT_COMMON_DIR/info/exclude,
+// the only one git reads; the info/ of the worktree's gitdir is ignored.
 func TestEnsureLocalGitExcludeWorktree(t *testing.T) {
 	main := initGitRepo(t)
 	run := func(dir string, args ...string) {

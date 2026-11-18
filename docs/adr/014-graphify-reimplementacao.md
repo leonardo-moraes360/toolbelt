@@ -1,101 +1,106 @@
-🇧🇷 Português | [🇺🇸 English](../en/adr/014-graphify-reimplementacao.md)
+🇺🇸 English | [🇧🇷 Português](../pt-BR/adr/014-graphify-reimplementacao.md)
 
-# ADR-014: Graphify — Reimplementar, Não Integrar
+# ADR-014: Graphify — Reimplement, Don't Integrate
 
 ## Status
 
 accepted
 
-## Contexto
+## Context
 
-O [ADR-006](006-inspiracoes-graphify-obsidian.md) deixou em aberto a questão
-"integrar o Graphify via MCP ou reimplementar a indexação?", com a decisão
-provisória de experimentar a integração primeiro.
+[ADR-006](006-inspiracoes-graphify-obsidian.md) left open the question
+"integrate Graphify via MCP or reimplement indexing?", with a provisional
+decision to try integration first.
 
-Na prática o caminho já foi outro: o `tb graph` (Fase 2, [ADR-011](011-grafo-sob-demanda.md))
-é uma reimplementação própria em `internal/graph`:
+In practice the project went the other way: `tb graph` (Phase 2,
+[ADR-011](011-grafo-sob-demanda.md)) is an in-house reimplementation in
+`internal/graph`:
 
-- Go via `go/ast`; TS/JS, Python, Rust e frameworks (React, Vue, Svelte,
-  Angular, Astro, MDX) via extratores regex conservadores; docs Markdown com
+- Go via `go/ast`; TS/JS, Python, Rust and frameworks (React, Vue, Svelte,
+  Angular, Astro, MDX) via conservative regex extractors; Markdown docs with
   wikilinks.
-- Proveniência em nós e arestas (`source`, `confidence`), com filtro
-  `MinCallsConfidence = 0.6` em `callers`/`impact`.
-- Índice JSON local (`.toolbelt/graph.json`) com fingerprint de frescor.
-- Paridade CLI ↔ MCP (`tb graph *` ↔ `tb_graph_*`).
+- Provenance on nodes and edges (`source`, `confidence`), with the
+  `MinCallsConfidence = 0.6` filter in `callers`/`impact`.
+- Local JSON index (`.toolbelt/graph.json`) with a freshness fingerprint.
+- CLI ↔ MCP parity (`tb graph *` ↔ `tb_graph_*`).
 
-Nenhuma linha depende do Graphify. O estudo de campo ([SINTESE](../campo/SINTESE.md))
-classificou "Graphify integração profunda" como **sem suporte**: o gargalo
-observado foi a qualidade dos extratores (callers/impact vazios fora de Go/JS),
-não a falta de um backend externo.
+Not a single line depends on Graphify. The field study ([SINTESE](../campo/SINTESE.md))
+rated "deep Graphify integration" as **unsupported**: the observed bottleneck
+was extractor quality (empty callers/impact outside Go/JS), not the lack of an
+external backend.
 
-## Decisão
+## Decision
 
-**Reimplementar.** O toolbelt não integra o Graphify (nem como dependência
-Go, nem como servidor MCP externo). O Graphify segue como referência de
-produto: copiamos ideias, não código.
+**Reimplement.** toolbelt does not integrate Graphify (neither as a Go
+dependency nor as an external MCP server). Graphify remains a product
+reference: we copy ideas, not code.
 
-Critérios que decidiram:
+Deciding criteria:
 
-1. **Invariante local-first** — `tb` é 100% local e sem rede. O Graphify
-   inclui etapas com LLM (arestas `INFERRED`) e pipeline Python; integrá-lo
-   traria um segundo runtime e dependências de rede opcionais difíceis de
-   cercar no sandbox.
-2. **Binário único em Go** — sem dependência nova em `go.mod`, sem
-   tree-sitter via cgo (manteria release reprodutível + SBOM + cosign simples).
-3. **Proveniência já compatível** — `extracted`/`inferred`/`manual` + confidence
-   cobre o modelo `EXTRACTED/INFERRED/AMBIGUOUS` do Graphify.
-4. **Sob demanda** — o grafo continua desligado por padrão (ADR-011); um
-   backend externo pesado contraria o custo medido em A/B.
+1. **Local-first invariant** — `tb` is 100% local with no network. Graphify
+   includes LLM steps (`INFERRED` edges) and a Python pipeline; integrating it
+   would add a second runtime and optional network dependencies that are hard
+   to fence in the sandbox.
+2. **Single Go binary** — no new `go.mod` dependency, no tree-sitter via cgo
+   (keeps reproducible release + SBOM + cosign simple).
+3. **Provenance already compatible** — `extracted`/`inferred`/`manual` +
+   confidence covers Graphify's `EXTRACTED/INFERRED/AMBIGUOUS` model.
+4. **On demand** — the graph stays off by default (ADR-011); a heavy external
+   backend contradicts the cost measured in A/B.
 
-### Primeira entrega desta decisão
+### First delivery under this decision
 
-Duas consultas do Graphify, reimplementadas de forma determinística (sem LLM):
+Two Graphify queries, reimplemented deterministically (no LLM):
 
-| Graphify | toolbelt | O que faz |
-|----------|----------|-----------|
-| `explain "<nó>"` | `tb graph explain <nó>` / `tb_graph_explain` | Nó + arestas de entrada/saída com `source`/`confidence`; conta chamadas sem nó no índice (`unresolved_out`) |
-| `path "A" "B"` | `tb graph path <a> <b>` / `tb_graph_path` | Menor caminho (BFS) entre dois nós, andando arestas nos dois sentidos; cada passo diz `forward`/`backward` |
+| Graphify | toolbelt | What it does |
+|----------|----------|--------------|
+| `explain "<node>"` | `tb graph explain <node>` / `tb_graph_explain` | Node + incoming/outgoing edges with `source`/`confidence`; counts calls with no node in the index (`unresolved_out`) |
+| `path "A" "B"` | `tb graph path <a> <b>` / `tb_graph_path` | Shortest path (BFS) between two nodes, walking edges both ways; each step says `forward`/`backward` |
 
-Regras comuns: arestas `calls` com confiança &lt; 0.6 são ignoradas (como em
-`callers`/`impact`); arestas cujo alvo não existe como nó não entram no
-caminho; resolução de nó por ID exato → título exato → sufixo de função →
-arquivo/pacote; desempate por ID (saída estável).
+Shared rules: `calls` edges with confidence &lt; 0.6 are ignored (as in
+`callers`/`impact`); edges whose target is not a node are never walked; node
+resolution goes exact ID → exact title → function suffix → file/package; ties
+broken by ID (stable output).
 
-### Roadmap (fora desta entrega)
+Also in v0.0.5: `tb graph search` / `tb_graph_search` now ranks in pure Go
+(exact title → substring → terms only; BM25 over title/path/package within
+each tier, with camelCase/`snake_case` splitting).
 
-Ordem por valor medido no campo, cada item em PR próprio:
+### Roadmap (out of this delivery)
 
-1. **Resolução de chamadas por receptor em Go** — em 2026-11-17, 9.580 de 17.302
-   arestas (~55%) do índice deste repo apontam para alvos sem nó (`func:s.Metodo`, stdlib,
-   builtins). É o maior ganho para `callers`/`impact`/`path`.
-2. **God nodes / hubs** em `tb graph stats` — top-N por grau, como
-   o relatório do Graphify.
-3. **Comunidades** (label propagation determinístico) — agrupar módulos
-   para orientar o agente em repositórios grandes.
-4. **Relatório Markdown no vault** (`GRAPH_REPORT.md`-like), compatível com
-   Obsidian (ADR-006).
+Ordered by value measured in the field, one PR each:
 
-Arestas `inferred` via LLM continuam fora até haver modelo local (Fase 3,
-componentes Rust opcionais).
+1. **Receiver-based call resolution in Go** — as of 2026-11-17, 9,580 of 17,302
+   edges (~55%) in this repo's index point to targets with no node (`func:s.Method`, stdlib,
+   builtins). Biggest win for `callers`/`impact`/`path`.
+2. **God nodes / hubs** in `tb graph stats` — top-N by degree, like Graphify's
+   report.
+3. **Communities** (deterministic label propagation) — group modules to
+   orient the agent in large repositories.
+4. **Markdown report in the vault** (`GRAPH_REPORT.md`-like), Obsidian
+   compatible (ADR-006).
 
-## Consequências
+LLM-`inferred` edges stay out until there is a local model (Phase 3, optional
+Rust components).
 
-### Positivas
+## Consequences
 
-- Questão aberta do ADR-006 fechada; docs passam a descrever o código real
-  (go/ast + regex, não tree-sitter).
-- Zero dependência externa nova; release continua binário único.
-- Agentes ganham `explain`/`path`, úteis para localizar antes de ler arquivos.
+### Positive
 
-### Negativas
+- ADR-006's open question is closed; docs now describe the real code (go/ast +
+  regex, not tree-sitter).
+- Zero new external dependencies; release stays a single binary.
+- Agents get `explain`/`path`, useful to locate before reading files.
 
-- Manter extratores por linguagem é nosso trabalho (regex tem teto de precisão).
-- Sem arestas inferidas por LLM, relações implícitas (DI, reflexão) ficam de fora.
+### Negative
 
-## Alternativas Consideradas
+- Maintaining per-language extractors is on us (regex has a precision ceiling).
+- Without LLM-inferred edges, implicit relations (DI, reflection) are missing.
 
-- **Integrar Graphify via MCP** — rejeitada: segundo runtime (Python),
-  etapas com LLM/rede contra a invariante local-first, e o campo não mostrou
-  ganho que justifique.
-- **tree-sitter via cgo** — adiada: melhor precisão, mas cgo complica
-  cross-compile e reprodutibilidade; reavaliar se regex virar teto real.
+## Alternatives Considered
+
+- **Integrate Graphify via MCP** — rejected: second runtime (Python), LLM/network
+  steps against the local-first invariant, and the field study showed no gain
+  to justify it.
+- **tree-sitter via cgo** — deferred: better precision, but cgo complicates
+  cross-compilation and reproducibility; revisit if regex becomes a real ceiling.

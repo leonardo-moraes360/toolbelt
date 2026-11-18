@@ -1,6 +1,5 @@
-// Package config gerencia a configuração do toolbelt.
-// Suporta configuração global (~/.config/toolbelt/config.yaml) e local (.toolbelt/config.yaml),
-// onde local sobrepõe global.
+// Package config loads toolbelt config: global (~/.config/toolbelt/config.yaml)
+// and local (.toolbelt/config.yaml), where local overrides global.
 package config
 
 import (
@@ -14,53 +13,41 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// DefaultConfigDir é o nome do diretório de configuração local.
 const DefaultConfigDir = ".toolbelt"
 
-// DefaultConfigFile é o nome do arquivo de configuração.
 const DefaultConfigFile = "config.yaml"
 
-// Config representa a configuração do toolbelt.
 type Config struct {
-	// Defaults são valores padrão para commands.
 	Defaults Defaults `yaml:"defaults"`
 
-	// Sandbox configura o isolamento.
 	Sandbox SandboxConfig `yaml:"sandbox"`
 
-	// Graph configura o grafo de código.
 	Graph GraphConfig `yaml:"graph"`
 
-	// Vault configura a memória.
 	Vault VaultConfig `yaml:"vault"`
 
-	// Logging configura os logs.
 	Logging LoggingConfig `yaml:"logging"`
 
-	// Bench configura o benchmark.
 	Bench BenchConfig `yaml:"bench"`
 
-	// Verify configura a verificação adversarial.
 	Verify VerifyConfig `yaml:"verify"`
 
-	// Review configura review/drift (approved-sha).
+	// review/drift (approved-sha).
 	Review ReviewConfig `yaml:"review"`
 
-	// Env configura a allowlist de variáveis passadas a filhos (sh -c).
+	// Allowlist of variables passed to children (sh -c).
 	Env EnvConfig `yaml:"env"`
 
-	// Router configura o scheduler de tickets (tb router run).
+	// Ticket scheduler (tb router run).
 	Router RouterConfig `yaml:"router"`
 }
 
-// Defaults são valores padrão para commands.
 type Defaults struct {
 	Sandbox    bool   `yaml:"sandbox"`
 	Timeout    string `yaml:"timeout"`
 	JSONOutput bool   `yaml:"json_output"`
 }
 
-// SandboxConfig configura o isolamento.
 type SandboxConfig struct {
 	AllowNet  []string `yaml:"allow_net"`
 	CPULimit  int      `yaml:"cpu_limit"`
@@ -68,7 +55,6 @@ type SandboxConfig struct {
 	TimeLimit string   `yaml:"time_limit"`
 }
 
-// GraphConfig configura o grafo de código.
 type GraphConfig struct {
 	AutoIndex      bool     `yaml:"auto_index"`
 	IndexOnChange  bool     `yaml:"index_on_change"`
@@ -79,20 +65,17 @@ type GraphConfig struct {
 	MaxFileBytes   int64    `yaml:"max_file_bytes"`
 }
 
-// VaultConfig configura a memória.
 type VaultConfig struct {
 	Path         string `yaml:"path"`
 	SyncOnChange bool   `yaml:"sync_on_change"`
 }
 
-// LoggingConfig configura os logs.
 type LoggingConfig struct {
 	Level  string `yaml:"level"`
 	File   string `yaml:"file"`
 	Format string `yaml:"format"`
 }
 
-// BenchConfig configura o benchmark.
 type BenchConfig struct {
 	TasksDir     string `yaml:"tasks_dir"`
 	FixturesDir  string `yaml:"fixtures_dir"`
@@ -102,7 +85,6 @@ type BenchConfig struct {
 	Timeout      string `yaml:"timeout"`
 }
 
-// VerifyConfig configura o ruler de testes do tb verify.
 type VerifyConfig struct {
 	TestCmd       string `yaml:"test_cmd"`
 	HiddenTestCmd string `yaml:"hidden_test_cmd"`
@@ -110,18 +92,17 @@ type VerifyConfig struct {
 	LintCmd       string `yaml:"lint_cmd,omitempty"`
 }
 
-// ReviewConfig configura tb review / tb drift.
 type ReviewConfig struct {
 	RequireApprovedSHA bool `yaml:"require_approved_sha"`
 }
 
-// EnvConfig controla quais variáveis de ambiente chegam aos filhos (sh -c).
+// EnvConfig controls which env vars reach child processes (sh -c).
 type EnvConfig struct {
 	Allow []string `yaml:"allow"`
 	Pass  []string `yaml:"pass"`
 }
 
-// RouterConfig configura tb router / tb watchdog.
+// RouterConfig is shared by tb router and tb watchdog.
 type RouterConfig struct {
 	MaxWorkers     int                  `yaml:"max_workers" json:"max_workers"`
 	Strategy       string               `yaml:"strategy" json:"strategy"`
@@ -132,25 +113,23 @@ type RouterConfig struct {
 	SlowThreshold  float64              `yaml:"slow_threshold" json:"slow_threshold"`
 }
 
-// RouterDirectDelivery configura a entrega direta (afinidade ticket -> worker).
+// RouterDirectDelivery: ticket -> worker affinity.
 type RouterDirectDelivery struct {
 	Enabled                   bool   `yaml:"enabled" json:"enabled"`
 	SubscriptionTTL           string `yaml:"subscription_ttl" json:"subscription_ttl"`
 	MaxSubscriptionsPerWorker int    `yaml:"max_subscriptions_per_worker" json:"max_subscriptions_per_worker"`
 }
 
-// RouterTimeouts limita a duração por ticket e a execução global do router.
+// RouterTimeouts bounds each ticket and the whole router run.
 type RouterTimeouts struct {
 	PerTicket string `yaml:"per_ticket" json:"per_ticket"`
 	Global    string `yaml:"global" json:"global"`
 }
 
-// RouterRetry controla re-tentativas após falha de worker.
 type RouterRetry struct {
 	MaxAttempts int `yaml:"max_attempts" json:"max_attempts"`
 }
 
-// DefaultRouterConfig devolve os padrões do router.
 func DefaultRouterConfig() RouterConfig {
 	return RouterConfig{
 		MaxWorkers: 3,
@@ -167,7 +146,6 @@ func DefaultRouterConfig() RouterConfig {
 	}
 }
 
-// Validate checa os valores do router (strategy, durações, limites).
 func (r *RouterConfig) Validate() error {
 	if r.MaxWorkers < 1 {
 		return fmt.Errorf("router.max_workers deve ser >= 1 (atual %d)", r.MaxWorkers)
@@ -199,7 +177,6 @@ func (r *RouterConfig) Validate() error {
 	return nil
 }
 
-// DefaultConfig retorna a configuração padrão.
 func DefaultConfig() *Config {
 	return &Config{
 		Defaults: Defaults{
@@ -252,22 +229,20 @@ func DefaultConfig() *Config {
 	}
 }
 
-// overrideFile, quando não vazio, faz Load usar só esse arquivo (flag -c/--config).
+// When non-empty, Load uses only this file (-c/--config).
 var overrideFile string
 
-// SetFile define o arquivo de configuração explícito (ex.: -c/--config).
-// Passe "" para limpar e voltar ao merge global+local.
+// SetFile("") restores the global+local merge.
 func SetFile(path string) {
 	overrideFile = strings.TrimSpace(path)
 }
 
-// File retorna o caminho explícito definido por SetFile, ou "".
 func File() string {
 	return overrideFile
 }
 
-// Load carrega a configuração, mesclando global e local.
-// Se SetFile tiver sido chamado com um path, carrega só esse arquivo sobre os defaults.
+// Load merges global then local; after SetFile(path) it loads only that file
+// over the defaults.
 func Load() (*Config, error) {
 	cfg := DefaultConfig()
 
@@ -278,13 +253,12 @@ func Load() (*Config, error) {
 		return cfg, nil
 	}
 
-	// Carrega configuração global
 	globalPath := GlobalConfigPath()
 	if err := loadFromFile(globalPath, cfg); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return nil, fmt.Errorf("loading global config: %w", err)
 	}
 
-	// Carrega configuração local (sobrepõe global)
+	// Local overrides global.
 	localPath := LocalConfigPath()
 	if err := loadFromFile(localPath, cfg); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return nil, fmt.Errorf("loading local config: %w", err)
@@ -293,7 +267,6 @@ func Load() (*Config, error) {
 	return cfg, nil
 }
 
-// GlobalConfigPath retorna o caminho da configuração global.
 func GlobalConfigPath() string {
 	configDir, err := os.UserConfigDir()
 	if err != nil {
@@ -302,12 +275,10 @@ func GlobalConfigPath() string {
 	return filepath.Join(configDir, "toolbelt", DefaultConfigFile)
 }
 
-// LocalConfigPath retorna o caminho da configuração local.
 func LocalConfigPath() string {
 	return filepath.Join(DefaultConfigDir, DefaultConfigFile)
 }
 
-// loadFromFile carrega configuração de um arquivo YAML.
 func loadFromFile(path string, cfg *Config) error {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -316,7 +287,6 @@ func loadFromFile(path string, cfg *Config) error {
 	return yaml.Unmarshal(data, cfg)
 }
 
-// LoadFile carrega um arquivo de configuração YAML específico.
 func LoadFile(path string) (*Config, error) {
 	cfg := DefaultConfig()
 	if err := loadFromFile(path, cfg); err != nil {
@@ -325,7 +295,6 @@ func LoadFile(path string) (*Config, error) {
 	return cfg, nil
 }
 
-// Save salva a configuração em um arquivo.
 func Save(cfg *Config, path string) error {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -340,8 +309,7 @@ func Save(cfg *Config, path string) error {
 	return os.WriteFile(path, data, VersionedFileMode) //nolint:gosec // config.yaml é versionável, sem segredos
 }
 
-// Init cria o diretório de configuração e o arquivo de configuração padrão.
-// dir é o caminho completo do diretório (ex: /home/user/.config/toolbelt ou /project/.toolbelt)
+// Init: dir is the full config dir path (e.g. ~/.config/toolbelt or /project/.toolbelt).
 func Init(dir string) error {
 	_, err := InitDetailed(dir)
 	return err
@@ -396,8 +364,7 @@ func applyDetectedVerifyCmds(cfg *Config, dir string) DetectedCmd {
 	return detected
 }
 
-// Exists verifica se o diretório de configuração existe.
-// dir é o caminho completo (ex: /project/.toolbelt)
+// Exists: dir is the full path (e.g. /project/.toolbelt).
 func Exists(dir string) bool {
 	info, err := os.Stat(dir)
 	return err == nil && info.IsDir()

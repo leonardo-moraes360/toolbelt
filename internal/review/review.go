@@ -106,7 +106,7 @@ type reviewerRole struct {
 	Standards []string
 }
 
-// Run executa revisão fresh-context (Elephant-Goldfish) sem herdar estado do elephant.
+// Run performs a fresh-context review (Elephant-Goldfish) without inheriting the elephant's state.
 func Run(cfg *Config) (*Report, error) {
 	if cfg.Reviewers <= 0 {
 		cfg.Reviewers = 3

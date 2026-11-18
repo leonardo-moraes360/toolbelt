@@ -6,28 +6,26 @@ import (
 	"github.com/leonardo-moraes360/toolbelt/internal/ticket"
 )
 
-// PlanAssignment é uma atribuição simulada.
 type PlanAssignment struct {
 	Worker string `json:"worker"`
 	Ticket string `json:"ticket"`
 	Title  string `json:"title"`
 	Via    string `json:"via"`  // board | direct
-	Base   string `json:"base"` // HEAD ou ID do pai (entrega encadeada)
+	Base   string `json:"base"` // HEAD or parent ID (chained delivery)
 }
 
-// PlanRound agrupa o que roda "em paralelo" numa rodada.
 type PlanRound struct {
 	Round       int              `json:"round"`
 	Assignments []PlanAssignment `json:"assignments"`
 }
 
-// PlanUnschedulable é um ticket pending que nunca ficaria pronto.
+// PlanUnschedulable is a pending ticket that would never become ready.
 type PlanUnschedulable struct {
 	Ticket  string   `json:"ticket"`
 	Reasons []string `json:"reasons"`
 }
 
-// Plan é a saída de tb router run --dry-run (nada é executado).
+// Plan is the output of tb router run --dry-run (nothing is executed).
 type Plan struct {
 	Strategy       string              `json:"strategy"`
 	Workers        int                 `json:"workers"`
@@ -39,9 +37,9 @@ type Plan struct {
 	Note           string              `json:"note"`
 }
 
-// BuildPlan simula o agendamento assumindo duração igual por ticket: a cada
-// rodada cada worker pega um ticket; com entrega direta, o worker prefere um
-// dependente do que acabou de concluir (até maxSubs por worker).
+// BuildPlan simulates scheduling assuming equal duration per ticket: each
+// round every worker takes one ticket; with direct delivery, a worker prefers a
+// dependent of the ticket it just finished (up to maxSubs per worker).
 func BuildPlan(b *ticket.Board, workers int, strategy ticket.Strategy, direct bool, maxSubs int) Plan {
 	p := Plan{
 		Strategy: string(strategy), Workers: workers, DirectDelivery: direct,
@@ -60,7 +58,7 @@ func BuildPlan(b *ticket.Board, workers int, strategy ticket.Strategy, direct bo
 			pending++
 		}
 	}
-	lastWorker := map[string]string{} // ticket concluído na rodada anterior -> worker
+	lastWorker := map[string]string{} // ticket finished in the previous round -> worker
 	for round := 1; round <= pending+1; round++ {
 		cands := pl.ready()
 		if len(cands) == 0 {
@@ -77,7 +75,6 @@ func BuildPlan(b *ticket.Board, workers int, strategy ticket.Strategy, direct bo
 	return p
 }
 
-// planner guarda o estado simulado de BuildPlan.
 type planner struct {
 	b        *ticket.Board
 	workers  int
@@ -88,7 +85,6 @@ type planner struct {
 	byID     map[string]*ticket.Ticket
 }
 
-// ready devolve os pending cujas dependências já estão done, ordenados.
 func (pl *planner) ready() []ticket.Ticket {
 	var out []ticket.Ticket
 	for i := range pl.b.Tickets {
@@ -111,7 +107,8 @@ func (pl *planner) ready() []ticket.Ticket {
 	return out
 }
 
-// assignRound atribui um ticket por worker; devolve as atribuições e ticket -> worker.
+// assignRound assigns one ticket per worker; returns the assignments and a
+// ticket -> worker map.
 func (pl *planner) assignRound(cands []ticket.Ticket, lastWorker map[string]string) (assigns []PlanAssignment, ranThisRound map[string]string) {
 	taken := map[string]bool{}
 	ranThisRound = map[string]string{}
@@ -132,8 +129,8 @@ func (pl *planner) assignRound(cands []ticket.Ticket, lastWorker map[string]stri
 	return assigns, ranThisRound
 }
 
-// pickFor escolhe o ticket do worker w: com entrega direta, um dependente do
-// que w acabou de concluir; senão o primeiro candidato livre.
+// pickFor: with direct delivery, prefer a dependent of the ticket w just
+// finished; otherwise the first free candidate.
 func (pl *planner) pickFor(w string, cands []ticket.Ticket, taken map[string]bool, lastWorker map[string]string) (pick *ticket.Ticket, via string) {
 	if pl.direct {
 		for i := range cands {
@@ -156,7 +153,7 @@ func (pl *planner) pickFor(w string, cands []ticket.Ticket, taken map[string]boo
 	return nil, ViaBoard
 }
 
-// unschedulable lista os pending que nunca ficaram prontos, com os motivos.
+// unschedulable lists pending tickets that never became ready, with reasons.
 func (pl *planner) unschedulable() []PlanUnschedulable {
 	var out []PlanUnschedulable
 	for i := range pl.b.Tickets {
@@ -180,7 +177,6 @@ func (pl *planner) unschedulable() []PlanUnschedulable {
 	return out
 }
 
-// Plan monta o plano a partir do board atual deste router.
 func (r *Router) Plan() (Plan, error) {
 	b, err := ticket.LoadBoard(r.store)
 	if err != nil {

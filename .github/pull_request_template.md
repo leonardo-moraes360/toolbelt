@@ -1,46 +1,46 @@
-## Descrição
+## Description
 
-Descreva as mudanças feitas neste PR.
+Describe the changes made in this PR.
 
-## Tipo de Mudança
+## Type of Change
 
-- [ ] `feat`: Nova funcionalidade
-- [ ] `fix`: Correção de bug
-- [ ] `docs`: Mudança em documentação
-- [ ] `style`: Formatação (sem mudança de código)
-- [ ] `refactor`: Refatoração
-- [ ] `test`: Adição/correção de testes
-- [ ] `chore`: Manutenção, build, CI
-- [ ] `adr`: Proposta ou atualização de ADR
+- [ ] `feat`: New feature
+- [ ] `fix`: Bug fix
+- [ ] `docs`: Documentation change
+- [ ] `style`: Formatting (no code change)
+- [ ] `refactor`: Refactoring
+- [ ] `test`: Adding/fixing tests
+- [ ] `chore`: Maintenance, build, CI
+- [ ] `adr`: ADR proposal or update
 
-## Motivação e Contexto
+## Motivation and Context
 
-Por que essa mudança é necessária? Qual problema ela resolve?
+Why is this change needed? What problem does it solve?
 
-Fixes # (número da issue, se aplicável)
+Fixes # (issue number, if applicable)
 
-## Como Isso Foi Testado?
+## How Has This Been Tested?
 
-Descreva os testes que você executou.
+Describe the tests you ran.
 
-- [ ] Testes unitários
-- [ ] Testes de integração
-- [ ] Testes manuais
+- [ ] Unit tests
+- [ ] Integration tests
+- [ ] Manual tests
 
 ## Checklist
 
-- [ ] Meu código segue o estilo do projeto
-- [ ] Fiz self-review do meu código
-- [ ] Comentei partes complexas (se necessário)
-- [ ] Atualizei a documentação (se necessário)
-- [ ] Minhas mudanças não geram warnings
-- [ ] Adicionei testes que provam que minha correção/feature funciona
-- [ ] Testes novos e existentes passam localmente
+- [ ] My code follows the project's style
+- [ ] I self-reviewed my code
+- [ ] I commented complex parts (if needed)
+- [ ] I updated the documentation (if needed)
+- [ ] My changes generate no warnings
+- [ ] I added tests that prove my fix/feature works
+- [ ] New and existing tests pass locally
 
-## Screenshots (se aplicável)
+## Screenshots (if applicable)
 
-Adicione screenshots para mudanças visuais.
+Add screenshots for visual changes.
 
-## Notas para Revisores
+## Notes for Reviewers
 
-Algo específico que os revisores devem prestar atenção?
+Anything specific reviewers should pay attention to?

@@ -28,8 +28,8 @@ var (
 	proseHintRe   = regexp.MustCompile("(?i)\\b(?:use|run|prefer|try|execute)\\s+((?:" + toolAlternation + ")\\b[^\\n]*)")
 	toolPrefixRe  = regexp.MustCompile("(?i)^(?:" + toolAlternation + ")(?:\\s|$)")
 
-	// Ferramentas que, sem subcomando, só imprimem ajuda: o nome solto
-	// (ex.: `golangci-lint` citado na prosa) não é uma dica de comando.
+	// Tools that only print help without a subcommand: the bare name
+	// (e.g. `golangci-lint` quoted in prose) is not a command hint.
 	subcommandTools = map[string]bool{
 		"go": true, "npm": true, "pnpm": true, "bun": true, "cargo": true,
 		"golangci-lint": true, "ruff": true, "uv": true, "poetry": true,
@@ -173,8 +173,8 @@ func extractShellFenceHints(content string) (stripped string, hints []string) {
 	return b.String(), hints
 }
 
-// looksLikeToolCommand exige que a linha inteira comece por uma ferramenta
-// conhecida: um comando citado no meio de prosa/comentário não conta.
+// The whole line must start with a known tool: a command quoted in the
+// middle of prose or a comment does not count.
 func looksLikeToolCommand(line string) bool {
 	if !toolPrefixRe.MatchString(line) {
 		return false

@@ -18,8 +18,8 @@ func init() {
 	registerBusTools()
 }
 
-// busSession é a identidade presa a esta conexão MCP (stdio = um cliente por
-// processo). O token fica só em memória: nunca volta em resposta.
+// busSession is the identity bound to this MCP connection (stdio = one client
+// per process). The token lives only in memory: it is never returned in a response.
 type busSession struct {
 	root   string
 	member bus.Member
@@ -28,11 +28,11 @@ type busSession struct {
 
 var busState = struct {
 	mu       sync.Mutex
-	sessions map[string]busSession // por canal
-	joining  map[string]bool       // join em andamento (evita dois joins concorrentes)
+	sessions map[string]busSession // per channel
+	joining  map[string]bool       // join in progress (prevents two concurrent joins)
 }{sessions: map[string]busSession{}, joining: map[string]bool{}}
 
-// ResetBusSessions limpa as sessões MCP (testes).
+// ResetBusSessions is for tests.
 func ResetBusSessions() {
 	busState.mu.Lock()
 	busState.sessions = map[string]busSession{}
@@ -48,8 +48,8 @@ func busRoot(args map[string]any) (string, error) {
 	return ticket.FindRoot(cwd), nil
 }
 
-// busMemberFromArgs escolhe a sessão pelo canal (opcional se só houver uma),
-// reabre o store e revalida o token.
+// busMemberFromArgs picks the session by channel (optional if there is only
+// one), reopens the store and revalidates the token.
 func busMemberFromArgs(args map[string]any) (*bus.Store, bus.Member, error) {
 	channel := StringArg(args, "channel")
 	busState.mu.Lock()
@@ -87,7 +87,7 @@ func busMemberFromArgs(args map[string]any) (*bus.Store, bus.Member, error) {
 	return s, m, nil
 }
 
-// busText formata a resposta sem escape HTML (o registry usaria MarshalIndent).
+// busText formats the response without HTML escaping (the registry would use MarshalIndent).
 func busText(v any) (any, error) {
 	b, err := bus.MarshalIndent(v)
 	if err != nil {
@@ -96,7 +96,7 @@ func busText(v any) (any, error) {
 	return string(b), nil
 }
 
-// objectArg aceita objeto JSON (map) ou string JSON.
+// objectArg accepts a JSON object (map) or a JSON string.
 func objectArg(args map[string]any, key string) (json.RawMessage, error) {
 	v, ok := args[key]
 	if !ok || v == nil {
@@ -338,9 +338,9 @@ func handleBusComplete(_ context.Context, args map[string]any) (any, error) {
 	return busText(map[string]any{"claim": res.Claim, "envelope": bus.Wrap(&res.Message)})
 }
 
-// BindBusSession prende esta conexão MCP à sessão CLI <canal>/<nome> já no
-// início (tb mcp --bus-as), lendo o arquivo de sessão local. Usado pelo
-// harness: o agente acordado não precisa de convite novo a cada despertar.
+// BindBusSession binds this MCP connection to the CLI session <channel>/<name>
+// at startup (tb mcp --bus-as) by reading the local session file. Used by the
+// harness: a woken agent does not need a new invite on every wake.
 func BindBusSession(root, channel, name string) error {
 	s, err := bus.Open(root)
 	if err != nil {

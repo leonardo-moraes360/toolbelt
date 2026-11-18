@@ -1,6 +1,6 @@
-// Package bus implementa o barramento local multi-vendor de agentes
-// (ADR-013, etapa B1): store SQLite, canais com convite, envelope bus/0.1,
-// envio/leitura com cursor e claim/complete de threads.
+// Package bus is the local multi-vendor agent bus (ADR-013, stage B1): SQLite
+// store, invite-gated channels, bus/0.1 envelope, cursor-based send/recv and
+// thread claim/complete.
 package bus
 
 import (
@@ -16,19 +16,18 @@ import (
 	"time"
 )
 
-// Version é a versão do protocolo gravada em toda mensagem.
+// Version is the protocol version stamped on every message.
 const Version = "bus/0.1"
 
-// MaxPayloadBytes limita o payload (referências, não blobs).
+// Payloads carry references, not blobs.
 const MaxPayloadBytes = 64 << 10
 
-// MaxWait é o teto do long-poll de recv (abaixo do timeout de tool call).
+// MaxWait caps the recv long-poll below the tool-call timeout.
 const MaxWait = 25 * time.Second
 
-// DefaultInviteTTL é a duração padrão de um convite.
 const DefaultInviteTTL = 10 * time.Minute
 
-// Role é o papel de um agente no canal (fixado pelo convite).
+// Role is fixed by the invite.
 type Role string
 
 const (
@@ -38,10 +37,8 @@ const (
 	RoleReviewer   Role = "reviewer"
 )
 
-// Roles lista os papéis válidos.
 var Roles = []Role{RoleRouter, RoleSupervisor, RoleWorker, RoleReviewer}
 
-// ParseRole valida um papel.
 func ParseRole(s string) (Role, error) {
 	r := Role(strings.ToLower(strings.TrimSpace(s)))
 	for _, v := range Roles {
@@ -52,7 +49,6 @@ func ParseRole(s string) (Role, error) {
 	return "", fmt.Errorf("papel inválido %q (use router, supervisor, worker ou reviewer)", s)
 }
 
-// Type é o tipo de mensagem.
 type Type string
 
 const (
@@ -67,7 +63,6 @@ const (
 
 var types = []Type{TypeTaskAssign, TypeTaskStatus, TypeTaskResult, TypeQuery, TypeReply, TypeAck, TypeUrgent}
 
-// ParseType valida um tipo de mensagem.
 func ParseType(s string) (Type, error) {
 	t := Type(strings.TrimSpace(s))
 	for _, v := range types {
@@ -78,7 +73,7 @@ func ParseType(s string) (Type, error) {
 	return "", fmt.Errorf("tipo inválido %q (use task.assign, task.status, query, reply, ack ou urgent)", s)
 }
 
-// Wake é o modo de despertar declarado no Agent Card.
+// Wake is the wake mode declared in the Agent Card.
 type Wake string
 
 const (
@@ -88,7 +83,7 @@ const (
 	WakeManual  Wake = "manual"
 )
 
-// AgentCard é a declaração do agente no join. Informativo: não é permissão.
+// AgentCard is declared at join. Informational only: it grants no permission.
 type AgentCard struct {
 	Name           string   `json:"name"`
 	Vendor         string   `json:"vendor,omitempty"`
@@ -108,7 +103,6 @@ var (
 	threadRe = regexp.MustCompile(`^[A-Za-z0-9._:/-]{1,128}$`)
 )
 
-// ValidName valida nome de canal, agente ou tópico.
 func ValidName(kind, s string) error {
 	if !nameRe.MatchString(s) {
 		return fmt.Errorf("%s inválido %q (use [a-z0-9][a-z0-9._-], até 63 caracteres)", kind, s)
@@ -126,7 +120,7 @@ func validRef(kind, s string) error {
 	return nil
 }
 
-// Validate normaliza e valida o card.
+// Validate also normalizes the card.
 func (c *AgentCard) Validate() error {
 	c.Name = strings.TrimSpace(c.Name)
 	if err := ValidName("nome de agente", c.Name); err != nil {
@@ -145,10 +139,8 @@ func (c *AgentCard) Validate() error {
 	return nil
 }
 
-// AgentID devolve o endereço agent:<name>.
 func AgentID(name string) string { return "agent:" + name }
 
-// ParseTarget valida o destino (agent:|role:|topic:) e devolve tipo e nome.
 func ParseTarget(to string) (kind, name string, err error) {
 	kind, name, ok := strings.Cut(strings.TrimSpace(to), ":")
 	if !ok {
@@ -169,7 +161,7 @@ func ParseTarget(to string) (kind, name string, err error) {
 	return kind, name, nil
 }
 
-// Message é o conteúdo (params) do envelope bus/message.
+// Message is the params of the bus/message envelope.
 type Message struct {
 	ID             string          `json:"id"`
 	Seq            int64           `json:"seq"`
@@ -186,17 +178,15 @@ type Message struct {
 	CreatedAt      time.Time       `json:"created_at"`
 }
 
-// Envelope é a mensagem no formato JSON-RPC 2.0.
+// Envelope is JSON-RPC 2.0.
 type Envelope struct {
 	JSONRPC string  `json:"jsonrpc"`
 	Method  string  `json:"method"`
 	Params  Message `json:"params"`
 }
 
-// Wrap embrulha a mensagem no envelope JSON-RPC.
 func Wrap(m *Message) Envelope { return Envelope{JSONRPC: "2.0", Method: "bus/message", Params: *m} }
 
-// WrapAll embrulha uma lista de mensagens.
 func WrapAll(ms []Message) []Envelope {
 	out := make([]Envelope, len(ms))
 	for i := range ms {
@@ -207,7 +197,7 @@ func WrapAll(ms []Message) []Envelope {
 
 const crockford = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
 
-// NewULID gera um ULID (48 bits de tempo em ms + 80 bits aleatórios).
+// NewULID: 48-bit ms timestamp + 80 random bits.
 func NewULID(t time.Time) (string, error) {
 	var b [16]byte
 	ms := uint64(t.UnixMilli())
@@ -218,7 +208,7 @@ func NewULID(t time.Time) (string, error) {
 	if _, err := rand.Read(b[6:]); err != nil {
 		return "", err
 	}
-	// 128 bits -> 26 caracteres de 5 bits (2 bits de preenchimento no topo).
+	// 128 bits -> 26 5-bit chars (2 padding bits at the top).
 	var out [26]byte
 	var acc uint64
 	var bits uint
@@ -239,7 +229,7 @@ func NewULID(t time.Time) (string, error) {
 	return string(out[:]), nil
 }
 
-// newInviteCode gera 8 caracteres Crockford em dois grupos (K7Q2-9XMD).
+// newInviteCode: 8 Crockford chars in two groups (K7Q2-9XMD).
 func newInviteCode() (string, error) {
 	var b [8]byte
 	if _, err := rand.Read(b[:]); err != nil {
@@ -255,7 +245,7 @@ func newInviteCode() (string, error) {
 	return sb.String(), nil
 }
 
-// normalizeInvite aplica as regras Crockford (case, O→0, I/L→1, sem hífen).
+// normalizeInvite applies Crockford rules (case, O→0, I/L→1, no hyphen).
 func normalizeInvite(code string) string {
 	r := strings.NewReplacer("-", "", " ", "", "O", "0", "I", "1", "L", "1")
 	return r.Replace(strings.ToUpper(strings.TrimSpace(code)))
@@ -274,8 +264,8 @@ func hashSecret(s string) string {
 	return hex.EncodeToString(h[:])
 }
 
-// marshal serializa sem escapar <, > e & (payload é texto entre agentes, não
-// HTML), com indentação opcional e sem a quebra de linha final do Encoder.
+// marshal does not escape <, > and & (payloads are agent-to-agent text, not
+// HTML) and drops the Encoder's trailing newline.
 func marshal(v any, indent string) ([]byte, error) {
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)
@@ -287,5 +277,5 @@ func marshal(v any, indent string) ([]byte, error) {
 	return bytes.TrimRight(buf.Bytes(), "\n"), nil
 }
 
-// MarshalIndent é json.MarshalIndent sem escape HTML (saída CLI/MCP do bus).
+// MarshalIndent is json.MarshalIndent without HTML escaping (bus CLI/MCP output).
 func MarshalIndent(v any) ([]byte, error) { return marshal(v, "  ") }

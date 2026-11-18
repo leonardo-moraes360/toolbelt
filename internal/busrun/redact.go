@@ -15,15 +15,15 @@ import (
 
 const redacted = "[REDACTED]"
 
-// minSecretLen: valores (e palavras de valores) mais curtos que isto, vindos
-// do ambiente ou de secret_files, não são redigidos (evita apagar palavras
-// comuns). pass_env usa minPassEnvLen: ali o humano declarou o segredo.
+// minSecretLen: values (and value words) from the env or secret_files shorter
+// than this are not redacted, to avoid erasing common words. pass_env uses
+// minPassEnvLen since the human declared the secret there.
 const (
 	minSecretLen  = 6
 	minPassEnvLen = 4
 )
 
-// Palavras de valor que são esquema/cabeçalho, não segredo.
+// Value words that are a scheme/header, not a secret.
 var notSecretWords = map[string]bool{
 	"authorization": true, "authorization:": true, "bearer": true, "basic": true, "token": true,
 }
@@ -33,27 +33,27 @@ type secretPattern struct {
 	repl string
 }
 
-// O harness não sabe onde o filho guarda segredos: além dos valores
-// conhecidos, a saída do filho passa por padrões genéricos antes do audit.
+// The harness cannot know where the child keeps secrets, so besides known
+// values the child's output goes through generic patterns before the audit.
 var genericSecretPatterns = []secretPattern{
-	// cookies: o valor inteiro até o fim da linha
+	// cookies: the whole value up to end of line
 	{regexp.MustCompile(`(?im)((?:^|[\s"'])(?:set-)?cookie"?[ \t]*:[ \t]*)[^\r\n]+`), "${1}" + redacted},
-	// cabeçalho de credencial em forma de cabeçalho (início de linha, aspas
-	// ou -H): esquema opcional + valor
+	// credential header in header form (line start, quote or -H): optional
+	// scheme + value
 	{regexp.MustCompile(`(?im)((?:^|[\s"'>]|-H[ \t]+["']?)[ \t]*(?:proxy-)?(?:authorization|x-api-key|api[-_]?key)"?[ \t]*:[ \t]*"?)(?:(?:bearer|basic|token)[ \t]+)?[^\s"',;]+`), "${1}" + redacted},
-	// JWT (segmentos separados por ponto escapam da regra de token longo)
+	// JWT (dot-separated segments escape the long-token rule)
 	{regexp.MustCompile(`eyJ[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]*`), redacted},
-	// nome de segredo seguido de = ou : (inclusive chave JSON), esquema opcional
-	// (SECRET_KEY, AWS_ACCESS_KEY_ID, "api_key":"x"); valor só de dígitos
-	// fica (contadores como max_tokens=4096)
+	// secret name followed by = or : (JSON keys included), optional scheme
+	// (SECRET_KEY, AWS_ACCESS_KEY_ID, "api_key":"x"); digit-only values are
+	// kept (counters like max_tokens=4096)
 	{regexp.MustCompile(`(?i)\b((?:[A-Za-z0-9_\-]*(?:token|secret|passw(?:or)?d|pwd|credential)|[A-Za-z0-9_\-]*[_\-]key|key)[A-Za-z0-9_\-]*"?[ \t]*[:=][ \t]*)(?:(?:bearer|basic|token)[ \t]+)?("[^"]*"|'[^']*'|[^\s,;&"'}]*[^\d\s,;&"'}][^\s,;&"'}]*)`), "${1}" + redacted},
-	// credencial em URL: userinfo e query string
-	{regexp.MustCompile(`(://)[^/\s:@]+:[^/\s]*@`), "${1}" + redacted + "@"}, // até o último @ (senha com @)
+	// credentials in URLs: userinfo and query string
+	{regexp.MustCompile(`(://)[^/\s:@]+:[^/\s]*@`), "${1}" + redacted + "@"}, // up to the last @ (passwords containing @)
 	{regexp.MustCompile(`(?i)([?&](?:token|key|sig|signature|secret|access_token|auth|code)=)[^&\s"']+`), "${1}" + redacted},
 }
 
-// Sequências longas com letras e dígitos parecem tokens (inclusive base64
-// com `/`). Ficam: UUIDs (ids de sessão/run) e caminhos absolutos.
+// Long letter+digit runs look like tokens (base64 with `/` included). Kept:
+// UUIDs (session/run ids) and absolute paths.
 var (
 	longTokenRe = regexp.MustCompile(`[A-Za-z0-9_\-+/=]{32,}`)
 	uuidRe      = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
@@ -61,14 +61,14 @@ var (
 	hasDigitRe  = regexp.MustCompile(`\d`)
 )
 
-// redactor redige texto que vai ao audit (saída do filho, erros). Os valores
-// são lidos no Open: segredo trocado exige reiniciar o harness.
+// redactor scrubs text bound for the audit (child output, errors). Values are
+// read at Open: a rotated secret requires restarting the harness.
 type redactor struct {
 	known *strings.Replacer
 }
 
-// newRedactor junta os valores conhecidos: pass_env, variáveis de segredo do
-// processo do harness e valores dos secret_files da config.
+// newRedactor gathers known values: pass_env, secret variables of the
+// harness process and values from the config's secret_files.
 func newRedactor(cfg *Config) (*redactor, error) {
 	set := map[string]bool{}
 	add := func(v string, minLen int) {
@@ -97,7 +97,7 @@ func newRedactor(cfg *Config) (*redactor, error) {
 	for v := range set {
 		vals = append(vals, v)
 	}
-	// Replacer compara na ordem dos argumentos: mais longos primeiro.
+	// Replacer matches in argument order: longest first.
 	sort.Slice(vals, func(i, j int) bool {
 		if len(vals[i]) != len(vals[j]) {
 			return len(vals[i]) > len(vals[j])
@@ -111,15 +111,15 @@ func newRedactor(cfg *Config) (*redactor, error) {
 	return &redactor{known: strings.NewReplacer(pairs...)}, nil
 }
 
-// secretCandidates devolve o valor inteiro, cada sufixo após espaço
-// ("Authorization: Bearer X" também redige "Bearer X") e cada palavra como o
-// sh a separaria (espaço/tab/quebra de linha, sem aspas): um env carregado
-// como shell imprime palavras soltas do valor em erros.
+// secretCandidates returns the whole value, each suffix after a space
+// ("Authorization: Bearer X" also redacts "Bearer X") and each word as sh would
+// split it (space/tab/newline, unquoted): an env sourced as shell prints loose
+// value words in errors.
 func secretCandidates(v string, minLen int) []string {
 	v = strings.TrimSpace(v)
 	var out []string
 	if len(v) >= minLen {
-		out = append(out, v) // o valor inteiro sempre, mesmo que seja "token"
+		out = append(out, v) // always the whole value, even if it is "token"
 	}
 	keep := func(c string) {
 		if len(c) >= minLen && !notSecretWords[strings.ToLower(c)] {
@@ -136,10 +136,10 @@ func secretCandidates(v string, minLen int) []string {
 	return out
 }
 
-// readSecretFile lê KEY=VALOR (comentários, linhas vazias, `export`, aspas e
-// comentário no fim da linha tolerados) sem executar nada. Exige arquivo
-// regular com permissão 0600 ou mais fechada, como o arquivo de wake.
-// Ausente ou ilegível é erro (fail-closed: sem os valores, o audit vazaria).
+// readSecretFile parses KEY=VALUE (tolerating comments, blank lines, `export`,
+// quotes and trailing comments) without executing anything. Requires a regular
+// file at 0600 or stricter, like the wake file. Missing or unreadable is an
+// error (fail-closed: without the values, the audit would leak).
 func readSecretFile(path string) ([]string, error) {
 	if !filepath.IsAbs(path) {
 		return nil, fmt.Errorf("secret_files: caminho %q precisa ser absoluto", path)
@@ -180,7 +180,7 @@ func readSecretFile(path string) ([]string, error) {
 	return out, nil
 }
 
-// envValue tira aspas externas ou, sem aspas, o comentário " #..." final.
+// envValue strips outer quotes or, if unquoted, a trailing " #..." comment.
 func envValue(v string) string {
 	if len(v) >= 2 && (v[0] == '"' || v[0] == '\'') && v[len(v)-1] == v[0] {
 		return v[1 : len(v)-1]
@@ -194,8 +194,8 @@ func envValue(v string) string {
 	return v
 }
 
-// redact aplica, nesta ordem: valores conhecidos, padrões do mem, padrões
-// genéricos e, por fim, mascara sequências com cara de token.
+// redact applies, in order: known values, mem patterns, generic patterns, and
+// finally masks token-like runs.
 func (r *redactor) redact(s string) string {
 	if s == "" {
 		return s

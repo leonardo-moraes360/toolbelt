@@ -35,7 +35,7 @@ func TestRouterToolsReadPersistedState(t *testing.T) {
 	checkRouterTools(t, dir)
 }
 
-// writeRouterFixture grava state.json e alerts.jsonl sintéticos em dir.
+// writeRouterFixture writes synthetic state.json and alerts.jsonl into dir.
 func writeRouterFixture(t *testing.T, dir string) {
 	t.Helper()
 	rdir := filepath.Join(dir, ".toolbelt", "router")
@@ -55,7 +55,7 @@ func writeRouterFixture(t *testing.T, dir string) {
 	}
 }
 
-// checkRouterTools confere o que as tools leem do estado persistido.
+// checkRouterTools checks what the tools read from persisted state.
 func checkRouterTools(t *testing.T, dir string) {
 	t.Helper()
 	_, text := callTool(t, "tb_router_status", map[string]any{"cwd": dir})

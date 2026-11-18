@@ -1,184 +1,184 @@
-🇧🇷 Português | [🇺🇸 English](../en/campo/gin.md)
+🇺🇸 English | [🇧🇷 Português](../pt-BR/campo/gin.md)
 
-# Estudo de campo: gin-gonic/gin
+# Field study: gin-gonic/gin
 
-Estudo do grupo **sem instrumentação de agente de IA**, usando `tb` (toolbelt @ `c8aae04`) de ponta a ponta num clone local de [gin-gonic/gin](https://github.com/gin-gonic/gin). Nenhum push, issue, PR ou comentário foi feito no repositório alvo.
+Study of the group **without AI agent instrumentation**, using `tb` (toolbelt @ `c8aae04`) end-to-end on a local clone of [gin-gonic/gin](https://github.com/gin-gonic/gin). No push, issue, PR, or comment was made on the target repository.
 
-## Repositório
+## Repository
 
-| Campo | Valor |
+| Field | Value |
 |-------|-------|
-| Nome | `gin-gonic/gin` |
-| Linguagem | Go (`go 1.26.0` no `go.mod`) |
-| Tamanho | shallow clone ~1,7 MiB; **99** arquivos `.go`; ~**24 574** LOC Go |
-| Commit base do clone | `0f09c3a9b4626d9fe9979cf4d0521d6ae32ab646` (master raso) |
-| Instrumentação AI existente | **Nenhuma** — sem `AGENTS.md`, `CLAUDE.md`, `.cursorrules`, `.copilot*`, `.aider*`, `GEMINI.md` |
-| Toolchain | **Parcialmente ok** |
+| Name | `gin-gonic/gin` |
+| Language | Go (`go 1.26.0` in `go.mod`) |
+| Size | shallow clone ~1.7 MiB; **99** `.go` files; ~**24 574** Go LOC |
+| Clone base commit | `0f09c3a9b4626d9fe9979cf4d0521d6ae32ab646` (shallow master) |
+| Existing AI instrumentation | **None** — no `AGENTS.md`, `CLAUDE.md`, `.cursorrules`, `.copilot*`, `.aider*`, `GEMINI.md` |
+| Toolchain | **Partially ok** |
 
-Toolchain detalhada:
+Detailed toolchain:
 
-- `go test ./...` — **ok** (~31 s na 1ª corrida com download de deps; ~2 s depois).
+- `go test ./...` — **ok** (~31 s on 1st run with dep download; ~2 s after).
 - `go build ./...` — **ok**.
-- `golangci-lint`: v1.64.8 **falhou** (`Go language version (go1.24) ... lower than ... 1.26.0`). v2.15.0 (built with go1.27) **rodou**; reportou 6 issues pré-existentes no tree (gofumpt/gosec/govet), não introduzidas pela tarefa.
-- Browser headless (`google-chrome`) presente, mas captura visual falhou no ambiente (dbus/socket; processo killed) — ruler visual só exercitado em modo skip.
+- `golangci-lint`: v1.64.8 **failed** (`Go language version (go1.24) ... lower than ... 1.26.0`). v2.15.0 (built with go1.27) **ran**; reported 6 pre-existing issues in the tree (gofumpt/gosec/govet), not introduced by the task.
+- Headless browser (`google-chrome`) present, but visual capture failed in the environment (dbus/socket; process killed) — visual ruler only exercised in skip mode.
 
-Não configurado / não usado: suite `tests/hidden/` (não existe no gin); App Engine tags especiais além do que os testes padrão cobrem.
+Not configured / not used: `tests/hidden/` suite (does not exist in gin); special App Engine tags beyond what standard tests cover.
 
-## Tarefa escolhida
+## Chosen task
 
-| Campo | Valor |
+| Field | Value |
 |-------|-------|
-| O quê | Incluir o **nome do campo** (tag `form`/`uri`) nas mensagens de erro de `BindUnmarshaler` / `encoding.TextUnmarshaler` |
-| Por quê | Enhancement realista, escopo pequeno, com teste falhando documentado; maintainer plausivelmente aceitaria |
-| Issue | https://github.com/gin-gonic/gin/issues/4296 (há PR alheio #4435 — **não interagimos**; implementação independente só no clone local) |
-| Completou? | **Sim**, no clone local |
-| Diff principal | `binding/form_mapping.go` (`wrapFieldError` + assinaturas de `trySetCustom`/`trySetUsingParser`); teste `TestMappingCustomUnmarshalParamErrorIncludesFieldName` em `binding/form_mapping_test.go` |
-| Checks nativos | `go test ./binding/...` PASS; `go test ./...` PASS; `go build ./...` PASS; `golangci-lint run ./binding/...` FAIL por issues **pré-existentes** (não no arquivo alterado de forma nova relevante) |
+| What | Include the **field name** (`form`/`uri` tag) in error messages from `BindUnmarshaler` / `encoding.TextUnmarshaler` |
+| Why | Realistic enhancement, small scope, with a documented failing test; maintainer would plausibly accept |
+| Issue | https://github.com/gin-gonic/gin/issues/4296 (there is third-party PR #4435 — **we did not interact**; independent implementation only on the local clone) |
+| Completed? | **Yes**, on the local clone |
+| Main diff | `binding/form_mapping.go` (`wrapFieldError` + `trySetCustom`/`trySetUsingParser` signatures); test `TestMappingCustomUnmarshalParamErrorIncludesFieldName` in `binding/form_mapping_test.go` |
+| Native checks | `go test ./binding/...` PASS; `go test ./...` PASS; `go build ./...` PASS; `golangci-lint run ./binding/...` FAIL due to **pre-existing** issues (not newly relevant on the changed file) |
 
-## Uso do tb por comando
+## tb usage by command
 
-| comando | resultado | ajudou/atrapalhou/neutro | evidência |
-|---------|-----------|--------------------------|-----------|
-| `tb init` | EXIT 0; criou `.toolbelt/config.yaml` (mode **600**); defaults `verify.test_cmd=go test ./...`, `hidden_test_cmd=go test ./tests/hidden/...` | neutro | ~5 ms; não detectou gin além do default Go; não gerou `AGENTS.md` nem lint/build |
-| `tb mem init/add/list/check` | EXIT 0; 3 invariantes default + 1 adicionada; `mem add` é posicional (`<regra>`), junta args com espaço | ajudou (leve) | `mem check` sha256 e `compactacao_segura: true`; mode 600 em `invariants.yaml` |
-| `tb graph` (sem `--enable`/`TB_GRAPH`) | EXIT 1: “grafo desabilitado” | neutro | ADR-011 ok, mas UX exige flag a cada chamada |
-| `tb graph --enable index/rebuild/stats` | EXIT 0; ~726→731 nós, ~2572→2581 arestas | ajudou | index ~44–48 ms no gin |
-| `tb graph search BindUnmarshaler` | EXIT 0, **(vazio)** mesmo após rebuild | atrapalhou | interface/type name não indexado/encontrável |
-| `tb graph search wrapFieldError` | encontra função após rebuild | ajudou | precisa rebuild após mudanças |
-| `tb graph callers` posicional | EXIT 1: `--function é obrigatório` | atrapalhou | inconsistente com `search` (posicional) |
-| `tb graph deps` posicional | EXIT 1: `--module ou --file é obrigatório` | atrapalhou | idem |
-| `tb graph impact` sem `--file` | EXIT 1: `--file é obrigatório` | atrapalhou | confirma problema conhecido |
-| `tb graph impact --file binding/form_mapping.go` | EXIT 0; lista callers/impactados úteis | ajudou | setByForm, MapFormWithTag, Bind, etc. |
-| ticket/`rd.md` + Scope | criado manualmente (não há `tb ticket`) | neutro | frontmatter YAML + markdown; base SHA do clone |
-| `tb verify run` (testes) | PASS com `--test-cmd go test ./binding/...` | ajudou (parcial) | não roda lint/build; `lint_cmd`/`build_cmd` no YAML **ignorados** (só existem `test_cmd`/`hidden_test_cmd` no schema) |
-| `tb verify` + hidden | PASS; `Oculto: false (disponível: false)` sem `tests/hidden/` | neutro | default aponta para path inexistente no gin |
-| `tb verify --ruler visual` | PASS com screens skipped; top-level `skipped: false` quando refs/captura falham | atrapalhou | ver problemas conhecidos/novos |
-| `tb review` | PASS no diff da fix; **FP critical** se o diff só *menciona* `tests/hidden` num comentário | atrapalhou (FP) | agreement 3/3 goldfish no FP |
-| `tb drift` | EXIT 0 no scope literal/`binding/`/`binding/*.go`; EXIT 1 em scope errado e em `binding/**/*.go` | ajudou | `**` no meio do glob não funciona como esperado |
-| `tb guard check` | limpo no diff da fix; viola `protected_path` em `.toolbelt/thresholds.yaml` | ajudou | paths hardcoded; `guard.yaml` do repo **ignorado** |
-| `tb bench run` sem `--agent`/`--fake` | EXIT 1 apesar de `bench.default_agent` no config | atrapalhou | `default_agent` ignorado |
-| `tb bench run --fake` | roda sem `--fake-config`, mas **não aplica soluções** → pass 0% | atrapalhou | precisa fake-config com `files_to_modify` para ser útil |
-| `tb bench compare` | A/B com `--fake` ok; **não aceita `--agent`** | atrapalhou | flag desconhecida |
-| `tb mcp` | sobe em stdio; `initialize`+`tools/list` ok; com `TB_GRAPH=on` expõe graph tools; **sem** mem/verify/review/guard/drift | neutro/parcial | `tb_mem_list` → “ferramenta não encontrada” |
-| `tb version` (make build) | mostra commit `c8aae04` | neutro | |
-| `tb version` (`go build` sem ldflags) | `0.1.0-dev`, commit/built **unknown** | atrapalhou | |
+| command | result | helped/hindered/neutral | evidence |
+|---------|--------|-------------------------|----------|
+| `tb init` | EXIT 0; created `.toolbelt/config.yaml` (mode **600**); defaults `verify.test_cmd=go test ./...`, `hidden_test_cmd=go test ./tests/hidden/...` | neutral | ~5 ms; did not detect gin beyond the Go default; did not generate `AGENTS.md` or lint/build |
+| `tb mem init/add/list/check` | EXIT 0; 3 default invariants + 1 added; `mem add` is positional (`<regra>`), joins args with space | helped (light) | `mem check` sha256 and `compactacao_segura: true`; mode 600 on `invariants.yaml` |
+| `tb graph` (without `--enable`/`TB_GRAPH`) | EXIT 1: “grafo desabilitado” | neutral | ADR-011 ok, but UX requires the flag on every call |
+| `tb graph --enable index/rebuild/stats` | EXIT 0; ~726→731 nodes, ~2572→2581 edges | helped | index ~44–48 ms on gin |
+| `tb graph search BindUnmarshaler` | EXIT 0, **(vazio)** even after rebuild | hindered | interface/type name not indexed/findable |
+| `tb graph search wrapFieldError` | finds function after rebuild | helped | needs rebuild after changes |
+| `tb graph callers` positional | EXIT 1: `--function é obrigatório` | hindered | inconsistent with `search` (positional) |
+| `tb graph deps` positional | EXIT 1: `--module ou --file é obrigatório` | hindered | same |
+| `tb graph impact` without `--file` | EXIT 1: `--file é obrigatório` | hindered | confirms known problem |
+| `tb graph impact --file binding/form_mapping.go` | EXIT 0; lists useful callers/impacted | helped | setByForm, MapFormWithTag, Bind, etc. |
+| ticket/`rd.md` + Scope | created manually (no `tb ticket`) | neutral | YAML frontmatter + markdown; clone base SHA |
+| `tb verify run` (tests) | PASS with `--test-cmd go test ./binding/...` | helped (partial) | does not run lint/build; YAML `lint_cmd`/`build_cmd` **ignored** (schema only has `test_cmd`/`hidden_test_cmd`) |
+| `tb verify` + hidden | PASS; `Oculto: false (disponível: false)` without `tests/hidden/` | neutral | default points to nonexistent path in gin |
+| `tb verify --ruler visual` | PASS with screens skipped; top-level `skipped: false` when refs/capture fail | hindered | see known/new problems |
+| `tb review` | PASS on fix diff; **FP critical** if the diff only *mentions* `tests/hidden` in a comment | hindered (FP) | agreement 3/3 goldfish on the FP |
+| `tb drift` | EXIT 0 on literal/`binding/`/`binding/*.go` scope; EXIT 1 on wrong scope and on `binding/**/*.go` | helped | mid-path `**` does not work as expected |
+| `tb guard check` | clean on fix diff; violates `protected_path` on `.toolbelt/thresholds.yaml` | helped | hardcoded paths; repo `guard.yaml` **ignored** |
+| `tb bench run` without `--agent`/`--fake` | EXIT 1 despite `bench.default_agent` in config | hindered | `default_agent` ignored |
+| `tb bench run --fake` | runs without `--fake-config`, but **does not apply solutions** → 0% pass | hindered | needs fake-config with `files_to_modify` to be useful |
+| `tb bench compare` | A/B with `--fake` ok; **does not accept `--agent`** | hindered | unknown flag |
+| `tb mcp` | starts on stdio; `initialize`+`tools/list` ok; with `TB_GRAPH=on` exposes graph tools; **without** mem/verify/review/guard/drift | neutral/partial | `tb_mem_list` → “Tool not found” |
+| `tb version` (make build) | shows commit `c8aae04` | neutral | |
+| `tb version` (`go build` without ldflags) | `0.1.0-dev`, commit/built **unknown** | hindered | |
 
-## Problemas conhecidos
+## Known problems
 
-| problema | confirmado/refutado/não testado | evidência |
-|----------|--------------------------------|-----------|
-| `bench compare` lacks `--agent` | **confirmado** | `tb bench compare ... --agent "echo hi"` → unknown flag; help só tem `--fake` |
-| `guard.yaml` ignored | **confirmado** | `.toolbelt/guard.yaml` com `binding/form_mapping.go` protegido; `guard check` no diff da fix → `violations: null`; docs/cli.md ainda documentam o manifesto |
-| outdated CLI docs | **confirmado** | `docs/cli.md` descreve `run/proc/ticket/board/md/agent/watchdog/merge`; `tb --help` **não** os lista. README “Status do Projeto” ainda diz **Fase 0** enquanto roadmap marca Fase 2 |
-| version shows `unknown` | **confirmado** (build sem ldflags) | `/tmp/tb-nover/tb version` → commit/built `unknown`; `make build` preenche |
-| config files created 0600 | **confirmado** | `stat` → `600 .toolbelt/config.yaml`, `600 .toolbelt/invariants.yaml` |
-| visual ruler reports `skipped=false` when skipping | **confirmado** | com manifesto+browser, screen `skipped:true` (“referência ausente” / “falha na captura”), top-level `"skipped": false`, `verdict: PASS` |
-| `default_agent` ignored | **confirmado** | config com `default_agent: echo-agent-should-be-used`; `tb bench run` → “`--agent` ou `--fake` é obrigatório” |
-| guard aborts verify when diff touches hardcoded config path | **confirmado** | tocar `.toolbelt/thresholds.yaml` → guard `protected_path` error; verify `verdict: FAIL`, `iterations: 0` |
-| default fake agent needs `--fake-config` | **confirmado** (para ser útil) | `--fake` sozinho completa “agent” mas verification falha (0% pass) sem `files_to_*` |
-| `mem add` positional | **confirmado** | `Use: tb mem add <regra>`; `MinimumNArgs(1)` + `strings.Join(args," ")` |
-| Drift/Scope need literal paths (no globs) | **parcialmente refutado** | `binding/*.go` e `binding/` funcionam; `binding/**/*.go` **falha** (Match não trata `**` no meio) |
-| `graph impact` needs `--file` | **confirmado** | posicional rejeitado; `--file` obrigatório |
-| review false positives on tests/hidden invariant | **confirmado** | comentário contendo substring `tests/hidden` → finding critical “possível violação de invariante” (agreement 3) |
-| verify runs only partial checks / misses build errors | **confirmado** | `gin.go` com syntax error: `go build ./...` FAIL, `go test ./binding/...` PASS → verify PASS; schema sem lint/build |
-| tb does not push agent to complete whole task | **não testado** (sem A/B controlado neste repo) | observação qualitativa: init não cria progress log / checklist de features; não há `tb ticket`/`board`; o fluxo depende do agente auto-organizar |
+| problem | confirmed/refuted/not tested | evidence |
+|---------|------------------------------|----------|
+| `bench compare` lacks `--agent` | **confirmed** | `tb bench compare ... --agent "echo hi"` → unknown flag; help only has `--fake` |
+| `guard.yaml` ignored | **confirmed** | `.toolbelt/guard.yaml` with `binding/form_mapping.go` protected; `guard check` on fix diff → `violations: null`; docs/cli.md still document the manifesto |
+| outdated CLI docs | **confirmed** | `docs/cli.md` describes `run/proc/ticket/board/md/agent/watchdog/merge`; `tb --help` does **not** list them. README “Status do Projeto” still says **Fase 0** while roadmap marks Fase 2 |
+| version shows `unknown` | **confirmed** (build without ldflags) | `/tmp/tb-nover/tb version` → commit/built `unknown`; `make build` fills |
+| config files created 0600 | **confirmed** | `stat` → `600 .toolbelt/config.yaml`, `600 .toolbelt/invariants.yaml` |
+| visual ruler reports `skipped=false` when skipping | **confirmed** | with manifesto+browser, screen `skipped:true` (“referência ausente” / “falha na captura”), top-level `"skipped": false`, `verdict: PASS` |
+| `default_agent` ignored | **confirmed** | config with `default_agent: echo-agent-should-be-used`; `tb bench run` → “`--agent` ou `--fake` é obrigatório” |
+| guard aborts verify when diff touches hardcoded config path | **confirmed** | touch `.toolbelt/thresholds.yaml` → guard `protected_path` error; verify `verdict: FAIL`, `iterations: 0` |
+| default fake agent needs `--fake-config` | **confirmed** (to be useful) | `--fake` alone completes “agent” but verification fails (0% pass) without `files_to_*` |
+| `mem add` positional | **confirmed** | `Use: tb mem add <regra>`; `MinimumNArgs(1)` + `strings.Join(args," ")` |
+| Drift/Scope need literal paths (no globs) | **partially refuted** | `binding/*.go` and `binding/` work; `binding/**/*.go` **fails** (Match does not treat mid-path `**`) |
+| `graph impact` needs `--file` | **confirmed** | positional rejected; `--file` required |
+| review false positives on tests/hidden invariant | **confirmed** | comment containing substring `tests/hidden` → critical finding “possível violação de invariante” (agreement 3) |
+| verify runs only partial checks / misses build errors | **confirmed** | `gin.go` with syntax error: `go build ./...` FAIL, `go test ./binding/...` PASS → verify PASS; schema without lint/build |
+| tb does not push agent to complete whole task | **not tested** (no controlled A/B on this repo) | qualitative observation: init does not create progress log / feature checklist; no `tb ticket`/`board`; flow depends on the agent self-organizing |
 
-## Problemas novos
+## New problems
 
-1. **P1 — `graph search` não encontra nomes de interface/tipo**  
-   - Repro: `tb graph --enable rebuild && tb graph --enable search BindUnmarshaler` → `(vazio)` enquanto `wrapFieldError`/`mappingByPtr` aparecem.  
-   - Esperado: achar a interface em `binding/form_mapping.go`.  
-   - Atual: vazio.
+1. **P1 — `graph search` does not find interface/type names**  
+   - Repro: `tb graph --enable rebuild && tb graph --enable search BindUnmarshaler` → `(vazio)` while `wrapFieldError`/`mappingByPtr` appear.  
+   - Expected: find the interface in `binding/form_mapping.go`.  
+   - Actual: empty.
 
-2. **P1 — MCP não expõe mem/verify/review/guard/drift**  
-   - Repro: `tools/list` (com `TB_GRAPH=on`) → só `tb_version/echo/env/run` + graph_*; `tools/call tb_mem_list` → “ferramenta não encontrada”.  
-   - Esperado: parity com CLI Fase 1/2.  
-   - Atual: subset mínimo.
+2. **P1 — MCP does not expose mem/verify/review/guard/drift**  
+   - Repro: `tools/list` (with `TB_GRAPH=on`) → only `tb_version/echo/env/run` + graph_*; `tools/call tb_mem_list` → “Tool not found”.  
+   - Expected: parity with Phase 1/2 CLI.  
+   - Actual: minimal subset.
 
-3. **P2 — Flags posicionais inconsistentes no graph**  
-   - Repro: `tb graph --enable callers trySetCustom` / `deps binding/form_mapping.go` falham; `search` aceita posicional.  
-   - Esperado: mesma ergonomia.  
-   - Atual: callers/deps/impact só via flags.
+3. **P2 — Inconsistent positional flags on graph**  
+   - Repro: `tb graph --enable callers trySetCustom` / `deps binding/form_mapping.go` fail; `search` accepts positional.  
+   - Expected: same ergonomics.  
+   - Actual: callers/deps/impact only via flags.
 
-4. **P2 — `lint_cmd`/`build_cmd` no YAML são silenciosamente ignorados**  
-   - Repro: gravar em `.toolbelt/config.yaml`; `VerifyConfig` só tem `test_cmd`/`hidden_test_cmd`.  
-   - Esperado: erro de config desconhecida ou execução.  
-   - Atual: ignore silencioso.
+4. **P2 — YAML `lint_cmd`/`build_cmd` silently ignored**  
+   - Repro: write in `.toolbelt/config.yaml`; `VerifyConfig` only has `test_cmd`/`hidden_test_cmd`.  
+   - Expected: unknown-config error or execution.  
+   - Actual: silent ignore.
 
-5. **P2 — `tb review` sem shorthand `-o` (verify tem `-o`)**  
-   - Repro: `tb review ... -o /tmp/x.json` → unknown shorthand; só `--output`.  
-   - Esperado: flags de output alinhadas.  
-   - Atual: inconsistência UX.
+5. **P2 — `tb review` without shorthand `-o` (verify has `-o`)**  
+   - Repro: `tb review ... -o /tmp/x.json` → unknown shorthand; only `--output`.  
+   - Expected: aligned output flags.  
+   - Actual: UX inconsistency.
 
-6. **P3 — Glob `**` documentável/inesperado**  
-   - Repro: scope `binding/**/*.go` marca out_of_scope; `binding/*.go` ok.  
-   - Esperado: ou suporte a `**`, ou docs claras “só `*` e prefixo `dir/` / `dir/**`”.  
+6. **P3 — Documentable/unexpected `**` glob**  
+   - Repro: scope `binding/**/*.go` marks out_of_scope; `binding/*.go` ok.  
+   - Expected: either `**` support, or clear docs “only `*` and prefix `dir/` / `dir/**`”.  
 
-7. **P3 — golangci / Go 1.26 no onboarding**  
-   - Repro: linter antigo incompatível com `go 1.26.0` do gin.  
-   - Esperado: `tb init` avisar toolchain ou sugerir comando de lint detectado.  
-   - Atual: nenhum hint.
+7. **P3 — golangci / Go 1.26 on onboarding**  
+   - Repro: old linter incompatible with gin’s `go 1.26.0`.  
+   - Expected: `tb init` warn about toolchain or suggest detected lint command.  
+   - Actual: no hint.
 
-## O que o tb pegou e o que deixou passar
+## What tb caught and what it let slip
 
-**Pegou**
+**Caught**
 
-- Drift de escopo quando arquivos saem do Scope / batem em `forbidden` (`tests/hidden/`).
-- Guard em path hardcoded `.toolbelt/thresholds.yaml` e abort do verify.
-- Impacto de `binding/form_mapping.go` via grafo (após `--enable` + `--file`).
-- Review limpo no diff legítimo da fix (scope+base ok).
-- Invariantes persistidas fora de compactação (`mem check`).
+- Scope drift when files leave Scope / hit `forbidden` (`tests/hidden/`).
+- Guard on hardcoded path `.toolbelt/thresholds.yaml` and verify abort.
+- Impact of `binding/form_mapping.go` via graph (after `--enable` + `--file`).
+- Clean review on the legitimate fix diff (scope+base ok).
+- Invariants persisted outside compaction (`mem check`).
 
-**Deixou passar / falhou**
+**Let slip / failed**
 
-- Erro de **build** no pacote raiz enquanto `test_cmd` é só `./binding/...` (verify PASS).
-- Lint pré-existente / qualquer lint (verify não executa).
-- Menção textual a `tests/hidden` → **falso positivo** no review.
-- `guard.yaml` custom do projeto.
-- Nome da interface `BindUnmarshaler` na busca do grafo.
-- Captura visual real (skip gracioso com sinal enganoso no campo top-level `skipped`).
+- **Build** error in the root package while `test_cmd` is only `./binding/...` (verify PASS).
+- Pre-existing lint / any lint (verify does not execute).
+- Textual mention of `tests/hidden` → **false positive** in review.
+- Custom project `guard.yaml`.
+- Interface name `BindUnmarshaler` in graph search.
+- Real visual capture (graceful skip with misleading signal in top-level `skipped` field).
 
-Comparativo nativo: `go test ./...` e `go build ./...` validaram a fix; o tb verify configurado de forma “realista por pacote” mascararia regressão de compilação fora desse pacote.
+Native comparison: `go test ./...` and `go build ./...` validated the fix; tb verify configured in a “realistic per-package” way would mask a compilation regression outside that package.
 
-## Interação com instrumentação existente / onboarding
+## Interaction with existing instrumentation / onboarding
 
-Gin **não tem** instrumentação de agente. Avaliação do bootstrap `tb`:
+Gin **has no** agent instrumentation. Evaluation of `tb` bootstrap:
 
-| Artefato | Gerado por `tb init` / `mem init`? | Qualidade |
-|----------|------------------------------------|-----------|
-| `.toolbelt/config.yaml` | sim | útil como esqueleto; defaults Go genéricos; graph languages ligadas; **sem** detecção de `golangci-lint`/Makefile/CI do gin |
-| `.toolbelt/invariants.yaml` | via `mem init` | defaults anti-cheat genéricos (`tests/hidden/`, `thresholds.yaml`) pouco alinhados a um lib HTTP sem suite oculta |
-| `AGENTS.md` / skills / progress log / features JSON | **não** | lacuna vs achados (`tb init` estilo harness) |
-| Detecção automática test/lint/build | **não** | `test_cmd` default `go test ./...` happenstance útil; lint/build não |
-| Grafo | sob demanda | rápido no gin; exige `--enable`; search incompleto para types |
-| MCP | disponível | não substitui o CLI completo; graph tools só com `TB_GRAPH=on` |
+| Artifact | Generated by `tb init` / `mem init`? | Quality |
+|----------|--------------------------------------|---------|
+| `.toolbelt/config.yaml` | yes | useful as skeleton; generic Go defaults; graph languages on; **no** detection of gin’s `golangci-lint`/Makefile/CI |
+| `.toolbelt/invariants.yaml` | via `mem init` | generic anti-cheat defaults (`tests/hidden/`, `thresholds.yaml`) poorly aligned with an HTTP lib without a hidden suite |
+| `AGENTS.md` / skills / progress log / features JSON | **no** | gap vs findings (harness-style `tb init`) |
+| Automatic test/lint/build detection | **no** | default `test_cmd` `go test ./...` useful by happenstance; lint/build not |
+| Graph | on demand | fast on gin; requires `--enable`; incomplete search for types |
+| MCP | available | does not replace full CLI; graph tools only with `TB_GRAPH=on` |
 
-Conclusão: o onboarding **não** deixa um agente “pronto” num repo sem instrumentação — falta briefing do projeto, comandos reais de CI do gin (workflow `.github/workflows/gin.yml`), e superfície MCP incompleta.
+Conclusion: onboarding **does not** leave an agent “ready” on a repo without instrumentation — missing project briefing, real gin CI commands (workflow `.github/workflows/gin.yml`), and incomplete MCP surface.
 
-## Sugestões de melhoria
+## Improvement suggestions
 
-Ordenadas por impacto; tag de área do tb:
+Ordered by impact; tb area tag:
 
-1. **[verify] P0** — Executar (ou exigir) `build_cmd`/`lint_cmd` além de testes; falhar se o módulo não compila. Rejeitar ou avisar chaves YAML desconhecidas.
-2. **[review] P0** — Invariante `tests/hidden`: matching por path alterado, não substring no diff/comentário.
-3. **[guard] P1** — Honrar `.toolbelt/guard.yaml` (como a docs prometem) em vez de só lista hardcoded.
-4. **[bench] P1** — `bench compare` aceitar `--agent` (paridade com `run`); honrar `default_agent`; documentar que `--fake` sem `--fake-config` não resolve fixtures.
-5. **[graph] P1** — Indexar/buscar types & interfaces; aceitar posicionais em callers/deps/impact **ou** documentar só-flags; auto-hint `--enable`.
-6. **[init/onboarding] P1** — Detectar comandos de test/lint/build (Makefile, CI, `go.mod`); opcionalmente gerar `AGENTS.md` + progress checklist.
-7. **[verify/visual] P1** — Se todas as screens estão `skipped`, top-level `skipped=true` (e/ou verdict distinto de PASS “cheio”).
-8. **[mcp] P2** — Expor mem/verify/review/guard/drift; parity CLI.
-9. **[cli/docs] P2** — Sincronizar `docs/cli.md` e README “Fase 0” com comandos reais; alinhar `-o`/`--output`.
-10. **[version] P3** — Embed de versão via `runtime/debug.BuildInfo` quando ldflags ausentes.
-11. **[config] P3** — Revisar mode 0600 vs 0644 para configs não secretas em monorepos compartilhados.
+1. **[verify] P0** — Run (or require) `build_cmd`/`lint_cmd` beyond tests; fail if the module does not compile. Reject or warn on unknown YAML keys.
+2. **[review] P0** — `tests/hidden` invariant: match by changed path, not substring in the diff/comment.
+3. **[guard] P1** — Honor `.toolbelt/guard.yaml` (as docs promise) instead of only a hardcoded list.
+4. **[bench] P1** — `bench compare` accept `--agent` (parity with `run`); honor `default_agent`; document that `--fake` without `--fake-config` does not resolve fixtures.
+5. **[graph] P1** — Index/search types & interfaces; accept positionals on callers/deps/impact **or** document flags-only; auto-hint `--enable`.
+6. **[init/onboarding] P1** — Detect test/lint/build commands (Makefile, CI, `go.mod`); optionally generate `AGENTS.md` + progress checklist.
+7. **[verify/visual] P1** — If all screens are `skipped`, top-level `skipped=true` (and/or a verdict distinct from “full” PASS).
+8. **[mcp] P2** — Expose mem/verify/review/guard/drift; CLI parity.
+9. **[cli/docs] P2** — Sync `docs/cli.md` and README “Fase 0” with real commands; align `-o`/`--output`.
+10. **[version] P3** — Embed version via `runtime/debug.BuildInfo` when ldflags are absent.
+11. **[config] P3** — Revisit mode 0600 vs 0644 for non-secret configs in shared monorepos.
 
-## Métricas
+## Metrics
 
-| métrica | valor |
-|---------|-------|
-| Wall time (timer estudo ativo até fim das evidências CLI) | **~5,2 min** (`2026-11-15T20:45:21Z` → `20:50:17Z`); sessão total do agente (docs+clone+implementação+MCP+redação) maior |
-| Invocações `tb` registradas (linhas `CMD:` + MCP/visual/review extras) | **~50** (35 com `CMD:` explícito no log + corridas posteriores de visual/review/MCP/graph) |
-| Falhas `tb` (EXIT ≠ 0) no log estruturado | **11** (maioria probes intencionais: graph off, flags faltando, drift, default_agent, compare --agent, verify abort por guard) |
-| Crashes do binário | **0** observados |
-| Build `tb` usado | `make build` → `toolbelt c8aae04` |
+| metric | value |
+|--------|-------|
+| Wall time (active study timer until end of CLI evidence) | **~5.2 min** (`2026-11-15T20:45:21Z` → `20:50:17Z`); total agent session (docs+clone+implementation+MCP+writeup) longer |
+| Recorded `tb` invocations (`CMD:` lines + extra MCP/visual/review) | **~50** (35 with explicit `CMD:` in the log + later visual/review/MCP/graph runs) |
+| `tb` failures (EXIT ≠ 0) in structured log | **11** (mostly intentional probes: graph off, missing flags, drift, default_agent, compare --agent, verify abort by guard) |
+| Binary crashes | **0** observed |
+| `tb` build used | `make build` → `toolbelt c8aae04` |
 
-Arquivos de evidência bruta neste VM (não commitados): `/tmp/campo-gin-evidence.log`, `/tmp/verify-*.json`, `/tmp/review-*.json`, clone em `/tmp/target/gin` (commits locais apenas).
+Raw evidence files on this VM (not committed): `/tmp/campo-gin-evidence.log`, `/tmp/verify-*.json`, `/tmp/review-*.json`, clone at `/tmp/target/gin` (local commits only).

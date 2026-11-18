@@ -15,21 +15,19 @@ import (
 
 var errLocked = errors.New("outro tb bus run já está rodando para este agente")
 
-// Options controla o harness.
 type Options struct {
 	Root             string
 	Channel          string
 	Name             string
-	ConfigPath       string // vazio = padrão
+	ConfigPath       string // empty = default
 	AllowUnsandboxed bool
-	TBBinary         string        // testes: binário tb usado no .mcp.json
-	Poll             time.Duration // padrão 250ms
-	Backoff          time.Duration // base do retry; padrão 1s
-	Attempts         int           // padrão 5
-	Adapter          Adapter       // testes: substitui o adapter da config
+	TBBinary         string        // tests: tb binary written to .mcp.json
+	Poll             time.Duration // default 250ms
+	Backoff          time.Duration // retry base; default 1s
+	Attempts         int           // default 5
+	Adapter          Adapter       // tests: overrides the config's adapter
 }
 
-// Harness é o processo que espera e acorda um agente.
 type Harness struct {
 	opts     Options
 	root     string
@@ -37,8 +35,8 @@ type Harness struct {
 	store    *bus.Store
 	member   bus.Member
 	adapter  Adapter
-	base     string // <privado>/run/<canal>/<nome>
-	agentDir string // <privado>/sessions/<canal>/<nome> (token + mcp.json)
+	base     string // <private>/run/<channel>/<name>
+	agentDir string // <private>/sessions/<channel>/<name> (token + mcp.json)
 	st       State
 	redactor *redactor
 	unlock   func()
@@ -50,15 +48,15 @@ type Harness struct {
 	lastArrival time.Time
 	retryAfter  time.Time
 	budgetLog   bool
-	expiredLog  bool      // channel_expired já auditado nesta expiração
-	expiredAt   time.Time // última checagem que achou o canal expirado
+	expiredLog  bool      // channel_expired already audited for this expiry
+	expiredAt   time.Time // last check that found the channel expired
 }
 
-// expiredRecheck: com canal expirado e store parado, o harness recheca só a
-// cada intervalo (extend muda data_version e acorda a checagem na hora).
+// With the channel expired and the store quiet, recheck only at this interval
+// (extend changes data_version, which triggers an immediate check).
 const expiredRecheck = 5 * time.Second
 
-// Open valida config, sessão, sandbox e lock. Chame Close ao terminar.
+// Open validates config, session, sandbox and lock. Call Close when done.
 func Open(opts *Options) (*Harness, error) {
 	o := *opts
 	if o.Poll == 0 {
@@ -121,7 +119,7 @@ func (h *Harness) init() error {
 	if h.st, err = loadState(h.base + ".state"); err != nil {
 		return err
 	}
-	// Estado de outro store (bus.db recriado, agente reentrou): seqs recomeçam.
+	// State from another store (bus.db recreated, agent rejoined): seqs restart.
 	if maxSeq, err := h.store.MaxSeq(m.Channel); err != nil {
 		return err
 	} else if h.st.NotifiedSeq > maxSeq {
@@ -135,7 +133,6 @@ func (h *Harness) init() error {
 	return nil
 }
 
-// Check valida o ambiente do adapter sem acordar ninguém.
 func (h *Harness) Check() error {
 	if h.opts.Adapter != nil {
 		return nil
@@ -159,7 +156,6 @@ func (h *Harness) Check() error {
 	return sandboxCheck(h)
 }
 
-// Close libera store e lock.
 func (h *Harness) Close() {
 	if h.unlock != nil {
 		h.unlock()
@@ -170,7 +166,6 @@ func (h *Harness) Close() {
 	}
 }
 
-// Member devolve o agente do harness.
 func (h *Harness) Member() bus.Member { return h.member }
 
 func (h *Harness) audit(ev *Event) {
@@ -179,13 +174,13 @@ func (h *Harness) audit(ev *Event) {
 	_ = auditLog{path: h.base + ".jsonl"}.write(ev)
 }
 
-// pending devolve as mensagens que acordam com seq em (from, to].
+// pending: waking messages with seq in (from, to].
 func (h *Harness) pending(from, to int64) ([]bus.Message, error) {
 	return h.store.Pending(h.member, from, to, h.cfg.WakeOn, h.cfg.topics(), 500)
 }
 
-// session devolve a sessão a retomar: a do estado, salvo se o humano mudou
-// harness.session na config desde a última execução.
+// session prefers the saved one unless the human changed harness.session in
+// the config since the last run.
 func (h *Harness) session() string {
 	cfgSess := h.cfg.Harness.Session
 	if cfgSess != h.st.ConfigSession {
@@ -195,12 +190,12 @@ func (h *Harness) session() string {
 	return h.st.Session
 }
 
-// Erros que encerram o harness; os demais são transitórios (log + continua).
+// Errors that stop the harness; all others are transient (log and continue).
 func fatal(err error) bool {
 	return errors.Is(err, bus.ErrUnauthorized) || errors.Is(err, errLocked)
 }
 
-// Run executa o laço até ctx terminar. once: no máximo um despertar.
+// Run: once allows at most one wake.
 func (h *Harness) Run(ctx context.Context, once bool) error {
 	t := time.NewTicker(h.opts.Poll)
 	defer t.Stop()
@@ -222,7 +217,7 @@ func (h *Harness) Run(ctx context.Context, once bool) error {
 	}
 }
 
-// DryRun devolve o packet que seria entregue agora (sem despertar).
+// DryRun returns the packet that would be delivered now, without waking.
 func (h *Harness) DryRun(ctx context.Context) (*Packet, error) {
 	cursor, err := h.store.Cursor(h.member)
 	if err != nil {
@@ -281,9 +276,9 @@ func (h *Harness) step(ctx context.Context, once bool) (bool, error) {
 	return h.wake(ctx, "messages", msgs, now)
 }
 
-// channelOpen: canal expirado não acorda ninguém (o agente não conseguiria
-// responder). Audita uma vez por expiração e segue esperando: um
-// `tb bus channel extend` reabre o canal sem reiniciar o harness.
+// An expired channel wakes no one (the agent could not reply). Audit once per
+// expiry and keep waiting: `tb bus channel extend` reopens the channel without
+// restarting the harness.
 func (h *Harness) channelOpen(now time.Time) (bool, error) {
 	_, err := h.store.ActiveChannel(h.member.Channel)
 	if errors.Is(err, bus.ErrChannelExpired) {
@@ -307,7 +302,7 @@ func (h *Harness) channelOpen(now time.Time) (bool, error) {
 	return true, nil
 }
 
-// idle: nada mudou no store e não há despertar pendente, rewake ou retry.
+// idle: the store is unchanged and no wake, rewake or retry is pending.
 func (h *Harness) idle(version int64, now time.Time) bool {
 	if version == h.lastVersion && !h.expiredAt.IsZero() && now.Sub(h.expiredAt) < expiredRecheck {
 		return true
@@ -332,8 +327,8 @@ func (h *Harness) rewakeDue(now time.Time) bool {
 	return h.st.NotifiedSeq > 0 && !h.st.Read && !h.st.Unread && now.Sub(h.st.NotifiedAt) >= h.cfg.RewakeAfter
 }
 
-// maybeRewake reenvia uma única vez o último packet se o agente não leu;
-// tendo reenviado (com sucesso ou não), o próximo prazo vira wake_unread.
+// maybeRewake resends the last packet once if the agent has not read it; after
+// that resend (successful or not), the next deadline becomes wake_unread.
 func (h *Harness) maybeRewake(ctx context.Context, cursor int64, now time.Time) (bool, error) {
 	if cursor >= h.st.NotifiedSeq || !h.rewakeDue(now) || now.Before(h.retryAfter) {
 		return false, nil
@@ -358,7 +353,6 @@ func (h *Harness) maybeRewake(ctx context.Context, cursor int64, now time.Time) 
 
 func (h *Harness) save() error { return saveState(h.base+".state", &h.st) }
 
-// wake aplica orçamento, chama o adapter com retry e grava o estado.
 func (h *Harness) wake(ctx context.Context, reason string, msgs []bus.Message, now time.Time) (bool, error) {
 	if !h.st.allowWake(now, h.cfg.Budget) {
 		_ = h.save()
@@ -369,7 +363,7 @@ func (h *Harness) wake(ctx context.Context, reason string, msgs []bus.Message, n
 		return false, nil
 	}
 	h.budgetLog = false
-	if err := h.save(); err != nil { // slot do orçamento persiste mesmo se cancelar
+	if err := h.save(); err != nil { // the budget slot persists even if canceled
 		return false, err
 	}
 	p := newPacket(h.member, reason, msgs)
@@ -420,7 +414,7 @@ func (h *Harness) fail(p *Packet) error {
 	h.audit(&Event{Event: "wake_failed", FirstSeq: p.FirstSeq, LastSeq: p.LastSeq, Attempt: p.Attempt})
 	h.retryAfter = h.now().Add(h.cfg.RewakeAfter)
 	h.firstSeen = time.Time{}
-	if h.st.FailedSeq == p.LastSeq { // task.status só uma vez por last_seq
+	if h.st.FailedSeq == p.LastSeq { // task.status only once per last_seq
 		return h.save()
 	}
 	h.st.FailedSeq = p.LastSeq

@@ -2,10 +2,10 @@
 
 package sandbox
 
-// Sem PR_SET_CHILD_SUBREAPER fora do Linux: descendentes que escapam do grupo
-// de processos não são detectados (limitação documentada).
+// No PR_SET_CHILD_SUBREAPER outside Linux: descendants that escape the process
+// group are not detected (documented limitation).
 
-// AcquireSubreaper é no-op fora do Linux (ok=false).
+// AcquireSubreaper is a no-op outside Linux (ok=false).
 func AcquireSubreaper() (release func(), ok bool) { return func() {}, false }
 
 type childProc struct {

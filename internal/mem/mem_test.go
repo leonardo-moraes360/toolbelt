@@ -29,7 +29,7 @@ func TestAddListCheck(t *testing.T) {
 	if filepath.Base(s.Path()) != DefaultInvariantsFile {
 		t.Fatal("path errado")
 	}
-	// Dogfood #7: invariants.yaml é versionável, não 0600.
+	// Dogfood #7: invariants.yaml is versioned, not 0600.
 	if st, err := os.Stat(s.Path()); err != nil || st.Mode().Perm()&0o044 == 0 {
 		t.Fatalf("invariants.yaml modo: %v %v", st, err)
 	}

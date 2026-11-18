@@ -32,7 +32,7 @@ func processGone(pid int) bool {
 		return true
 	}
 	if data, err := os.ReadFile("/proc/" + strconv.Itoa(pid) + "/stat"); err == nil {
-		// zumbi (estado Z) conta como encerrado
+		// a zombie (state Z) counts as finished
 		if i := strings.LastIndexByte(string(data), ')'); i >= 0 && len(data) > i+2 && data[i+2] == 'Z' {
 			return true
 		}
@@ -71,7 +71,7 @@ func TestSandboxBackgroundChildExit0IsSuccessAndKilled(t *testing.T) {
 func TestSandboxOutputCappedToTail(t *testing.T) {
 	dir := t.TempDir()
 	sb := groupSandbox(t, dir)
-	// ~3 MiB de 'a' seguidos de um marcador final
+	// ~3 MiB of 'a' followed by a final marker
 	res, err := sb.Run(context.Background(), "sh", "-c", "head -c 3145728 /dev/zero | tr '\\0' a; echo FIM")
 	if err != nil {
 		t.Fatal(err)

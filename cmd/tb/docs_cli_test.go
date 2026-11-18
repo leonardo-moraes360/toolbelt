@@ -17,7 +17,7 @@ func TestDocsCLIExamplesMatchCobra(t *testing.T) {
 	root := findModuleRoot(t)
 	for _, rel := range []string{
 		filepath.Join("docs", "cli.md"),
-		filepath.Join("docs", "en", "cli.md"),
+		filepath.Join("docs", "pt-BR", "cli.md"),
 	} {
 		rel := rel
 		t.Run(rel, func(t *testing.T) {
@@ -50,17 +50,38 @@ func TestDocsCLIExamplesMatchCobra(t *testing.T) {
 	}
 }
 
-func TestDocsEnglishMirrorComplete(t *testing.T) {
+// translations lists the language codes that must mirror every English doc
+// under docs/<code>/ (BCP 47, same relative path).
+var translations = []string{"pt-BR"}
+
+// rootDocs are English docs at the repository root; their translations live
+// directly under docs/<code>/.
+var rootDocs = []string{"README.md", "CONTRIBUTING.md", "CODE_OF_CONDUCT.md", "SECURITY.md", "CHANGELOG.md"}
+
+func TestDocsTranslationMirrorComplete(t *testing.T) {
 	root := findModuleRoot(t)
 	docsRoot := filepath.Join(root, "docs")
-	enRoot := filepath.Join(docsRoot, "en")
+	skip := map[string]bool{}
+	for _, code := range translations {
+		skip[filepath.Join(docsRoot, code)] = true
+	}
 	var missing []string
+	check := func(rel string) {
+		for _, code := range translations {
+			if _, err := os.Stat(filepath.Join(docsRoot, code, rel)); err != nil {
+				missing = append(missing, filepath.Join(code, rel))
+			}
+		}
+	}
+	for _, f := range rootDocs {
+		check(f)
+	}
 	err := filepath.Walk(docsRoot, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
 		if info.IsDir() {
-			if path == enRoot {
+			if skip[path] {
 				return filepath.SkipDir
 			}
 			return nil
@@ -72,35 +93,34 @@ func TestDocsEnglishMirrorComplete(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		if _, err := os.Stat(filepath.Join(enRoot, rel)); err != nil {
-			missing = append(missing, rel)
-		}
+		check(rel)
 		return nil
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(missing) > 0 {
-		t.Fatalf("docs without English mirror under docs/en/: %v", missing)
+		t.Fatalf("English docs without translation under docs/<code>/: %v", missing)
 	}
 }
 
 func TestDocsDescribeRealLocalWorkflow(t *testing.T) {
 	root := findModuleRoot(t)
 	cli := mustReadFile(t, filepath.Join(root, "docs", "cli.md"))
-	cliEN := mustReadFile(t, filepath.Join(root, "docs", "en", "cli.md"))
+	cliPT := mustReadFile(t, filepath.Join(root, "docs", "pt-BR", "cli.md"))
 	readme := mustReadFile(t, filepath.Join(root, "README.md"))
-	readmeEN := mustReadFile(t, filepath.Join(root, "README.en.md"))
+	readmePT := mustReadFile(t, filepath.Join(root, "docs", "pt-BR", "README.md"))
 	changelog := mustReadFile(t, filepath.Join(root, "CHANGELOG.md"))
+	changelogPT := mustReadFile(t, filepath.Join(root, "docs", "pt-BR", "CHANGELOG.md"))
 
 	assertDocsDriftIsScopeNotVault(t, cli)
-	assertDocsDriftIsScopeNotVault(t, cliEN)
+	assertDocsDriftIsScopeNotVault(t, cliPT)
 	assertDocsLocalTicketWorkflow(t, cli+"\n"+readme)
-	assertDocsLocalTicketWorkflow(t, cliEN+"\n"+readmeEN)
+	assertDocsLocalTicketWorkflow(t, cliPT+"\n"+readmePT)
 	assertDocsJavascriptCoversTypeScript(t, cli)
-	assertDocsJavascriptCoversTypeScript(t, cliEN)
-	assertDocsGuardStrictDeprecated(t, cli, changelog)
-	assertDocsGuardStrictDeprecated(t, cliEN, changelog)
+	assertDocsJavascriptCoversTypeScript(t, cliPT)
+	assertDocsGuardStrictDeprecated(t, cli, changelog, "## [Unreleased]")
+	assertDocsGuardStrictDeprecated(t, cliPT, changelogPT, "## [Não Lançado]")
 }
 
 func mustReadFile(t *testing.T, path string) string {
@@ -115,13 +135,13 @@ func mustReadFile(t *testing.T, path string) string {
 func assertDocsDriftIsScopeNotVault(t *testing.T, cli string) {
 	t.Helper()
 	if strings.Contains(cli, "Analisando vault contra código") {
-		t.Error("docs/cli.md ainda descreve drift como 'vault vs código'")
+		t.Error("cli.md still describes drift as vault vs. code")
 	}
 	if strings.Contains(cli, "DOCUMENTAÇÃO DESATUALIZADA") {
-		t.Error("docs/cli.md ainda usa o relatório fictício de documentação desatualizada no drift")
+		t.Error("cli.md still shows the fictional stale-docs drift report")
 	}
 	if !strings.Contains(cli, "Fora do scope") || !strings.Contains(cli, "Proibidos tocados") {
-		t.Error("docs/cli.md deve mostrar o relatório real de drift (fora do scope / proibidos tocados)")
+		t.Error("cli.md must show the real drift report (Fora do scope / Proibidos tocados)")
 	}
 }
 
@@ -133,11 +153,11 @@ func assertDocsLocalTicketWorkflow(t *testing.T, docs string) {
 		strings.Contains(strings.ToLower(docs), "does not talk to github") ||
 		strings.Contains(strings.ToLower(docs), "doesn't talk to github")
 	if !localOK {
-		t.Error("docs devem deixar claro que o tb não fala com o GitHub (100% local)")
+		t.Error("docs must state that tb does not talk to GitHub (100% local)")
 	}
 	fromIssue := strings.Contains(docs, "gh issue") || strings.Contains(docs, "gh pr")
 	if !strings.Contains(docs, "rd.md") || !fromIssue {
-		t.Error("docs devem explicar como obter/gerar rd.md a partir de issue ou PR")
+		t.Error("docs must explain how to get rd.md from an issue or PR")
 	}
 }
 
@@ -150,39 +170,39 @@ func assertDocsJavascriptCoversTypeScript(t *testing.T, cli string) {
 		strings.Contains(cli, "includes TypeScript") ||
 		strings.Contains(cli, "TypeScript (ts/tsx)")
 	if !strings.Contains(cli, "TypeScript") || !covers {
-		t.Error("docs/cli.md deve deixar explícito que a linguagem javascript cobre TypeScript (ts/tsx)")
+		t.Error("cli.md must state that the javascript language covers TypeScript (ts/tsx)")
 	}
 }
 
-func assertDocsGuardStrictDeprecated(t *testing.T, cli, changelog string) {
+func assertDocsGuardStrictDeprecated(t *testing.T, cli, changelog, unreleased string) {
 	t.Helper()
 	if reGuardStrictExample.MatchString(cli) {
-		t.Error("docs/cli.md não deve ter exemplo invocável com guard ... --strict")
+		t.Error("cli.md must not have an invocable guard ... --strict example")
 	}
-	if !strings.Contains(cli, "--strict") || !strings.Contains(strings.ToLower(cli), "deprecated") {
-		t.Error("docs/cli.md deve anotar a depreciação de guard --strict")
+	lower := strings.ToLower(cli)
+	if !strings.Contains(cli, "--strict") ||
+		(!strings.Contains(lower, "deprecat") && !strings.Contains(lower, "deprecia")) {
+		t.Error("cli.md must note that guard --strict is deprecated")
 	}
-	naoLancado := changelogSection(changelog, "## [Não Lançado]")
-	if naoLancado == "" {
-		t.Fatal("CHANGELOG sem seção ## [Não Lançado]")
+	pending := changelogSection(changelog, unreleased)
+	if pending == "" {
+		t.Fatalf("CHANGELOG without a %s section", unreleased)
 	}
-	// A nota pode estar em [Não Lançado] ou, depois do corte de uma release,
-	// em qualquer seção de versão publicada.
-	recent := naoLancado + "\n" + changelogReleased(changelog)
+	// After a release is cut the note moves to a published version section.
+	recent := pending + "\n" + changelogReleased(changelog, unreleased)
 	deprec := strings.Contains(strings.ToLower(recent), "deprecat") ||
 		strings.Contains(strings.ToLower(recent), "deprecia")
 	if !strings.Contains(recent, "--strict") || !deprec {
-		t.Error("CHANGELOG ([Não Lançado] ou versão publicada) deve anotar a depreciação de guard --strict")
+		t.Errorf("CHANGELOG (%s or a published version) must note the guard --strict deprecation", unreleased)
 	}
 }
 
-// changelogReleased devolve tudo depois de [Não Lançado] (seções de versões publicadas).
-func changelogReleased(doc string) string {
-	start := strings.Index(doc, "## [Não Lançado]")
+func changelogReleased(doc, unreleased string) string {
+	start := strings.Index(doc, unreleased)
 	if start < 0 {
 		return ""
 	}
-	rest := doc[start+len("## [Não Lançado]"):]
+	rest := doc[start+len(unreleased):]
 	next := strings.Index(rest, "\n## [")
 	if next < 0 {
 		return ""
