@@ -44,3 +44,24 @@ Signature/Rekor **not** verified (no `cosign`); `gh attestation verify` unavaila
 | 14 | `tb stack drift review` | — | ok: caught `internal/review/review_test.go` outside the rd.md Scope | info |
 | 15 | `tb guard` (via stack) | environment-conditional `t.Skip` (Landlock/git missing) distinguishable from cheating skips | 24 `test_skip` warnings for legitimate environment skips; noise | low |
 | 16 | `tb sandbox run -- sh -c 'echo > /dev/null'` | writing to `/dev/null` allowed | `Permission denied` (also in v0.0.3): git/shells break inside the sandbox — fixed in this phase | high |
+
+## 2026-11-18 — release `v0.0.5` + fresh bootstrap (`000b955`)
+
+Release: `sha256sum -c` ok; sigstore bundle certificate with SAN
+`…/release.yml@refs/tags/v0.0.5`, GitHub OIDC issuer, commit `000b955` = `v0.0.5^{}`.
+Signature/Rekor and `gh attestation verify` still not verified (no `cosign`; `gh` without `attestation`).
+
+Bootstrap from scratch in a worktree (`config.yaml`/`agent_docs.yaml`/`invariants.yaml` removed):
+`tb init --write-agents` → `tb mem init` → old invariants restored + 7 new ones (bus, graph, CGO, release)
+→ `TB_GRAPH=on tb graph index` → `tb verify run` → `tb mcp` (`tools/list` smoke).
+
+| # | Command | Expected | Got | Sev. |
+|---|---------|----------|-----|------|
+| 1 | `tb init` | `lint_cmd` only if the binary is on PATH | **still open** in v0.0.5: writes `golangci-lint run` without `golangci-lint` on PATH; reverted to `go vet ./...` by hand | medium |
+| 3 | `tb verify run` | — | **fixed**: 1 iteration (~15s), `PASS` | — |
+| 7 | `tb init` / `tb mem init` | versionable files with default mode | **still open**: `config.yaml`, `agent_docs.yaml`, `invariants.yaml` created `0600` | low |
+| 17 | `tb init` inside a `git worktree` | local state patterns ignored by git | writes to `.git/worktrees/<wt>/info/exclude`, which git does not read (only `$GIT_COMMON_DIR/info/exclude`); here `.gitignore` masks it, but in a repo without `.gitignore` local state shows up in `git status` | medium |
+| 18 | `tb init` (hints from AGENTS.md/CLAUDE.md) | commands only | extracted a comment from inside a `bash` fence (`# make install overwrites…`) and a bare `golangci-lint` from prose as hints | low |
+| 19 | `tb init` | — | ok: new config already ships the `router:` section with Phase 3 defaults | info |
+| 20 | `tb graph index` / `tb graph search "bus harness wake"` | function ahead of docs sections | 4567 nodes / 19328 edges in 0.17s; 4 `docs/` sections (PT + EN) before `func:busrun.wake` — same noise as #8 | low |
+| 21 | `tb mcp` | — | ok: 36 tools in `tools/list` (was 22) | info |

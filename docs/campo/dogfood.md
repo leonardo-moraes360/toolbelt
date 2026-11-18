@@ -44,3 +44,24 @@ Assinatura/Rekor **não** verificados (sem `cosign`); `gh attestation verify` in
 | 14 | `tb stack drift review` | — | ok: pegou `internal/review/review_test.go` fora do Scope declarado no rd.md | info |
 | 15 | `tb guard` (via stack) | `t.Skip` condicionado a ambiente (Landlock/git ausente) distinguível de skip de trapaça | 24 avisos `test_skip` para skips legítimos de ambiente; ruído | baixa |
 | 16 | `tb sandbox run -- sh -c 'echo > /dev/null'` | escrita em `/dev/null` permitida | `Permission denied` (também na v0.0.3): git/shells quebram no sandbox — corrigido nesta fase | alta |
+
+## 2026-11-18 — release `v0.0.5` + novo bootstrap (`000b955`)
+
+Release: `sha256sum -c` ok; certificado do bundle sigstore com SAN
+`…/release.yml@refs/tags/v0.0.5`, issuer GitHub OIDC, commit `000b955` = `v0.0.5^{}`.
+Assinatura/Rekor e `gh attestation verify` seguem não verificados (sem `cosign`; `gh` sem `attestation`).
+
+Bootstrap do zero numa worktree (`config.yaml`/`agent_docs.yaml`/`invariants.yaml` removidos):
+`tb init --write-agents` → `tb mem init` → invariantes antigas restauradas + 7 novas (bus, grafo, CGO, release)
+→ `TB_GRAPH=on tb graph index` → `tb verify run` → `tb mcp` (smoke `tools/list`).
+
+| # | Comando | Esperado | Obtido | Sev. |
+|---|---------|----------|--------|------|
+| 1 | `tb init` | `lint_cmd` só se o binário existir no PATH | **persiste** na v0.0.5: grava `golangci-lint run` sem `golangci-lint` no PATH; voltei a `go vet ./...` à mão | média |
+| 3 | `tb verify run` | — | **resolvido**: 1 iteração (~15s), `PASS` | — |
+| 7 | `tb init` / `tb mem init` | arquivos versionáveis com modo padrão | **persiste**: `config.yaml`, `agent_docs.yaml`, `invariants.yaml` criados `0600` | baixa |
+| 17 | `tb init` numa `git worktree` | padrões de estado local ignorados pelo git | grava em `.git/worktrees/<wt>/info/exclude`, que o git não lê (só `$GIT_COMMON_DIR/info/exclude`); aqui o `.gitignore` mascara, mas em repo sem `.gitignore` o estado local aparece no `git status` | média |
+| 18 | `tb init` (dicas de AGENTS.md/CLAUDE.md) | só comandos | extraiu como dica um comentário de dentro de fence `bash` (`# make install sobrescreve…`) e `golangci-lint` solto da prosa | baixa |
+| 19 | `tb init` | — | ok: config nova já traz a seção `router:` com os padrões da Fase 3 | info |
+| 20 | `tb graph index` / `tb graph search "bus harness wake"` | função à frente de seções de docs | 4567 nós / 19328 arestas em 0,17s; 4 seções de `docs/` (PT + EN) antes de `func:busrun.wake` — mesmo ruído do #8 | baixa |
+| 21 | `tb mcp` | — | ok: 36 tools no `tools/list` (eram 22) | info |
