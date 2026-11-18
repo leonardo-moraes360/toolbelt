@@ -337,7 +337,7 @@ func Save(cfg *Config, path string) error {
 		return fmt.Errorf("marshaling config: %w", err)
 	}
 
-	return os.WriteFile(path, data, 0o600)
+	return os.WriteFile(path, data, VersionedFileMode) //nolint:gosec // config.yaml é versionável, sem segredos
 }
 
 // Init cria o diretório de configuração e o arquivo de configuração padrão.

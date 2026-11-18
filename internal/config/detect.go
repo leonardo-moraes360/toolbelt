@@ -119,10 +119,16 @@ func DetectLintCmd(root string) string {
 	return detectMakeTargetCmd(root, "lint")
 }
 
+// detectGoLintCmd só grava golangci-lint se o binário estiver no PATH; com
+// config do golangci mas sem o binário, cai para `go vet ./...` (o target
+// make lint, nesse caso, quase sempre chama o mesmo golangci-lint ausente).
 func detectGoLintCmd(root string) string {
 	for _, name := range golangciConfigFiles {
 		if fileExists(filepath.Join(root, name)) {
-			return "golangci-lint run"
+			if _, err := lookPath("golangci-lint"); err == nil {
+				return "golangci-lint run"
+			}
+			return "go vet ./..."
 		}
 	}
 	return detectMakeTargetCmd(root, "lint")

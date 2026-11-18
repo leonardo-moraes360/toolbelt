@@ -113,7 +113,7 @@ func (s *Store) Save(f *File) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(s.path, data, 0o600)
+	return os.WriteFile(s.path, data, 0o644) //nolint:gosec // invariants.yaml é versionável (dogfood #7)
 }
 
 func (s *Store) Add(category, rule, ref string, immutable bool) (*Invariant, error) {
