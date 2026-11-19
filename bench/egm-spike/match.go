@@ -47,14 +47,9 @@ func loadStopwords(path string) (map[string]bool, error) {
 	return set, sc.Err()
 }
 
-// normalize implements R18: lowercase, strip accents and punctuation, collapse
-// whitespace, drop stopwords. It returns the token set.
-func normalize(msg string, stop map[string]bool) map[string]bool {
-	return normalizeStem(msg, stop, 0)
-}
-
-// normalizeStem is normalize with each token cut to its first stem runes
-// (stem <= 0 keeps whole words): a crude, language-agnostic stemmer tried in R0.
+// normalizeStem implements R18: lowercase, strip accents and punctuation,
+// collapse whitespace, drop stopwords and cut each token to its first stem
+// runes (stem <= 0 keeps whole words). It returns the token set.
 func normalizeStem(msg string, stop map[string]bool, stem int) map[string]bool {
 	t := transform.Chain(norm.NFD, runes.Remove(runes.In(unicode.Mn)), norm.NFC)
 	s, _, err := transform.String(t, strings.ToLower(msg))
@@ -183,7 +178,7 @@ func reviewPrompt(persona, path, doc, nonce string) string {
 // runCollect: egm-spike collect <runs> <out.json> <doc>...
 func runCollect(rep *report, args []string) error {
 	if len(args) < 3 {
-		return errors.New("uso: egm-spike collect <runs> <out.json> <doc>...")
+		return errors.New("uso: egm-spike collect <runs> <out.json> <doc> [<doc>]")
 	}
 	runs, err := strconv.Atoi(args[0])
 	if err != nil || runs < 1 {
@@ -352,8 +347,9 @@ func runCalibrate(rep *report, args []string) error {
 	}
 	byDoc := map[byte][]corpusPair{}
 	nSame := 0
-	for _, p := range c.Pairs {
-		byDoc[p.ID[0]] = append(byDoc[p.ID[0]], p)
+	for i := range c.Pairs {
+		p := &c.Pairs[i]
+		byDoc[p.ID[0]] = append(byDoc[p.ID[0]], *p)
 		if p.Same {
 			nSame++
 		}

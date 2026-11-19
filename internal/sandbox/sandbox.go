@@ -291,17 +291,8 @@ func finishRun(ctx context.Context, cmd *exec.Cmd, sandboxed bool, cfg *Config) 
 		defer runtime.UnlockOSThread()
 	}
 	out := &tailBuffer{max: MaxOutputBytes}
-	cmd.Stdout = out
 	cmd.Stderr = out
-	var stdout *limitedWriter
-	if cfg.Stdout != nil {
-		limit := cfg.MaxStdoutBytes
-		if limit <= 0 {
-			limit = MaxOutputBytes
-		}
-		stdout = &limitedWriter{w: cfg.Stdout, max: limit}
-		cmd.Stdout = stdout
-	}
+	stdout := attachStdout(cmd, cfg, out)
 	start := time.Now()
 	var err error
 	if group && reg != nil {
@@ -322,31 +313,50 @@ func finishRun(ctx context.Context, cmd *exec.Cmd, sandboxed bool, cfg *Config) 
 		res.StdoutOverflow = stdout.Overflow()
 	}
 
-	// The agent exited 0 but left a child holding stdout/stderr: Go returns
-	// ErrWaitDelay. The agent succeeded; the group was already terminated above.
-	if err != nil && errors.Is(err, exec.ErrWaitDelay) && cmd.ProcessState != nil && cmd.ProcessState.Success() {
-		err = nil
-	}
+	return classifyRunError(ctx, cmd, res, err)
+}
 
-	if err != nil {
-		switch ctx.Err() {
-		case context.DeadlineExceeded:
-			res.TimedOut = true
-			res.ExitCode = -1
-			return res, nil
-		case context.Canceled:
-			res.Canceled = true
-			res.ExitCode = -1
-			return res, nil
-		}
-		var exitErr *exec.ExitError
-		if errors.As(err, &exitErr) {
-			res.ExitCode = exitErr.ExitCode()
-			return res, nil
-		}
-		return nil, err
+// attachStdout points the child's stdout at the tail buffer, or, with
+// Config.Stdout, at a limitedWriter over it (returned so the caller can read
+// the overflow flag).
+func attachStdout(cmd *exec.Cmd, cfg *Config, out *tailBuffer) *limitedWriter {
+	if cfg.Stdout == nil {
+		cmd.Stdout = out
+		return nil
 	}
-	return res, nil
+	limit := cfg.MaxStdoutBytes
+	if limit <= 0 {
+		limit = MaxOutputBytes
+	}
+	lw := &limitedWriter{w: cfg.Stdout, max: limit}
+	cmd.Stdout = lw
+	return lw
+}
+
+// classifyRunError turns the child's exit into Result fields: timeout,
+// cancellation and a non-zero exit are results, not errors.
+func classifyRunError(ctx context.Context, cmd *exec.Cmd, res *Result, err error) (*Result, error) {
+	// The agent exited 0 but left a child holding stdout/stderr: Go returns
+	// ErrWaitDelay. The agent succeeded; the group was already terminated.
+	if err == nil || (errors.Is(err, exec.ErrWaitDelay) && cmd.ProcessState != nil && cmd.ProcessState.Success()) {
+		return res, nil
+	}
+	switch ctx.Err() {
+	case context.DeadlineExceeded:
+		res.TimedOut = true
+		res.ExitCode = -1
+		return res, nil
+	case context.Canceled:
+		res.Canceled = true
+		res.ExitCode = -1
+		return res, nil
+	}
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) {
+		res.ExitCode = exitErr.ExitCode()
+		return res, nil
+	}
+	return nil, err
 }
 
 func (s *Sandbox) ValidatePath(path string) error {

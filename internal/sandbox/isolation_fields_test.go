@@ -21,12 +21,12 @@ func requireLandlock(t *testing.T) {
 	}
 }
 
-func runSh(t *testing.T, cfg Config, script string) *Result {
+func runSh(t *testing.T, cfg *Config, script string) *Result {
 	t.Helper()
 	if cfg.Timeout == 0 {
 		cfg.Timeout = 10 * time.Second
 	}
-	sb, err := New(cfg)
+	sb, err := New(*cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -44,7 +44,7 @@ func TestReadOnlyWorkDirBlocksWrite(t *testing.T) {
 		t.Fatal(err)
 	}
 	priv := t.TempDir()
-	res := runSh(t, Config{WorkDir: work, ReadOnlyWorkDir: true, PrivateTmp: priv},
+	res := runSh(t, &Config{WorkDir: work, ReadOnlyWorkDir: true, PrivateTmp: priv},
 		"cat in.txt && echo x > novo.txt")
 	if !strings.Contains(res.Output, "dado") {
 		t.Fatalf("leitura do workdir deveria funcionar: %q", res.Output)
@@ -66,7 +66,7 @@ func TestPrivateTmpIsTheOnlyTmp(t *testing.T) {
 	t.Cleanup(func() { _ = os.RemoveAll(work) })
 	priv := t.TempDir()
 	other := t.TempDir()
-	res := runSh(t, Config{WorkDir: work, ReadOnlyWorkDir: true, PrivateTmp: priv},
+	res := runSh(t, &Config{WorkDir: work, ReadOnlyWorkDir: true, PrivateTmp: priv},
 		`echo ok > "$TMPDIR/a"; echo pwned > '`+filepath.Join(other, "b")+`'`)
 	if _, err := os.Stat(filepath.Join(priv, "a")); err != nil {
 		t.Fatalf("TMPDIR privado deveria ser gravável: %v (output=%q)", err, res.Output)
@@ -80,7 +80,7 @@ func TestHomeAndPathOverrideEnv(t *testing.T) {
 	requireLandlock(t)
 	work := t.TempDir()
 	home := t.TempDir()
-	res := runSh(t, Config{
+	res := runSh(t, &Config{
 		WorkDir: work,
 		Home:    home,
 		Path:    "/usr/bin:/bin",
@@ -98,7 +98,7 @@ func TestHomeAndPathOverrideEnv(t *testing.T) {
 func TestStdinAndSeparateStdout(t *testing.T) {
 	requireLandlock(t)
 	var out bytes.Buffer
-	res := runSh(t, Config{
+	res := runSh(t, &Config{
 		WorkDir: t.TempDir(),
 		Stdin:   strings.NewReader("entrada\n"),
 		Stdout:  &out,
@@ -117,7 +117,7 @@ func TestStdinAndSeparateStdout(t *testing.T) {
 func TestStdoutOverflowDrainsWithoutBlocking(t *testing.T) {
 	requireLandlock(t)
 	var out bytes.Buffer
-	res := runSh(t, Config{
+	res := runSh(t, &Config{
 		WorkDir:        t.TempDir(),
 		Stdout:         &out,
 		MaxStdoutBytes: 100,
@@ -142,7 +142,7 @@ func TestAllowedRegularFileRule(t *testing.T) {
 		t.Fatal(err)
 	}
 	work := t.TempDir()
-	res := runSh(t, Config{
+	res := runSh(t, &Config{
 		WorkDir:         work,
 		ReadOnlyWorkDir: true,
 		PrivateTmp:      t.TempDir(),
@@ -158,7 +158,7 @@ func TestAllowedRegularFileRule(t *testing.T) {
 
 func TestMinimalDevHidesPtsAndShm(t *testing.T) {
 	requireLandlock(t)
-	res := runSh(t, Config{WorkDir: t.TempDir(), MinimalDev: true},
+	res := runSh(t, &Config{WorkDir: t.TempDir(), MinimalDev: true},
 		`echo x > /dev/null && echo null-ok; head -c 4 /dev/urandom >/dev/null && echo urandom-ok; ls /dev/shm >/dev/null 2>&1 && echo shm-visivel; ls /dev/pts >/dev/null 2>&1 && echo pts-visivel; true`)
 	for _, want := range []string{"null-ok", "urandom-ok"} {
 		if !strings.Contains(res.Output, want) {

@@ -48,7 +48,7 @@ func (r *report) add(name string, ok bool, detail string) {
 
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Fprintln(os.Stderr, "uso: egm-spike isolation|claude|collect|calibrate|converge|converge2")
+		fmt.Fprintln(os.Stderr, "uso: egm-spike isolation|claude|collect|calibrate|converge2")
 		os.Exit(2)
 	}
 	rep := &report{Mode: os.Args[1], Extra: map[string]any{}}
@@ -62,8 +62,6 @@ func main() {
 		err = runCollect(rep, os.Args[2:])
 	case "converge2":
 		err = runConverge2(rep, os.Args[2:])
-	case "converge":
-		err = runConverge(rep, os.Args[2:])
 	case "calibrate":
 		err = runCalibrate(rep, os.Args[2:])
 	default:
@@ -122,8 +120,18 @@ func (e *env) sandboxConfig(owner string, extraRO []string, reg *sandbox.Registr
 	}
 }
 
+// gitPath resolves git from fixed system directories, never from PATH.
+func gitPath() string {
+	for _, p := range []string{"/usr/bin/git", "/bin/git", "/usr/local/bin/git"} {
+		if fi, err := os.Stat(p); err == nil && !fi.IsDir() {
+			return p
+		}
+	}
+	return "/usr/bin/git"
+}
+
 func repoRoot() string {
-	out, err := exec.Command("git", "rev-parse", "--show-toplevel").Output()
+	out, err := exec.Command(gitPath(), "rev-parse", "--show-toplevel").Output() //nolint:gosec // fixed binary and argv
 	if err != nil {
 		return ""
 	}
@@ -256,7 +264,7 @@ type goldfishRun struct {
 	CopyAfter  string
 }
 
-func runGoldfish(bin string, prompt string, owner string) (*goldfishRun, error) {
+func runGoldfish(bin, prompt, owner string) (*goldfishRun, error) {
 	reg := sandbox.NewRegistry(ownerVar)
 	reg.SetOwnerVar(ownerVar)
 	release, _ := sandbox.AcquireSubreaper()
@@ -266,7 +274,7 @@ func runGoldfish(bin string, prompt string, owner string) (*goldfishRun, error) 
 
 // runGoldfishShared runs one goldfish under a Registry shared by every goldfish
 // of the process (R3); the caller holds the subreaper.
-func runGoldfishShared(bin string, prompt string, owner string, reg *sandbox.Registry) (*goldfishRun, error) {
+func runGoldfishShared(bin, prompt, owner string, reg *sandbox.Registry) (*goldfishRun, error) {
 	e, err := newEnv()
 	if err != nil {
 		return nil, err

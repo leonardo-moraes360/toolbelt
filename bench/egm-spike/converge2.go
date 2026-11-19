@@ -63,7 +63,7 @@ func gitDiffMap(oldDoc, newDoc string) (*lineMap, error) {
 	if err := os.WriteFile(b, []byte(newDoc), 0o600); err != nil {
 		return nil, err
 	}
-	out, err := exec.Command("git", "diff", "--no-index", "-U0", "--no-color", a, b).Output() //nolint:gosec // fixed argv
+	out, err := exec.Command(gitPath(), "diff", "--no-index", "-U0", "--no-color", a, b).Output() //nolint:gosec // fixed argv
 	var ee *exec.ExitError
 	if err != nil && !(errors.As(err, &ee) && ee.ExitCode() == 1) {
 		return nil, err
@@ -514,11 +514,7 @@ func (ce *convergeEnv) converge2(path, outPrefix string, maxRounds, cleanRounds 
 			stop = "budget"
 		}
 		if stop == "" && len(open) > 0 && round < maxRounds {
-			var asLineage []*lineage
-			for _, l := range open {
-				asLineage = append(asLineage, &lineage{ID: l.ID, Severity: l.Severity, Finding: l.Finding})
-			}
-			gr, err := ce.goldfish(authorPrompt(path, doc, asLineage), fmt.Sprintf("egm:spike2:r%d:author", round))
+			gr, err := ce.goldfish(authorPrompt(path, doc, open), fmt.Sprintf("egm:spike2:r%d:author", round))
 			if err == nil && gr.Envelope != nil && !gr.Envelope.IsError {
 				lg.CostUSD += gr.Envelope.TotalCostUSD
 				if nd, ok := extractDoc(gr.Envelope.Result); ok && nd != doc {
@@ -551,7 +547,7 @@ func (ce *convergeEnv) converge2(path, outPrefix string, maxRounds, cleanRounds 
 // runConverge2: egm-spike converge2 <max_rounds> <budget_usd> <out.json> <stopwords.txt> <doc>...
 func runConverge2(rep *report, args []string) error {
 	if len(args) < 5 {
-		return errors.New("uso: egm-spike converge2 <max_rounds> <budget_usd> <out.json> <stopwords.txt> <doc>...")
+		return errors.New("uso: egm-spike converge2 <max_rounds> <budget_usd> <out.json> <stopwords.txt> <doc> [<doc>]")
 	}
 	maxRounds, err := strconv.Atoi(args[0])
 	if err != nil || maxRounds < 2 {
@@ -589,7 +585,8 @@ func runConverge2(rep *report, args []string) error {
 		}()
 	}
 	wg.Wait()
-	for _, r := range results {
+	for i := range results {
+		r := results[i]
 		rep.add(r.Doc, r.Converged, fmt.Sprintf("stop=%s rounds=%d cost=%.2f", r.Stop, r.Rounds, r.CostUSD))
 	}
 	rep.Extra["total_cost_usd"] = ce.bud.spent
