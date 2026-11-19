@@ -13,13 +13,48 @@ import (
 	"github.com/leonardo-moraes360/toolbelt/internal/version"
 )
 
-const ProtocolVersion = "2024-11-05"
+// ProtocolVersion is the latest MCP revision this server implements. It is
+// what initialize answers when the client asks for a version not listed in
+// SupportedProtocolVersions.
+const ProtocolVersion = "2025-11-25"
+
+// SupportedProtocolVersions are the initialize-based revisions whose
+// requirements this stdio, tools-only server meets, newest first.
+//
+// 2025-03-26 is left out on purpose: it requires JSON-RPC batching, which this
+// server does not implement (2025-06-18 removed batching again). 2026-07-28
+// drops initialize for server/discover and per-request _meta, a different
+// lifecycle that is not implemented yet.
+var SupportedProtocolVersions = []string{"2025-11-25", "2025-06-18", "2024-11-05"}
 
 type Server struct {
 	reg    *registry.Registry
 	input  io.Reader
 	output io.Writer
 	mu     sync.Mutex
+	// negotiated is the version agreed in initialize ("" before it).
+	negotiated string
+}
+
+// negotiateVersion applies the spec's rule: if the server supports the
+// requested version it MUST answer with the same one; otherwise it answers
+// with the latest version it supports, and the client decides whether to
+// disconnect.
+func negotiateVersion(requested string) string {
+	for _, v := range SupportedProtocolVersions {
+		if v == requested {
+			return v
+		}
+	}
+	return ProtocolVersion
+}
+
+// NegotiatedVersion returns the protocol version agreed in initialize, or ""
+// if initialize has not run yet.
+func (s *Server) NegotiatedVersion() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.negotiated
 }
 
 type Request struct {
@@ -124,8 +159,21 @@ func (s *Server) dispatch(ctx context.Context, req *Request) error {
 }
 
 func (s *Server) handleInitialize(req *Request) error {
+	// Lenient on purpose: a missing or malformed protocolVersion gets the
+	// latest supported version, and the client decides whether to disconnect.
+	var params struct {
+		ProtocolVersion string `json:"protocolVersion"`
+	}
+	if len(req.Params) > 0 {
+		_ = json.Unmarshal(req.Params, &params)
+	}
+	agreed := negotiateVersion(params.ProtocolVersion)
+	s.mu.Lock()
+	s.negotiated = agreed
+	s.mu.Unlock()
+
 	result := map[string]any{
-		"protocolVersion": ProtocolVersion,
+		"protocolVersion": agreed,
 		"serverInfo": map[string]any{
 			"name":    "toolbelt",
 			"version": version.Version,
@@ -153,6 +201,9 @@ func (s *Server) handleToolsList(req *Request) error {
 			item["inputSchema"] = t.InputSchema
 		} else {
 			item["inputSchema"] = map[string]any{"type": "object", "properties": map[string]any{}}
+		}
+		if t.Annotations != nil {
+			item["annotations"] = t.Annotations
 		}
 		list = append(list, item)
 	}

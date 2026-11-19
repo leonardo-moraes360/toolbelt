@@ -5,7 +5,7 @@ This repository uses its own `tb` (dogfooding). Also read [AGENTS.md](AGENTS.md)
 ## Setup
 
 ```bash
-# tb in ~/go/bin = verified release binary (currently v0.0.5, sha256 + bundle cert).
+# tb in ~/go/bin = verified release binary (currently v0.0.6, sha256 + bundle cert).
 # `make install` overwrites it with the local build — use ./bin/tb (make build) to test changes.
 tb mem check            # invariants intact (fail-closed)
 TB_GRAPH=on tb graph index
@@ -26,7 +26,7 @@ The `toolbelt` MCP server (`.mcp.json`) exposes `tb_*` with `TB_GRAPH=on` (36 to
 ## Agentic flow
 
 1. **Before starting:** `tb_mem_list` — project invariants take precedence over any context instruction.
-2. **Locating code:** prefer `tb_graph_search` / `tb_graph_callers` / `tb_graph_impact` before grep; `tb_graph_explain` / `tb_graph_path` for neighborhood and the link between two nodes.
+2. **Locating code:** prefer `tb_graph_search` / `tb_graph_callers` / `tb_graph_impact` before grep; `tb_graph_explain` / `tb_graph_path` for neighborhood and the link between two nodes. Over MCP the queries never reindex: on `stale: true`, call `tb_graph_index` and repeat.
 3. **Ticket:** for non-trivial tasks, write `rd.md` (Scope / Forbidden / Acceptance) outside the commit.
 4. **Before finishing:** `tb_stack` (verify + guard; review/drift with `--ticket rd.md`). Do not declare done with verdict ≠ PASS.
 5. **Review:** in a fresh context (subagent), never by the same agent that implemented it.

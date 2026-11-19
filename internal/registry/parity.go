@@ -182,7 +182,7 @@ func registerVerifyTools() {
 				},
 				"pass_env": {
 					Type:        "array",
-					Description: "Explicit opt-in for secrets (*TOKEN*/SECRET/KEY/PASSWORD)",
+					Description: passEnvArgDescription,
 					Items:       &Property{Type: "string"},
 				},
 			},
@@ -298,7 +298,7 @@ func registerStackTools() {
 				},
 				"pass_env": {
 					Type:        "array",
-					Description: "Explicit opt-in for secrets no verify",
+					Description: "verify: " + passEnvArgDescription,
 					Items:       &Property{Type: "string"},
 				},
 			},
@@ -520,7 +520,11 @@ func runVerifyTests(ctx context.Context, cwd string, args map[string]any) (any, 
 	}
 	cfg.Timeout = timeout
 	cfg.EnvAllow = append(cfg.EnvAllow, StringSliceArg(args, "env", nil)...)
-	cfg.EnvPass = append(cfg.EnvPass, StringSliceArg(args, "pass_env", nil)...)
+	pass, err := toolPassEnv(args)
+	if err != nil {
+		return nil, err
+	}
+	cfg.EnvPass = append(cfg.EnvPass, pass...)
 	return verify.Run(ctx, &cfg)
 }
 
@@ -762,6 +766,10 @@ func handleStack(ctx context.Context, args map[string]any) (any, error) {
 	if err != nil {
 		return nil, fmt.Errorf("invalid timeout: %w", err)
 	}
+	pass, err := toolPassEnv(args)
+	if err != nil {
+		return nil, err
+	}
 	ticket := StringArg(args, "ticket")
 	if ticket == "" {
 		ticket = "rd.md"
@@ -795,7 +803,7 @@ func handleStack(ctx context.Context, args map[string]any) (any, error) {
 		Reviewers:          IntArg(args, "reviewers", 0),
 		Standards:          StringSliceArg(args, "standards", nil),
 		EnvAllow:           StringSliceArg(args, "env", nil),
-		EnvPass:            StringSliceArg(args, "pass_env", nil),
+		EnvPass:            pass,
 	}
 	return stack.Run(ctx, opts)
 }

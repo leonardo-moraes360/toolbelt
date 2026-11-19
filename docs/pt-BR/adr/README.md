@@ -33,6 +33,7 @@ Cada ADR segue o formato:
 | [012](../decisions/012-cli-framework-cobra.md) | Framework de CLI: cobra | accepted |
 | [013](013-barramento-multi-vendor.md) | Barramento local multi-vendor de agentes (`tb bus`) | proposed (B0/B1 e parte do B3 implementados) |
 | [014](014-graphify-reimplementacao.md) | Graphify: reimplementar, não integrar | accepted |
+| [015](015-egm-nativo.md) | Reimplementação nativa do Elephant-Goldfish Model (`tb egm`) | proposed |
 
 ## Como Propor um ADR
 

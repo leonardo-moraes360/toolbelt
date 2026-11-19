@@ -105,6 +105,7 @@ Esta é uma compilação de fontes primárias que podem influenciar o desenho do
 | [Agent Client Protocol (ACP)](https://agentclientprotocol.com/protocol/v1/overview) | Zed | 2025 | spec | JSON-RPC por stdio entre editor e agente, com pedidos de permissão; ponte pro leitor humano. | protocolo · UI | alta |
 | [JSON-RPC 2.0 Specification](https://www.jsonrpc.org/specification) | JSON-RPC WG | 2010 | spec | Base de MCP, A2A e ACP; o transporte do tb. | protocolo | média |
 | [Writing effective tools for AI agents](https://www.anthropic.com/research/writing-tools-for-agents) | Anthropic | 2025 | blog | Namespacing e response_format concise/detailed (~1/3 dos tokens no exemplo). | protocolo · mem/ctx | alta |
+| [is-it-legit-mcp](https://github.com/m8ven/is-it-legit-mcp) · [M8ven Verified](https://m8ven.ai/verified/how-we-verify) | M8ven | 2026 | repo | Referência de checagem de servidor MCP: anotações (readOnly/destructive/idempotent/openWorld) justificadas pelo efeito real do handler, verificação de código vs. declaração, sandbox, supply chain e publisher. Revisão do tb em [mcp-sinais-m8ven.md](mcp-sinais-m8ven.md). | protocolo · guard | alta |
 
 ---
 

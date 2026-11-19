@@ -105,6 +105,7 @@ This is a compilation of primary sources that may influence toolbelt's design. W
 | [Agent Client Protocol (ACP)](https://agentclientprotocol.com/protocol/v1/overview) | Zed | 2025 | spec | JSON-RPC over stdio between editor and agent, with permission requests; bridge for the human reader. | protocol · UI | high |
 | [JSON-RPC 2.0 Specification](https://www.jsonrpc.org/specification) | JSON-RPC WG | 2010 | spec | Base of MCP, A2A and ACP; tb's transport. | protocol | medium |
 | [Writing effective tools for AI agents](https://www.anthropic.com/research/writing-tools-for-agents) | Anthropic | 2025 | blog | Namespacing and response_format concise/detailed (~1/3 of tokens in the example). | protocol · mem/ctx | high |
+| [is-it-legit-mcp](https://github.com/m8ven/is-it-legit-mcp) · [M8ven Verified](https://m8ven.ai/verified/how-we-verify) | M8ven | 2026 | repo | Reference for MCP server checks: annotations (readOnly/destructive/idempotent/openWorld) justified by the handler's real effect, code-vs-declaration verification, sandbox, supply chain and publisher. tb review in [mcp-sinais-m8ven.md](mcp-sinais-m8ven.md). | protocol · guard | high |
 
 ---
 

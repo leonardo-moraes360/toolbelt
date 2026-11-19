@@ -51,11 +51,15 @@ type pathBeneathAttr struct {
 }
 
 type childPayload struct {
-	WorkDir   string       `json:"work_dir"`
-	Command   string       `json:"command"`
-	Args      []string     `json:"args"`
-	Allowed   []PathAccess `json:"allowed"`
-	Forbidden []string     `json:"forbidden"`
+	WorkDir         string       `json:"work_dir"`
+	Command         string       `json:"command"`
+	Args            []string     `json:"args"`
+	Allowed         []PathAccess `json:"allowed"`
+	Forbidden       []string     `json:"forbidden"`
+	ReadOnlyWorkDir bool         `json:"read_only_work_dir,omitempty"`
+	PrivateTmp      string       `json:"private_tmp,omitempty"`
+	Home            string       `json:"home,omitempty"`
+	MinimalDev      bool         `json:"minimal_dev,omitempty"`
 }
 
 func init() {
@@ -105,7 +109,7 @@ func handledAccessFS(abi int) uint64 {
 	return mask
 }
 
-func applyLandlock(workDir string, allowed []PathAccess, forbidden []string) error {
+func applyLandlock(p *childPayload) error {
 	supported, abi, err := CheckLandlockSupport()
 	if !supported {
 		if err == nil {
@@ -120,21 +124,30 @@ func applyLandlock(workDir string, allowed []PathAccess, forbidden []string) err
 	}
 	defer syscall.Close(ruleset)
 
-	if err := addSystemReadRules(ruleset, abi); err != nil {
+	if err := addSystemReadRules(ruleset, abi, p.MinimalDev); err != nil {
 		return err
 	}
-	if err := addRule(ruleset, workDir, false, abi); err != nil {
-		return fmt.Errorf("workdir rule %q: %w", workDir, err)
+	if err := addRule(ruleset, p.WorkDir, p.ReadOnlyWorkDir, abi); err != nil {
+		return fmt.Errorf("workdir rule %q: %w", p.WorkDir, err)
 	}
 	// No rule for os.TempDir(): the shared /tmp gets no access (writes only in
-	// the workdir and AllowedPaths). Anything that needs temp space should point
-	// TMPDIR inside the workdir.
-	for _, a := range allowed {
+	// the workdir, PrivateTmp, Home and AllowedPaths). Anything that needs temp
+	// space should set PrivateTmp or point TMPDIR inside the workdir.
+	if p.PrivateTmp != "" {
+		if err := addRule(ruleset, p.PrivateTmp, false, abi); err != nil {
+			return fmt.Errorf("private tmp rule %q: %w", p.PrivateTmp, err)
+		}
+	}
+	if p.Home != "" {
+		if err := addRule(ruleset, p.Home, false, abi); err != nil {
+			return fmt.Errorf("home rule %q: %w", p.Home, err)
+		}
+	}
+	for _, a := range p.Allowed {
 		if err := addRule(ruleset, a.Path, a.ReadOnly, abi); err != nil {
 			return fmt.Errorf("allow rule %q: %w", a.Path, err)
 		}
 	}
-	_ = forbidden
 
 	return restrictSelf(ruleset)
 }
@@ -148,12 +161,15 @@ func createRuleset(abi int) (int, error) {
 	return int(fd), nil
 }
 
-func addSystemReadRules(ruleset, abi int) error {
+func addSystemReadRules(ruleset, abi int, minimalDev bool) error {
 	roPaths := []string{
 		"/bin", "/sbin", "/usr/bin", "/usr/sbin",
 		"/lib", "/lib64", "/usr/lib", "/usr/lib64",
-		"/etc", "/dev", "/proc", "/sys",
+		"/etc", "/proc", "/sys",
 		"/usr/libexec", "/usr/share",
+	}
+	if !minimalDev {
+		roPaths = append(roPaths, "/dev")
 	}
 	for _, p := range roPaths {
 		_ = addRuleOptional(ruleset, p, true, abi)
@@ -241,7 +257,28 @@ func addRule(ruleset int, path string, readOnly bool, abi int) error {
 	}
 	defer syscall.Close(parent)
 
-	return addRuleMask2(ruleset, abs, parent, accessMask(readOnly, abi))
+	mask := accessMask(readOnly, abi)
+	if fi, statErr := os.Stat(abs); statErr == nil && !fi.IsDir() {
+		mask = fileOnlyMask(mask)
+	}
+	return addRuleMask2(ruleset, abs, parent, mask)
+}
+
+// fileOnlyMask drops the directory-only rights from mask: the kernel returns
+// EINVAL when a rule on a regular file includes any of them.
+func fileOnlyMask(mask uint64) uint64 {
+	dirOnly := uint64(landlockAccessFSReadDir |
+		landlockAccessFSRemoveDir |
+		landlockAccessFSRemoveFile |
+		landlockAccessFSMakeChar |
+		landlockAccessFSMakeDir |
+		landlockAccessFSMakeReg |
+		landlockAccessFSMakeSock |
+		landlockAccessFSMakeFifo |
+		landlockAccessFSMakeBlock |
+		landlockAccessFSMakeSym |
+		landlockAccessFSRefer)
+	return mask &^ dirOnly
 }
 
 // addRuleMask adds a path-beneath rule with exactly the given mask.
@@ -296,11 +333,15 @@ func accessMask(readOnly bool, abi int) uint64 {
 
 func prepareChildEnv(cfg *Config, command string, args []string) ([]string, error) {
 	payload, err := json.Marshal(childPayload{
-		WorkDir:   cfg.WorkDir,
-		Command:   command,
-		Args:      args,
-		Allowed:   cfg.AllowedPaths,
-		Forbidden: cfg.ForbiddenPaths,
+		WorkDir:         cfg.WorkDir,
+		Command:         command,
+		Args:            args,
+		Allowed:         cfg.AllowedPaths,
+		Forbidden:       cfg.ForbiddenPaths,
+		ReadOnlyWorkDir: cfg.ReadOnlyWorkDir,
+		PrivateTmp:      cfg.PrivateTmp,
+		Home:            cfg.Home,
+		MinimalDev:      cfg.MinimalDev,
 	})
 	if err != nil {
 		return nil, err
@@ -308,6 +349,9 @@ func prepareChildEnv(cfg *Config, command string, args []string) ([]string, erro
 	base := os.Environ()
 	if cfg.Env != nil {
 		base = append([]string{}, cfg.Env...)
+	}
+	if cfg.hasEnvOverrides() {
+		base = cfg.applyEnvOverrides(base)
 	}
 	base = append(base,
 		envLandlockChild+"=1",
@@ -330,7 +374,7 @@ func runLandlockChild() error {
 	}
 
 	runtime.LockOSThread()
-	if err := applyLandlock(p.WorkDir, p.Allowed, p.Forbidden); err != nil {
+	if err := applyLandlock(&p); err != nil {
 		return err
 	}
 

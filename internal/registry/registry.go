@@ -4,13 +4,17 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 )
 
 type Tool struct {
 	Name        string       `json:"name"`
 	Description string       `json:"description"`
 	InputSchema *InputSchema `json:"inputSchema,omitempty"`
-	Handler     ToolHandler  `json:"-"`
+	// Annotations are the MCP behavior hints. Register fills them from the
+	// built-in table (annotations.go) when the tool does not set its own.
+	Annotations *ToolAnnotations `json:"annotations,omitempty"`
+	Handler     ToolHandler      `json:"-"`
 }
 
 type InputSchema struct {
@@ -53,6 +57,9 @@ func Default() *Registry {
 }
 
 func (r *Registry) Register(tool *Tool) {
+	if tool.Annotations == nil {
+		tool.Annotations = annotationsFor(tool.Name)
+	}
 	r.tools[tool.Name] = tool
 }
 
@@ -66,6 +73,9 @@ func (r *Registry) List() []*Tool {
 	for _, t := range r.tools {
 		out = append(out, t)
 	}
+	// Deterministic order: MCP lists must be cacheable (and stable for the
+	// client's prompt cache).
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out
 }
 

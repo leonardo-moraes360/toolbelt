@@ -45,6 +45,18 @@ linters:
         - "-ST1005"
     misspell:
       locale: US
+      ignore-rules:
+        - comando
+        - argumentos
+        - progresso
+        - dependente
+        - momento
+        - processos
+        - informativo
+        - autor
+        - calcular
+        - comandos
+        - problemas
     nestif:
       min-complexity: 5
     revive:
@@ -90,6 +102,13 @@ linters:
       - linters:
           - all
         path: bench/fixtures/
+      # R0 spike of tb egm (docs/specs/egm-nativo.md): a throwaway prototype,
+      # not part of tb; long linear experiment loops are expected there.
+      - linters:
+          - funlen
+          - gocyclo
+          - nestif
+        path: bench/egm-spike/
     paths:
       - third_party$
       - builtin$

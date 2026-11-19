@@ -132,6 +132,8 @@ cons:
 
 **Decisão pendente**: Experimentar integração com EGM. Se funcionar bem, manter. Se houver fricção significativa (latência, incompatibilidades), reimplementar as skills críticas (`review`, `review-loop`, `drift-report`).
 
+> **Atualização (2026-11-17):** proposta de reimplementação nativa (Opção B) em [ADR-015](015-egm-nativo.md).
+
 ### Número de Revisores
 
 - Quantos goldfish por revisão?
