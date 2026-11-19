@@ -14,14 +14,17 @@ import (
 
 var stackCmd = &cobra.Command{
 	Use:   "stack <op> [<op>...]",
-	Short: "Stacks verification operations (verify/review/drift/guard), not branches",
+	Short: "Stacks verification operations (verify/review/drift/guard/egm), not branches",
 	Long: `Stacks verification operations in a single run with shared context
 (diff, index of changed files, memory and config).
 
 Not a branch stack (like Graphite or git-stack): it only orchestrates verify,
-review, drift and/or guard in the given order.
+review, drift, guard and/or egm in the given order.
 
-Operations: verify, review, drift, guard.
+Operations: verify, review, drift, guard, egm.
+egm gates the specs/ADRs (egm.doc_globs) added or modified in
+merge-base(base, head)..head with tb egm status --at head; it is local (state
+lives in $XDG_STATE_HOME), not parallel, and always runs last.
 Read-only stages (guard, drift, review) run in parallel; verify stays isolated
 (build/test). The JSON output preserves the requested order. --jobs N limits concurrency
 (default = number of CPUs, max 32; --jobs 1 = serial). --fail-fast cancels the others
@@ -51,6 +54,8 @@ func init() {
 	stackCmd.Flags().String("timeout", "10m", "verify: timeout")
 	stackCmd.Flags().Int("reviewers", 0, "review: maximum goldfish")
 	stackCmd.Flags().String("standards", "", "review: roles CSV (scope,quality,acceptance)")
+	stackCmd.Flags().StringArray("egm-doc", nil, "egm: document added to the selection (repeatable)")
+	stackCmd.Flags().Bool("strict", false, "egm: PASS_PARTIAL and an empty selection fail")
 }
 
 func runStack(cmd *cobra.Command, args []string) error {
@@ -97,6 +102,8 @@ func runStack(cmd *cobra.Command, args []string) error {
 	maxIter, _ := cmd.Flags().GetInt("max-iter")
 	reviewers, _ := cmd.Flags().GetInt("reviewers")
 	standardsCSV, _ := cmd.Flags().GetString("standards")
+	egmDocs, _ := cmd.Flags().GetStringArray("egm-doc")
+	strict, _ := cmd.Flags().GetBool("strict")
 
 	opts := &stack.Options{
 		RepoDir:            cwd,
@@ -125,6 +132,8 @@ func runStack(cmd *cobra.Command, args []string) error {
 		Standards:          splitCSV(standardsCSV),
 		EnvAllow:           envAllow,
 		EnvPass:            envPass,
+		EgmDocs:            egmDocs,
+		Strict:             strict,
 	}
 	res, err := stack.Run(context.Background(), opts)
 	if err != nil {

@@ -1,6 +1,7 @@
 package egm
 
 import (
+	"context"
 	"encoding/json"
 	"math"
 	"os"
@@ -371,11 +372,11 @@ func TestNaNPolicyRejected(t *testing.T) {
 }
 
 func TestPlanRootGlobIsFinding(t *testing.T) {
-	c := &planCheck{root: t.TempDir()}
-	if c.badPath("*.md") == "" {
+	c := &planCheck{idx: worktreeIndex{&Repo{Root: t.TempDir()}}}
+	if why, _ := c.badPath(context.Background(), "*.md"); why == "" {
 		t.Fatal("root glob accepted")
 	}
-	if c.badPath("docs/*.md") != "" {
+	if why, _ := c.badPath(context.Background(), "docs/*.md"); why != "" {
 		t.Fatal("subdirectory glob refused")
 	}
 }

@@ -26,6 +26,7 @@ func RegisterParityTools() {
 	registerReviewTools()
 	registerGuardTools()
 	registerStackTools()
+	registerEgmTools()
 }
 
 func registerMemTools() {
@@ -257,13 +258,13 @@ func registerGuardTools() {
 func registerStackTools() {
 	Register(&Tool{
 		Name:        "tb_stack",
-		Description: "Stacks verify/review/drift/guard with shared context (parity with tb stack)",
+		Description: "Stacks verify/review/drift/guard/egm with shared context (parity with tb stack)",
 		InputSchema: &InputSchema{
 			Type: "object",
 			Properties: map[string]Property{
 				"ops": {
 					Type:        "array",
-					Description: "Operations in order: verify, review, drift, guard",
+					Description: "Operations in order: verify, review, drift, guard, egm (egm is not parallel and is always moved to the end)",
 					Items:       &Property{Type: "string"},
 				},
 				"cwd":                  {Type: "string", Description: "Repository directory"},
@@ -301,6 +302,12 @@ func registerStackTools() {
 					Description: "verify: " + passEnvArgDescription,
 					Items:       &Property{Type: "string"},
 				},
+				"egm_docs": {
+					Type:        "array",
+					Description: "egm: documents added to the selection",
+					Items:       &Property{Type: "string"},
+				},
+				"strict": {Type: "boolean", Description: "egm: PASS_PARTIAL and an empty selection fail", Default: false},
 			},
 			Required: []string{"ops"},
 		},
@@ -804,6 +811,8 @@ func handleStack(ctx context.Context, args map[string]any) (any, error) {
 		Standards:          StringSliceArg(args, "standards", nil),
 		EnvAllow:           StringSliceArg(args, "env", nil),
 		EnvPass:            pass,
+		EgmDocs:            StringSliceArg(args, "egm_docs", nil),
+		Strict:             BoolArg(args, "strict", false),
 	}
 	return stack.Run(ctx, opts)
 }

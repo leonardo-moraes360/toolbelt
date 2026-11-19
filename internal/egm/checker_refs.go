@@ -16,7 +16,7 @@ type refCandidate struct {
 // refCandidates returns the R7 (b) spans with a "/" that survive steps 1–5 of
 // resolveSource. Those that leave the root or cross a symlink are dropped
 // without saying whether they exist (R13).
-func refCandidates(d *Doc, root string, set *Settings, exempt map[string]bool, res *CheckResult) []refCandidate {
+func refCandidates(ctx context.Context, d *Doc, set *Settings, idx indexView, exempt map[string]bool, res *CheckResult) ([]refCandidate, error) {
 	var out []refCandidate
 	seen := map[string]bool{}
 	for i, l := range d.Lines {
@@ -35,14 +35,18 @@ func refCandidates(d *Doc, root string, set *Settings, exempt map[string]bool, r
 				}
 				continue
 			}
-			if _, why, _ := lstatChain(root, rel); why == "symlink" {
+			link, err := idx.symlinked(ctx, rel)
+			if err != nil {
+				return nil, err
+			}
+			if link {
 				continue
 			}
 			seen[rel] = true
 			out = append(out, refCandidate{rel: rel, line: n})
 		}
 	}
-	return out
+	return out, nil
 }
 
 func refExemption(line, rel string, set *Settings, exempt map[string]bool) string {
@@ -59,8 +63,11 @@ func refExemption(line, rel string, set *Settings, exempt map[string]bool) strin
 	return ""
 }
 
-func checkRefsExist(ctx context.Context, d *Doc, docRel, root string, set *Settings, idx indexView, exempt map[string]bool, res *CheckResult) error {
-	cands := refCandidates(d, root, set, exempt, res)
+func checkRefsExist(ctx context.Context, d *Doc, docRel string, set *Settings, idx indexView, exempt map[string]bool, res *CheckResult) error {
+	cands, err := refCandidates(ctx, d, set, idx, exempt, res)
+	if err != nil {
+		return err
+	}
 	paths := make([]string, 0, len(cands))
 	for _, c := range cands {
 		paths = append(paths, strings.TrimSuffix(c.rel, "/"))
@@ -89,15 +96,15 @@ func checkRefsExist(ctx context.Context, d *Doc, docRel, root string, set *Setti
 
 // RunCheckers runs the deterministic checkers and the injection scan over the
 // snapshot (R13, R17a). They run in both engines.
-func RunCheckers(ctx context.Context, d *Doc, docRel, docType, root string, set *Settings, idx indexView, sources []Source) (*CheckResult, error) {
+func RunCheckers(ctx context.Context, d *Doc, docRel, docType string, set *Settings, idx indexView, sources []Source) (*CheckResult, error) {
 	res := &CheckResult{}
 	res.Findings = append(res.Findings, checkRequiredSections(d, docType, docRel)...)
 	exempt := createExempt(ParsePlan(d))
-	if err := checkRefsExist(ctx, d, docRel, root, set, idx, exempt, res); err != nil {
+	if err := checkRefsExist(ctx, d, docRel, set, idx, exempt, res); err != nil {
 		return nil, err
 	}
 	if d.HasDetailed() {
-		if err := checkPlanFiles(ctx, d, docRel, root, idx, res); err != nil {
+		if err := checkPlanFiles(ctx, d, docRel, idx, res); err != nil {
 			return nil, err
 		}
 	}

@@ -27,6 +27,8 @@ type Options struct {
 	DryRun     bool
 	Restart    bool
 	Strict     bool
+	// At is gate mode (R7a, R33): status over the commit's tree.
+	At string
 }
 
 // Outcome is a command's result: the report (nil for a refused command), the
@@ -52,6 +54,8 @@ type snapshot struct {
 	policy      string
 	stateDir    string
 	head        string
+	at          string // gate mode: commit oid; "" in interactive mode
+	target      string // report target: "worktree" or the --at rev
 	hasDetailed bool
 	warnings    []Warning
 }
@@ -71,13 +75,18 @@ func docPathIn(cwd, doc string) (string, error) {
 	return resolved, nil
 }
 
-// prepare runs phase 1 without touching the state (R7, R13, R34).
+// prepare runs phase 1 without touching the state (R7, R13, R34). With
+// o.At it reads everything from the commit (R7a).
 func prepare(ctx context.Context, o *Options) (*snapshot, error) {
 	user, err := LoadUserConfig(o.ConfigFile)
 	if err != nil {
 		return nil, errorf(ExitError, "config", "%v", err)
 	}
-	docPath, err := docPathIn(o.Cwd, o.Doc)
+	pathOf := docPathIn
+	if o.At != "" {
+		pathOf = gateDocPath
+	}
+	docPath, err := pathOf(o.Cwd, o.Doc)
 	if err != nil {
 		return nil, err
 	}
@@ -85,13 +94,30 @@ func prepare(ctx context.Context, o *Options) (*snapshot, error) {
 	if err != nil {
 		return nil, err
 	}
-	s := &snapshot{repo: repo}
-	raw, w := readRepoConfig(repo.Root)
+	s := &snapshot{repo: repo, target: "worktree"}
+	var raw []byte
+	var w *Warning
+	if o.At != "" {
+		if s.at, err = repo.RevParse(ctx, o.At); err != nil {
+			return nil, err
+		}
+		s.target = o.At
+		if raw, w, err = readRepoConfigAt(ctx, repo, s.at); err != nil {
+			return nil, err
+		}
+	} else {
+		raw, w = readRepoConfig(repo.Root)
+	}
 	s.set = ApplyRepoConfig(&user, raw)
 	if w != nil {
 		s.set.Warnings = append(s.set.Warnings, *w)
 	}
-	if err := s.readDoc(docPath); err != nil {
+	if o.At != "" {
+		err = s.readDocAt(ctx, docPath)
+	} else {
+		err = s.readDoc(docPath)
+	}
+	if err != nil {
 		return nil, err
 	}
 	if err := s.phase1(ctx); err != nil {
@@ -100,12 +126,19 @@ func prepare(ctx context.Context, o *Options) (*snapshot, error) {
 	return s, nil
 }
 
-func (s *snapshot) readDoc(docPath string) error {
+func (s *snapshot) setRel(docPath string) error {
 	rel, err := filepath.Rel(s.repo.Root, docPath)
 	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 		return errorf(ExitError, "usage", "document %s is outside the repository root %s", docPath, s.repo.Root)
 	}
 	s.rel = filepath.ToSlash(rel)
+	return nil
+}
+
+func (s *snapshot) readDoc(docPath string) error {
+	if err := s.setRel(docPath); err != nil {
+		return err
+	}
 	b, err := readRegular(docPath, s.set.MaxPacketBytes)
 	if errors.Is(err, errTooBig) {
 		return errorf(ExitError, "max_packet_bytes", "document %s is larger than egm.max_packet_bytes (%d)", s.rel, s.set.MaxPacketBytes)
@@ -113,21 +146,31 @@ func (s *snapshot) readDoc(docPath string) error {
 	if err != nil {
 		return errorf(ExitError, "usage", "document %s: %v", s.rel, err)
 	}
+	s.setDoc(b)
+	return nil
+}
+
+func (s *snapshot) setDoc(b []byte) {
 	s.docSHA = sha256Hex(b)
 	s.text, _ = Redact(string(b))
 	s.doc = ParseDoc(s.text, s.set.DetailHeadings)
 	s.hasDetailed = s.doc.HasDetailed()
 	s.docType = DocType(s.rel, s.set.DocTypes)
-	return nil
 }
 
 func (s *snapshot) phase1(ctx context.Context) error {
 	var err error
-	s.sources, err = CollectSources(ctx, s.repo, &s.set, s.rel, s.text)
+	var idx indexView = worktreeIndex{s.repo}
+	if s.at != "" {
+		idx = treeIndex{s.repo, s.at}
+		s.sources, err = CollectSourcesAt(ctx, s.repo, &s.set, s.at, s.rel, s.text)
+	} else {
+		s.sources, err = CollectSources(ctx, s.repo, &s.set, s.rel, s.text)
+	}
 	if err != nil {
 		return err
 	}
-	s.checks, err = RunCheckers(ctx, s.doc, s.rel, s.docType, s.repo.Root, &s.set, worktreeIndex{s.repo}, nil)
+	s.checks, err = RunCheckers(ctx, s.doc, s.rel, s.docType, &s.set, idx, nil)
 	if err != nil {
 		return err
 	}
@@ -142,7 +185,9 @@ func (s *snapshot) phase1(ctx context.Context) error {
 	if s.stateDir, err = StateDir(s.repo.ID, Slug(s.rel)); err != nil {
 		return err
 	}
-	s.head, _ = s.repo.RevParse(ctx, "HEAD")
+	if s.head = s.at; s.head == "" {
+		s.head, _ = s.repo.RevParse(ctx, "HEAD")
+	}
 	s.warnings = append(append(append([]Warning(nil), s.set.Warnings...), s.repo.Warnings...), s.sources.Warnings...)
 	return nil
 }
@@ -180,7 +225,7 @@ func resolveEngine(o *Options, set *Settings) (engine, reason string, env *llmEn
 func (s *snapshot) report(st *State, rd *Round, engine, reason string) *Report {
 	verdict, downs := Verdict(st, s.content, s.policy)
 	r := &Report{
-		Slug: Slug(s.rel), Doc: s.rel, DocType: s.docType, Verdict: verdict, Content: s.content, Target: "worktree",
+		Slug: Slug(s.rel), Doc: s.rel, DocType: s.docType, Verdict: verdict, Content: s.content, Target: s.target,
 		Engine: engine, EngineReason: reason, Findings: reportFindings(st), Coverage: coverageOf(rd),
 		SkippedSources: append([]SkippedSource{}, s.sources.Skipped...), Exemptions: append([]Exemption{}, s.checks.Exemptions...),
 		Warnings: sortWarnings(s.warnings), Downgrades: append([]string{}, downs...), LoopState: "running",
@@ -343,7 +388,8 @@ func (s *snapshot) persist(st *State, rd *Round, rep *Report) error {
 	return saveState(s.stateDir, st)
 }
 
-// Status runs `tb egm status` over the worktree (R25, R32). It reads the
+// Status runs `tb egm status` over the worktree, or over the commit with
+// o.At (R7a, R25, R32). It reads the
 // state without the lock: writes are atomic (R21).
 func Status(ctx context.Context, o *Options) (*Outcome, error) {
 	s, err := prepare(ctx, o)

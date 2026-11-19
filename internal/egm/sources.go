@@ -283,6 +283,11 @@ func (c *sourceCtx) include(f string) {
 		c.skip(f, "unreadable")
 		return
 	}
+	c.addBytes(f, b)
+}
+
+// addBytes applies the redaction and packet rules to a source's bytes.
+func (c *sourceCtx) addBytes(f string, b []byte) {
 	red, secret := Redact(string(b))
 	if secret {
 		c.skip(f, "secret_like")

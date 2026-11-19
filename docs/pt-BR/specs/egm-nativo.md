@@ -2,7 +2,7 @@
 
 # Spec: EGM nativo, Fase A, núcleo (`tb egm review|loop|resolve|status`)
 
-Autor: toolbelt · Status: R18–R27 revistos com os dados do R0 e simplificados depois da nova medição (não revisado); R0 aberto só no item 8; fatias 1 (engine determinística, modo interativo) e 2 (engine `llm`, árbitro) da implementação feitas · Data: 2026-11-17 · Decisão: [ADR-015](../adr/015-egm-nativo.md) · Complemento: [egm trust](egm-trust.md)
+Autor: toolbelt · Status: R18–R27 revistos com os dados do R0 e simplificados depois da nova medição (não revisado); R0 aberto só no item 8; fatias 1 (engine determinística, modo interativo), 2 (engine `llm`, árbitro) e 3 (modo gate, op do `tb stack`, MCP) da implementação feitas · Data: 2026-11-17 · Decisão: [ADR-015](../adr/015-egm-nativo.md) · Complemento: [egm trust](egm-trust.md)
 
 ## Visão geral
 

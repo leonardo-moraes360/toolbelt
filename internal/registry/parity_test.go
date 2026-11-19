@@ -25,6 +25,8 @@ func TestDefaultHasCLIParityTools(t *testing.T) {
 		"tb_drift",
 		"tb_guard_check",
 		"tb_stack",
+		"tb_egm_status",
+		"tb_egm_resolve",
 		"tb_graph_impact",
 		"tb_graph_explain",
 		"tb_graph_path",

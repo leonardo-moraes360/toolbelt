@@ -168,7 +168,6 @@ func createExempt(rows []PlanRow) map[string]bool {
 type planCheck struct {
 	d      *Doc
 	docRel string
-	root   string
 	idx    indexView
 	res    *CheckResult
 }
@@ -182,12 +181,16 @@ func (c *planCheck) finding(r *PlanRow, sev, key, msg string) {
 	})
 }
 
-func checkPlanFiles(ctx context.Context, d *Doc, docRel, root string, idx indexView, res *CheckResult) error {
+func checkPlanFiles(ctx context.Context, d *Doc, docRel string, idx indexView, res *CheckResult) error {
 	rows := ParsePlan(d)
-	c := &planCheck{d: d, docRel: docRel, root: root, idx: idx, res: res}
+	c := &planCheck{d: d, docRel: docRel, idx: idx, res: res}
 	var plain []string
 	for i := range rows {
-		plain = append(plain, c.validateRow(&rows[i])...)
+		ps, err := c.validateRow(ctx, &rows[i])
+		if err != nil {
+			return err
+		}
+		plain = append(plain, ps...)
 	}
 	found, err := idx.exists(ctx, plain)
 	if err != nil {
@@ -203,7 +206,7 @@ func checkPlanFiles(ctx context.Context, d *Doc, docRel, root string, idx indexV
 
 // validateRow runs the static checks and returns the plain (glob-free) paths
 // that need an index query.
-func (c *planCheck) validateRow(r *PlanRow) []string {
+func (c *planCheck) validateRow(ctx context.Context, r *PlanRow) ([]string, error) {
 	if r.err != "" {
 		c.finding(r, SevMajor, "expand:"+strings.Join(r.Raw, ","), r.err)
 	}
@@ -213,7 +216,11 @@ func (c *planCheck) validateRow(r *PlanRow) []string {
 	}
 	var plain []string
 	for _, p := range r.Paths {
-		if why := c.badPath(p); why != "" {
+		why, err := c.badPath(ctx, p)
+		if err != nil {
+			return nil, err
+		}
+		if why != "" {
 			c.finding(r, SevMajor, "path:"+p, fmt.Sprintf("plan path %#q %s", p, why))
 			continue
 		}
@@ -221,33 +228,40 @@ func (c *planCheck) validateRow(r *PlanRow) []string {
 			plain = append(plain, strings.TrimSuffix(p, "/"))
 		}
 	}
-	return plain
+	return plain, nil
 }
 
-func (c *planCheck) badPath(p string) string {
+func (c *planCheck) badPath(ctx context.Context, p string) (string, error) {
 	if strings.Contains(p, "**") {
-		return "uses `**`, which the plan does not accept"
+		return "uses `**`, which the plan does not accept", nil
 	}
 	rel, why := cleanRel("", p)
 	if why != "" {
-		return "is " + strings.ReplaceAll(why, "_", " ")
+		return "is " + strings.ReplaceAll(why, "_", " "), nil
 	}
 	if i := strings.Index(rel, "*"); i >= 0 {
 		rel = path.Dir(rel[:i+1])
 		if rel == "." {
-			return "is a glob at the repository root, which would sweep the whole index"
+			return "is a glob at the repository root, which would sweep the whole index", nil
 		}
 	}
-	if _, why, _ := lstatChain(c.root, strings.TrimSuffix(rel, "/")); why == "symlink" {
-		return "crosses a symlink"
+	link, err := c.idx.symlinked(ctx, strings.TrimSuffix(rel, "/"))
+	if err != nil {
+		return "", err
 	}
-	return ""
+	if link {
+		return "crosses a symlink", nil
+	}
+	return "", nil
 }
 
 func (c *planCheck) checkExistence(ctx context.Context, r *PlanRow, found map[string]string) error {
 	act := strings.ToLower(r.Action)
 	for _, p := range r.Paths {
-		if c.badPath(p) != "" {
+		if why, err := c.badPath(ctx, p); err != nil || why != "" {
+			if err != nil {
+				return err
+			}
 			continue
 		}
 		kind, err := c.kindOf(ctx, p, found)

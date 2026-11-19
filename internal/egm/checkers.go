@@ -47,15 +47,22 @@ func (r *CheckResult) checksSHA() string {
 }
 
 // indexView answers existence questions against the index (interactive) or a
-// tree (gate mode, slice 3).
+// commit tree (gate mode, R7a).
 type indexView interface {
 	// exists reports "file", "dir" (directory with versioned files) or "".
 	exists(ctx context.Context, paths []string) (map[string]string, error)
 	// under lists versioned files under dir (at most limit).
 	under(ctx context.Context, dir string, limit int) ([]string, error)
+	// symlinked reports whether some component of rel is a symlink.
+	symlinked(ctx context.Context, rel string) (bool, error)
 }
 
 type worktreeIndex struct{ repo *Repo }
+
+func (w worktreeIndex) symlinked(_ context.Context, rel string) (bool, error) {
+	_, why, _ := lstatChain(w.repo.Root, rel)
+	return why == "symlink", nil
+}
 
 func (w worktreeIndex) exists(ctx context.Context, paths []string) (map[string]string, error) {
 	out := map[string]string{}
