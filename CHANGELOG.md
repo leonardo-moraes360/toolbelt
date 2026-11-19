@@ -22,6 +22,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - ADR-015 accepted: status, authentication, the offline `PASS_PARTIAL` ceiling, the `max_rounds` cap and the convergence data aligned with the Phase A results
 - CLI and MCP server output is now in English: cobra help (`Short`/`Long`/`Example`), flag usage, error messages, reports (e.g. `guard: ok (3 rules, 0 violations)`, drift `Out of scope` / `Forbidden touched`) and MCP tool/schema descriptions; input parsing still accepts the Portuguese `rd.md` headings (`Escopo`, `Proibido`, `Aceite`)
 
+### Fixed
+- `tb stack` `egm` op: a `README.md` index under `egm.doc_globs` is no longer a gated document, so editing `docs/adr/README.md` does not fail the gate with `NO_STATE` (dogfood #38)
+
 ## [0.0.6] - 2026-11-18
 
 ### Changed

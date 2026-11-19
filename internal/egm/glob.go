@@ -74,3 +74,10 @@ func GlobPrefixDir(g string) string {
 	}
 	return g[:j]
 }
+
+// IsGated reports whether rel is a gated document: it matches one of globs
+// and is not a directory index (README.md), which lists documents instead of
+// being one (R33, dogfood #38). An index can still be reviewed explicitly.
+func IsGated(globs []string, rel string) bool {
+	return !strings.EqualFold(rel[strings.LastIndex(rel, "/")+1:], "README.md") && MatchAny(globs, rel)
+}

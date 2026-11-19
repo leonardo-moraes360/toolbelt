@@ -722,8 +722,8 @@ detached worktree (see `tb verify`); the step `result` includes `head_sha` and
 `workdir`.
 
 **`egm` op (gate):** selects the gated documents (`egm.doc_globs`, default
-`docs/specs/**` and `docs/adr/**`) added or modified in `merge-base(base, head)..head`,
-plus `--egm-doc`, and evaluates each one with `tb egm status --at <head>`. The
+`docs/specs/**` and `docs/adr/**`; a `README.md` index is never selected) added or
+modified in `merge-base(base, head)..head`, plus `--egm-doc`, and evaluates each one with `tb egm status --at <head>`. The
 document, its sources and the repository config come from the commit, so a converged
 document that changed after the review is `STALE`. `PASS` is `ok`; `PASS_PARTIAL` is
 `ok` with `warn: true` (`ok: false` with `--strict` or `egm.require_full_coverage`);

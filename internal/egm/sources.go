@@ -126,7 +126,7 @@ func denied(rel, doc string, gated []string) bool {
 	if MatchAny(denyPathGlob, rel) || MatchAny(denyBaseGlob, path.Base(rel)) {
 		return true
 	}
-	return rel != doc && MatchAny(gated, rel)
+	return rel != doc && IsGated(gated, rel)
 }
 
 // sourceCandidates gathers R7 (a) links relative to the document's directory

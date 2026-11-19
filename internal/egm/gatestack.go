@@ -116,7 +116,7 @@ func selectGated(diff []NameStatus, globs []string) (docs []string, changed map[
 	changed = map[string]bool{}
 	for _, e := range diff {
 		changed[e.Path] = true
-		if (strings.HasPrefix(e.Status, "A") || strings.HasPrefix(e.Status, "M") || strings.HasPrefix(e.Status, "T")) && MatchAny(globs, e.Path) {
+		if (strings.HasPrefix(e.Status, "A") || strings.HasPrefix(e.Status, "M") || strings.HasPrefix(e.Status, "T")) && IsGated(globs, e.Path) {
 			docs = append(docs, e.Path)
 		}
 	}
@@ -227,7 +227,7 @@ func uncommittedGated(ctx context.Context, repo *Repo, head string, globs []stri
 	}
 	var dirty []string
 	for _, p := range others {
-		if MatchAny(globs, p) {
+		if IsGated(globs, p) {
 			dirty = append(dirty, p)
 		}
 	}
@@ -261,7 +261,7 @@ func changedFromHead(ctx context.Context, repo *Repo, head string, globs, dirs [
 	}
 	var present, out []string
 	for _, e := range staged {
-		if !MatchAny(globs, e.Path) || containsStr(present, e.Path) || containsStr(out, e.Path) {
+		if !IsGated(globs, e.Path) || containsStr(present, e.Path) || containsStr(out, e.Path) {
 			continue
 		}
 		// Deleted, or replaced by a symlink or a non-regular file: a

@@ -33,7 +33,7 @@ As proteções contra fraude ativa do próprio autor, que roda como o mesmo usu�
 | persona | Lente do revisor: o que procurar e como julgar (`personas/<nome>.md`). |
 | standard | Critério de qualidade (`standards/<nome>.md`). Os estruturais listam headings exigidos (R13). |
 | tipo de documento | `spec` ou `adr` (R6). Define o standard estrutural; o plano detalhado define os revisores obrigatórios. |
-| documento sob gate | Documento que casa com `egm.doc_globs` (R33). |
+| documento sob gate | Documento que casa com `egm.doc_globs` (R33), exceto um índice de diretório chamado `README.md` (sem diferenciar maiúsculas), que lista documentos em vez de ser um. |
 | heading | Linha ATX (`#` a `######` seguidos de espaço) fora de bloco de código cercado. As comparações usam a linha inteira, com os `#`, sem espaços nas pontas. |
 | preset `consolidated` | Rodada com os revisores obrigatórios (R10) em paralelo, sem checkpoints. |
 | config de usuário | Seção `egm:` de `config.GlobalConfigPath()`. |

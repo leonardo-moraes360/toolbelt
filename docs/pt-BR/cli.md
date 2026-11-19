@@ -721,7 +721,7 @@ worktree, build/lint/test rodam num worktree detach temporário (ver `tb verify`
 `result` do passo inclui `head_sha` e `workdir`.
 
 **Op `egm` (gate):** seleciona os documentos sob gate (`egm.doc_globs`, por padrão
-`docs/specs/**` e `docs/adr/**`) adicionados ou modificados em
+`docs/specs/**` e `docs/adr/**`; um índice `README.md` nunca é selecionado) adicionados ou modificados em
 `merge-base(base, head)..head`, mais os de `--egm-doc`, e avalia cada um com
 `tb egm status --at <head>`. O documento, as fontes e a config do repositório vêm do
 commit, então um documento convergido que mudou depois da revisão fica `STALE`.

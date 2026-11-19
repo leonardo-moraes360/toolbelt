@@ -33,7 +33,7 @@ The protections against active fraud by the author itself, who runs as the same 
 | persona | The reviewer's lens: what to look for and how to judge (`personas/<name>.md`). |
 | standard | Quality criterion (`standards/<name>.md`). The structural ones list required headings (R13). |
 | document type | `spec` or `adr` (R6). Determines the structural standard; the detailed plan determines the required reviewers. |
-| gated document | A document that matches `egm.doc_globs` (R33). |
+| gated document | A document that matches `egm.doc_globs` (R33), except a directory index named `README.md` (case-insensitive), which lists documents instead of being one. |
 | heading | An ATX line (`#` to `######` followed by a space) outside a fenced code block. Comparisons use the whole line, with the `#`, trimmed at both ends. |
 | `consolidated` preset | A round with the required reviewers (R10) in parallel, without checkpoints. |
 | user config | The `egm:` section of `config.GlobalConfigPath()`. |
