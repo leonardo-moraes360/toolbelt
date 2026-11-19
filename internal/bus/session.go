@@ -22,13 +22,13 @@ func PrivateDir(root string) (string, error) {
 		} else {
 			home, err := os.UserHomeDir()
 			if err != nil {
-				return "", fmt.Errorf("diretório privado do bus: %w", err)
+				return "", fmt.Errorf("bus private directory: %w", err)
 			}
 			base = filepath.Join(home, ".local", "state", "toolbelt", "bus")
 		}
 	}
 	if !filepath.IsAbs(base) {
-		return "", fmt.Errorf("%s precisa ser absoluto", EnvStateDir)
+		return "", fmt.Errorf("%s must be absolute", EnvStateDir)
 	}
 	abs, err := filepath.Abs(root)
 	if err != nil {
@@ -43,10 +43,10 @@ func PrivateDir(root string) (string, error) {
 // AgentDir is <private>/sessions/<channel>/<name>: only that agent's token and
 // .mcp.json (the harness grants read access to this dir alone).
 func AgentDir(root, channel, name string) (string, error) {
-	if err := ValidName("canal", channel); err != nil {
+	if err := ValidName("channel", channel); err != nil {
 		return "", err
 	}
-	if err := ValidName("nome de agente", name); err != nil {
+	if err := ValidName("agent name", name); err != nil {
 		return "", err
 	}
 	priv, err := PrivateDir(root)
@@ -94,7 +94,7 @@ func (s *Store) LoadSession(channel, name string) (Member, string, error) {
 	}
 	b, err := os.ReadFile(p)
 	if errors.Is(err, os.ErrNotExist) {
-		return Member{}, "", fmt.Errorf("sem sessão de %q no canal %q: rode tb bus join antes", name, channel)
+		return Member{}, "", fmt.Errorf("no session for %q on channel %q: run tb bus join first", name, channel)
 	}
 	if err != nil {
 		return Member{}, "", err

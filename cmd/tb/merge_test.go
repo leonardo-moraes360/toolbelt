@@ -82,7 +82,7 @@ func TestMergeCLI(t *testing.T) {
 // An invalid strategy and a conflict under fail must not move refs.
 func mergeCLIRejections(t *testing.T, bin, dir, start string) {
 	t.Helper()
-	if out, err := runTB(t, bin, dir, "merge", "--strategy", "semantic", "1"); err == nil || !strings.Contains(out, "não implementado") {
+	if out, err := runTB(t, bin, dir, "merge", "--strategy", "semantic", "1"); err == nil || !strings.Contains(out, "not implemented") {
 		t.Fatalf("semantic: %v %s", err, out)
 	}
 	out, err := runTB(t, bin, dir, "merge", "--json", "1", "2")

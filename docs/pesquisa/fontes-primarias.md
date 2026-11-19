@@ -46,7 +46,7 @@ This is a compilation of primary sources that may influence toolbelt's design. W
 | [OpenAI Agents SDK](https://github.com/openai/openai-agents-python) | OpenAI | 2025 | repo | Handoffs, guardrails and tracing; successor to Swarm (github.com/openai/swarm). | router · guard | medium |
 | [LangGraph](https://github.com/langchain-ai/langgraph) | LangChain | 2023– | repo | State machine with durable checkpoints and resume; model for the board. | router | medium |
 | [OpenHands](https://arxiv.org/abs/2407.16741) | Wang et al. | 2024 | paper | Open platform with Docker sandbox and event stream; runtime reference. | sandbox · benchmark | medium |
-| [Executable Code Actions Elicit Better LLM Agents (CodeAct)](https://arxiv.org/abs/2402.01030) | Wang et al. | 2024 | paper | Actions as code instead of JSON: fewer turns and more composition. | protocolo · mem/ctx | medium |
+| [Executable Code Actions Elicit Better LLM Agents (CodeAct)](https://arxiv.org/abs/2402.01030) | Wang et al. | 2024 | paper | Actions as code instead of JSON: fewer turns and more composition. | protocol · mem/ctx | medium |
 | [An LLM Compiler for Parallel Function Calling](https://arxiv.org/abs/2312.04511) | Kim et al. | 2023 | paper | Plans tool calls as a DAG and executes in parallel; less latency. | router | medium |
 
 ---
@@ -62,15 +62,15 @@ This is a compilation of primary sources that may influence toolbelt's design. W
 | [Benchmarks Are Surprisingly Compaction-Friendly](https://arxiv.org/abs/2610.31778) | Salle et al. | 2026 | paper | The 1st summary already loses about 1/3 of anti-cheat rules; "don't do" rules drop ~6× more. **(preprint)** | mem/ctx · guard | high |
 | [MemGPT](https://arxiv.org/abs/2310.08560) | Packer et al. | 2023 | paper | OS-style hierarchical memory (in-context vs archived) with paging. | mem/ctx | medium |
 | [Generative Agents](https://arxiv.org/abs/2304.03442) | Park et al. | 2023 | paper | Retrieval by recency, importance and relevance, plus periodic reflection. | mem/ctx | medium |
-| [A-MEM: Agentic Memory for LLM Agents](https://arxiv.org/abs/2502.12110) | Xu et al. | 2025 | paper | Zettelkasten-style notes with evolving links; fits the Obsidian vault. | mem/ctx · grafo | high |
-| [Zep: A Temporal Knowledge Graph Architecture for Agent Memory](https://arxiv.org/abs/2501.13956) | Rasmussen et al. | 2025 | paper | Edges with temporal validity: invalidates facts instead of overwriting (code: getzep/graphiti). | mem/ctx · grafo | high |
+| [A-MEM: Agentic Memory for LLM Agents](https://arxiv.org/abs/2502.12110) | Xu et al. | 2025 | paper | Zettelkasten-style notes with evolving links; fits the Obsidian vault. | mem/ctx · graph | high |
+| [Zep: A Temporal Knowledge Graph Architecture for Agent Memory](https://arxiv.org/abs/2501.13956) | Rasmussen et al. | 2025 | paper | Edges with temporal validity: invalidates facts instead of overwriting (code: getzep/graphiti). | mem/ctx · graph | high |
 | [Mem0](https://arxiv.org/abs/2504.19413) | Chhikara et al. | 2025 | paper | Memory extraction and update pipeline (add, update, delete). | mem/ctx | medium |
 | [Agent Workflow Memory](https://arxiv.org/abs/2409.07429) | Wang et al. | 2024 | paper | Induces reusable workflows from successful trajectories. | mem/ctx | medium |
-| [Equipping agents with Agent Skills](https://www.anthropic.com/research/equipping-agents-for-the-real-world-with-agent-skills) | Anthropic | 2025 | blog | Progressive disclosure: only name and description in context, body loaded on demand. | mem/ctx · protocolo | high |
+| [Equipping agents with Agent Skills](https://www.anthropic.com/research/equipping-agents-for-the-real-world-with-agent-skills) | Anthropic | 2025 | blog | Progressive disclosure: only name and description in context, body loaded on demand. | mem/ctx · protocol | high |
 | [Dynamic context discovery](https://cursor.com/blog/dynamic-context-discovery) | Cursor | 2026 | blog | Files as context interface; −46.9% tokens on runs that use MCP. | mem/ctx | high |
 | [Prompt caching (Claude)](https://platform.claude.com/docs/en/build-with-claude/prompt-caching) | Anthropic | 2024– | spec | Prefix rules and cache breakpoints; defines stable context order. | mem/ctx · benchmark | high |
 | [Prompt caching (OpenAI)](https://developers.openai.com/api/docs/guides/prompt-caching) | OpenAI | 2024– | spec | Automatic cache by prefix; same stable-prefix principle. | mem/ctx | medium |
-| [AGENTS.md](https://agents.md/) | AAIF / Linux Foundation | 2025 | spec | Open format for per-project instructions; standard local context. | mem/ctx · protocolo | high |
+| [AGENTS.md](https://agents.md/) | AAIF / Linux Foundation | 2025 | spec | Open format for per-project instructions; standard local context. | mem/ctx · protocol | high |
 
 ---
 
@@ -78,20 +78,20 @@ This is a compilation of primary sources that may influence toolbelt's design. W
 
 | Title | Author / Org. | Year | Type | Why it matters for toolbelt | Module | Priority |
 |-------|---------------|------|------|-----------------------------|--------|----------|
-| [RepoGraph](https://arxiv.org/abs/2410.14684) | Ouyang et al. | 2024 | paper | Line-level code graph pluggable into SWE-bench agents. | grafo | high |
-| [LocAgent](https://arxiv.org/abs/2503.09089) | Chen et al. | 2025 | paper | Heterogeneous graph (contains, imports, calls, inherits) with search tools for location. | grafo | high |
-| [CodexGraph](https://arxiv.org/abs/2408.03910) | Liu et al. | 2024 | paper | Agent queries a code graph database with structured queries. | grafo | medium |
-| [Building a better repository map with tree sitter](https://aider.chat/2023/10/22/repomap.html) | Aider | 2023 | blog | Repo map with tree-sitter + graph ranking under a token budget. | grafo · mem/ctx | high |
-| [SWE-agent: Agent-Computer Interfaces](https://arxiv.org/abs/2405.15793) | Yang et al. | 2024 | paper | Tool interface designed for the agent (viewer, search, lint on edit). | protocolo · grafo | high |
+| [RepoGraph](https://arxiv.org/abs/2410.14684) | Ouyang et al. | 2024 | paper | Line-level code graph pluggable into SWE-bench agents. | graph | high |
+| [LocAgent](https://arxiv.org/abs/2503.09089) | Chen et al. | 2025 | paper | Heterogeneous graph (contains, imports, calls, inherits) with search tools for location. | graph | high |
+| [CodexGraph](https://arxiv.org/abs/2408.03910) | Liu et al. | 2024 | paper | Agent queries a code graph database with structured queries. | graph | medium |
+| [Building a better repository map with tree sitter](https://aider.chat/2023/10/22/repomap.html) | Aider | 2023 | blog | Repo map with tree-sitter + graph ranking under a token budget. | graph · mem/ctx | high |
+| [SWE-agent: Agent-Computer Interfaces](https://arxiv.org/abs/2405.15793) | Yang et al. | 2024 | paper | Tool interface designed for the agent (viewer, search, lint on edit). | protocol · graph | high |
 | [Agentless](https://arxiv.org/abs/2407.01489) | Xia et al. | 2024 | paper | Locate → repair → validate without an agentic loop; cheap baseline for the benchmark. | benchmark · router | medium |
-| [From Local to Global: GraphRAG](https://arxiv.org/abs/2404.16130) | Edge et al. (Microsoft) | 2024 | paper | Communities and hierarchical summaries for global questions about the corpus. | grafo | medium |
-| [LightRAG](https://arxiv.org/abs/2410.05779) | Guo et al. | 2024 | paper | Graph + vector at two levels with incremental update. | grafo | medium |
-| [Improving agent with semantic search](https://cursor.com/blog/semsearch) | Cursor | 2025 | blog | Semantic search gives 12.5% more accuracy on average than grep alone. | grafo | high |
-| [How Should Agents See Code?](https://arxiv.org/abs/2611.07286) | Sepidband et al. | 2026 | paper | Maps (AST, call graph) cut 17–39% of tokens when locating is the bottleneck, but increase latency. **(preprint)** | grafo · benchmark | high |
-| [Analyzing and Mitigating Cost-Inefficient Behaviors in Coding Agents](https://arxiv.org/abs/2609.30725) | Hu et al. | 2026 | paper | Structural search can cost up to 28.14% more; human-written skills cut up to 41.73%. **(preprint)** | grafo · benchmark | high |
-| [Tree-sitter](https://tree-sitter.github.io/tree-sitter/) | Tree-sitter | 2018– | spec | Incremental multi-language parser with Go bindings for graph extraction. | grafo | medium |
-| [SQLite FTS5](https://www.sqlite.org/fts5.html) | SQLite | 2015– | spec | Full-text index with BM25 and tokenizers; tb's search engine. | grafo | medium |
-| [Graphify](https://github.com/Graphify-Labs/graphify) | Graphify-Labs | 2026 | repo | Queryable graph of code, docs and schemas; inspiration already adopted. | grafo | medium |
+| [From Local to Global: GraphRAG](https://arxiv.org/abs/2404.16130) | Edge et al. (Microsoft) | 2024 | paper | Communities and hierarchical summaries for global questions about the corpus. | graph | medium |
+| [LightRAG](https://arxiv.org/abs/2410.05779) | Guo et al. | 2024 | paper | Graph + vector at two levels with incremental update. | graph | medium |
+| [Improving agent with semantic search](https://cursor.com/blog/semsearch) | Cursor | 2025 | blog | Semantic search gives 12.5% more accuracy on average than grep alone. | graph | high |
+| [How Should Agents See Code?](https://arxiv.org/abs/2611.07286) | Sepidband et al. | 2026 | paper | Maps (AST, call graph) cut 17–39% of tokens when locating is the bottleneck, but increase latency. **(preprint)** | graph · benchmark | high |
+| [Analyzing and Mitigating Cost-Inefficient Behaviors in Coding Agents](https://arxiv.org/abs/2609.30725) | Hu et al. | 2026 | paper | Structural search can cost up to 28.14% more; human-written skills cut up to 41.73%. **(preprint)** | graph · benchmark | high |
+| [Tree-sitter](https://tree-sitter.github.io/tree-sitter/) | Tree-sitter | 2018– | spec | Incremental multi-language parser with Go bindings for graph extraction. | graph | medium |
+| [SQLite FTS5](https://www.sqlite.org/fts5.html) | SQLite | 2015– | spec | Full-text index with BM25 and tokenizers; tb's search engine. | graph | medium |
+| [Graphify](https://github.com/Graphify-Labs/graphify) | Graphify-Labs | 2026 | repo | Queryable graph of code, docs and schemas; inspiration already adopted. | graph | medium |
 
 ---
 
@@ -99,13 +99,13 @@ This is a compilation of primary sources that may influence toolbelt's design. W
 
 | Title | Author / Org. | Year | Type | Why it matters for toolbelt | Module | Priority |
 |-------|---------------|------|------|-----------------------------|--------|----------|
-| [MCP Specification 2026-07-28](https://modelcontextprotocol.io/specification/2026-07-28/index) | MCP / AAIF | 2026 | spec | Stateless core, server/discover, cacheable lists with deterministic order, Tasks as extension. | protocolo | high |
-| [MCP Security Best Practices](https://modelcontextprotocol.io/docs/tutorials/security/security_best_practices) | MCP | 2025– | spec | Confused deputy, token passthrough, SSRF and minimal scopes. | protocolo · guard | high |
-| [A2A Protocol Specification](https://a2a-protocol.org/latest/specification/) | Linux Foundation | 2025– | spec | Agent Card, tasks, streaming and JSON-RPC/gRPC/REST bindings for agent↔agent. | protocolo · router | high |
-| [Agent Client Protocol (ACP)](https://agentclientprotocol.com/protocol/v1/overview) | Zed | 2025 | spec | JSON-RPC over stdio between editor and agent, with permission requests; bridge for the human reader. | protocolo · UI | high |
-| [JSON-RPC 2.0 Specification](https://www.jsonrpc.org/specification) | JSON-RPC WG | 2010 | spec | Base of MCP, A2A and ACP; tb's transport. | protocolo | medium |
-| [Writing effective tools for AI agents](https://www.anthropic.com/research/writing-tools-for-agents) | Anthropic | 2025 | blog | Namespacing and response_format concise/detailed (~1/3 of tokens in the example). | protocolo · mem/ctx | high |
-| [is-it-legit-mcp](https://github.com/m8ven/is-it-legit-mcp) · [M8ven Verified](https://m8ven.ai/verified/how-we-verify) | M8ven | 2026 | repo | Reference for MCP server checks: annotations (readOnly/destructive/idempotent/openWorld) justified by the handler's real effect, code-vs-declaration verification, sandbox, supply chain and publisher. tb review in [mcp-sinais-m8ven.md](mcp-sinais-m8ven.md). | protocolo · guard | high |
+| [MCP Specification 2026-07-28](https://modelcontextprotocol.io/specification/2026-07-28/index) | MCP / AAIF | 2026 | spec | Stateless core, server/discover, cacheable lists with deterministic order, Tasks as extension. | protocol | high |
+| [MCP Security Best Practices](https://modelcontextprotocol.io/docs/tutorials/security/security_best_practices) | MCP | 2025– | spec | Confused deputy, token passthrough, SSRF and minimal scopes. | protocol · guard | high |
+| [A2A Protocol Specification](https://a2a-protocol.org/latest/specification/) | Linux Foundation | 2025– | spec | Agent Card, tasks, streaming and JSON-RPC/gRPC/REST bindings for agent↔agent. | protocol · router | high |
+| [Agent Client Protocol (ACP)](https://agentclientprotocol.com/protocol/v1/overview) | Zed | 2025 | spec | JSON-RPC over stdio between editor and agent, with permission requests; bridge for the human reader. | protocol · UI | high |
+| [JSON-RPC 2.0 Specification](https://www.jsonrpc.org/specification) | JSON-RPC WG | 2010 | spec | Base of MCP, A2A and ACP; tb's transport. | protocol | medium |
+| [Writing effective tools for AI agents](https://www.anthropic.com/research/writing-tools-for-agents) | Anthropic | 2025 | blog | Namespacing and response_format concise/detailed (~1/3 of tokens in the example). | protocol · mem/ctx | high |
+| [is-it-legit-mcp](https://github.com/m8ven/is-it-legit-mcp) · [M8ven Verified](https://m8ven.ai/verified/how-we-verify) | M8ven | 2026 | repo | Reference for MCP server checks: annotations (readOnly/destructive/idempotent/openWorld) justified by the handler's real effect, code-vs-declaration verification, sandbox, supply chain and publisher. tb review in [mcp-sinais-m8ven.md](mcp-sinais-m8ven.md). | protocol · guard | high |
 
 ---
 
@@ -197,7 +197,7 @@ This is a compilation of primary sources that may influence toolbelt's design. W
 
 | Title | Author / Org. | Year | Type | Why it matters for toolbelt | Module | Priority |
 |-------|---------------|------|------|-----------------------------|--------|----------|
-| [Code execution with MCP](https://www.anthropic.com/research/code-execution-with-mcp) | Anthropic | 2025 | blog | Tools as code in files: 150k → 2k tokens (−98.7%) in the example. | protocolo · mem/ctx | high |
-| [Introducing advanced tool use](https://www.anthropic.com/research/advanced-tool-use) | Anthropic | 2025 | blog | Tool Search (defer_loading) and Programmatic Tool Calling. | protocolo · mem/ctx | high |
+| [Code execution with MCP](https://www.anthropic.com/research/code-execution-with-mcp) | Anthropic | 2025 | blog | Tools as code in files: 150k → 2k tokens (−98.7%) in the example. | protocol · mem/ctx | high |
+| [Introducing advanced tool use](https://www.anthropic.com/research/advanced-tool-use) | Anthropic | 2025 | blog | Tool Search (defer_loading) and Programmatic Tool Calling. | protocol · mem/ctx | high |
 | [LLMLingua](https://arxiv.org/abs/2310.05736) | Jiang et al. (Microsoft) | 2023 | paper | Prompt compression by perplexity; useful for logs and long outputs. | mem/ctx | medium |
 | [LLMLingua-2](https://arxiv.org/abs/2403.12968) | Pan et al. (Microsoft) | 2024 | paper | Task-agnostic compression, faster and more faithful than v1. | mem/ctx | medium |

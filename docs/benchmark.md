@@ -72,7 +72,7 @@ Quantitatively measure whether toolbelt achieves its three goals:
 **Definition**: Proportion of tasks completed correctly on the first attempt, without rework.
 
 ```
-pass@1 = (tarefas corretas na 1ª tentativa) / (total de tarefas)
+pass@1 = (tasks correct on 1st attempt) / (total tasks)
 ```
 
 **Measurement**:
@@ -131,7 +131,7 @@ wall_time = timestamp_fim - timestamp_inicio
 **Definition**: Proportion of tasks that needed correction after the first submission.
 
 ```
-rework_rate = (tarefas com retrabalho) / (total de tarefas)
+rework_rate = (tasks with rework) / (total tasks)
 ```
 
 ### 7. cost_per_task (Cost per Task)
@@ -165,7 +165,7 @@ The Elephant-Goldfish pattern introduces specific metrics to evaluate the qualit
 **Definition**: Number of defects found in the review phase, before implementation.
 
 ```
-defects_found_pre_impl = count(findings com severity >= warning)
+defects_found_pre_impl = count(findings with severity >= warning)
 ```
 
 **Relevance**: Defects found before implementation are much cheaper to fix.
@@ -175,7 +175,7 @@ defects_found_pre_impl = count(findings com severity >= warning)
 **Definition**: Proportion of findings that were rejected in the resolution step.
 
 ```
-false_positive_rate = (findings rejeitados) / (total de findings)
+false_positive_rate = (rejected findings) / (total findings)
 ```
 
 **Measurement**:
@@ -189,7 +189,7 @@ false_positive_rate = (findings rejeitados) / (total de findings)
 **Definition**: Total tokens consumed to review a document.
 
 ```
-tokens_per_review = sum(tokens de cada revisor goldfish)
+tokens_per_review = sum(tokens of each goldfish reviewer)
 ```
 
 **Relevance**: Goldfish reviewers should be efficient because they receive minimal context.
@@ -199,7 +199,7 @@ tokens_per_review = sum(tokens de cada revisor goldfish)
 **Definition**: Proportion of the document effectively analyzed by reviewers.
 
 ```
-review_coverage = (seções com findings ou OK explícito) / (total de seções)
+review_coverage = (sections with findings or explicit OK) / (total sections)
 ```
 
 ### 14. reviewer_agreement (Agreement Between Reviewers)
@@ -207,7 +207,7 @@ review_coverage = (seções com findings ou OK explícito) / (total de seções)
 **Definition**: Proportion of findings where multiple reviewers agree.
 
 ```
-reviewer_agreement = (findings com 2+ revisores) / (total de findings únicos)
+reviewer_agreement = (findings from 2+ reviewers) / (total unique findings)
 ```
 
 **Relevance**: High agreement indicates more reliable findings.
@@ -326,13 +326,13 @@ And same-context to be better on:
 id: task-042
 category: implement
 difficulty: medium
-title: "Implementar endpoint de autenticação"
+title: "Implement authentication endpoint"
 description: |
-  Criar endpoint POST /api/auth/login que:
-  - Recebe email e senha
-  - Valida credenciais contra o banco
-  - Retorna JWT token
-  - Implementa rate limiting
+  Create endpoint POST /api/auth/login that:
+  - Receives email and password
+  - Validates credentials against the database
+  - Returns a JWT token
+  - Implements rate limiting
 
 files_relevant:
   - src/api/handlers/auth.go
@@ -370,36 +370,36 @@ The benchmark harness is implemented and can be used with:
 ### Basic Commands (Implemented)
 
 ```bash
-# Executar com agente fake (para CI/testes)
+# Run with the fake agent (for CI/tests)
 tb bench run --fake -r 3
 
-# Executar com agente externo
+# Run with an external agent
 tb bench run --agent "cursor-agent {prompt} --workdir {workdir}"
 
-# Sem --agent/--fake: usa bench.default_agent de .toolbelt/config.yaml
+# Without --agent/--fake: uses bench.default_agent from .toolbelt/config.yaml
 tb bench run -r 1
 
-# Sem -t/-f: usa bench.tasks_dir / fixtures_dir / output_dir do YAML
-# (precedência: flag CLI > config.yaml > default; -c/--config alimenta Load)
+# Without -t/-f: uses bench.tasks_dir / fixtures_dir / output_dir from the YAML
+# (precedence: CLI flag > config.yaml > default; -c/--config feeds Load)
 tb -c /tmp/alt-config.yaml bench run -r 1
 
-# Variante A/B com label e flags (gravados no JSONL)
+# A/B variant with label and flags (recorded in the JSONL)
 tb bench run --fake --label graph-off --flag graph=off
 
-# Listar tarefas disponíveis
+# List available tasks
 tb bench list
 
-# Gerar relatório de resultados existentes
+# Generate a report from existing results
 tb bench report --input bench/results/2026-01-01-120000.jsonl
 
-# Comparar dois JSONL (sucesso, tempo, tokens)
+# Compare two JSONL files (success, time, tokens)
 tb bench compare --before v1.jsonl --after v2.jsonl
 
-# Rodar A/B a partir de configs YAML
+# Run A/B from YAML configs
 tb bench compare --config-a bench/ab/graph-off.yaml \
                  --config-b bench/ab/graph-on.yaml --fake
 
-# A/B com agente externo (--agent ou bench.default_agent)
+# A/B with an external agent (--agent or bench.default_agent)
 tb bench compare --config-a bench/ab/graph-off.yaml \
                  --config-b bench/ab/graph-on.yaml \
                  --agent "cursor-agent {prompt} --workdir {workdir}"
@@ -491,7 +491,7 @@ The report should include:
 ### Summary Example
 
 ```markdown
-## Resumo Executivo
+## Executive Summary
 
 | KPI | Baseline | Toolbelt | Δ |
 |-----|----------|----------|---|
@@ -503,7 +503,7 @@ The report should include:
 | rework_rate | 0.32 | 0.18 | -44% |
 | cost/task | $0.062 | $0.043 | -31% |
 
-Diferenças estatisticamente significativas (p < 0.05) em todos os KPIs.
+Statistically significant differences (p < 0.05) across all KPIs.
 ```
 
 ---
@@ -573,7 +573,7 @@ mean_similarity = sum(similarity_per_screen) / count(screens)
 **Definition**: Number of generator→discriminator cycles until PASS is reached.
 
 ```
-iterations_to_pass = count(iterations até verdict == PASS)
+iterations_to_pass = count(iterations until verdict == PASS)
 ```
 
 **Relevance**: Fewer iterations = higher generator efficiency.
@@ -585,7 +585,7 @@ iterations_to_pass = count(iterations até verdict == PASS)
 **Definition**: Number of cheating attempts identified by the discriminator.
 
 ```
-cheating_attempts = count(violations onde tipo ∈ cheating_rules)
+cheating_attempts = count(violations where type ∈ cheating_rules)
 ```
 
 **Categories**:
@@ -602,7 +602,7 @@ cheating_attempts = count(violations onde tipo ∈ cheating_rules)
 **Definition**: Proportion of tasks that require human intervention after 3 failures.
 
 ```
-human_escalations = (tasks com 3 FAILs) / (total de tasks)
+human_escalations = (tasks with 3 FAILs) / (total tasks)
 ```
 
 **Relevance**: A high rate indicates a process problem or inadequate spec.
@@ -614,7 +614,7 @@ human_escalations = (tasks com 3 FAILs) / (total de tasks)
 **Definition**: Proportion of FAILs that were false positives (work was correct).
 
 ```
-false_fail_rate = (FAILs revertidos por humano) / (total de FAILs)
+false_fail_rate = (FAILs overturned by a human) / (total FAILs)
 ```
 
 **Measurement**:
@@ -766,7 +766,7 @@ router_latency = timestamp_tickets_criados - timestamp_tarefa_recebida
 **Definition**: Highest number of tickets executing simultaneously.
 
 ```
-tickets_parallel_max = max(workers_ativos em qualquer instante)
+tickets_parallel_max = max(active_workers at any instant)
 ```
 
 **Relevance**: Indicates parallelization effectiveness. Low parallelism suggests excessive dependencies.
@@ -778,7 +778,7 @@ tickets_parallel_max = max(workers_ativos em qualquer instante)
 **Definition**: Proportion of files with conflicts between workers.
 
 ```
-merge_conflict_rate = (arquivos com conflito) / (arquivos modificados) × 100
+merge_conflict_rate = (files with conflicts) / (files modified) × 100
 ```
 
 **Relevance**: A high rate indicates poorly defined mandates or scope overlap.
@@ -790,7 +790,7 @@ merge_conflict_rate = (arquivos com conflito) / (arquivos modificados) × 100
 **Definition**: Proportion of tasks delegated vs executed by the router itself.
 
 ```
-delegation_rate = (tarefas delegadas para workers) / (total de tarefas)
+delegation_rate = (tasks delegated to workers) / (total tasks)
 ```
 
 **Relevance**: The router should delegate, not execute. A low rate indicates a bottleneck.
@@ -814,7 +814,7 @@ worker_utilization = (tempo_trabalhando) / (tempo_total) × 100
 **Definition**: Proportion of tickets that needed a retry after failure.
 
 ```
-ticket_retry_rate = (tickets com retry) / (total de tickets)
+ticket_retry_rate = (tickets with retry) / (total tickets)
 ```
 
 **Relevance**: A high rate indicates poorly specified tickets or unstable workers.
@@ -826,7 +826,7 @@ ticket_retry_rate = (tickets com retry) / (total de tickets)
 **Definition**: Proportion of tickets delivered directly to subscribed workers vs via the board.
 
 ```
-direct_delivery_rate = (tickets entregues diretamente) / (total de tickets) × 100
+direct_delivery_rate = (tickets delivered directly) / (total tickets) × 100
 ```
 
 **Relevance**: Direct delivery reduces assignment latency and improves context affinity.
@@ -926,7 +926,7 @@ Based on the primary-source review ([docs/pesquisa/achados.md](pesquisa/achados.
 **Definition**: Proportion of anti-cheating rules and security constraints preserved after N compaction cycles.
 
 ```
-invariant_retention = (invariantes preservados após N compactações) / (invariantes originais)
+invariant_retention = (invariants preserved after N compactions) / (original invariants)
 ```
 
 **Source**: [Benchmarks Are Surprisingly Compaction-Friendly](https://arxiv.org/abs/2610.31778) (Salle et al., 2026)
@@ -958,7 +958,7 @@ visible_hidden_gap = pass_rate_visible - pass_rate_hidden
 **Definition**: Proportion of impossible tasks where the agent reports success.
 
 ```
-impossible_pass_rate = (tarefas impossíveis com pass) / (total de tarefas impossíveis)
+impossible_pass_rate = (impossible tasks that pass) / (total impossible tasks)
 ```
 
 **Source**: [ImpossibleBench](https://arxiv.org/abs/2510.20270) (Zhong et al., 2025) — any pass is cheating
@@ -974,7 +974,7 @@ impossible_pass_rate = (tarefas impossíveis com pass) / (total de tarefas impos
 **Definition**: Proportion of tasks where using the graph resulted in token savings.
 
 ```
-graph_roi_positive_pct = (tarefas onde grafo economizou) / (tarefas onde grafo foi usado)
+graph_roi_positive_pct = (tasks where the graph saved) / (tasks where the graph was used)
 ```
 
 **Source**: [How Should Agents See Code?](https://arxiv.org/abs/2611.07286) (Sepidband et al., 2026) and [Cost-Inefficient Behaviors](https://arxiv.org/abs/2609.30725) (Hu et al., 2026)
@@ -1009,7 +1009,7 @@ experiment:
     - accuracy
     - cost_usd
     
-  hypothesis: "Grafo compensa mais em localização e refatoração cross-file, menos em bug fixes localizados"
+  hypothesis: "The graph pays off more for localization and cross-file refactoring, less for localized bug fixes"
   
   source: "arxiv.org/abs/2611.07286, arxiv.org/abs/2609.30725"
 ```
@@ -1026,18 +1026,18 @@ experiment:
   
   conditions:
     llm_only:
-      method: "resumo LLM do contexto completo"
+      method: "LLM summary of the full context"
       
     hybrid:
-      method: "extração mecânica + resumo LLM"
-      extraction: ["arquivos_tocados", "comandos", "falhas_teste", "decisões"]
+      method: "mechanical extraction + LLM summary"
+      extraction: ["files_touched", "commands", "test_failures", "decisions"]
       
   metrics:
     - invariant_retention
-    - information_recall  # medido por quiz de detalhes
+    - information_recall  # measured by a details quiz
     - tokens_after_compaction
     
-  hypothesis: "Híbrida retém mais informação estruturada com menos tokens"
+  hypothesis: "Hybrid retains more structured information with fewer tokens"
   
   source: "arxiv.org/abs/2610.31710, arxiv.org/abs/2610.31778"
 ```
@@ -1053,18 +1053,18 @@ experiment:
   name: impossible-tasks
   
   generation:
-    method: "gerar variantes onde teste contradiz spec"
+    method: "generate variants where the test contradicts the spec"
     examples:
-      - "spec pede ordenação crescente, teste espera decrescente"
-      - "spec limita a 100 items, teste passa com 200"
+      - "spec asks for ascending order, test expects descending"
+      - "spec caps at 100 items, test passes with 200"
       
   conditions:
     baseline: {hidden_tests: false}
     with_monitor: {hidden_tests: true, trajectory_monitor: true}
     
   metrics:
-    - impossible_pass_rate  # meta: 0%
-    - cheating_detection_rate  # meta: 100%
+    - impossible_pass_rate  # target: 0%
+    - cheating_detection_rate  # target: 100%
     
   source: "arxiv.org/abs/2510.20270"
 ```
@@ -1086,9 +1086,9 @@ experiment:
     - pass_at_3
     - pass_at_5
     - pass_at_10
-    - reliability_score  # pass^k: confiabilidade em k tentativas
+    - reliability_score  # pass^k: reliability across k attempts
     
-  hypothesis: "pass@1 alto com pass^k baixo indica solução frágil"
+  hypothesis: "high pass@1 with low pass^k indicates a brittle solution"
   
   source: "arxiv.org/abs/2406.12045 (τ-bench)"
 ```
@@ -1116,8 +1116,8 @@ experiment:
     - tokens_total
     
   analysis:
-    - plot: "fronteira de Pareto custo vs acurácia"
-    - identify: "configurações dominadas (nunca usar)"
+    - plot: "Pareto frontier of cost vs accuracy"
+    - identify: "dominated configurations (never use)"
     
   source: "arxiv.org/abs/2407.01502 (AI Agents That Matter)"
 ```

@@ -79,11 +79,11 @@ func TestCreateValidation(t *testing.T) {
 		tk   Ticket
 		want string
 	}{
-		{"sem título", Ticket{}, "título"},
-		{"dep desconhecida", Ticket{Title: "x", Dependencies: []string{"TKT-009"}}, "desconhecida"},
-		{"dep malformada", Ticket{Title: "x", Dependencies: []string{"abc"}}, "inválido"},
+		{"sem título", Ticket{}, "title"},
+		{"dep desconhecida", Ticket{Title: "x", Dependencies: []string{"TKT-009"}}, "unknown"},
+		{"dep malformada", Ticket{Title: "x", Dependencies: []string{"abc"}}, "invalid"},
 		{"timeout inválido", Ticket{Title: "x", Acceptance: Acceptance{Timeout: "abc"}}, "timeout"},
-		{"permissão inválida", Ticket{Title: "x", Mandate: Mandate{Permissions: []string{"root"}}}, "permissão"},
+		{"permissão inválida", Ticket{Title: "x", Mandate: Mandate{Permissions: []string{"root"}}}, "permission"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -154,7 +154,7 @@ func TestUpdateRejectsCycleAndUnknownDep(t *testing.T) {
 	b := mk(t, s, "b", func(x *Ticket) { x.Dependencies = []string{a.ID} })
 	c := mk(t, s, "c", func(x *Ticket) { x.Dependencies = []string{b.ID} })
 	_, err := s.Update(a.ID, func(x *Ticket) error { x.Dependencies = []string{c.ID}; return nil })
-	if err == nil || !strings.Contains(err.Error(), "ciclo") {
+	if err == nil || !strings.Contains(err.Error(), "cycle") {
 		t.Fatalf("want ciclo, got %v", err)
 	}
 	_, err = s.Update(a.ID, func(x *Ticket) error { x.Dependencies = []string{a.ID}; return nil })
@@ -162,7 +162,7 @@ func TestUpdateRejectsCycleAndUnknownDep(t *testing.T) {
 		t.Fatal("auto-dependência deveria falhar")
 	}
 	_, err = s.Update(a.ID, func(x *Ticket) error { x.Dependencies = []string{"TKT-777"}; return nil })
-	if err == nil || !strings.Contains(err.Error(), "desconhecida") {
+	if err == nil || !strings.Contains(err.Error(), "unknown") {
 		t.Fatalf("want desconhecida, got %v", err)
 	}
 	got, _ := s.Get(a.ID)
@@ -381,7 +381,7 @@ func TestUpdateInPlaceDependencyMutationRevalidated(t *testing.T) {
 	c := mk(t, s, "c", func(x *Ticket) { x.Dependencies = []string{b.ID} })
 	// mutate the slice in place: b -> c closes the cycle b -> c -> b
 	_, err := s.Update(b.ID, func(x *Ticket) error { x.Dependencies[0] = c.ID; return nil })
-	if err == nil || !strings.Contains(err.Error(), "ciclo") {
+	if err == nil || !strings.Contains(err.Error(), "cycle") {
 		t.Fatalf("want ciclo, got %v", err)
 	}
 	got, _ := s.Get(b.ID)

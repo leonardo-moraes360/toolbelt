@@ -13,11 +13,11 @@ import (
 
 var memCmd = &cobra.Command{
 	Use:   "mem",
-	Short: "Invariantes fora da compactação (ADR-010)",
-	Long: `Gerencia o arquivo de invariantes em .toolbelt/invariants.yaml.
+	Short: "Invariants outside compaction (ADR-010)",
+	Long: `Manages the invariants file at .toolbelt/invariants.yaml.
 
-Regras neste arquivo não passam por compactação de contexto e são
-reinjetadas intactas após cada ciclo de resumo.`,
+Rules in this file are not subject to context compaction and are
+re-injected intact after each summarization cycle.`,
 	Args: func(cmd *cobra.Command, args []string) error {
 		if len(args) == 0 {
 			return nil
@@ -30,8 +30,8 @@ reinjetadas intactas após cada ciclo de resumo.`,
 }
 
 var memAddCmd = &cobra.Command{
-	Use:   "add <regra>",
-	Short: "Adiciona invariante",
+	Use:   "add <rule>",
+	Short: "Adds an invariant",
 	Args:  cobra.MinimumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cwd, _ := os.Getwd()
@@ -52,14 +52,14 @@ var memAddCmd = &cobra.Command{
 		if jsonOutput {
 			return json.NewEncoder(os.Stdout).Encode(out)
 		}
-		fmt.Printf("invariante %s adicionada\n", out.ID)
+		fmt.Printf("invariant %s added\n", out.ID)
 		return nil
 	},
 }
 
 var memListCmd = &cobra.Command{
 	Use:   "list",
-	Short: "Lista invariantes",
+	Short: "Lists invariants",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cwd, _ := os.Getwd()
 		dir := mem.LocateRepoToolbeltDir(cwd)
@@ -83,7 +83,7 @@ var memListCmd = &cobra.Command{
 
 var memShowCmd = &cobra.Command{
 	Use:   "show <id>",
-	Short: "Exibe invariante por id",
+	Short: "Shows an invariant by id",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		s := memStoreFromCWD()
@@ -102,7 +102,7 @@ var memShowCmd = &cobra.Command{
 
 var memEditCmd = &cobra.Command{
 	Use:   "edit <id>",
-	Short: "Edita campos de uma invariante",
+	Short: "Edits fields of an invariant",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		fields := mem.EditFields{}
@@ -129,14 +129,14 @@ var memEditCmd = &cobra.Command{
 		if jsonOutput {
 			return json.NewEncoder(os.Stdout).Encode(out)
 		}
-		fmt.Printf("invariante %s atualizada\n", out.ID)
+		fmt.Printf("invariant %s updated\n", out.ID)
 		return nil
 	},
 }
 
 var memRetireCmd = &cobra.Command{
 	Use:   "retire <id>",
-	Short: "Aposenta invariante (soft-retire)",
+	Short: "Retires an invariant (soft-retire)",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		force, _ := cmd.Flags().GetBool("force")
@@ -150,14 +150,14 @@ var memRetireCmd = &cobra.Command{
 		if jsonOutput {
 			return json.NewEncoder(os.Stdout).Encode(out)
 		}
-		fmt.Printf("invariante %s aposentada\n", out.ID)
+		fmt.Printf("invariant %s retired\n", out.ID)
 		return nil
 	},
 }
 
 var memSearchCmd = &cobra.Command{
 	Use:   "search <query>",
-	Short: "Busca invariantes",
+	Short: "Searches invariants",
 	Args:  cobra.MinimumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		all, _ := cmd.Flags().GetBool("all")
@@ -180,7 +180,7 @@ var memSearchCmd = &cobra.Command{
 
 var memCheckCmd = &cobra.Command{
 	Use:   "check",
-	Short: "Verifica integridade do arquivo de invariantes",
+	Short: "Checks the integrity of the invariants file",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cwd, _ := os.Getwd()
 		dir := mem.LocateRepoToolbeltDir(cwd)
@@ -205,18 +205,18 @@ var memCheckCmd = &cobra.Command{
 		if jsonOutput {
 			return nil
 		}
-		fmt.Printf("arquivo: %s\n", rep.Path)
+		fmt.Printf("file: %s\n", rep.Path)
 		fmt.Printf("sha256: %s\n", rep.SHA256)
-		fmt.Printf("invariantes: %d\n", rep.Count)
-		fmt.Printf("compactacao_segura: %v\n", rep.CompactSafe)
-		fmt.Printf("retencao: %.2f\n", rep.Retention)
+		fmt.Printf("invariants: %d\n", rep.Count)
+		fmt.Printf("compaction_safe: %v\n", rep.CompactSafe)
+		fmt.Printf("retention: %.2f\n", rep.Retention)
 		return nil
 	},
 }
 
 var memInitCmd = &cobra.Command{
 	Use:   "init",
-	Short: "Cria invariantes padrão anti-trapaça",
+	Short: "Creates default anti-cheat invariants",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cwd, _ := os.Getwd()
 		dir := mem.LocateRepoToolbeltDir(cwd)
@@ -228,9 +228,9 @@ var memInitCmd = &cobra.Command{
 			return json.NewEncoder(os.Stdout).Encode(result)
 		}
 		if result.Created {
-			fmt.Printf("criadas %d invariantes em %s\n", result.Count, result.Path)
+			fmt.Printf("created %d invariants in %s\n", result.Count, result.Path)
 		} else {
-			fmt.Printf("já existiam %d invariantes em %s\n", result.Count, result.Path)
+			fmt.Printf("%d invariants already existed in %s\n", result.Count, result.Path)
 		}
 		for i := range result.Invariants {
 			fmt.Println(formatInvariantLine(&result.Invariants[i]))
@@ -271,21 +271,21 @@ func printInvariant(inv *mem.Invariant) {
 }
 
 func init() {
-	memAddCmd.Flags().String("category", "anti_cheat", "categoria: anti_cheat, mandate, security")
-	memAddCmd.Flags().String("ref", "", "caminho ADR/decisions.md (ex: docs/adr/0001.md)")
-	memAddCmd.Flags().Bool("immutable", false, "marca a invariante como imutável (default: mutável)")
-	memListCmd.Flags().String("category", "", "filtrar categoria")
-	memListCmd.Flags().Bool("all", false, "incluir invariantes aposentadas")
-	memEditCmd.Flags().String("category", "", "nova categoria")
-	memEditCmd.Flags().String("rule", "", "nova regra")
-	memEditCmd.Flags().String("ref", "", "novo caminho ADR/decisions.md")
-	memEditCmd.Flags().Bool("force", false, "permite editar invariante imutável/anti_cheat")
-	memEditCmd.Flags().String("reason", "", "motivo obrigatório com --force")
-	memRetireCmd.Flags().Bool("force", false, "permite aposentar invariante imutável/anti_cheat")
-	memRetireCmd.Flags().String("reason", "", "motivo obrigatório com --force")
-	memSearchCmd.Flags().Bool("all", false, "incluir invariantes aposentadas")
-	memCheckCmd.Flags().String("expect-sha", "", "hash esperado pós-compactação")
-	memCheckCmd.Flags().Bool("all", false, "incluir invariantes aposentadas")
+	memAddCmd.Flags().String("category", "anti_cheat", "category: anti_cheat, mandate, security")
+	memAddCmd.Flags().String("ref", "", "ADR/decisions.md path (e.g. docs/adr/0001.md)")
+	memAddCmd.Flags().Bool("immutable", false, "marks the invariant as immutable (default: mutable)")
+	memListCmd.Flags().String("category", "", "filter by category")
+	memListCmd.Flags().Bool("all", false, "include retired invariants")
+	memEditCmd.Flags().String("category", "", "new category")
+	memEditCmd.Flags().String("rule", "", "new rule")
+	memEditCmd.Flags().String("ref", "", "new ADR/decisions.md path")
+	memEditCmd.Flags().Bool("force", false, "allows editing an immutable/anti_cheat invariant")
+	memEditCmd.Flags().String("reason", "", "reason, required with --force")
+	memRetireCmd.Flags().Bool("force", false, "allows retiring an immutable/anti_cheat invariant")
+	memRetireCmd.Flags().String("reason", "", "reason, required with --force")
+	memSearchCmd.Flags().Bool("all", false, "include retired invariants")
+	memCheckCmd.Flags().String("expect-sha", "", "expected hash after compaction")
+	memCheckCmd.Flags().Bool("all", false, "include retired invariants")
 	memCmd.AddCommand(
 		memAddCmd,
 		memListCmd,

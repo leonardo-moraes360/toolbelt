@@ -14,7 +14,7 @@ import (
 	"time"
 )
 
-var ErrUnsupported = errors.New("Landlock indisponível nesta plataforma")
+var ErrUnsupported = errors.New("Landlock unavailable on this platform")
 
 type Config struct {
 	WorkDir          string
@@ -90,7 +90,7 @@ type Result struct {
 
 func New(config Config) (*Sandbox, error) { //nolint:gocritic // stable public API passed by value
 	if config.WorkDir == "" {
-		return nil, errors.New("workdir obrigatório")
+		return nil, errors.New("workdir required")
 	}
 	abs, err := filepath.Abs(config.WorkDir)
 	if err != nil {
@@ -104,13 +104,13 @@ func New(config Config) (*Sandbox, error) { //nolint:gocritic // stable public A
 	}
 	if !s.landlockOK && !config.AllowUnsandboxed {
 		if runtime.GOOS != "linux" {
-			return nil, fmt.Errorf("%w; use --allow-unsandboxed para optar por execução sem isolamento", ErrUnsupported)
+			return nil, fmt.Errorf("%w; use --allow-unsandboxed to opt in to running without isolation", ErrUnsupported)
 		}
 		_, _, probeErr := landlockSupported()
 		if probeErr == nil {
 			probeErr = ErrUnsupported
 		}
-		return nil, fmt.Errorf("Landlock indisponível (%v); use --allow-unsandboxed para optar por execução sem isolamento", probeErr)
+		return nil, fmt.Errorf("Landlock unavailable (%v); use --allow-unsandboxed to opt in to running without isolation", probeErr)
 	}
 	return s, nil
 }
@@ -127,7 +127,7 @@ func (s *Sandbox) Run(ctx context.Context, command string, args ...string) (*Res
 		var err error
 		bin, err = exec.LookPath(command)
 		if err != nil {
-			return nil, fmt.Errorf("comando não encontrado: %w", err)
+			return nil, fmt.Errorf("command not found: %w", err)
 		}
 	}
 
@@ -154,7 +154,7 @@ func (s *Sandbox) runPlain(ctx context.Context, bin string, args ...string) (*Re
 func (s *Sandbox) runIsolated(ctx context.Context, bin string, args ...string) (*Result, error) {
 	self, err := os.Executable()
 	if err != nil {
-		return nil, fmt.Errorf("executável atual: %w", err)
+		return nil, fmt.Errorf("current executable: %w", err)
 	}
 	env, err := prepareChildEnv(&s.config, bin, args)
 	if err != nil {
@@ -244,7 +244,7 @@ func (l *limitedWriter) Overflow() bool {
 // preserved.
 const MaxOutputBytes = 1 << 20
 
-const truncatedMarker = "[... saída anterior truncada; mantidos os últimos 1 MiB ...]\n"
+const truncatedMarker = "[... earlier output truncated; last 1 MiB kept ...]\n"
 
 // tailBuffer is a goroutine-safe io.Writer that keeps only the last max bytes
 // written. It never returns an error (no backpressure on the child).
@@ -374,13 +374,13 @@ func (s *Sandbox) ValidatePath(path string) error {
 			base = filepath.Join(work, forbidden)
 		}
 		if abs == base || isSubpath(abs, base) {
-			return fmt.Errorf("caminho proibido: %s", forbidden)
+			return fmt.Errorf("forbidden path: %s", forbidden)
 		}
 	}
 	if isSubpath(abs, work) || abs == work {
 		return nil
 	}
-	return fmt.Errorf("fora do escopo: %s", path)
+	return fmt.Errorf("out of scope: %s", path)
 }
 
 // isSubpath reports whether path is a strict descendant of base (base itself

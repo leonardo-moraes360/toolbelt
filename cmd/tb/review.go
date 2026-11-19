@@ -14,29 +14,29 @@ import (
 
 var reviewCmd = &cobra.Command{
 	Use:   "review [target]",
-	Short: "Revisão fresh-context (Elephant-Goldfish)",
-	Long: `Revisa um diff contra ticket/rd.md e invariantes de tb mem.
+	Short: "Fresh-context review (Elephant-Goldfish)",
+	Long: `Reviews a diff against ticket/rd.md and tb mem invariants.
 
-Goldfish distintos (contexto fresco cada um):
-  scope       — escopo declarado e paths forbidden (+ invariantes de tb mem)
-  quality     — TODO/FIXME/XXX/HACK em comentários, funções grandes, código sem testes
-  acceptance  — critérios de aceite evidenciados em testes/arquivos (inclui Test*/test/it)
+Distinct goldfish (each with fresh context):
+  scope       — declared scope and forbidden paths (+ tb mem invariants)
+  quality     — TODO/FIXME/XXX/HACK in comments, large functions, code without tests
+  acceptance  — acceptance criteria evidenced in tests/files (includes Test*/test/it)
 
-Também reporta drift de escopo e commit base.`,
+Also reports scope and base commit drift.`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: runReview,
 }
 
 func init() {
-	reviewCmd.Flags().String("base", "HEAD~1", "commit/ref base")
-	reviewCmd.Flags().String("head", "HEAD", "commit/ref head")
-	reviewCmd.Flags().String("approved-sha", "", "SHA aprovado; compara patch-id verbatim (sensível a whitespace) com o head")
-	reviewCmd.Flags().String("approved-base", "", "base do range aprovado; default: merge-base(approved, base)")
-	reviewCmd.Flags().Bool("require-approved-sha", false, "falha se --approved-sha estiver ausente (ou review.require_approved_sha)")
-	reviewCmd.Flags().String("ticket", "rd.md", "caminho do ticket/rd.md")
-	reviewCmd.Flags().Int("reviewers", 3, "máximo de goldfish distintos (não clona o mesmo)")
-	reviewCmd.Flags().String("standards", "scope,quality,acceptance", "papéis: scope,quality,acceptance (aliases: invariants,completeness)")
-	reviewCmd.Flags().String("output", "", "arquivo de saída JSON")
+	reviewCmd.Flags().String("base", "HEAD~1", "base commit/ref")
+	reviewCmd.Flags().String("head", "HEAD", "head commit/ref")
+	reviewCmd.Flags().String("approved-sha", "", "approved SHA; compares verbatim patch-id (whitespace-sensitive) with head")
+	reviewCmd.Flags().String("approved-base", "", "base of the approved range; default: merge-base(approved, base)")
+	reviewCmd.Flags().Bool("require-approved-sha", false, "fails if --approved-sha is missing (or review.require_approved_sha)")
+	reviewCmd.Flags().String("ticket", "rd.md", "path to the ticket/rd.md")
+	reviewCmd.Flags().Int("reviewers", 3, "maximum distinct goldfish (does not clone the same one)")
+	reviewCmd.Flags().String("standards", "scope,quality,acceptance", "roles: scope,quality,acceptance (aliases: invariants,completeness)")
+	reviewCmd.Flags().String("output", "", "JSON output file")
 }
 
 func runReview(cmd *cobra.Command, args []string) error {
@@ -49,7 +49,7 @@ func runReview(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	if !rep.FreshOK {
-		return fmt.Errorf("isolamento de contexto fresco falhou; revisão abortada")
+		return fmt.Errorf("fresh context isolation failed; review aborted")
 	}
 	if err := emitReview(cmd, rep); err != nil {
 		return err
@@ -98,15 +98,15 @@ func emitReview(cmd *cobra.Command, rep *review.Report) error {
 
 func reviewBlockingError(rep *review.Report) error {
 	if pinnedApprovalMismatch(rep.PinnedApproval) {
-		return fmt.Errorf("patch do head diverge do SHA aprovado")
+		return fmt.Errorf("head patch diverges from the approved SHA")
 	}
 	if rep.Drift != nil && (len(rep.Drift.OutOfScope) > 0 || len(rep.Drift.ForbiddenHit) > 0 || rep.Drift.BaseMismatch) {
-		return fmt.Errorf("drift detectado no escopo/base")
+		return fmt.Errorf("drift detected in scope/base")
 	}
 	for i := range rep.Findings {
 		f := &rep.Findings[i]
 		if f.Severity == review.SeverityCritical || f.Severity == review.SeverityError {
-			return fmt.Errorf("revisão encontrou findings bloqueantes")
+			return fmt.Errorf("review found blocking findings")
 		}
 	}
 	return nil
@@ -118,13 +118,13 @@ func pinnedApprovalMismatch(p *review.PinnedApproval) bool {
 
 func printReviewReport(rep *review.Report) {
 	fmt.Println("═══════════════════════════════════════════════════════════")
-	fmt.Printf(" RELATÓRIO DE REVISÃO: %s\n", rep.Target)
-	fmt.Printf(" Base..Head: %s..%s | Revisores: %d | Fresh: %v\n", rep.BaseRef, rep.HeadRef, rep.Reviewers, rep.FreshOK)
+	fmt.Printf(" REVIEW REPORT: %s\n", rep.Target)
+	fmt.Printf(" Base..Head: %s..%s | Reviewers: %d | Fresh: %v\n", rep.BaseRef, rep.HeadRef, rep.Reviewers, rep.FreshOK)
 	fmt.Println("═══════════════════════════════════════════════════════════")
 	printPinnedApproval(rep.PinnedApproval)
 	printDriftSection(rep.Drift)
 	if len(rep.Findings) == 0 {
-		fmt.Println("Nenhum finding.")
+		fmt.Println("No findings.")
 		return
 	}
 	fmt.Println("FINDINGS:")
@@ -139,9 +139,9 @@ func printReviewReport(rep *review.Report) {
 			fmt.Printf(" [%s]", f.File)
 		}
 		if f.Agreement > 1 {
-			fmt.Printf("  papel=%s papéis_acordo=%d\n", role, f.Agreement)
+			fmt.Printf("  role=%s agreeing_roles=%d\n", role, f.Agreement)
 		} else {
-			fmt.Printf("  papel=%s\n", role)
+			fmt.Printf("  role=%s\n", role)
 		}
 	}
 }
@@ -179,16 +179,16 @@ func printDriftSection(d *review.DriftReport) {
 	}
 	fmt.Println("DRIFT:")
 	if d.BaseMismatch {
-		fmt.Printf("  base divergente: declarado=%s atual=%s\n", d.DeclaredBase, d.ActualBase)
+		fmt.Printf("  base mismatch: declared=%s actual=%s\n", d.DeclaredBase, d.ActualBase)
 	}
 	for _, f := range d.OutOfScope {
-		fmt.Printf("  fora do scope: %s\n", f)
+		fmt.Printf("  out of scope: %s\n", f)
 	}
 	for _, f := range d.ForbiddenHit {
-		fmt.Printf("  proibido: %s\n", f)
+		fmt.Printf("  forbidden: %s\n", f)
 	}
 	if !d.BaseMismatch && len(d.OutOfScope) == 0 && len(d.ForbiddenHit) == 0 {
-		fmt.Println("  nenhum")
+		fmt.Println("  none")
 	}
 	fmt.Println()
 }

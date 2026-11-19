@@ -123,17 +123,17 @@ func (s *Server) Run(ctx context.Context, input io.Reader, output io.Writer) err
 
 		var req Request
 		if err := json.Unmarshal(line, &req); err != nil {
-			_ = s.sendError(nil, ErrCodeParse, "erro ao parsear JSON", err.Error())
+			_ = s.sendError(nil, ErrCodeParse, "failed to parse JSON", err.Error())
 			continue
 		}
 
 		if req.JSONRPC != "2.0" {
-			_ = s.sendError(req.ID, ErrCodeInvalidRequest, "versão JSON-RPC inválida", nil)
+			_ = s.sendError(req.ID, ErrCodeInvalidRequest, "invalid JSON-RPC version", nil)
 			continue
 		}
 
 		if err := s.dispatch(ctx, &req); err != nil {
-			slog.Error("erro ao processar requisição MCP", "method", req.Method, "error", err)
+			slog.Error("failed to process MCP request", "method", req.Method, "error", err)
 		}
 	}
 
@@ -153,7 +153,7 @@ func (s *Server) dispatch(ctx context.Context, req *Request) error {
 	case "tools/call":
 		return s.handleToolsCall(ctx, req)
 	default:
-		_ = s.sendError(req.ID, ErrCodeMethodNotFound, fmt.Sprintf("método não encontrado: %s", req.Method), nil)
+		_ = s.sendError(req.ID, ErrCodeMethodNotFound, fmt.Sprintf("method not found: %s", req.Method), nil)
 		return nil
 	}
 }
@@ -216,13 +216,13 @@ func (s *Server) handleToolsCall(ctx context.Context, req *Request) error {
 		Arguments map[string]any `json:"arguments"`
 	}
 	if err := json.Unmarshal(req.Params, &params); err != nil {
-		_ = s.sendError(req.ID, ErrCodeInvalidParams, "parâmetros inválidos", err.Error())
+		_ = s.sendError(req.ID, ErrCodeInvalidParams, "invalid params", err.Error())
 		return nil
 	}
 
 	result, err := s.reg.Call(ctx, params.Name, params.Arguments)
 	if err != nil {
-		_ = s.sendError(req.ID, ErrCodeInternal, "erro interno", err.Error())
+		_ = s.sendError(req.ID, ErrCodeInternal, "internal error", err.Error())
 		return nil
 	}
 

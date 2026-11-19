@@ -166,7 +166,7 @@ func TestMalformedGuardYAMLFailsClosed(t *testing.T) {
 	if err == nil {
 		t.Fatal("esperava erro fail-closed para guard.yaml malformado")
 	}
-	if !strings.Contains(err.Error(), "malformado") {
+	if !strings.Contains(err.Error(), "malformed") {
 		t.Fatalf("mensagem deveria citar malformado: %v", err)
 	}
 }
@@ -287,7 +287,7 @@ func TestCheckRejectsMissingSHA(t *testing.T) {
 	if err == nil {
 		t.Fatal("SHA inexistente deveria falhar")
 	}
-	if !strings.Contains(err.Error(), "inexistente") {
+	if !strings.Contains(err.Error(), "missing or invalid") {
 		t.Fatalf("erro claro esperado: %v", err)
 	}
 }

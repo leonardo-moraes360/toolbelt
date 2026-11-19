@@ -17,12 +17,12 @@ import (
 
 var busRunCmd = &cobra.Command{
 	Use:   "run",
-	Short: "Harness: espera mensagens sem LLM e acorda o agente (B3)",
-	Long: `Processo local, um por agente, que espera mensagens no store sem gastar
-tokens e acorda o agente pelo adapter do arquivo de wake
-(.toolbelt/bus/wake/<canal>/<nome>.yaml, modo 0600): exec (comando local com
-o wake packet no stdin) ou harness (claude -p --resume). O wake packet só
-tem cabeçalhos; o agente lê o conteúdo com recv. Spec: docs/bus-harness.md.`,
+	Short: "Harness: waits for messages without an LLM and wakes the agent (B3)",
+	Long: `Local process, one per agent, that waits for messages in the store without
+spending tokens and wakes the agent through the adapter in the wake file
+(.toolbelt/bus/wake/<channel>/<name>.yaml, mode 0600): exec (local command with
+the wake packet on stdin) or harness (claude -p --resume). The wake packet only
+carries headers; the agent reads the content with recv. Spec: docs/bus-harness.md.`,
 	Args: cobra.NoArgs,
 	RunE: runBusRun,
 }
@@ -39,7 +39,7 @@ func runBusRun(cmd *cobra.Command, _ []string) error {
 	dry, _ := f.GetBool("dry-run")
 	unsandboxed, _ := f.GetBool("allow-unsandboxed")
 	if channel == "" || as == "" {
-		return errors.New("--channel e --as são obrigatórios")
+		return errors.New("--channel and --as are required")
 	}
 	cwd, err := os.Getwd()
 	if err != nil {
@@ -64,7 +64,7 @@ func runBusRun(cmd *cobra.Command, _ []string) error {
 		if jsonOutput {
 			return printBusJSON(map[string]any{"ok": true, "agent": h.Member().ID()})
 		}
-		fmt.Printf("ok: %s pronto para tb bus run\n", h.Member().ID())
+		fmt.Printf("ok: %s ready for tb bus run\n", h.Member().ID())
 		return nil
 	case dry:
 		p, err := h.DryRun(cmd.Context())
@@ -75,7 +75,7 @@ func runBusRun(cmd *cobra.Command, _ []string) error {
 	}
 	ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	log.Info("harness do bus iniciado", "agent", h.Member().ID(), "channel", channel, "once", once)
+	log.Info("bus harness started", "agent", h.Member().ID(), "channel", channel, "once", once)
 	return h.Run(ctx, once)
 }
 
@@ -106,12 +106,12 @@ func busRunJoin(root, channel, name, invite, roleFlag string) error {
 func init() {
 	addMemberFlags(busRunCmd)
 	rf := busRunCmd.Flags()
-	rf.String("invite", "", "faz join com este convite antes de rodar, se ainda não houver sessão")
-	rf.String("role", "", "papel esperado no join")
-	rf.String("config", "", "arquivo de wake (padrão .toolbelt/bus/wake/<canal>/<nome>.yaml)")
-	rf.Bool("once", false, "processa o pendente, faz no máximo um despertar e sai")
-	rf.Bool("check", false, "valida config, sessão, binário e sandbox e sai")
-	rf.Bool("dry-run", false, "imprime o wake packet que seria entregue")
-	rf.Bool("allow-unsandboxed", false, "opt-in para rodar o filho sem sandbox Landlock")
+	rf.String("invite", "", "joins with this invite before running, if there is no session yet")
+	rf.String("role", "", "expected role on join")
+	rf.String("config", "", "wake file (default .toolbelt/bus/wake/<channel>/<name>.yaml)")
+	rf.Bool("once", false, "processes pending messages, wakes at most once and exits")
+	rf.Bool("check", false, "validates config, session, binary and sandbox and exits")
+	rf.Bool("dry-run", false, "prints the wake packet that would be delivered")
+	rf.Bool("allow-unsandboxed", false, "opt-in to run the child without the Landlock sandbox")
 	busCmd.AddCommand(busRunCmd)
 }

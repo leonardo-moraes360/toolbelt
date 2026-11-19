@@ -27,10 +27,10 @@ const setSchemaVersion = `PRAGMA user_version = 1`
 
 // ErrInvalidInvite is the generic answer for a missing, used, expired or
 // other-channel invite (deliberately does not reveal which).
-var ErrInvalidInvite = errors.New("convite inválido ou expirado")
+var ErrInvalidInvite = errors.New("invalid or expired invite")
 
 // ErrUnauthorized: missing session or mismatched token.
-var ErrUnauthorized = errors.New("sessão do barramento inválida (faça join com um convite)")
+var ErrUnauthorized = errors.New("invalid bus session (join with an invite)")
 
 const schema = `
 CREATE TABLE channels (
@@ -101,7 +101,7 @@ func Dir(root string) string { return filepath.Join(root, ".toolbelt", "bus") }
 func Open(root string) (*Store, error) {
 	dir := Dir(root)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return nil, fmt.Errorf("criando %s: %w", dir, err)
+		return nil, fmt.Errorf("creating %s: %w", dir, err)
 	}
 	if err := os.Chmod(dir, 0o700); err != nil {
 		return nil, err
@@ -109,7 +109,7 @@ func Open(root string) (*Store, error) {
 	path := filepath.Join(dir, "bus.db")
 	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o600)
 	if err != nil {
-		return nil, fmt.Errorf("abrindo %s: %w", path, err)
+		return nil, fmt.Errorf("opening %s: %w", path, err)
 	}
 	_ = f.Close()
 	if err := os.Chmod(path, 0o600); err != nil {
@@ -168,19 +168,19 @@ func (s *Store) migrate() error {
 	return s.tx(func(tx *sql.Tx) error {
 		var v int
 		if err := tx.QueryRow(`PRAGMA user_version`).Scan(&v); err != nil {
-			return fmt.Errorf("lendo versão do schema: %w", err)
+			return fmt.Errorf("reading schema version: %w", err)
 		}
 		switch v {
 		case SchemaVersion:
 			return nil
 		case 0:
 			if _, err := tx.Exec(schema); err != nil {
-				return fmt.Errorf("criando schema: %w", err)
+				return fmt.Errorf("creating schema: %w", err)
 			}
 			_, err := tx.Exec(setSchemaVersion)
 			return err
 		default:
-			return fmt.Errorf("schema do barramento v%d desconhecido (este tb suporta v%d)", v, SchemaVersion)
+			return fmt.Errorf("unknown bus schema v%d (this tb supports v%d)", v, SchemaVersion)
 		}
 	})
 }
@@ -219,14 +219,14 @@ type Invite struct {
 
 // CreateChannel also issues a single-use invite for the owner (supervisor).
 func (s *Store) CreateChannel(name, owner string, ttl, inviteTTL time.Duration) (Channel, Invite, error) {
-	if err := ValidName("canal", name); err != nil {
+	if err := ValidName("channel", name); err != nil {
 		return Channel{}, Invite{}, err
 	}
-	if err := ValidName("dono", owner); err != nil {
+	if err := ValidName("owner", owner); err != nil {
 		return Channel{}, Invite{}, err
 	}
 	if ttl < 0 || inviteTTL < 0 || ttl > MaxChannelTTL || inviteTTL > MaxChannelTTL {
-		return Channel{}, Invite{}, fmt.Errorf("ttl precisa estar entre 0 e %s", MaxChannelTTL)
+		return Channel{}, Invite{}, fmt.Errorf("ttl must be between 0 and %s", MaxChannelTTL)
 	}
 	now := s.nowNS()
 	ch := Channel{Name: name, Owner: owner, CreatedAt: fromNS(now)}
@@ -243,7 +243,7 @@ func (s *Store) CreateChannel(name, owner string, ttl, inviteTTL time.Duration) 
 			return err
 		}
 		if n > 0 {
-			return fmt.Errorf("canal %q já existe", name)
+			return fmt.Errorf("channel %q already exists", name)
 		}
 		if _, err := tx.Exec(`INSERT INTO channels(name, owner, created_at, expires_at) VALUES (?, ?, ?, ?)`,
 			name, owner, now, exp); err != nil {
@@ -264,12 +264,12 @@ func (s *Store) CreateInvite(channel string, role Role, name string, ttl time.Du
 		return Invite{}, err
 	}
 	if name != "" {
-		if err := ValidName("nome de agente", name); err != nil {
+		if err := ValidName("agent name", name); err != nil {
 			return Invite{}, err
 		}
 	}
 	if ttl < 0 {
-		return Invite{}, errors.New("ttl não pode ser negativo")
+		return Invite{}, errors.New("ttl cannot be negative")
 	}
 	now := s.nowNS()
 	var inv Invite
@@ -311,7 +311,7 @@ type queryRower interface {
 // Caps the channel ttl to avoid expires_at overflow.
 const MaxChannelTTL = 10 * 365 * 24 * time.Hour
 
-var ErrChannelExpired = errors.New("canal expirou")
+var ErrChannelExpired = errors.New("channel expired")
 
 func activeChannel(q queryRower, name string, now int64) (Channel, error) {
 	var ch Channel
@@ -320,7 +320,7 @@ func activeChannel(q queryRower, name string, now int64) (Channel, error) {
 	err := q.QueryRow(`SELECT name, owner, created_at, expires_at FROM channels WHERE name = ?`, name).
 		Scan(&ch.Name, &ch.Owner, &created, &exp)
 	if errors.Is(err, sql.ErrNoRows) {
-		return Channel{}, fmt.Errorf("canal %q não existe", name)
+		return Channel{}, fmt.Errorf("channel %q does not exist", name)
 	}
 	if err != nil {
 		return Channel{}, err
@@ -346,7 +346,7 @@ func (s *Store) ActiveChannel(name string) (Channel, error) {
 // (CLI), like create/invite.
 func (s *Store) ExtendChannel(name string, ttl time.Duration) (Channel, error) {
 	if ttl < 0 || ttl > MaxChannelTTL {
-		return Channel{}, fmt.Errorf("ttl precisa estar entre 0 e %s", MaxChannelTTL)
+		return Channel{}, fmt.Errorf("ttl must be between 0 and %s", MaxChannelTTL)
 	}
 	var ch Channel
 	err := s.tx(func(tx *sql.Tx) error {
@@ -362,7 +362,7 @@ func (s *Store) ExtendChannel(name string, ttl time.Duration) (Channel, error) {
 		if n, err := r.RowsAffected(); err != nil {
 			return err
 		} else if n == 0 {
-			return fmt.Errorf("canal %q não existe", name)
+			return fmt.Errorf("channel %q does not exist", name)
 		}
 		ch, err = activeChannel(tx, name, now)
 		return err
@@ -489,7 +489,7 @@ func consumeInvite(tx *sql.Tx, channel, code, name string, wantRole Role, now in
 		return "", false, err
 	}
 	if n > 0 && !bound.Valid {
-		return "", false, fmt.Errorf("agente %q já está no canal %q", name, channel)
+		return "", false, fmt.Errorf("agent %q is already in channel %q", name, channel)
 	}
 	if _, err := tx.Exec(`UPDATE invites SET used_at = ?, used_by = ? WHERE code_hash = ?`, now, name, hash); err != nil {
 		return "", false, err
@@ -509,7 +509,7 @@ func checkNameFree(tx *sql.Tx, channel, name string, now int64) error {
 		return err
 	}
 	if n > 0 {
-		return fmt.Errorf("nome %q reservado neste canal", name)
+		return fmt.Errorf("name %q is reserved in this channel", name)
 	}
 	return nil
 }
@@ -620,10 +620,10 @@ func validateSend(m Member, in *SendInput) (validSend, error) {
 		return v, err
 	}
 	if in.Type == TypeTaskResult {
-		return v, errors.New("task.result só é publicado por complete (dono do claim)")
+		return v, errors.New("task.result is only published by complete (claim owner)")
 	}
 	if in.Type == TypeTaskAssign && m.Role != RoleRouter && m.Role != RoleSupervisor {
-		return v, fmt.Errorf("task.assign exige papel router ou supervisor (papel atual: %s)", m.Role)
+		return v, fmt.Errorf("task.assign requires role router or supervisor (current role: %s)", m.Role)
 	}
 	var err error
 	if v.kind, v.target, err = ParseTarget(in.To); err != nil {
@@ -637,7 +637,7 @@ func validateSend(m Member, in *SendInput) (validSend, error) {
 	if in.TTL != "" {
 		v.ttl, err = time.ParseDuration(in.TTL)
 		if err != nil || v.ttl <= 0 {
-			return v, fmt.Errorf("ttl inválido %q (ex.: 30m)", in.TTL)
+			return v, fmt.Errorf("invalid ttl %q (e.g. 30m)", in.TTL)
 		}
 	}
 	v.payload, err = sanitizePayload(in.Payload)
@@ -665,7 +665,7 @@ func requireAgent(tx *sql.Tx, channel, name string) error {
 		return err
 	}
 	if n == 0 {
-		return fmt.Errorf("agente %q não está no canal %q", name, channel)
+		return fmt.Errorf("agent %q is not in channel %q", name, channel)
 	}
 	return nil
 }
@@ -728,16 +728,16 @@ func sanitizePayload(raw json.RawMessage) ([]byte, error) {
 		return []byte("{}"), nil
 	}
 	if len(raw) > MaxPayloadBytes {
-		return nil, fmt.Errorf("payload excede %d bytes: envie referências (path, SHA, ticket), não conteúdo", MaxPayloadBytes)
+		return nil, fmt.Errorf("payload exceeds %d bytes: send references (path, SHA, ticket), not content", MaxPayloadBytes)
 	}
 	var obj map[string]any
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	dec.UseNumber() // keeps large integers (IDs, PR numbers) exact
 	if err := dec.Decode(&obj); err != nil {
-		return nil, fmt.Errorf("payload precisa ser um objeto JSON: %w", err)
+		return nil, fmt.Errorf("payload must be a JSON object: %w", err)
 	}
 	if dec.More() {
-		return nil, errors.New("payload precisa ser um único objeto JSON")
+		return nil, errors.New("payload must be a single JSON object")
 	}
 	if obj == nil {
 		obj = map[string]any{}
@@ -747,7 +747,7 @@ func sanitizePayload(raw json.RawMessage) ([]byte, error) {
 		return nil, err
 	}
 	if len(out) > MaxPayloadBytes {
-		return nil, fmt.Errorf("payload excede %d bytes: envie referências (path, SHA, ticket), não conteúdo", MaxPayloadBytes)
+		return nil, fmt.Errorf("payload exceeds %d bytes: send references (path, SHA, ticket), not content", MaxPayloadBytes)
 	}
 	return out, nil
 }
@@ -788,7 +788,7 @@ func (s *Store) Recv(ctx context.Context, m Member, opt RecvOptions) ([]Message,
 		opt.Wait = MaxWait
 	}
 	if opt.Since < 0 {
-		return nil, errors.New("since não pode ser negativo")
+		return nil, errors.New("since cannot be negative")
 	}
 	deadline := time.Now().Add(opt.Wait)
 	for {
@@ -883,7 +883,7 @@ const selectClaim = `SELECT channel, thread, owner, claimed_at, completed_at, re
 // ClaimThread: single owner; repeating one's own claim is idempotent.
 func (s *Store) ClaimThread(m Member, thread string) (Claim, error) {
 	if thread == "" {
-		return Claim{}, errors.New("thread é obrigatória")
+		return Claim{}, errors.New("thread is required")
 	}
 	if err := validRef("thread", thread); err != nil {
 		return Claim{}, err
@@ -906,9 +906,9 @@ func (s *Store) ClaimThread(m Member, thread string) (Claim, error) {
 		case err != nil:
 			return err
 		case cur.CompletedAt != nil:
-			return fmt.Errorf("thread %q já foi concluída por %s", thread, cur.Owner)
+			return fmt.Errorf("thread %q already completed by %s", thread, cur.Owner)
 		case cur.Owner != m.ID():
-			return fmt.Errorf("thread %q já reivindicada por %s", thread, cur.Owner)
+			return fmt.Errorf("thread %q already claimed by %s", thread, cur.Owner)
 		default:
 			c = cur
 			return nil
@@ -925,7 +925,7 @@ type CompleteResult struct {
 // Complete also publishes task.result to topic:board.
 func (s *Store) Complete(m Member, thread string, result json.RawMessage) (CompleteResult, error) {
 	if thread == "" {
-		return CompleteResult{}, errors.New("thread é obrigatória")
+		return CompleteResult{}, errors.New("thread is required")
 	}
 	payload, err := sanitizePayload(result)
 	if err != nil {
@@ -939,16 +939,16 @@ func (s *Store) Complete(m Member, thread string, result json.RawMessage) (Compl
 		}
 		cur, err := scanClaim(tx.QueryRow(selectClaim, m.Channel, thread))
 		if errors.Is(err, sql.ErrNoRows) {
-			return fmt.Errorf("thread %q não foi reivindicada (use claim antes)", thread)
+			return fmt.Errorf("thread %q was not claimed (use claim first)", thread)
 		}
 		if err != nil {
 			return err
 		}
 		if cur.Owner != m.ID() {
-			return fmt.Errorf("só o dono (%s) conclui a thread %q", cur.Owner, thread)
+			return fmt.Errorf("only the owner (%s) can complete thread %q", cur.Owner, thread)
 		}
 		if cur.CompletedAt != nil {
-			return fmt.Errorf("thread %q já foi concluída", thread)
+			return fmt.Errorf("thread %q already completed", thread)
 		}
 		msg, err := insertMessage(tx, m.Channel, m.ID(), "topic:board", thread, TypeTaskResult, "",
 			"", "", 0, payload, now)

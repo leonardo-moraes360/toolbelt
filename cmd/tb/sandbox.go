@@ -15,12 +15,12 @@ import (
 
 var sandboxCmd = &cobra.Command{
 	Use:   "sandbox",
-	Short: "Execução com isolamento Landlock (Linux)",
+	Short: "Execution with Landlock isolation (Linux)",
 }
 
 var sandboxRunCmd = &cobra.Command{
 	Use:   "run <command> [args...]",
-	Short: "Executa processo no sandbox",
+	Short: "Runs a process in the sandbox",
 	Args:  cobra.MinimumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		workdir, _ := cmd.Flags().GetString("workdir")
@@ -55,7 +55,7 @@ var sandboxRunCmd = &cobra.Command{
 
 var sandboxCheckCmd = &cobra.Command{
 	Use:   "check",
-	Short: "Verifica suporte a Landlock",
+	Short: "Checks Landlock support",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		info := map[string]any{"os": runtime.GOOS, "arch": runtime.GOARCH}
 		if runtime.GOOS == "linux" {
@@ -76,16 +76,16 @@ var sandboxCheckCmd = &cobra.Command{
 			fmt.Printf("ABI: %v\n", ver)
 		}
 		if errMsg, ok := info["error"]; ok {
-			fmt.Printf("Erro: %v\n", errMsg)
+			fmt.Printf("Error: %v\n", errMsg)
 		}
 		return nil
 	},
 }
 
 func init() {
-	sandboxRunCmd.Flags().String("workdir", "", "diretório de trabalho")
+	sandboxRunCmd.Flags().String("workdir", "", "working directory")
 	sandboxRunCmd.Flags().String("timeout", "30s", "timeout")
-	sandboxRunCmd.Flags().Bool("allow-unsandboxed", false, "opt-in explícito para executar sem isolamento Landlock")
+	sandboxRunCmd.Flags().Bool("allow-unsandboxed", false, "explicit opt-in to run without Landlock isolation")
 	sandboxCmd.AddCommand(sandboxRunCmd)
 	sandboxCmd.AddCommand(sandboxCheckCmd)
 }

@@ -51,12 +51,12 @@ We chose **Cobra** as the CLI framework.
 ```go
 var benchCmd = &cobra.Command{
     Use:   "bench",
-    Short: "Harness de benchmark para agentes",
+    Short: "Benchmark harness for agents",
     RunE:  runBenchmark,
 }
 
-benchCmd.Flags().StringP("agent", "a", "", "comando do agente")
-benchCmd.Flags().Bool("fake", false, "usa agente fake")
+benchCmd.Flags().StringP("agent", "a", "", "agent command")
+benchCmd.Flags().Bool("fake", false, "use the fake agent")
 ```
 
 ## References

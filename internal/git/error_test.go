@@ -18,10 +18,10 @@ func TestWrapIncludesStderrMissingRefAndFetchHint(t *testing.T) {
 	if !strings.Contains(msg, "unknown revision") {
 		t.Fatalf("deve incluir stderr do git:\n%s", msg)
 	}
-	if !strings.Contains(msg, "ref ausente: origin/missing-branch") {
+	if !strings.Contains(msg, "ref missing: origin/missing-branch") {
 		t.Fatalf("deve citar a ref ausente:\n%s", msg)
 	}
-	if !strings.Contains(msg, "dica: git fetch origin origin/missing-branch") {
+	if !strings.Contains(msg, "hint: git fetch origin origin/missing-branch") {
 		t.Fatalf("deve sugerir fetch:\n%s", msg)
 	}
 	if strings.Contains(msg, "Usage:") {
@@ -43,7 +43,7 @@ func TestWrapRangeDiffStripsUsage(t *testing.T) {
 	if !strings.Contains(msg, "need two commit ranges") {
 		t.Fatalf("deve manter mensagem clara:\n%s", msg)
 	}
-	if !strings.Contains(msg, "base..approved parece vazio") {
+	if !strings.Contains(msg, "base..approved looks empty") {
 		t.Fatalf("deve explicar intervalo vazio:\n%s", msg)
 	}
 }
@@ -58,10 +58,10 @@ func TestOutputMissingRef(t *testing.T) {
 		t.Fatal("expected error")
 	}
 	msg := err.Error()
-	if !strings.Contains(msg, "ref ausente: no-such-ref-xyz") {
+	if !strings.Contains(msg, "ref missing: no-such-ref-xyz") {
 		t.Fatalf("deve citar ref:\n%s", msg)
 	}
-	if !strings.Contains(msg, "dica: git fetch origin no-such-ref-xyz") {
+	if !strings.Contains(msg, "hint: git fetch origin no-such-ref-xyz") {
 		t.Fatalf("deve sugerir fetch:\n%s", msg)
 	}
 	if !strings.Contains(msg, "stderr:") {

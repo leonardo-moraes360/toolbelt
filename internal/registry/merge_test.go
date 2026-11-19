@@ -69,7 +69,7 @@ func TestTbMergeDryRunUnlessApply(t *testing.T) {
 		t.Fatal("apply não avançou main")
 	}
 	res, text = callTool(t, "tb_merge", map[string]any{"cwd": dir, "ids": []any{"TKT-001"}, "strategy": "prompt"})
-	if !res.IsError || !strings.Contains(text, "não implementado") {
+	if !res.IsError || !strings.Contains(text, "not implemented") {
 		t.Fatalf("prompt: %v %s", res.IsError, text)
 	}
 }
@@ -120,7 +120,7 @@ func TestTbMergeConflictReturnsReport(t *testing.T) {
 	if res.IsError && len(payload.Conflicts) == 0 {
 		t.Fatalf("relatório descartado: %s", text)
 	}
-	if payload.OK || !strings.Contains(payload.Error, "conflito") || len(payload.Conflicts) != 1 || payload.Conflicts[0].File != "a.txt" {
+	if payload.OK || !strings.Contains(payload.Error, "conflict") || len(payload.Conflicts) != 1 || payload.Conflicts[0].File != "a.txt" {
 		t.Fatalf("payload: %s", text)
 	}
 	if mergeToolGit(t, dir, "rev-parse", "main") != base {

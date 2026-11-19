@@ -78,10 +78,10 @@ func ParseCommand(s string) ([]string, error) {
 		l.step(r)
 	}
 	if l.quote != 0 {
-		return nil, fmt.Errorf("aspas não fechadas em %q", s)
+		return nil, fmt.Errorf("unclosed quote in %q", s)
 	}
 	if l.escaped {
-		return nil, fmt.Errorf("barra invertida no fim de %q", s)
+		return nil, fmt.Errorf("trailing backslash in %q", s)
 	}
 	l.flush()
 	return l.args, nil

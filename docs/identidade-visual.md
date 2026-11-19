@@ -234,10 +234,10 @@ For terminals with TrueColor support:
 
 ```bash
 # Example: purple text
-printf '\033[38;2;152;43;212mTexto Roxo\033[0m\n'
+printf '\033[38;2;152;43;212mPurple text\033[0m\n'
 
 # Example: cyan text
-printf '\033[38;2;12;215;255mTexto Ciano\033[0m\n'
+printf '\033[38;2;12;215;255mCyan text\033[0m\n'
 ```
 
 ### CLI Output Example
@@ -251,12 +251,12 @@ tb run --timeout 30s "go test ./..."
 │  TOOLBELT v0.1.0                    │  ← Primary (#982BD4)
 └─────────────────────────────────────┘
 
-→ Executando: go test ./...            ← Muted (#A099B0)
-  Sandbox: ativo                       ← Accent (#0CD7FF)
+→ Running: go test ./...               ← Muted (#A099B0)
+  Sandbox: active                      ← Accent (#0CD7FF)
   Timeout: 30s
 
-✓ Testes passaram (12/12)              ← Success (#2DD4A7)
-  Tempo: 2.34s
+✓ Tests passed (12/12)                 ← Success (#2DD4A7)
+  Time: 2.34s
 ```
 
 ---

@@ -15,33 +15,33 @@ import (
 
 var verifyCmd = &cobra.Command{
 	Use:   "verify",
-	Short: "Verificação adversarial com rulers plugáveis",
+	Short: "Adversarial verification with pluggable rulers",
 }
 
 var verifyRunCmd = &cobra.Command{
 	Use:   "run",
-	Short: "Executa loop de verificação",
+	Short: "Runs the verification loop",
 	RunE:  runVerify,
 }
 
 func init() {
-	verifyRunCmd.Flags().String("base", "", "ref base")
-	verifyRunCmd.Flags().String("head", "", "ref head")
-	verifyRunCmd.Flags().String("ticket", "", "ticket com Scope (exceção de protected_paths custom do guard.yaml)")
-	verifyRunCmd.Flags().String("test-cmd", "", "linha de testes visíveis")
-	verifyRunCmd.Flags().String("hidden-test-cmd", "", "linha de testes ocultos (roda mesmo sem tests/hidden/; se o dir existir e o cmd estiver vazio: detecta toolchain ou marca N/A)")
-	verifyRunCmd.Flags().String("build-cmd", "", "comando de build (vazio + flag explícita ou --no-build para pular)")
-	verifyRunCmd.Flags().String("lint-cmd", "", "comando de lint (vazio + flag explícita ou --no-lint para pular)")
-	verifyRunCmd.Flags().Bool("no-build", false, "pula build_cmd (config e default)")
-	verifyRunCmd.Flags().Bool("no-lint", false, "pula lint_cmd (config e default)")
-	verifyRunCmd.Flags().Bool("dry-run", false, "mostra o plano (cmds e diretório) sem executar")
-	verifyRunCmd.Flags().Int("max-iter", 0, "máximo de iterações")
+	verifyRunCmd.Flags().String("base", "", "base ref")
+	verifyRunCmd.Flags().String("head", "", "head ref")
+	verifyRunCmd.Flags().String("ticket", "", "ticket with Scope (exception to custom protected_paths in guard.yaml)")
+	verifyRunCmd.Flags().String("test-cmd", "", "visible tests command line")
+	verifyRunCmd.Flags().String("hidden-test-cmd", "", "hidden tests command line (runs even without tests/hidden/; if the dir exists and the cmd is empty: detects the toolchain or marks N/A)")
+	verifyRunCmd.Flags().String("build-cmd", "", "build command (empty + explicit flag or --no-build to skip)")
+	verifyRunCmd.Flags().String("lint-cmd", "", "lint command (empty + explicit flag or --no-lint to skip)")
+	verifyRunCmd.Flags().Bool("no-build", false, "skips build_cmd (config and default)")
+	verifyRunCmd.Flags().Bool("no-lint", false, "skips lint_cmd (config and default)")
+	verifyRunCmd.Flags().Bool("dry-run", false, "shows the plan (cmds and directory) without executing")
+	verifyRunCmd.Flags().Int("max-iter", 0, "maximum iterations")
 	verifyRunCmd.Flags().String("timeout", "10m", "timeout")
-	verifyRunCmd.Flags().StringP("output", "o", "", "arquivo JSON")
+	verifyRunCmd.Flags().StringP("output", "o", "", "JSON file")
 	verifyRunCmd.Flags().String("ruler", "tests", "ruler: tests|visual")
-	verifyRunCmd.Flags().String("manifest", "", "manifesto de telas (.toolbelt/screens.yaml)")
-	verifyRunCmd.Flags().Float64("threshold", 0.95, "threshold de similaridade visual")
-	verifyRunCmd.Flags().Bool("skip-unavailable", true, "skip gracioso (veredicto SKIPPED) se browser/refs/telas indisponíveis")
+	verifyRunCmd.Flags().String("manifest", "", "screens manifest (.toolbelt/screens.yaml)")
+	verifyRunCmd.Flags().Float64("threshold", 0.95, "visual similarity threshold")
+	verifyRunCmd.Flags().Bool("skip-unavailable", true, "graceful skip (SKIPPED verdict) if browser/refs/screens are unavailable")
 	verifyCmd.AddCommand(verifyRunCmd)
 }
 
@@ -203,7 +203,7 @@ func printTestsSummary(payload any) {
 		}
 		return
 	}
-	fmt.Printf("Veredicto: %s (iterações: %d)\n", res.Verdict, res.Iterations)
+	fmt.Printf("Verdict: %s (iterations: %d)\n", res.Verdict, res.Iterations)
 	if res.HeadSHA != "" {
 		fmt.Printf("Head: %s\n", res.HeadSHA)
 	}
@@ -220,20 +220,20 @@ func printTestsSummary(payload any) {
 	if res.HiddenPassed != nil {
 		hidden = fmt.Sprintf("%v", *res.HiddenPassed)
 	}
-	fmt.Printf("Visível: %v  Oculto: %s (disponível: %v)\n", res.VisiblePassed, hidden, res.HiddenAvailable)
+	fmt.Printf("Visible: %v  Hidden: %s (available: %v)\n", res.VisiblePassed, hidden, res.HiddenAvailable)
 	if res.Reason != "" && res.Verdict != verify.VerdictPass {
-		fmt.Printf("Motivo: %s\n", res.Reason)
+		fmt.Printf("Reason: %s\n", res.Reason)
 	}
 }
 
 func printVisualReport(rep *verify.VisualReport) {
 	fmt.Println("═══════════════════════════════════════════════════════════")
-	fmt.Println(" VERIFICAÇÃO VISUAL")
+	fmt.Println(" VISUAL VERIFICATION")
 	fmt.Println("═══════════════════════════════════════════════════════════")
 	if rep.Skipped {
-		fmt.Printf("Skip gracioso: %s\n", rep.SkipReason)
+		fmt.Printf("Graceful skip: %s\n", rep.SkipReason)
 		if len(rep.Screens) == 0 {
-			fmt.Printf("Veredicto: %s\n", rep.Verdict)
+			fmt.Printf("Verdict: %s\n", rep.Verdict)
 			return
 		}
 	}
@@ -255,5 +255,5 @@ func printVisualReport(rep *verify.VisualReport) {
 		}
 		fmt.Println()
 	}
-	fmt.Printf("Veredicto: %s\n", rep.Verdict)
+	fmt.Printf("Verdict: %s\n", rep.Verdict)
 }

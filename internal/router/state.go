@@ -17,7 +17,7 @@ const (
 )
 
 // ErrNoState means no router has ever run in this repository.
-var ErrNoState = errors.New("nenhum estado do router encontrado (rode tb router run)")
+var ErrNoState = errors.New("no router state found (run tb router run)")
 
 func Dir(root string) string { return filepath.Join(root, ".toolbelt", "router") }
 
@@ -73,7 +73,7 @@ func ReadState(root string) (*State, error) {
 	}
 	var st State
 	if err := json.Unmarshal(data, &st); err != nil {
-		return nil, fmt.Errorf("state.json ilegível: %w", err)
+		return nil, fmt.Errorf("state.json unreadable: %w", err)
 	}
 	return &st, nil
 }

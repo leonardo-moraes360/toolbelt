@@ -45,7 +45,7 @@ func loadState(path string) (State, error) {
 		return st, err
 	}
 	if err := json.Unmarshal(b, &st); err != nil {
-		return st, fmt.Errorf("estado do harness %s: %w", path, err)
+		return st, fmt.Errorf("harness state %s: %w", path, err)
 	}
 	return st, nil
 }

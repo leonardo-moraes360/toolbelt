@@ -43,14 +43,14 @@ var knownOps = map[string]Op{
 func ParseOp(name string) (Op, error) {
 	op, ok := knownOps[strings.ToLower(strings.TrimSpace(name))]
 	if !ok {
-		return "", fmt.Errorf("operação desconhecida: %q (use verify, review, drift ou guard)", name)
+		return "", fmt.Errorf("unknown operation: %q (use verify, review, drift or guard)", name)
 	}
 	return op, nil
 }
 
 func ParseOps(names []string) ([]Op, error) {
 	if len(names) == 0 {
-		return nil, fmt.Errorf("informe ao menos uma operação (verify, review, drift, guard)")
+		return nil, fmt.Errorf("provide at least one operation (verify, review, drift, guard)")
 	}
 	ops := make([]Op, 0, len(names))
 	for _, name := range names {
@@ -142,7 +142,7 @@ func durationMillis(d time.Duration) float64 {
 }
 
 func failedStep(op Op, err error) StepResult {
-	msg := "erro desconhecido"
+	msg := "unknown error"
 	if err != nil {
 		msg = err.Error()
 	}
@@ -174,10 +174,10 @@ func isParallelOp(op Op) bool {
 
 func validateOptions(opts *Options) error {
 	if opts == nil {
-		return fmt.Errorf("options ausentes")
+		return fmt.Errorf("options missing")
 	}
 	if len(opts.Ops) == 0 {
-		return fmt.Errorf("informe ao menos uma operação")
+		return fmt.Errorf("provide at least one operation")
 	}
 	for _, op := range opts.Ops {
 		if _, err := ParseOp(string(op)); err != nil {
@@ -521,7 +521,7 @@ func runOp(ctx context.Context, op Op, opts *Options, shared *Shared) (StepResul
 	case OpGuard:
 		return runGuard(ctx, opts, shared)
 	default:
-		return StepResult{}, fmt.Errorf("operação desconhecida: %q", op)
+		return StepResult{}, fmt.Errorf("unknown operation: %q", op)
 	}
 }
 

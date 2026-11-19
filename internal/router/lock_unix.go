@@ -9,7 +9,7 @@ import (
 	"syscall"
 )
 
-var errRouterBusy = errors.New("outro tb router run ativo neste repositório")
+var errRouterBusy = errors.New("another tb router run is active in this repository")
 
 // acquireLock takes an exclusive, non-blocking flock on path. The lock lives as
 // long as the descriptor is open and the kernel releases it if the process dies,
@@ -24,7 +24,7 @@ func acquireLock(path string) (release func(), err error) {
 		if errors.Is(err, syscall.EWOULDBLOCK) {
 			return nil, errRouterBusy
 		}
-		return nil, fmt.Errorf("lock do router: %w", err)
+		return nil, fmt.Errorf("router lock: %w", err)
 	}
 	_ = f.Truncate(0)
 	_, _ = fmt.Fprintf(f, "%d\n", os.Getpid()) // informational only

@@ -11,19 +11,19 @@ import (
 
 var rootCmd = &cobra.Command{
 	Use:   "fake-agent",
-	Short: "Agente fake deterministico para testes de benchmark",
-	Long: `Agente fake que simula um agente de código para testes.
+	Short: "Deterministic fake agent for benchmark tests",
+	Long: `Fake agent that simulates a coding agent for tests.
 
-Usado pelo harness de benchmark para validar o sistema sem
-necessidade de um LLM real. Comportamento configurável via
-arquivo JSON.`,
+Used by the benchmark harness to validate the system without
+needing a real LLM. Behavior is configurable via a JSON
+file.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		workDir, _ := cmd.Flags().GetString("workdir")
 		prompt, _ := cmd.Flags().GetString("prompt")
 		configPath, _ := cmd.Flags().GetString("config")
 
 		if workDir == "" {
-			return fmt.Errorf("--workdir é obrigatório")
+			return fmt.Errorf("--workdir is required")
 		}
 
 		return bench.RunFakeAgent(workDir, prompt, configPath)
@@ -31,9 +31,9 @@ arquivo JSON.`,
 }
 
 func init() {
-	rootCmd.Flags().String("workdir", "", "diretório de trabalho")
-	rootCmd.Flags().String("prompt", "", "prompt da tarefa")
-	rootCmd.Flags().String("config", "", "arquivo de configuração JSON")
+	rootCmd.Flags().String("workdir", "", "working directory")
+	rootCmd.Flags().String("prompt", "", "task prompt")
+	rootCmd.Flags().String("config", "", "JSON configuration file")
 }
 
 func main() {

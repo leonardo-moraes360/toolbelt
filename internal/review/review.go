@@ -161,7 +161,7 @@ func applyTicketBaseRef(cfg *Config, ticket *TicketScope) {
 
 func attachPinnedApproval(cfg *Config, report *Report, drift *DriftReport) error {
 	if cfg.RequireApprovedSHA && strings.TrimSpace(cfg.ApprovedSHA) == "" {
-		return fmt.Errorf("approved-sha obrigatório (require_approved_sha)")
+		return fmt.Errorf("approved-sha required (require_approved_sha)")
 	}
 	pinned, err := CheckPinnedApproval(cfg.RepoDir, cfg.BaseRef, cfg.ApprovedBase, cfg.ApprovedSHA, cfg.HeadRef)
 	if err != nil {
@@ -285,7 +285,7 @@ func reviewScope(ctx *FreshContext) []Finding {
 	if ctx.Ticket == nil || len(ctx.Ticket.Scope) == 0 {
 		return []Finding{{
 			ID: "scope-missing", Severity: SeverityWarning, Category: "scope", Role: "scope",
-			Message: "ticket/rd.md sem scope declarado", Reviewer: ctx.Reviewer, Agreement: 1,
+			Message: "ticket/rd.md has no declared scope", Reviewer: ctx.Reviewer, Agreement: 1,
 		}}
 	}
 	var out []Finding
@@ -293,14 +293,14 @@ func reviewScope(ctx *FreshContext) []Finding {
 		if !inScope(f, ctx.Ticket.Scope) {
 			out = append(out, Finding{
 				ID: "drift-" + f, Severity: SeverityError, Category: "scope", Role: "scope",
-				Message: "mudança fora do scope declarado", File: f,
+				Message: "change outside the declared scope", File: f,
 				Reviewer: ctx.Reviewer, Agreement: 1,
 			})
 		}
 		if hitForbidden(f, ctx.Ticket.Forbidden) {
 			out = append(out, Finding{
 				ID: "forbidden-" + f, Severity: SeverityCritical, Category: "scope", Role: "scope",
-				Message: "arquivo proibido pelo mandate foi alterado", File: f,
+				Message: "file forbidden by the mandate was changed", File: f,
 				Reviewer: ctx.Reviewer, Agreement: 1,
 			})
 		}
@@ -319,7 +319,7 @@ func reviewInvariants(ctx *FreshContext) []Finding {
 		}
 		evidence := ""
 		if suggestsViolation(rule, lowerDiff, ctx.Changed) {
-			evidence = "path alterado casa com a invariante"
+			evidence = "changed path matches the invariant"
 		}
 		if hit, ev := suggestsAddedLineViolation(inv.Rule, added); hit {
 			evidence = ev
@@ -329,7 +329,7 @@ func reviewInvariants(ctx *FreshContext) []Finding {
 		}
 		out = append(out, Finding{
 			ID: "inv-" + inv.ID, Severity: SeverityCritical, Category: "invariants", Role: "invariants",
-			Message:  "possível violação de invariante: " + inv.Rule,
+			Message:  "possible invariant violation: " + inv.Rule,
 			Evidence: evidence,
 			Reviewer: ctx.Reviewer, Agreement: 1,
 		})
@@ -360,7 +360,7 @@ func reviewAcceptance(ctx *FreshContext) []Finding {
 		}
 		out = append(out, Finding{
 			ID: fmt.Sprintf("accept-%d", i), Severity: SeverityWarning, Category: "acceptance", Role: "acceptance",
-			Message:   "critério de aceite sem evidência em testes/arquivos alterados: " + crit,
+			Message:   "acceptance criterion without evidence in changed tests/files: " + crit,
 			Criterion: crit,
 			Evidence:  summary,
 			Reviewer:  ctx.Reviewer, Agreement: 1,
@@ -399,7 +399,7 @@ func acceptanceEvidence(ctx *FreshContext, tests []string) string {
 func summarizeAcceptanceEvidence(ctx *FreshContext, tests []string) string {
 	var parts []string
 	if len(tests) > 0 {
-		parts = append(parts, "testes="+strings.Join(tests, ","))
+		parts = append(parts, "tests="+strings.Join(tests, ","))
 	}
 	var files []string
 	for _, f := range ctx.Changed {
@@ -408,10 +408,10 @@ func summarizeAcceptanceEvidence(ctx *FreshContext, tests []string) string {
 		}
 	}
 	if len(files) > 0 {
-		parts = append(parts, "arquivos="+strings.Join(files, ","))
+		parts = append(parts, "files="+strings.Join(files, ","))
 	}
 	if len(parts) == 0 {
-		return "nenhum teste ou arquivo de código no diff"
+		return "no test or code file in the diff"
 	}
 	return strings.Join(parts, "; ")
 }
@@ -617,7 +617,7 @@ func reviewQualityTODO(ctx *FreshContext) []Finding {
 		seen[id] = true
 		out = append(out, Finding{
 			ID: id, Severity: SeverityWarning, Category: "quality", Role: "quality",
-			Message:  "TODO/FIXME/XXX/HACK adicionado em comentário no diff",
+			Message:  "TODO/FIXME/XXX/HACK added in a comment in the diff",
 			File:     file,
 			Reviewer: ctx.Reviewer, Agreement: 1,
 		})
@@ -673,7 +673,7 @@ func reviewQualityLargeFuncs(ctx *FreshContext) []Finding {
 			emitted[id] = true
 			out = append(out, Finding{
 				ID: "quality-large-func", Severity: SeverityWarning, Category: "quality", Role: "quality",
-				Message:  fmt.Sprintf("função adicionada muito grande (%d linhas +)", added),
+				Message:  fmt.Sprintf("added function is too large (%d lines +)", added),
 				File:     file,
 				Reviewer: ctx.Reviewer, Agreement: 1,
 			})
@@ -724,7 +724,7 @@ func reviewQualityMissingTests(ctx *FreshContext) []Finding {
 	}
 	return []Finding{{
 		ID: "quality-no-tests", Severity: SeverityWarning, Category: "quality", Role: "quality",
-		Message:  "código fonte alterado sem mudança em testes",
+		Message:  "source code changed without test changes",
 		Reviewer: ctx.Reviewer, Agreement: 1,
 	}}
 }
@@ -756,12 +756,12 @@ func suggestsAddedLineViolation(rule string, added []string) (hit bool, evidence
 	joinedLower := strings.ToLower(strings.Join(added, "\n"))
 
 	if strings.Contains(ruleLower, "console.log") && strings.Contains(joinedLower, "console.log") {
-		return true, "linha adicionada contém console.log"
+		return true, "added line contains console.log"
 	}
 	if forbidsComments(ruleLower) {
 		for _, line := range added {
 			if looksLikeCodeComment(line) {
-				return true, "linha adicionada parece comentário: " + strings.TrimSpace(line)
+				return true, "added line looks like a comment: " + strings.TrimSpace(line)
 			}
 		}
 	}
@@ -770,7 +770,7 @@ func suggestsAddedLineViolation(rule string, added []string) (hit bool, evidence
 			continue
 		}
 		if strings.Contains(joinedLower, strings.ToLower(tok)) {
-			return true, "linha adicionada contém " + tok
+			return true, "added line contains " + tok
 		}
 	}
 	return false, ""
@@ -937,14 +937,14 @@ func LoadTicket(path string) (*TicketScope, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, fmt.Errorf("ticket não encontrado: %s", path)
+			return nil, fmt.Errorf("ticket not found: %s", path)
 		}
-		return nil, fmt.Errorf("ticket ilegível (%s): %w", path, err)
+		return nil, fmt.Errorf("ticket unreadable (%s): %w", path, err)
 	}
 	text := string(data)
 	ticket, ok, err := parseTicketFrontmatter(text)
 	if err != nil {
-		return nil, fmt.Errorf("ticket inválido (%s): %w", path, err)
+		return nil, fmt.Errorf("ticket invalid (%s): %w", path, err)
 	}
 	if ok {
 		return ticket, nil

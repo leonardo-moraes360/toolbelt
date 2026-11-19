@@ -32,7 +32,7 @@ func TestPrintReviewReportUsesPapelNotAcordo(t *testing.T) {
 	if strings.Contains(out, "acordo=") {
 		t.Fatalf("não deve imprimir acordo=N/M; got:\n%s", out)
 	}
-	if !strings.Contains(out, "papel=quality") {
+	if !strings.Contains(out, "role=quality") {
 		t.Fatalf("esperado papel=quality; got:\n%s", out)
 	}
 }
@@ -55,7 +55,7 @@ func TestPrintReviewReportPapéisAcordoWhenMultiple(t *testing.T) {
 		}},
 	}
 	out := captureStdout(t, func() { printReviewReport(rep) })
-	if !strings.Contains(out, "papel=quality") || !strings.Contains(out, "papéis_acordo=2") {
+	if !strings.Contains(out, "role=quality") || !strings.Contains(out, "agreeing_roles=2") {
 		t.Fatalf("esperado papel + papéis_acordo; got:\n%s", out)
 	}
 }

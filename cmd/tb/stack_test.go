@@ -18,7 +18,7 @@ func TestStackUnknownOpNoUsage(t *testing.T) {
 	if code == 0 {
 		t.Fatalf("op desconhecida deveria sair ≠ 0\n%s", out)
 	}
-	if !strings.Contains(out, "operação desconhecida") {
+	if !strings.Contains(out, "unknown operation") {
 		t.Fatalf("output: %s", out)
 	}
 	if strings.Contains(out, "Usage:") {

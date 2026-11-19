@@ -181,13 +181,13 @@ Inspired by Obsidian, memory is a vault of Markdown files:
 │       │   └── auth-module.md
 │       └── functions/
 │           └── parse-config.md
-├── index.db          # SQLite derivado
+├── index.db          # derived SQLite
 └── audit.log         # Log append-only
 ```
 
 Each file uses:
 - **YAML frontmatter**: structured metadata (type, tags, date, provenance)
-- **Wikilinks**: `[[outro-arquivo]]` for relationships
+- **Wikilinks**: `[[other-file]]` for relationships
 - **Tags**: `#decision`, `#fact`, `#inferred`
 - **Backlinks**: calculated automatically
 
@@ -202,19 +202,19 @@ source: extracted
 confidence: high
 ---
 
-# Decisão: SQLite para Armazenamento
+# Decision: SQLite for Storage
 
-O projeto usa SQLite como banco de dados principal.
+The project uses SQLite as its main database.
 
-## Justificativa
-- Simplicidade de deploy (arquivo único)
-- Performance excelente para leitura
-- FTS5 para busca full-text
+## Rationale
+- Simple deploy (single file)
+- Excellent read performance
+- FTS5 for full-text search
 
-## Relacionamentos
-- Implementado em: [[database-module]]
-- Decidido em: [[adr-003-sqlite-fts5]]
-- Afeta: [[config-schema]], [[migration-system]]
+## Relationships
+- Implemented in: [[database-module]]
+- Decided in: [[adr-003-sqlite-fts5]]
+- Affects: [[config-schema]], [[migration-system]]
 ```
 
 ### 3.2 SQLite + FTS5 (Derived Index)
@@ -222,28 +222,28 @@ O projeto usa SQLite como banco de dados principal.
 SQLite is a **derived index**, rebuilt from the vault and the code:
 
 ```sql
--- Nós do grafo
+-- Graph nodes
 CREATE TABLE nodes (
     id TEXT PRIMARY KEY,
     type TEXT NOT NULL,           -- 'file', 'function', 'class', 'fact', 'decision'
-    path TEXT,                    -- caminho no vault ou no código
+    path TEXT,                    -- path in the vault or in code
     title TEXT,
     content TEXT,
     source TEXT NOT NULL,         -- 'vault', 'code', 'inferred'
-    confidence REAL DEFAULT 1.0,  -- 0.0-1.0 para dados inferidos
+    confidence REAL DEFAULT 1.0,  -- 0.0-1.0 for inferred data
     created_at TEXT,
     updated_at TEXT,
     metadata JSON
 );
 
--- Índice full-text
+-- Full-text index
 CREATE VIRTUAL TABLE nodes_fts USING fts5(
     title, content,
     content='nodes',
     content_rowid='rowid'
 );
 
--- Arestas do grafo
+-- Graph edges
 CREATE TABLE edges (
     id INTEGER PRIMARY KEY,
     source_id TEXT NOT NULL,
@@ -256,14 +256,14 @@ CREATE TABLE edges (
     FOREIGN KEY (target_id) REFERENCES nodes(id)
 );
 
--- Índices para queries rápidas
+-- Indexes for fast queries
 CREATE INDEX idx_edges_source ON edges(source_id);
 CREATE INDEX idx_edges_target ON edges(target_id);
 CREATE INDEX idx_edges_type ON edges(type);
 CREATE INDEX idx_nodes_type ON nodes(type);
 CREATE INDEX idx_nodes_path ON nodes(path);
 
--- Views úteis
+-- Useful views
 CREATE VIEW callers AS
 SELECT e.source_id as caller, e.target_id as callee, e.confidence
 FROM edges e WHERE e.type = 'calls';
@@ -284,12 +284,12 @@ sequenceDiagram
     participant P as Parser
     participant S as SQLite
 
-    V->>W: Arquivo modificado
+    V->>W: File modified
     W->>P: Parse YAML + Markdown
-    P->>P: Extrai wikilinks e tags
+    P->>P: Extract wikilinks and tags
     P->>S: UPSERT node
-    P->>S: REPLACE edges para este node
-    S->>S: Atualiza FTS5
+    P->>S: REPLACE edges for this node
+    S->>S: Update FTS5
 ```
 
 **Conflict resolution**: the vault always wins. If SQLite diverges (corruption, manual edit), the `tb graph rebuild` command rebuilds everything.
@@ -300,18 +300,18 @@ Inspired by Graphify and reimplemented in toolbelt ([ADR-014](adr/014-graphify-r
 
 ```mermaid
 graph LR
-    CODE[Código Fonte] --> TS[go/ast + extratores regex]
+    CODE[Source Code] --> TS[go/ast + regex extractors]
     TS --> AST[AST]
-    AST --> EXT[Extrator]
-    EXT --> NODES[Nós: funções, classes, módulos]
-    EXT --> EDGES[Arestas: calls, imports]
+    AST --> EXT[Extractor]
+    EXT --> NODES[Nodes: functions, classes, modules]
+    EXT --> EDGES[Edges: calls, imports]
 
     NODES --> |source='extracted'| DB[(SQLite)]
     EDGES --> |source='extracted'| DB
 
-    subgraph "Opcional: Inferência Semântica"
-        AST --> LLM[Modelo de Linguagem]
-        LLM --> INF[Relações Inferidas]
+    subgraph "Optional: Semantic Inference"
+        AST --> LLM[Language Model]
+        LLM --> INF[Inferred Relations]
         INF --> |source='inferred', confidence < 1.0| DB
     end
 ```
@@ -326,27 +326,27 @@ graph LR
 The graph exposes queries that save tokens:
 
 ```bash
-# Quem chama esta função?
+# Who calls this function?
 tb graph callers --function "parseConfig" --depth 2
 
-# Quais são as dependências deste módulo?
+# What are this module's dependencies?
 tb graph deps --module "auth" --transitive
 
-# Qual o impacto de mudar este arquivo?
+# What is the impact of changing this file?
 tb graph impact --file "src/config/parser.go"
 
-# Busca semântica
-tb graph search "autenticação JWT"
+# Semantic search
+tb graph search "JWT authentication"
 ```
 
 **Hooks for agents**: before reading raw files, the agent should query the graph:
 
 ```
-1. Recebe tarefa: "Corrigir bug no parser de config"
-2. tb graph search "parser config" → encontra nós relevantes
-3. tb graph callers --function "parseConfig" → entende quem usa
-4. tb graph impact --file "parser.go" → avalia escopo
-5. Só então lê os arquivos específicos necessários
+1. Receives task: "Fix bug in the config parser"
+2. tb graph search "parser config" → finds relevant nodes
+3. tb graph callers --function "parseConfig" → learns who uses it
+4. tb graph impact --file "parser.go" → assesses scope
+5. Only then reads the specific files needed
 ```
 
 This drastically reduces the number of tokens consumed reading files.
@@ -409,10 +409,10 @@ Dangerous actions require explicit capability tokens:
 ```go
 type CapabilityToken struct {
     Action    string    // "delete:file", "network:external"
-    Resource  string    // caminho ou padrão
-    GrantedBy string    // quem aprovou
+    Resource  string    // path or pattern
+    GrantedBy string    // who approved
     ExpiresAt time.Time
-    Hash      string    // assinatura para verificação
+    Hash      string    // signature for verification
 }
 ```
 
@@ -427,19 +427,19 @@ The flow:
 
 ```mermaid
 sequenceDiagram
-    participant A as Agente
-    participant O as Orquestrador
+    participant A as Agent
+    participant O as Orchestrator
     participant S as Secret Store
-    participant T as Ferramenta
+    participant T as Tool
 
-    A->>O: Preciso chamar API externa
-    O->>O: Verifica capacidade do agente
-    O->>S: Solicita secret para "api_externa"
-    S->>O: Secret (criptografado)
-    O->>T: Executa ferramenta com secret injetado
-    T->>T: Usa secret internamente
-    T->>O: Resultado (sem secret)
-    O->>A: Resultado sanitizado
+    A->>O: Need to call external API
+    O->>O: Check agent capability
+    O->>S: Request secret for "external_api"
+    S->>O: Secret (encrypted)
+    O->>T: Run tool with injected secret
+    T->>T: Use secret internally
+    T->>O: Result (no secret)
+    O->>A: Sanitized result
 ```
 
 Secrets never appear:
@@ -455,16 +455,16 @@ Secrets never appear:
 ### 5.1 `tb run` and `tb proc` Commands
 
 ```bash
-# Execução única com timeout
+# One-shot run with timeout
 tb run --timeout 30s "go test ./..."
 
-# Processo de longa duração com logs
+# Long-running process with logs
 tb proc start --name "dev-server" --log /tmp/dev.log "npm run dev"
 tb proc list
 tb proc logs dev-server --follow
 tb proc stop dev-server
 
-# Execução em sandbox
+# Sandboxed run
 tb run --sandbox --allow-net "localhost:8080" "curl localhost:8080/health"
 ```
 
@@ -473,10 +473,10 @@ tb run --sandbox --allow-net "localhost:8080" "curl localhost:8080/health"
 ```mermaid
 stateDiagram-v2
     [*] --> Pending: tb proc start
-    Pending --> Running: processo inicia
+    Pending --> Running: process starts
     Running --> Completed: exit 0
     Running --> Failed: exit != 0
-    Running --> Timeout: tempo excedido
+    Running --> Timeout: time exceeded
     Running --> Killed: tb proc stop
     Timeout --> Killed: SIGTERM → SIGKILL
     Failed --> [*]
@@ -499,7 +499,7 @@ Characteristics:
 ```yaml
 # .tb/roles/worker-backend.yaml
 name: worker-backend
-description: Implementa código backend em Go
+description: Implements Go backend code
 model: claude-sonnet-4-20250514
 temperature: 0.3
 
@@ -524,10 +524,10 @@ context:
   budget_tokens: 8000
 
 persona: |
-  Você é um desenvolvedor backend especializado em Go.
-  Siga as convenções do projeto definidas em go-conventions.md.
-  Sempre consulte o grafo antes de ler arquivos diretamente.
-  Escreva testes para código novo.
+  You are a backend developer specialized in Go.
+  Follow the project conventions defined in go-conventions.md.
+  Always query the graph before reading files directly.
+  Write tests for new code.
 ```
 
 ### 6.2 Tools by Role
@@ -568,11 +568,11 @@ The TUI follows the **Synthwave** theme defined in [docs/identidade-visual.md](i
 The vault at `.tb/vault/` is a valid Obsidian vault:
 
 ```bash
-# Abrir no Obsidian
+# Open in Obsidian
 obsidian .tb/vault
 
-# Ou via tb
-tb md --obsidian  # abre Obsidian se instalado
+# Or via tb
+tb md --obsidian  # opens Obsidian if installed
 ```
 
 Sync is bidirectional for human edits:
@@ -589,11 +589,11 @@ Sync is bidirectional for human edits:
 
 ```mermaid
 graph TB
-    HUMAN[Humano] --> PLANNER[Planner<br/>Decompõe tarefas]
+    HUMAN[Human] --> PLANNER[Planner<br/>Decomposes tasks]
     
     PLANNER --> SUP1[Supervisor Backend]
     PLANNER --> SUP2[Supervisor Frontend]
-    PLANNER --> SUP3[Supervisor Testes]
+    PLANNER --> SUP3[Supervisor Tests]
     
     SUP1 --> W1[Worker Go 1]
     SUP1 --> W2[Worker Go 2]
@@ -601,11 +601,11 @@ graph TB
     SUP2 --> W3[Worker React 1]
     SUP2 --> W4[Worker CSS]
     
-    SUP3 --> W5[Worker Testes Unit]
-    SUP3 --> W6[Worker Testes E2E]
+    SUP3 --> W5[Worker Unit Tests]
+    SUP3 --> W6[Worker E2E Tests]
     
-    EVAL[Evaluator<br/>isolado] -.->|avalia| W1
-    EVAL -.->|avalia| W2
+    EVAL[Evaluator<br/>isolated] -.->|evaluates| W1
+    EVAL -.->|evaluates| W2
 ```
 
 ### 8.2 Context Flow
@@ -614,21 +614,21 @@ Each level receives only the necessary context:
 
 ```mermaid
 sequenceDiagram
-    participant H as Humano
+    participant H as Human
     participant P as Planner
     participant S as Supervisor
     participant W as Worker
 
-    H->>P: Tarefa de alto nível
-    P->>P: Query grafo, analisa escopo
-    P->>S: Subtarefa + contexto relevante
-    S->>S: Refina, divide em unidades
-    S->>W: Unidade de trabalho + contexto mínimo
-    W->>W: Implementa
-    W->>S: Resultado
-    S->>S: Review, integra
-    S->>P: Subtarefa concluída
-    P->>H: Tarefa concluída
+    H->>P: High-level task
+    P->>P: Query graph, analyze scope
+    P->>S: Subtask + relevant context
+    S->>S: Refine, split into units
+    S->>W: Work unit + minimal context
+    W->>W: Implement
+    W->>S: Result
+    S->>S: Review, integrate
+    S->>P: Subtask done
+    P->>H: Task done
 ```
 
 ### 8.3 Agent Lifecycle
@@ -637,11 +637,11 @@ sequenceDiagram
 stateDiagram-v2
     [*] --> Created: spawn
     Created --> Initializing: setup sandbox
-    Initializing --> Ready: contexto montado
-    Ready --> Working: recebe tarefa
-    Working --> Ready: tarefa concluída
-    Working --> Blocked: aguarda aprovação
-    Blocked --> Working: aprovado
+    Initializing --> Ready: context assembled
+    Ready --> Working: receives task
+    Working --> Ready: task done
+    Working --> Blocked: awaits approval
+    Blocked --> Working: approved
     Working --> Failed: erro/timeout
     Ready --> Terminated: idle timeout
     Failed --> Terminated: cleanup
@@ -676,16 +676,16 @@ Inspired by Google's [Elephant-Goldfish Model (EGM)](https://github.com/google/e
 
 ```mermaid
 graph TB
-    subgraph "Elephant (Contexto Completo)"
-        PLANNER[Planner<br/>conhece todo o projeto]
-        PLANNER --> DOC[Documento/Spec]
-        PLANNER --> REFS[Material Referenciado]
+    subgraph "Elephant (Full Context)"
+        PLANNER[Planner<br/>knows the whole project]
+        PLANNER --> DOC[Document/Spec]
+        PLANNER --> REFS[Referenced Material]
     end
 
-    subgraph "Goldfish (Contextos Frescos)"
-        G1[Revisor 1<br/>fresco]
-        G2[Revisor 2<br/>fresco]
-        G3[Revisor 3<br/>fresco]
+    subgraph "Goldfish (Fresh Contexts)"
+        G1[Reviewer 1<br/>fresh]
+        G2[Reviewer 2<br/>fresh]
+        G3[Reviewer 3<br/>fresh]
     end
 
     DOC --> G1
@@ -695,11 +695,11 @@ graph TB
     REFS --> G2
     REFS --> G3
 
-    G1 --> |findings| AGG[Agregador]
+    G1 --> |findings| AGG[Aggregator]
     G2 --> |findings| AGG
     G3 --> |findings| AGG
 
-    AGG --> HUMAN[Humano<br/>resolve trade-offs]
+    AGG --> HUMAN[Human<br/>resolves trade-offs]
 ```
 
 **Roles**:
@@ -719,10 +719,10 @@ graph TB
 **Implementation via `tb review`**:
 
 ```bash
-# Revisar documento com 3 goldfish
+# Review a document with 3 goldfish
 tb review docs/design-auth.md --reviewers 3 --standards security,clarity
 
-# Revisar PR com revisores especializados
+# Review a PR with specialized reviewers
 tb review pr:42 --roles "security-reviewer,api-reviewer,test-reviewer"
 ```
 
@@ -734,29 +734,29 @@ For complex tasks that require high parallelization and context savings, toolbel
 
 ```mermaid
 graph TB
-    subgraph "Coordenação"
-        ROUTER[Router<br/>decompõe e delega]
-        BOARD[Board<br/>fila de tickets]
-        WATCHDOG[Watchdog<br/>monitora health]
-        MERGE[Merge<br/>agrega resultados]
+    subgraph "Coordination"
+        ROUTER[Router<br/>decomposes and delegates]
+        BOARD[Board<br/>ticket queue]
+        WATCHDOG[Watchdog<br/>monitors health]
+        MERGE[Merge<br/>aggregates results]
     end
 
-    subgraph "Execução"
-        W1[Worker 1<br/>sandbox isolado]
-        W2[Worker 2<br/>sandbox isolado]
-        W3[Worker 3<br/>sandbox isolado]
+    subgraph "Execution"
+        W1[Worker 1<br/>isolated sandbox]
+        W2[Worker 2<br/>isolated sandbox]
+        W3[Worker 3<br/>isolated sandbox]
     end
 
     ROUTER --> |tickets| BOARD
     BOARD --> W1
     BOARD --> W2
     BOARD --> W3
-    W1 --> |resultado| MERGE
-    W2 --> |resultado| MERGE
-    W3 --> |resultado| MERGE
-    WATCHDOG -.-> |monitora| W1
-    WATCHDOG -.-> |monitora| W2
-    WATCHDOG -.-> |monitora| W3
+    W1 --> |result| MERGE
+    W2 --> |result| MERGE
+    W3 --> |result| MERGE
+    WATCHDOG -.-> |monitors| W1
+    WATCHDOG -.-> |monitors| W2
+    WATCHDOG -.-> |monitors| W3
     MERGE --> ROUTER
 ```
 
@@ -780,14 +780,14 @@ sequenceDiagram
     participant M as Merge
     participant WD as Watchdog
 
-    R->>R: Recebe tarefa complexa
-    R->>R: Decompõe em tickets atômicos
-    R->>B: Enfileira tickets
-    B->>W: Workers puxam tickets
-    WD->>W: Monitora health/timeout
-    W->>M: Retornam resultados
-    M->>M: Resolve conflitos
-    M->>R: Resultado consolidado
+    R->>R: Receives complex task
+    R->>R: Decomposes into atomic tickets
+    R->>B: Enqueues tickets
+    B->>W: Workers pull tickets
+    WD->>W: Monitors health/timeout
+    W->>M: Return results
+    M->>M: Resolves conflicts
+    M->>R: Consolidated result
 ```
 
 **Ticket example**:
@@ -795,7 +795,7 @@ sequenceDiagram
 ```yaml
 ticket:
   id: "TKT-001"
-  title: "Implementar handler de login"
+  title: "Implement login handler"
   mandate:
     scope: ["src/handlers/auth.go", "src/services/auth.go"]
     permissions: [read, write]
@@ -804,7 +804,7 @@ ticket:
     files: ["docs/specs/auth.md"]
     symbols: ["User", "Session", "validateCredentials"]
   acceptance:
-    criteria: "Testes em tests/auth_test.go passam"
+    criteria: "Tests in tests/auth_test.go pass"
     timeout: "10m"
   dependencies: []
 ```
@@ -827,12 +827,12 @@ sequenceDiagram
     participant B as Board
     participant W1 as Worker 1
 
-    R->>B: TKT-001 (sem deps)
-    B->>W1: Worker 1 puxa TKT-001
-    W1->>W1: Executa TKT-001
+    R->>B: TKT-001 (no deps)
+    B->>W1: Worker 1 pulls TKT-001
+    W1->>W1: Runs TKT-001
     W1->>R: TKT-001 done + subscribe TKT-002
-    R-->>W1: TKT-002 entregue DIRETO (sem Board)
-    Note over W1: Contexto de TKT-001<br/>já em cache
+    R-->>W1: TKT-002 delivered DIRECTLY (no Board)
+    Note over W1: TKT-001 context<br/>already cached
 ```
 
 Benefits of direct delivery:
@@ -845,11 +845,11 @@ Benefits of direct delivery:
 
 ```bash
 # Create tickets (--title or --from rd.md; dependencies via --dep)
-tb ticket create --title "Criar modelo User" --scope "src/models/**"
+tb ticket create --title "Create User model" --scope "src/models/**"
 tb ticket create --title "JWT signing" --dep TKT-001
 
 # Run the router (foreground; Ctrl-C returns running -> pending)
-tb router run --agent-cmd "meu-agente --task-file $TB_TICKET_FILE"
+tb router run --agent-cmd "my-agent --task-file $TB_TICKET_FILE"
 
 # View the ticket board
 tb board list --status pending,running
@@ -882,16 +882,16 @@ See [ADR-009](adr/009-router-e-workers.md) for design details.
 ### 9.2 Test File Protection
 
 ```bash
-# Antes da tarefa
+# Before the task
 tb guard snapshot --paths "tests/**" "benchmarks/**"
 
-# Durante execução
-# - Arquivos montados read-only no sandbox
-# - Qualquer tentativa de escrita: EACCES
+# During execution
+# - Files mounted read-only in the sandbox
+# - Any write attempt: EACCES
 
-# Após tarefa
+# After the task
 tb guard verify --snapshot-id <id>
-# Verifica hashes; se diferir → falha + alerta
+# Checks hashes; on mismatch → fail + alert
 ```
 
 ### 9.3 Audit Log
@@ -934,9 +934,9 @@ Monitored patterns:
 
 ```mermaid
 graph LR
-    subgraph "Externo"
+    subgraph "External"
         IDE[IDE/Editor]
-        OTHER[Outros Agentes]
+        OTHER[Other Agents]
     end
 
     subgraph "toolbelt"
@@ -962,7 +962,7 @@ graph LR
   "tools": [
     {
       "name": "tb_run",
-      "description": "Executa comando no sandbox",
+      "description": "Runs a command in the sandbox",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -974,7 +974,7 @@ graph LR
     },
     {
       "name": "tb_graph_search",
-      "description": "Busca no grafo de conhecimento",
+      "description": "Searches the knowledge graph",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -985,7 +985,7 @@ graph LR
     },
     {
       "name": "tb_graph_callers",
-      "description": "Encontra chamadores de uma função",
+      "description": "Finds callers of a function",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -1014,7 +1014,7 @@ For communication between agents in the hierarchy:
     "task": {
       "id": "task-123",
       "type": "implement",
-      "description": "Implementar função parseConfig",
+      "description": "Implement the parseConfig function",
       "context": {
         "files": ["src/config/schema.go"],
         "graph_nodes": ["node-456", "node-789"]
@@ -1068,29 +1068,29 @@ Inspired by GANs (Generative Adversarial Networks), toolbelt implements an **adv
 
 ```mermaid
 sequenceDiagram
-    participant G as Gerador
-    participant D as Discriminador
-    participant H as Humano
+    participant G as Generator
+    participant D as Discriminator
+    participant H as Human
 
-    loop Máximo 3 iterações
-        G->>G: Implementa/corrige
-        G->>D: Submete para verificação
-        D->>D: Guard check (paths protegidos)
+    loop Max 3 iterations
+        G->>G: Implement/fix
+        G->>D: Submit for verification
+        D->>D: Guard check (protected paths)
         D->>D: Clean build
-        D->>D: Captura fresh
-        D->>D: Medição com ruler
-        D->>D: Verifica trapaça
+        D->>D: Fresh capture
+        D->>D: Measure with ruler
+        D->>D: Check for cheating
         
         alt PASS
-            D->>G: PASS + relatório
-            G->>H: Concluído
+            D->>G: PASS + report
+            G->>H: Done
         else FAIL
             D->>G: FAIL + gaps
-            Note over G: Próxima iteração
+            Note over G: Next iteration
         end
     end
     
-    D->>H: Escalação (3 falhas)
+    D->>H: Escalation (3 failures)
 ```
 
 **Fundamental principle**: Only the discriminator's measurement counts as proof. Generator measurements are informative, never evidentiary.
@@ -1117,17 +1117,17 @@ The discriminator operates in total isolation:
 ```yaml
 discriminator:
   sandbox:
-    port: dedicated      # porta própria
-    database: dedicated  # DB próprio
-    network: isolated    # sem acesso ao gerador
+    port: dedicated      # own port
+    database: dedicated  # own DB
+    network: isolated    # no access to the generator
   
   permissions:
     push: denied
     branch_switch: denied
     stash: denied
-    fix_code: denied     # apenas reporta, nunca corrige
+    fix_code: denied     # reports only, never fixes
   
-  cleanup: required      # limpa após execução
+  cleanup: required      # clean up after the run
 ```
 
 ### 12.4 Guard Check and Protected Paths
@@ -1137,11 +1137,11 @@ Before measurement, the discriminator runs a **guard check** over `base..head`:
 ```mermaid
 graph LR
     DIFF[git diff base..head] --> GUARD[Guard Check]
-    GUARD --> PROT{Mudou path protegido?}
-    PROT -->|Sim| DEC{Tem decisão registrada?}
-    PROT -->|Não| CONT[Continua verificação]
-    DEC -->|Sim| CONT
-    DEC -->|Não| FLAG[Flag: justificativa necessária]
+    GUARD --> PROT{Protected path changed?}
+    PROT -->|Yes| DEC{Decision recorded?}
+    PROT -->|No| CONT[Continue verification]
+    DEC -->|Yes| CONT
+    DEC -->|No| FLAG[Flag: justification required]
 ```
 
 **Protected paths** (built-in defaults + optional `.toolbelt/guard.yaml`):
@@ -1151,19 +1151,19 @@ Defaults: `tests/hidden/*`, `benchmarks/*`, `.toolbelt/thresholds.yaml`, `.toolb
 ```yaml
 protected_paths:
   - pattern: "references/**"
-    reason: "Referências visuais não podem ser editadas sem decisão"
+    reason: "Visual references cannot be edited without a decision"
   
   - pattern: "masks/**"
-    reason: "Masks requerem justificativa de região dinâmica"
+    reason: "Masks require a dynamic-region justification"
   
   - pattern: "**/comparator.{js,ts,go}"
-    reason: "Lógica de comparação é imutável"
+    reason: "Comparison logic is immutable"
   
   - pattern: ".toolbelt/thresholds.yaml"
-    reason: "Thresholds não podem ser relaxados"
+    reason: "Thresholds cannot be relaxed"
   
   - pattern: "**/*.seed"
-    reason: "Seeds determinísticos são fixos"
+    reason: "Deterministic seeds are fixed"
 ```
 
 Changes to protected paths are **not automatically cheating**, but require a decision recorded in the vault or explicit approval.
@@ -1223,15 +1223,15 @@ report:
     - id: G1
       file: "src/components/Button.tsx"
       line: 45
-      issue: "Cor do botão difere 12% do design"
-      proposed_fix: "Usar var(--primary-600) ao invés de #3b82f6"
+      issue: "Button color differs 12% from the design"
+      proposed_fix: "Use var(--primary-600) instead of #3b82f6"
   
   accepted_deviations:
-    - reason: "Fonte do sistema difere entre OS"
+    - reason: "System font differs across OSes"
       approved_by: "decision-2026-01-15"
   
   design_system_followups:
-    - "Considerar adicionar --primary-600 ao token set"
+    - "Consider adding --primary-600 to the token set"
   
   cheating_detected: []
   

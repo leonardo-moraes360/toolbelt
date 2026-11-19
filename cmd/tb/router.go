@@ -23,11 +23,11 @@ import (
 
 var routerCmd = &cobra.Command{
 	Use:   "router",
-	Short: "Scheduler de tickets em primeiro plano (workers, entrega direta, watchdog)",
-	Long: `Router em primeiro plano: distribui tickets do board entre workers, cada um
-numa worktree própria (branch tb-workspace/<ticket>), executando o agente
-configurado dentro do sandbox (fail-closed; sem Landlock exige
---allow-unsandboxed). O watchdog roda dentro do loop e grava
+	Short: "Foreground ticket scheduler (workers, direct delivery, watchdog)",
+	Long: `Foreground router: distributes board tickets among workers, each in its
+own worktree (branch tb-workspace/<ticket>), running the configured agent
+inside the sandbox (fail-closed; without Landlock it requires
+--allow-unsandboxed). The watchdog runs inside the loop and writes
 .toolbelt/router/{state.json,alerts.jsonl}.`,
 }
 
@@ -58,7 +58,7 @@ func loadRouterConfig(root string) (config.RouterConfig, *config.Config, error) 
 
 var routerRunCmd = &cobra.Command{
 	Use:   "run",
-	Short: "Executa o router até esvaziar a fila (Ctrl-C devolve running para pending)",
+	Short: "Runs the router until the queue is empty (Ctrl-C returns running to pending)",
 	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		f := cmd.Flags()
@@ -83,7 +83,7 @@ var routerRunCmd = &cobra.Command{
 				return err
 			}
 			if len(argv) == 0 {
-				return errors.New("--agent-cmd vazio")
+				return errors.New("--agent-cmd is empty")
 			}
 		}
 		var out io.Writer = os.Stderr
@@ -128,38 +128,38 @@ var routerRunCmd = &cobra.Command{
 			renderSummary(sum)
 		}
 		if len(sum.Failed) > 0 {
-			return fmt.Errorf("%d ticket(s) falharam: %s", len(sum.Failed), strings.Join(sum.Failed, ", "))
+			return fmt.Errorf("%d ticket(s) failed: %s", len(sum.Failed), strings.Join(sum.Failed, ", "))
 		}
 		if sum.Reason == router.ReasonStalled {
-			return fmt.Errorf("router parou sem progresso; tickets pending que nunca rodarão (dependências failed/canceled): %s", strings.Join(sum.Unschedulable, ", "))
+			return fmt.Errorf("router stopped without progress; pending tickets that will never run (failed/canceled dependencies): %s", strings.Join(sum.Unschedulable, ", "))
 		}
 		return nil
 	},
 }
 
 func renderPlan(p *router.Plan) {
-	dd := "desligada"
+	dd := "off"
 	if p.DirectDelivery {
-		dd = "ligada"
+		dd = "on"
 	}
-	fmt.Printf("Plano (estratégia %s, %d workers, entrega direta %s)\n", p.Strategy, p.Workers, dd)
+	fmt.Printf("Plan (strategy %s, %d workers, direct delivery %s)\n", p.Strategy, p.Workers, dd)
 	if p.Paused {
-		fmt.Println("  board pausado: nada seria atribuído até `tb board resume`")
+		fmt.Println("  board paused: nothing would be assigned until `tb board resume`")
 	}
 	if p.Draining {
-		fmt.Println("  board em drain: nada seria atribuído até `tb board resume`")
+		fmt.Println("  board draining: nothing would be assigned until `tb board resume`")
 	}
 	if len(p.Rounds) == 0 {
-		fmt.Println("  nenhum ticket pronto")
+		fmt.Println("  no ticket ready")
 	}
 	for _, rd := range p.Rounds {
-		fmt.Printf("Rodada %d\n", rd.Round)
+		fmt.Printf("Round %d\n", rd.Round)
 		for _, a := range rd.Assignments {
 			fmt.Printf("  %-3s %-8s %s  [%s, base %s]\n", a.Worker, a.Ticket, a.Title, a.Via, a.Base)
 		}
 	}
 	if len(p.Unschedulable) > 0 {
-		fmt.Println("Não agendáveis (dependências nunca concluem):")
+		fmt.Println("Unschedulable (dependencies never complete):")
 		for _, u := range p.Unschedulable {
 			fmt.Printf("  %-8s %s\n", u.Ticket, strings.Join(u.Reasons, "; "))
 		}
@@ -168,19 +168,19 @@ func renderPlan(p *router.Plan) {
 }
 
 func renderSummary(s *router.Summary) {
-	fmt.Printf("Router encerrado: %s\n", s.Reason)
-	fmt.Printf("  concluídos: %s\n", listOrDash(s.Done))
-	fmt.Printf("  falhos:     %s\n", listOrDash(s.Failed))
+	fmt.Printf("Router finished: %s\n", s.Reason)
+	fmt.Printf("  done:        %s\n", listOrDash(s.Done))
+	fmt.Printf("  failed:      %s\n", listOrDash(s.Failed))
 	if len(s.Retried) > 0 {
-		fmt.Printf("  re-tentados: %s\n", strings.Join(s.Retried, ", "))
+		fmt.Printf("  retried:    %s\n", strings.Join(s.Retried, ", "))
 	}
 	if len(s.Unschedulable) > 0 {
-		fmt.Printf("  bloqueados (nunca rodarão): %s\n", strings.Join(s.Unschedulable, ", "))
+		fmt.Printf("  blocked (will never run): %s\n", strings.Join(s.Unschedulable, ", "))
 	}
 	if len(s.Requeued) > 0 {
-		fmt.Printf("  devolvidos a pending: %s\n", strings.Join(s.Requeued, ", "))
+		fmt.Printf("  returned to pending: %s\n", strings.Join(s.Requeued, ", "))
 	}
-	fmt.Printf("  alertas: %d  duração: %s\n", s.Alerts, (time.Duration(s.DurationMS) * time.Millisecond).Round(time.Millisecond))
+	fmt.Printf("  alerts: %d  duration: %s\n", s.Alerts, (time.Duration(s.DurationMS) * time.Millisecond).Round(time.Millisecond))
 }
 
 func listOrDash(l []string) string {
@@ -192,7 +192,7 @@ func listOrDash(l []string) string {
 
 var routerStatusCmd = &cobra.Command{
 	Use:   "status",
-	Short: "Mostra o estado do router (state.json; detecta estado obsoleto)",
+	Short: "Shows the router state (state.json; detects stale state)",
 	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		root, err := routerRoot()
@@ -204,7 +204,7 @@ var routerStatusCmd = &cobra.Command{
 			if jsonOutput {
 				return printJSON(map[string]any{"status": "none"})
 			}
-			fmt.Println("Nenhum router rodou neste repositório (use `tb router run`).")
+			fmt.Println("No router has run in this repository (use `tb router run`).")
 			return nil
 		}
 		if err != nil {
@@ -222,14 +222,14 @@ func renderRouterStatus(rep *router.StatusReport, onlyWorker string) {
 	state := rep.Status
 	switch {
 	case rep.Stale:
-		state = fmt.Sprintf("OBSOLETO (pid %d não existe mais; o router morreu sem encerrar)", rep.PID)
+		state = fmt.Sprintf("STALE (pid %d no longer exists; the router died without shutting down)", rep.PID)
 	case rep.Alive:
 		state = fmt.Sprintf("running (pid %d)", rep.PID)
 	}
 	fmt.Printf("Router: %s\n", state)
-	fmt.Printf("  estratégia: %s  iniciado: %s\n", rep.Strategy, rep.StartedAt.Local().Format(time.RFC3339))
-	fmt.Printf("  pausado: %s  drain: %s\n", yesNo(rep.Paused), yesNo(rep.Draining))
-	fmt.Printf("  fila: ready %d, blocked %d, running %d\n", rep.Queue.Ready, rep.Queue.Blocked, rep.Queue.Running)
+	fmt.Printf("  strategy: %s  started: %s\n", rep.Strategy, rep.StartedAt.Local().Format(time.RFC3339))
+	fmt.Printf("  paused: %s  drain: %s\n", yesNo(rep.Paused), yesNo(rep.Draining))
+	fmt.Printf("  queue: ready %d, blocked %d, running %d\n", rep.Queue.Ready, rep.Queue.Blocked, rep.Queue.Running)
 	for _, w := range rep.Workers {
 		if onlyWorker != "" && w.ID != onlyWorker {
 			continue
@@ -238,11 +238,11 @@ func renderRouterStatus(rep *router.StatusReport, onlyWorker string) {
 		if w.Ticket != "" {
 			line += " " + w.Ticket
 			if w.StartedAt != nil {
-				line += " desde " + w.StartedAt.Local().Format("15:04:05")
+				line += " since " + w.StartedAt.Local().Format("15:04:05")
 			}
 		}
 		if len(w.Subscriptions) > 0 {
-			line += "  reservas: " + strings.Join(w.Subscriptions, ", ")
+			line += "  reservations: " + strings.Join(w.Subscriptions, ", ")
 		}
 		fmt.Println(line)
 	}
@@ -250,14 +250,14 @@ func renderRouterStatus(rep *router.StatusReport, onlyWorker string) {
 
 func yesNo(b bool) string {
 	if b {
-		return "sim"
+		return "yes"
 	}
-	return "não"
+	return "no"
 }
 
 var routerConfigCmd = &cobra.Command{
 	Use:   "config",
-	Short: "Mostra a configuração efetiva do router (seção router:)",
+	Short: "Shows the effective router configuration (router: section)",
 	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		root, err := routerRoot()
@@ -281,11 +281,11 @@ var routerConfigCmd = &cobra.Command{
 }
 
 func init() {
-	routerRunCmd.Flags().Int("workers", 0, "número de workers (padrão: router.max_workers)")
-	routerRunCmd.Flags().String("strategy", "", "fifo|priority|dependency (padrão: router.strategy)")
-	routerRunCmd.Flags().String("agent-cmd", "", "comando do agente (padrão: router.agent_cmd); roda na worktree do ticket")
-	routerRunCmd.Flags().Bool("once", false, "uma rodada de agendamento e sai ao terminar os tickets iniciados")
-	routerRunCmd.Flags().Bool("allow-unsandboxed", false, "opt-in explícito para executar sem isolamento Landlock")
-	routerRunCmd.Flags().Bool("dry-run", false, "mostra o plano de agendamento sem executar")
+	routerRunCmd.Flags().Int("workers", 0, "number of workers (default: router.max_workers)")
+	routerRunCmd.Flags().String("strategy", "", "fifo|priority|dependency (default: router.strategy)")
+	routerRunCmd.Flags().String("agent-cmd", "", "agent command (default: router.agent_cmd); runs in the ticket worktree")
+	routerRunCmd.Flags().Bool("once", false, "one scheduling round; exits when the started tickets finish")
+	routerRunCmd.Flags().Bool("allow-unsandboxed", false, "explicit opt-in to run without Landlock isolation")
+	routerRunCmd.Flags().Bool("dry-run", false, "shows the scheduling plan without executing")
 	routerCmd.AddCommand(routerRunCmd, routerStatusCmd, routerConfigCmd)
 }

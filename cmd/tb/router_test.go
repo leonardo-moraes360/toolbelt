@@ -75,13 +75,13 @@ func TestRouterWatchdogCLI(t *testing.T) {
 // With no state: empty status/alerts and kill is refused.
 func (c *routerCLI) checkEmptyState() {
 	t := c.t
-	if out := c.must("router", "status"); !strings.Contains(out, "Nenhum router") {
+	if out := c.must("router", "status"); !strings.Contains(out, "No router") {
 		t.Fatalf("status vazio: %s", out)
 	}
-	if out := c.must("watchdog", "alerts"); !strings.Contains(out, "Nenhum alerta") {
+	if out := c.must("watchdog", "alerts"); !strings.Contains(out, "No alerts") {
 		t.Fatalf("alerts vazio: %s", out)
 	}
-	if out, err := c.run("watchdog", "kill", "w1", "--reason", "x"); err == nil || !strings.Contains(out, "nenhum router") {
+	if out, err := c.run("watchdog", "kill", "w1", "--reason", "x"); err == nil || !strings.Contains(out, "no router") {
 		t.Fatalf("kill sem router deveria falhar: %v %s", err, out)
 	}
 }
@@ -101,7 +101,7 @@ func (c *routerCLI) checkConfig() {
 func (c *routerCLI) checkDryRun() {
 	t := c.t
 	out := c.must("router", "run", "--dry-run", "--workers", "2")
-	if !strings.Contains(out, "Rodada 1") || !strings.Contains(out, "Rodada 2") || !strings.Contains(out, "TKT-002") {
+	if !strings.Contains(out, "Round 1") || !strings.Contains(out, "Round 2") || !strings.Contains(out, "TKT-002") {
 		t.Fatalf("dry-run: %s", out)
 	}
 	var plan map[string]any

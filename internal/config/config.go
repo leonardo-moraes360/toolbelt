@@ -156,12 +156,12 @@ func DefaultRouterConfig() RouterConfig {
 
 func (r *RouterConfig) Validate() error {
 	if r.MaxWorkers < 1 {
-		return fmt.Errorf("router.max_workers deve ser >= 1 (atual %d)", r.MaxWorkers)
+		return fmt.Errorf("router.max_workers must be >= 1 (current %d)", r.MaxWorkers)
 	}
 	switch r.Strategy {
 	case "", "fifo", "priority", "dependency":
 	default:
-		return fmt.Errorf("router.strategy inválida %q (use fifo, priority ou dependency)", r.Strategy)
+		return fmt.Errorf("invalid router.strategy %q (use fifo, priority or dependency)", r.Strategy)
 	}
 	for name, v := range map[string]string{
 		"router.direct_delivery.subscription_ttl": r.DirectDelivery.SubscriptionTTL,
@@ -170,17 +170,17 @@ func (r *RouterConfig) Validate() error {
 	} {
 		d, err := time.ParseDuration(v)
 		if err != nil || d <= 0 {
-			return fmt.Errorf("%s inválido %q (ex.: 10m)", name, v)
+			return fmt.Errorf("invalid %s %q (e.g. 10m)", name, v)
 		}
 	}
 	if r.DirectDelivery.MaxSubscriptionsPerWorker < 1 {
-		return fmt.Errorf("router.direct_delivery.max_subscriptions_per_worker deve ser >= 1")
+		return fmt.Errorf("router.direct_delivery.max_subscriptions_per_worker must be >= 1")
 	}
 	if r.Retry.MaxAttempts < 1 {
-		return fmt.Errorf("router.retry.max_attempts deve ser >= 1")
+		return fmt.Errorf("router.retry.max_attempts must be >= 1")
 	}
 	if r.SlowThreshold <= 0 || r.SlowThreshold > 1 {
-		return fmt.Errorf("router.slow_threshold deve estar em (0, 1] (atual %v)", r.SlowThreshold)
+		return fmt.Errorf("router.slow_threshold must be in (0, 1] (current %v)", r.SlowThreshold)
 	}
 	return nil
 }
@@ -383,7 +383,7 @@ func applyDetectedVerifyCmds(cfg *Config, dir string) DetectedCmd {
 		cfg.Verify.LintCmd = cmd
 	}
 	if detected.Cmd == "" && detected.Warning == "" {
-		detected.Warning = "nenhuma toolchain de teste detectada; verify.test_cmd ficou vazio (não usa go test sem go.mod)"
+		detected.Warning = "no test toolchain detected; verify.test_cmd left empty (does not use go test without go.mod)"
 	}
 	return detected
 }

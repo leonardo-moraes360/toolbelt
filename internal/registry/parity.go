@@ -36,15 +36,15 @@ func registerMemTools() {
 func registerMemMutateTools() {
 	Register(&Tool{
 		Name:        "tb_mem_add",
-		Description: "Adiciona invariante em .toolbelt/invariants.yaml (paridade com tb mem add)",
+		Description: "Adds an invariant to .toolbelt/invariants.yaml (parity with tb mem add)",
 		InputSchema: &InputSchema{
 			Type: "object",
 			Properties: map[string]Property{
-				"rule":      {Type: "string", Description: "Texto da invariante"},
+				"rule":      {Type: "string", Description: "Invariant text"},
 				"category":  {Type: "string", Description: "anti_cheat|mandate|security", Default: "anti_cheat"},
-				"ref":       {Type: "string", Description: "Caminho ADR/decisions.md"},
-				"immutable": {Type: "boolean", Description: "true para marcar imutável (default mutável)", Default: false},
-				"cwd":       {Type: "string", Description: "Diretório do repositório"},
+				"ref":       {Type: "string", Description: "ADR/decisions.md path"},
+				"immutable": {Type: "boolean", Description: "true to mark immutable (default mutable)", Default: false},
+				"cwd":       {Type: "string", Description: "Repository directory"},
 			},
 			Required: []string{"rule"},
 		},
@@ -52,17 +52,17 @@ func registerMemMutateTools() {
 	})
 	Register(&Tool{
 		Name:        "tb_mem_edit",
-		Description: "Edita campos de uma invariante (paridade com tb mem edit)",
+		Description: "Edits fields of an invariant (parity with tb mem edit)",
 		InputSchema: &InputSchema{
 			Type: "object",
 			Properties: map[string]Property{
-				"id":       {Type: "string", Description: "ID da invariante"},
-				"category": {Type: "string", Description: "Nova categoria"},
-				"rule":     {Type: "string", Description: "Nova regra"},
-				"ref":      {Type: "string", Description: "Novo caminho ADR/decisions.md"},
-				"force":    {Type: "boolean", Description: "true para editar imutável/anti_cheat", Default: false},
-				"reason":   {Type: "string", Description: "Motivo obrigatório com force"},
-				"cwd":      {Type: "string", Description: "Diretório do repositório"},
+				"id":       {Type: "string", Description: "Invariant ID"},
+				"category": {Type: "string", Description: "New category"},
+				"rule":     {Type: "string", Description: "New rule"},
+				"ref":      {Type: "string", Description: "New ADR/decisions.md path"},
+				"force":    {Type: "boolean", Description: "true to edit immutable/anti_cheat", Default: false},
+				"reason":   {Type: "string", Description: "Reason (required with force)"},
+				"cwd":      {Type: "string", Description: "Repository directory"},
 			},
 			Required: []string{"id"},
 		},
@@ -70,14 +70,14 @@ func registerMemMutateTools() {
 	})
 	Register(&Tool{
 		Name:        "tb_mem_retire",
-		Description: "Aposenta invariante (soft-retire; paridade com tb mem retire)",
+		Description: "Retires an invariant (soft-retire; parity with tb mem retire)",
 		InputSchema: &InputSchema{
 			Type: "object",
 			Properties: map[string]Property{
-				"id":     {Type: "string", Description: "ID da invariante"},
-				"force":  {Type: "boolean", Description: "true para aposentar imutável/anti_cheat", Default: false},
-				"reason": {Type: "string", Description: "Motivo obrigatório com force"},
-				"cwd":    {Type: "string", Description: "Diretório do repositório"},
+				"id":     {Type: "string", Description: "Invariant ID"},
+				"force":  {Type: "boolean", Description: "true to retire immutable/anti_cheat", Default: false},
+				"reason": {Type: "string", Description: "Reason (required with force)"},
+				"cwd":    {Type: "string", Description: "Repository directory"},
 			},
 			Required: []string{"id"},
 		},
@@ -85,11 +85,11 @@ func registerMemMutateTools() {
 	})
 	Register(&Tool{
 		Name:        "tb_mem_init",
-		Description: "Cria invariantes padrão anti-trapaça (paridade com tb mem init)",
+		Description: "Creates the default anti-cheat invariants (parity with tb mem init)",
 		InputSchema: &InputSchema{
 			Type: "object",
 			Properties: map[string]Property{
-				"cwd": {Type: "string", Description: "Diretório do repositório"},
+				"cwd": {Type: "string", Description: "Repository directory"},
 			},
 		},
 		Handler: handleMemInit,
@@ -99,25 +99,25 @@ func registerMemMutateTools() {
 func registerMemQueryTools() {
 	Register(&Tool{
 		Name:        "tb_mem_list",
-		Description: "Lista invariantes (paridade com tb mem list)",
+		Description: "Lists invariants (parity with tb mem list)",
 		InputSchema: &InputSchema{
 			Type: "object",
 			Properties: map[string]Property{
-				"category": {Type: "string", Description: "Filtrar categoria"},
-				"all":      {Type: "boolean", Description: "true para incluir aposentadas", Default: false},
-				"cwd":      {Type: "string", Description: "Diretório do repositório"},
+				"category": {Type: "string", Description: "Filter by category"},
+				"all":      {Type: "boolean", Description: "true to include retired", Default: false},
+				"cwd":      {Type: "string", Description: "Repository directory"},
 			},
 		},
 		Handler: handleMemList,
 	})
 	Register(&Tool{
 		Name:        "tb_mem_show",
-		Description: "Exibe invariante por id (paridade com tb mem show)",
+		Description: "Shows an invariant by id (parity with tb mem show)",
 		InputSchema: &InputSchema{
 			Type: "object",
 			Properties: map[string]Property{
-				"id":  {Type: "string", Description: "ID da invariante"},
-				"cwd": {Type: "string", Description: "Diretório do repositório"},
+				"id":  {Type: "string", Description: "Invariant ID"},
+				"cwd": {Type: "string", Description: "Repository directory"},
 			},
 			Required: []string{"id"},
 		},
@@ -125,13 +125,13 @@ func registerMemQueryTools() {
 	})
 	Register(&Tool{
 		Name:        "tb_mem_search",
-		Description: "Busca invariantes (paridade com tb mem search)",
+		Description: "Searches invariants (parity with tb mem search)",
 		InputSchema: &InputSchema{
 			Type: "object",
 			Properties: map[string]Property{
-				"query": {Type: "string", Description: "Texto a buscar em id/categoria/regra/ref"},
-				"all":   {Type: "boolean", Description: "true para incluir aposentadas", Default: false},
-				"cwd":   {Type: "string", Description: "Diretório do repositório"},
+				"query": {Type: "string", Description: "Text to search in id/category/rule/ref"},
+				"all":   {Type: "boolean", Description: "true to include retired", Default: false},
+				"cwd":   {Type: "string", Description: "Repository directory"},
 			},
 			Required: []string{"query"},
 		},
@@ -139,13 +139,13 @@ func registerMemQueryTools() {
 	})
 	Register(&Tool{
 		Name:        "tb_mem_check",
-		Description: "Verifica integridade das invariantes (paridade com tb mem check)",
+		Description: "Checks invariant integrity (parity with tb mem check)",
 		InputSchema: &InputSchema{
 			Type: "object",
 			Properties: map[string]Property{
-				"expect_sha": {Type: "string", Description: "SHA256 esperado"},
-				"all":        {Type: "boolean", Description: "true para incluir aposentadas", Default: false},
-				"cwd":        {Type: "string", Description: "Diretório do repositório"},
+				"expect_sha": {Type: "string", Description: "Expected SHA256"},
+				"all":        {Type: "boolean", Description: "true to include retired", Default: false},
+				"cwd":        {Type: "string", Description: "Repository directory"},
 			},
 		},
 		Handler: handleMemCheck,
@@ -155,29 +155,29 @@ func registerMemQueryTools() {
 func registerVerifyTools() {
 	Register(&Tool{
 		Name:        "tb_verify_run",
-		Description: "Executa loop de verificação (paridade com tb verify run)",
+		Description: "Runs the verification loop (parity with tb verify run)",
 		InputSchema: &InputSchema{
 			Type: "object",
 			Properties: map[string]Property{
-				"cwd":              {Type: "string", Description: "Diretório do repositório"},
+				"cwd":              {Type: "string", Description: "Repository directory"},
 				"base":             {Type: "string", Description: "Ref base"},
 				"head":             {Type: "string", Description: "Ref head"},
-				"test_cmd":         {Type: "string", Description: "Linha de testes visíveis"},
-				"hidden_test_cmd":  {Type: "string", Description: "Linha de testes ocultos"},
-				"build_cmd":        {Type: "string", Description: "Comando de build (vazio para pular)"},
-				"lint_cmd":         {Type: "string", Description: "Comando de lint (vazio para pular)"},
-				"no_build":         {Type: "boolean", Description: "Pula build_cmd", Default: false},
-				"no_lint":          {Type: "boolean", Description: "Pula lint_cmd", Default: false},
-				"dry_run":          {Type: "boolean", Description: "Mostra o plano sem executar", Default: false},
-				"max_iter":         {Type: "integer", Description: "Máximo de iterações", Default: 0},
+				"test_cmd":         {Type: "string", Description: "Visible tests command line"},
+				"hidden_test_cmd":  {Type: "string", Description: "Hidden tests command line"},
+				"build_cmd":        {Type: "string", Description: "Build command (empty to skip)"},
+				"lint_cmd":         {Type: "string", Description: "Lint command (empty to skip)"},
+				"no_build":         {Type: "boolean", Description: "Skips build_cmd", Default: false},
+				"no_lint":          {Type: "boolean", Description: "Skips lint_cmd", Default: false},
+				"dry_run":          {Type: "boolean", Description: "Shows the plan without running", Default: false},
+				"max_iter":         {Type: "integer", Description: "Maximum iterations", Default: 0},
 				"timeout":          {Type: "string", Description: "Timeout", Default: "10m"},
 				"ruler":            {Type: "string", Description: "tests|visual", Default: "tests"},
-				"manifest":         {Type: "string", Description: "Manifesto visual"},
+				"manifest":         {Type: "string", Description: "Visual manifest"},
 				"threshold":        {Type: "number", Description: "Threshold visual", Default: 0.95},
-				"skip_unavailable": {Type: "boolean", Description: "Skip gracioso se ruler indisponível", Default: true},
+				"skip_unavailable": {Type: "boolean", Description: "Graceful skip if ruler is unavailable", Default: true},
 				"env": {
 					Type:        "array",
-					Description: "Chaves extras na allowlist de ambiente",
+					Description: "Extra keys for the environment allowlist",
 					Items:       &Property{Type: "string"},
 				},
 				"pass_env": {
@@ -194,21 +194,21 @@ func registerVerifyTools() {
 func registerReviewTools() {
 	Register(&Tool{
 		Name:        "tb_review",
-		Description: "Revisão fresh-context contra ticket (paridade com tb review)",
+		Description: "Fresh-context review against ticket (parity with tb review)",
 		InputSchema: &InputSchema{
 			Type: "object",
 			Properties: map[string]Property{
-				"cwd":                  {Type: "string", Description: "Diretório do repositório"},
-				"ticket":               {Type: "string", Description: "Caminho do ticket/rd.md", Default: "rd.md"},
+				"cwd":                  {Type: "string", Description: "Repository directory"},
+				"ticket":               {Type: "string", Description: "Path to ticket/rd.md", Default: "rd.md"},
 				"base":                 {Type: "string", Description: "Ref base", Default: "HEAD~1"},
 				"head":                 {Type: "string", Description: "Ref head", Default: "HEAD"},
-				"approved_sha":         {Type: "string", Description: "SHA aprovado; compara patch-id verbatim (sensível a whitespace) com o head"},
-				"approved_base":        {Type: "string", Description: "Base do range aprovado; default: merge-base(approved, base)"},
-				"require_approved_sha": {Type: "boolean", Description: "Falha se approved_sha estiver ausente", Default: false},
-				"reviewers":            {Type: "integer", Description: "Máximo de goldfish distintos", Default: 3},
+				"approved_sha":         {Type: "string", Description: "Approved SHA; compares verbatim patch-id (whitespace-sensitive) with head"},
+				"approved_base":        {Type: "string", Description: "Base of the approved range; default: merge-base(approved, base)"},
+				"require_approved_sha": {Type: "boolean", Description: "Fails if approved_sha is missing", Default: false},
+				"reviewers":            {Type: "integer", Description: "Maximum distinct goldfish", Default: 3},
 				"standards": {
 					Type:        "array",
-					Description: "Papéis: scope,quality,acceptance (aceita CSV legado)",
+					Description: "Roles: scope,quality,acceptance (accepts legacy CSV)",
 					Default:     []string{"scope", "quality", "acceptance"},
 					Items:       &Property{Type: "string"},
 				},
@@ -218,17 +218,17 @@ func registerReviewTools() {
 	})
 	Register(&Tool{
 		Name:        "tb_drift",
-		Description: "Detecta drift de escopo/base (paridade com tb drift)",
+		Description: "Detects scope/base drift (parity with tb drift)",
 		InputSchema: &InputSchema{
 			Type: "object",
 			Properties: map[string]Property{
-				"cwd":                  {Type: "string", Description: "Diretório do repositório"},
-				"ticket":               {Type: "string", Description: "Caminho do ticket/rd.md", Default: "rd.md"},
+				"cwd":                  {Type: "string", Description: "Repository directory"},
+				"ticket":               {Type: "string", Description: "Path to ticket/rd.md", Default: "rd.md"},
 				"base":                 {Type: "string", Description: "Ref base", Default: "HEAD~1"},
 				"head":                 {Type: "string", Description: "Ref head", Default: "HEAD"},
-				"approved_sha":         {Type: "string", Description: "SHA aprovado; compara patch-id verbatim (sensível a whitespace) com o head"},
-				"approved_base":        {Type: "string", Description: "Base do range aprovado; default: merge-base(approved, base)"},
-				"require_approved_sha": {Type: "boolean", Description: "Falha se approved_sha estiver ausente", Default: false},
+				"approved_sha":         {Type: "string", Description: "Approved SHA; compares verbatim patch-id (whitespace-sensitive) with head"},
+				"approved_base":        {Type: "string", Description: "Base of the approved range; default: merge-base(approved, base)"},
+				"require_approved_sha": {Type: "boolean", Description: "Fails if approved_sha is missing", Default: false},
 			},
 		},
 		Handler: handleDrift,
@@ -238,16 +238,16 @@ func registerReviewTools() {
 func registerGuardTools() {
 	Register(&Tool{
 		Name:        "tb_guard_check",
-		Description: "Analisa diff anti-trapaça (paridade com tb guard check)",
+		Description: "Analyzes the diff for anti-cheat violations (parity with tb guard check)",
 		InputSchema: &InputSchema{
 			Type: "object",
 			Properties: map[string]Property{
-				"cwd":       {Type: "string", Description: "Diretório do repositório"},
+				"cwd":       {Type: "string", Description: "Repository directory"},
 				"base":      {Type: "string", Description: "Ref base", Default: "HEAD~1"},
 				"head":      {Type: "string", Description: "Ref head", Default: "HEAD"},
-				"range":     {Type: "string", Description: "Intervalo base..head (alternativa a base/head)"},
-				"warn_only": {Type: "boolean", Description: "true para não marcar strict_fail em SeverityError (opt-out)", Default: false},
-				"strict":    {Type: "boolean", Description: "deprecated: strict_fail já é o default em SeverityError; use warn_only=true para opt-out", Default: false},
+				"range":     {Type: "string", Description: "base..head range (alternative to base/head)"},
+				"warn_only": {Type: "boolean", Description: "true to not set strict_fail on SeverityError (opt-out)", Default: false},
+				"strict":    {Type: "boolean", Description: "deprecated: strict_fail is already the default on SeverityError; use warn_only=true to opt out", Default: false},
 			},
 		},
 		Handler: handleGuardCheck,
@@ -257,43 +257,43 @@ func registerGuardTools() {
 func registerStackTools() {
 	Register(&Tool{
 		Name:        "tb_stack",
-		Description: "Empilha verify/review/drift/guard com contexto compartilhado (paridade com tb stack)",
+		Description: "Stacks verify/review/drift/guard with shared context (parity with tb stack)",
 		InputSchema: &InputSchema{
 			Type: "object",
 			Properties: map[string]Property{
 				"ops": {
 					Type:        "array",
-					Description: "Operações na ordem: verify, review, drift, guard",
+					Description: "Operations in order: verify, review, drift, guard",
 					Items:       &Property{Type: "string"},
 				},
-				"cwd":                  {Type: "string", Description: "Diretório do repositório"},
+				"cwd":                  {Type: "string", Description: "Repository directory"},
 				"base":                 {Type: "string", Description: "Ref base", Default: "HEAD~1"},
 				"head":                 {Type: "string", Description: "Ref head", Default: "HEAD"},
-				"fail_fast":            {Type: "boolean", Description: "Cancela as demais etapas na primeira falha", Default: false},
-				"jobs":                 {Type: "integer", Description: "Limite de concorrência (0=nº de CPUs, máx. 32; 1=serial)", Default: 0},
-				"ticket":               {Type: "string", Description: "Caminho do ticket/rd.md", Default: "rd.md"},
-				"approved_sha":         {Type: "string", Description: "SHA aprovado; patch-id verbatim (review/drift)"},
-				"approved_base":        {Type: "string", Description: "Base do range aprovado; default: merge-base(approved, base)"},
-				"require_approved_sha": {Type: "boolean", Description: "Falha se approved_sha estiver ausente", Default: false},
-				"warn_only":            {Type: "boolean", Description: "guard: não marca falha em SeverityError", Default: false},
-				"test_cmd":             {Type: "string", Description: "verify: testes visíveis"},
+				"fail_fast":            {Type: "boolean", Description: "Cancels the remaining steps on the first failure", Default: false},
+				"jobs":                 {Type: "integer", Description: "Concurrency limit (0=number of CPUs, max 32; 1=serial)", Default: 0},
+				"ticket":               {Type: "string", Description: "Path to ticket/rd.md", Default: "rd.md"},
+				"approved_sha":         {Type: "string", Description: "Approved SHA; verbatim patch-id (review/drift)"},
+				"approved_base":        {Type: "string", Description: "Base of the approved range; default: merge-base(approved, base)"},
+				"require_approved_sha": {Type: "boolean", Description: "Fails if approved_sha is missing", Default: false},
+				"warn_only":            {Type: "boolean", Description: "guard: does not flag failure on SeverityError", Default: false},
+				"test_cmd":             {Type: "string", Description: "verify: visible tests"},
 				"hidden_test_cmd":      {Type: "string", Description: "verify: testes ocultos"},
-				"build_cmd":            {Type: "string", Description: "verify: comando de build (vazio para pular)"},
-				"lint_cmd":             {Type: "string", Description: "verify: comando de lint (vazio para pular)"},
-				"no_build":             {Type: "boolean", Description: "verify: pula build_cmd", Default: false},
-				"no_lint":              {Type: "boolean", Description: "verify: pula lint_cmd", Default: false},
-				"dry_run":              {Type: "boolean", Description: "verify: mostra o plano sem executar", Default: false},
-				"max_iter":             {Type: "integer", Description: "verify: máximo de iterações", Default: 0},
+				"build_cmd":            {Type: "string", Description: "verify: build command (empty to skip)"},
+				"lint_cmd":             {Type: "string", Description: "verify: lint command (empty to skip)"},
+				"no_build":             {Type: "boolean", Description: "verify: skips build_cmd", Default: false},
+				"no_lint":              {Type: "boolean", Description: "verify: skips lint_cmd", Default: false},
+				"dry_run":              {Type: "boolean", Description: "verify: shows the plan without running", Default: false},
+				"max_iter":             {Type: "integer", Description: "verify: maximum iterations", Default: 0},
 				"timeout":              {Type: "string", Description: "verify: timeout", Default: "10m"},
-				"reviewers":            {Type: "integer", Description: "review: máximo de goldfish", Default: 0},
+				"reviewers":            {Type: "integer", Description: "review: maximum goldfish", Default: 0},
 				"standards": {
 					Type:        "array",
-					Description: "review: papéis scope/quality/acceptance",
+					Description: "review: roles scope/quality/acceptance",
 					Items:       &Property{Type: "string"},
 				},
 				"env": {
 					Type:        "array",
-					Description: "Chaves extras na allowlist de ambiente (verify)",
+					Description: "Extra keys for the environment allowlist (verify)",
 					Items:       &Property{Type: "string"},
 				},
 				"pass_env": {
@@ -516,7 +516,7 @@ func runVerifyTests(ctx context.Context, cwd string, args map[string]any) (any, 
 	}
 	timeout, err := time.ParseDuration(timeoutStr)
 	if err != nil {
-		return nil, fmt.Errorf("timeout inválido: %w", err)
+		return nil, fmt.Errorf("invalid timeout: %w", err)
 	}
 	cfg.Timeout = timeout
 	cfg.EnvAllow = append(cfg.EnvAllow, StringSliceArg(args, "env", nil)...)
@@ -716,7 +716,7 @@ func resolveGuardRefs(args map[string]any) (base, head string, err error) {
 	if rng := StringArg(args, "range"); rng != "" {
 		parts := strings.SplitN(rng, "..", 2)
 		if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
-			return "", "", fmt.Errorf("use range base..head ou base/head")
+			return "", "", fmt.Errorf("use range base..head or base/head")
 		}
 		return parts[0], parts[1], nil
 	}
@@ -764,7 +764,7 @@ func handleStack(ctx context.Context, args map[string]any) (any, error) {
 	}
 	timeout, err := time.ParseDuration(timeoutStr)
 	if err != nil {
-		return nil, fmt.Errorf("timeout inválido: %w", err)
+		return nil, fmt.Errorf("invalid timeout: %w", err)
 	}
 	pass, err := toolPassEnv(args)
 	if err != nil {

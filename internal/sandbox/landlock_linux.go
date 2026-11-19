@@ -67,7 +67,7 @@ func init() {
 		return
 	}
 	if err := runLandlockChild(); err != nil {
-		fmt.Fprintf(os.Stderr, "tb sandbox: falha ao aplicar Landlock: %v\n", err)
+		fmt.Fprintf(os.Stderr, "tb sandbox: failed to apply Landlock: %v\n", err)
 		os.Exit(127)
 	}
 }
@@ -75,7 +75,7 @@ func init() {
 func CheckLandlockSupport() (supported bool, version int, err error) {
 	abi, _, errno := syscall.Syscall(sysLandlockCreateRuleset, 0, 0, landlockCreateRulesetVersion)
 	if errno == syscall.ENOSYS || errno == syscall.EOPNOTSUPP {
-		return false, 0, fmt.Errorf("kernel sem Landlock: %v", errno)
+		return false, 0, fmt.Errorf("kernel without Landlock: %v", errno)
 	}
 	if errno != 0 {
 		return false, 0, errno
@@ -115,7 +115,7 @@ func applyLandlock(p *childPayload) error {
 		if err == nil {
 			err = ErrUnsupported
 		}
-		return fmt.Errorf("Landlock indisponível: %w", err)
+		return fmt.Errorf("Landlock unavailable: %w", err)
 	}
 
 	ruleset, err := createRuleset(abi)
@@ -128,24 +128,24 @@ func applyLandlock(p *childPayload) error {
 		return err
 	}
 	if err := addRule(ruleset, p.WorkDir, p.ReadOnlyWorkDir, abi); err != nil {
-		return fmt.Errorf("regra do workdir %q: %w", p.WorkDir, err)
+		return fmt.Errorf("workdir rule %q: %w", p.WorkDir, err)
 	}
 	// No rule for os.TempDir(): the shared /tmp gets no access (writes only in
 	// the workdir, PrivateTmp, Home and AllowedPaths). Anything that needs temp
 	// space should set PrivateTmp or point TMPDIR inside the workdir.
 	if p.PrivateTmp != "" {
 		if err := addRule(ruleset, p.PrivateTmp, false, abi); err != nil {
-			return fmt.Errorf("regra do tmp privado %q: %w", p.PrivateTmp, err)
+			return fmt.Errorf("private tmp rule %q: %w", p.PrivateTmp, err)
 		}
 	}
 	if p.Home != "" {
 		if err := addRule(ruleset, p.Home, false, abi); err != nil {
-			return fmt.Errorf("regra do home %q: %w", p.Home, err)
+			return fmt.Errorf("home rule %q: %w", p.Home, err)
 		}
 	}
 	for _, a := range p.Allowed {
 		if err := addRule(ruleset, a.Path, a.ReadOnly, abi); err != nil {
-			return fmt.Errorf("regra allow %q: %w", a.Path, err)
+			return fmt.Errorf("allow rule %q: %w", a.Path, err)
 		}
 	}
 
@@ -363,14 +363,14 @@ func prepareChildEnv(cfg *Config, command string, args []string) ([]string, erro
 func runLandlockChild() error {
 	raw := os.Getenv(envLandlockPayload)
 	if raw == "" {
-		return fmt.Errorf("payload Landlock ausente")
+		return fmt.Errorf("Landlock payload missing")
 	}
 	var p childPayload
 	if err := json.Unmarshal([]byte(raw), &p); err != nil {
-		return fmt.Errorf("payload Landlock inválido: %w", err)
+		return fmt.Errorf("invalid Landlock payload: %w", err)
 	}
 	if p.WorkDir == "" || p.Command == "" {
-		return fmt.Errorf("workdir/comando obrigatórios no payload")
+		return fmt.Errorf("workdir/command required in payload")
 	}
 
 	runtime.LockOSThread()

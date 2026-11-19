@@ -84,7 +84,7 @@ func (m *Manager) Create(id, baseRef string, scope Scope) (*Workspace, error) {
 	}
 	path := filepath.Join(m.baseDir, id)
 	if _, err := os.Stat(path); err == nil {
-		return nil, fmt.Errorf("workspace %s já existe", id)
+		return nil, fmt.Errorf("workspace %s already exists", id)
 	}
 	branch := "tb-workspace/" + id
 	cmd := m.gitCmd(m.repoDir, "worktree", "add", "-b", branch, path, baseRef)
@@ -155,7 +155,7 @@ func (m *Manager) Allowed(ws *Workspace, path string) error {
 		return err
 	}
 	if !strings.HasPrefix(abs, ws.Path) {
-		return fmt.Errorf("fora do workspace")
+		return fmt.Errorf("outside the workspace")
 	}
 	rel, err := filepath.Rel(ws.Path, abs)
 	if err != nil {
@@ -174,7 +174,7 @@ func (m *Manager) Allowed(ws *Workspace, path string) error {
 			return nil
 		}
 	}
-	return fmt.Errorf("fora do scope permitido")
+	return fmt.Errorf("outside the allowed scope")
 }
 
 func matchScope(rel, pattern string) bool {

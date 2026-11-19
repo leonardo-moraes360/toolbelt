@@ -22,16 +22,16 @@ func init() {
 func RegisterBuiltins() {
 	Register(&Tool{
 		Name:        "tb_version",
-		Description: "Retorna informações de versão do toolbelt",
+		Description: "Returns toolbelt version information",
 		Handler:     handleVersion,
 	})
 	Register(&Tool{
 		Name:        "tb_echo",
-		Description: "Ecoa a mensagem de entrada",
+		Description: "Echoes the input message",
 		InputSchema: &InputSchema{
 			Type: "object",
 			Properties: map[string]Property{
-				"message": {Type: "string", Description: "Mensagem para ecoar"},
+				"message": {Type: "string", Description: "Message to echo"},
 			},
 			Required: []string{"message"},
 		},
@@ -39,7 +39,7 @@ func RegisterBuiltins() {
 	})
 	Register(&Tool{
 		Name:        "tb_env",
-		Description: "Retorna informações do ambiente de execução",
+		Description: "Returns information about the runtime environment",
 		Handler:     handleEnv,
 	})
 	Register(&Tool{
@@ -48,12 +48,12 @@ func RegisterBuiltins() {
 		InputSchema: &InputSchema{
 			Type: "object",
 			Properties: map[string]Property{
-				"command": {Type: "string", Description: "Processo a executar"},
+				"command": {Type: "string", Description: "Process to run"},
 				"timeout": {Type: "string", Description: "Timeout (ex: 30s)", Default: "30s"},
 				"cwd":     {Type: "string", Description: "Working directory; must be inside the repository"},
 				"env": {
 					Type:        "array",
-					Description: "Chaves extras na allowlist de ambiente",
+					Description: "Extra keys for the environment allowlist",
 					Items:       &Property{Type: "string"},
 				},
 				"pass_env": {
@@ -91,7 +91,7 @@ func handleEnv(_ context.Context, _ map[string]any) (any, error) {
 func handleRun(ctx context.Context, args map[string]any) (any, error) {
 	command, _ := args["command"].(string)
 	if command == "" {
-		return nil, fmt.Errorf("processo não especificado")
+		return nil, fmt.Errorf("process not specified")
 	}
 	timeoutStr, _ := args["timeout"].(string)
 	if timeoutStr == "" {
@@ -99,7 +99,7 @@ func handleRun(ctx context.Context, args map[string]any) (any, error) {
 	}
 	timeout, err := time.ParseDuration(timeoutStr)
 	if err != nil {
-		return nil, fmt.Errorf("timeout inválido: %w", err)
+		return nil, fmt.Errorf("invalid timeout: %w", err)
 	}
 	cwd, _ := args["cwd"].(string)
 	envOpts, err := resolveExecEnv(args)

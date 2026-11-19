@@ -141,7 +141,7 @@ func (r *Router) execute(ctx context.Context, s *slot, worker string, t *ticket.
 	// detection time); escapes of other tickets swept here only mark them.
 	ev.alerts = r.collectEscapes()
 	if r.takeEscaped(t.ID) {
-		ev.err = fmt.Errorf("%w: processo(s) escaparam do grupo do agente (setsid/setpgid) e foram encerrados; agentes não podem se desacoplar", errAgentEscaped)
+		ev.err = fmt.Errorf("%w: process(es) escaped the agent group (setsid/setpgid) and were terminated; agents must not detach", errAgentEscaped)
 		return ev
 	}
 	if err != nil {
@@ -205,7 +205,7 @@ func (r *Router) createWorkspace(t *ticket.Ticket, base string) (*workspace.Work
 // errWorkspaceIntegrity means the agent tampered with the worktree (or it does
 // not match the one registered in the repository); git never runs in it and the
 // ticket fails without retry.
-var errWorkspaceIntegrity = errors.New("integridade do worktree violada")
+var errWorkspaceIntegrity = errors.New("worktree integrity violated")
 
 // errAgentEscaped: the agent left descendants outside its process group. It is
 // an integrity violation (no retry, no git in the worktree).
@@ -268,14 +268,14 @@ func integrityErr(format string, a ...any) error {
 func readGitdirPointer(ws, dotgit string) (string, error) {
 	fi, err := os.Lstat(ws)
 	if err != nil || !fi.IsDir() {
-		return "", integrityErr("worktree %s ausente ou não é diretório", ws)
+		return "", integrityErr("worktree %s missing or not a directory", ws)
 	}
 	fi, err = os.Lstat(dotgit)
 	if err != nil {
-		return "", integrityErr("%s ilegível: %v", dotgit, err)
+		return "", integrityErr("%s unreadable: %v", dotgit, err)
 	}
 	if !fi.Mode().IsRegular() {
-		return "", integrityErr("%s foi substituído por %s (esperado arquivo regular gitdir:); commit recusado", dotgit, fi.Mode().Type())
+		return "", integrityErr("%s was replaced by %s (expected regular file gitdir:); commit refused", dotgit, fi.Mode().Type())
 	}
 	if fi.Size() > 4096 {
 		return "", integrityErr("%s grande demais", dotgit)
@@ -286,7 +286,7 @@ func readGitdirPointer(ws, dotgit string) (string, error) {
 	}
 	line := strings.TrimSpace(string(data))
 	if !strings.HasPrefix(line, "gitdir:") || strings.ContainsAny(line, "\n\r") {
-		return "", integrityErr("%s com conteúdo inesperado", dotgit)
+		return "", integrityErr("%s has unexpected content", dotgit)
 	}
 	gitDir := strings.TrimSpace(strings.TrimPrefix(line, "gitdir:"))
 	if !filepath.IsAbs(gitDir) {
@@ -315,17 +315,17 @@ func checkRegisteredWorktree(root, dotgit, gitDir string) (string, error) {
 		return "", integrityErr("gitdir %s: %v", gitDir, err)
 	}
 	if filepath.Dir(realGitDir) != filepath.Join(common, "worktrees") {
-		return "", integrityErr("gitdir %s não está em %s/worktrees", realGitDir, common)
+		return "", integrityErr("gitdir %s is not in %s/worktrees", realGitDir, common)
 	}
 	// git's registration (outside the worktree) must point back to <ws>/.git
 	back, err := os.ReadFile(filepath.Join(realGitDir, "gitdir")) //nolint:gosec // inside the repository's .git
 	if err != nil {
-		return "", integrityErr("registro do worktree ilegível: %v", err)
+		return "", integrityErr("worktree registry unreadable: %v", err)
 	}
 	backReal, err1 := filepath.EvalSymlinks(strings.TrimSpace(string(back)))
 	wantReal, err2 := filepath.EvalSymlinks(dotgit)
 	if err1 != nil || err2 != nil || backReal != wantReal {
-		return "", integrityErr("registro do worktree em %s não corresponde a %s", realGitDir, dotgit)
+		return "", integrityErr("worktree registry in %s does not match %s", realGitDir, dotgit)
 	}
 	return realGitDir, nil
 }
@@ -417,10 +417,10 @@ func refuseNestedGit(ws string) error {
 	})
 	if found != "" {
 		rel, _ := filepath.Rel(ws, found)
-		return fmt.Errorf("%w: .git aninhado em %s (repositório/submódulo criado pelo agente); commit recusado", errWorkspaceIntegrity, rel)
+		return fmt.Errorf("%w: nested .git in %s (repository/submodule created by the agent); commit refused", errWorkspaceIntegrity, rel)
 	}
 	if err != nil {
-		return fmt.Errorf("%w: varredura do worktree: %v", errWorkspaceIntegrity, err)
+		return fmt.Errorf("%w: worktree scan: %v", errWorkspaceIntegrity, err)
 	}
 	return nil
 }
@@ -454,7 +454,7 @@ func refuseStagedSubmodules(g *trustedGit) error {
 		}
 		newMode, status := f[1], f[4]
 		if newMode == "160000" || (path == ".gitmodules" && !strings.HasPrefix(status, "D")) {
-			return fmt.Errorf("%w: commit adiciona/altera gitlink ou .gitmodules (%s); recusado", errWorkspaceIntegrity, path)
+			return fmt.Errorf("%w: commit adds/changes gitlink or .gitmodules (%s); refused", errWorkspaceIntegrity, path)
 		}
 	}
 	return nil

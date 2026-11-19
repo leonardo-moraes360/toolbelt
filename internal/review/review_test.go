@@ -918,7 +918,7 @@ func TestReviewInvariantsApplyToAddedLines(t *testing.T) {
 		if f.ID == "inv-1" && strings.Contains(f.Evidence, "console.log") {
 			consoleHit = true
 		}
-		if f.ID == "inv-2" && strings.Contains(strings.ToLower(f.Evidence), "coment") {
+		if f.ID == "inv-2" && strings.Contains(strings.ToLower(f.Evidence), "comment") {
 			commentHit = true
 		}
 	}
@@ -1057,7 +1057,7 @@ func TestCheckPinnedApprovalEmptyRangeClearError(t *testing.T) {
 	if strings.Contains(strings.ToLower(msg), "usage: git range-diff") {
 		t.Fatalf("não deve despejar usage do range-diff:\n%s", msg)
 	}
-	if !strings.Contains(msg, "coincide com a base") && !strings.Contains(msg, "vazio") {
+	if !strings.Contains(msg, "matches the base") && !strings.Contains(msg, "empty") {
 		t.Fatalf("mensagem deve explicar intervalo vazio:\n%s", msg)
 	}
 }
@@ -1253,7 +1253,7 @@ func TestCheckPinnedApprovalRejectsMissingSHA(t *testing.T) {
 	if err == nil {
 		t.Fatal("approved-sha inexistente deveria falhar")
 	}
-	if !strings.Contains(err.Error(), "inexistente") {
+	if !strings.Contains(err.Error(), "missing or invalid") {
 		t.Fatalf("erro claro esperado: %v", err)
 	}
 }
@@ -1475,7 +1475,7 @@ func TestRunMissingTicketErrors(t *testing.T) {
 	if err == nil {
 		t.Fatal("ticket ausente deveria falhar")
 	}
-	if !strings.Contains(err.Error(), "ticket não encontrado") {
+	if !strings.Contains(err.Error(), "ticket not found") {
 		t.Fatalf("mensagem deveria citar ticket não encontrado: %v", err)
 	}
 	if !strings.Contains(err.Error(), missing) {
@@ -1494,7 +1494,7 @@ func TestLoadTicketUnreadable(t *testing.T) {
 	if err == nil {
 		t.Fatal("ticket ilegível deveria falhar")
 	}
-	if !strings.Contains(err.Error(), "ticket ilegível") {
+	if !strings.Contains(err.Error(), "ticket unreadable") {
 		t.Fatalf("mensagem deveria citar ticket ilegível: %v", err)
 	}
 	if !strings.Contains(err.Error(), path) {
