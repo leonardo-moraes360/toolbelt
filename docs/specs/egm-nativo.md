@@ -2,7 +2,7 @@
 
 # Spec: native EGM, Phase A, core (`tb egm review|loop|resolve|status`)
 
-Author: toolbelt · Status: R18–R27 revised with the R0 data (round 1 of the revision, not reviewed); R0 open only for item 8 and the re-measurement of convergence · Date: 2026-11-17 · Decision: [ADR-015](../adr/015-egm-nativo.md) · Companion: [egm trust](egm-trust.md)
+Author: toolbelt · Status: R18–R27 revised with the R0 data and simplified after the re-measurement (not reviewed); R0 open only for item 8 · Date: 2026-11-17 · Decision: [ADR-015](../adr/015-egm-nativo.md) · Companion: [egm trust](egm-trust.md)
 
 ## Overview
 
@@ -43,11 +43,9 @@ The protections against active fraud by the author itself, who runs as the same 
 | nonce | A random 128-bit value per run. Delimits the data blocks and must be echoed in the output. Proves the output is from this run, **not** that the model resisted injection. |
 | attestation | The `checked` list of literal excerpts from the document that the reviewer read, checked by tb (R17). |
 | lineage's cited sources | The document plus the union of the **verified** `evidence[].path` of the occurrences that went through `resolveSource` in the round (`cited`, R21). |
-| `origin_round` / `opened_round` | Round in which the lineage was born / last round in which it became `open`, `reopened` or `late` (a reopening, or a `late` lineage rising to `open`, updates `opened_round`). |
-| blocking lineage | A blocker or major lineage in `open`, `reopened`, `contest_pending`, `escalated` or unconfirmed `fixed`. Neither a `late` lineage nor an unconfirmed `fixed` that came from `late` (R28) is blocking (R20). |
-| changed lines (since round *m*) | The lines of the current snapshot of the document, or of a `cited` source, that differ from round *m*'s snapshot by the R20 line mapping, plus the line before and the line after each deletion point. |
-| `late` lineage | A new `major` from an LLM reviewer that links to no lineage, in a region the same reviewer already reviewed in this cycle and that has not changed since (R20). |
-| policy | `policy_sha`: the sha256 of the canonical JSON with the effective required reviewers (the full set), `clean_rounds`, `match`, `late_margin`, `attest`, `detail_headings`, `doc_types`, `refs_ignore`, `max_source_bytes` and `max_packet_bytes` (R21). The engine and the profile are not included; they are recorded in the rounds, and their effects are already downgrades (R24). |
+| `origin_round` / `opened_round` | Round in which the lineage was born / last round in which it became `open` or `reopened` (a reopening updates `opened_round`). |
+| blocking lineage | A blocker or major lineage in `open`, `reopened`, `contest_pending`, `escalated` or unconfirmed `fixed`. |
+| policy | `policy_sha`: the sha256 of the canonical JSON with the effective required reviewers (the full set), `clean_rounds`, `match`, `attest`, `detail_headings`, `doc_types`, `refs_ignore`, `max_source_bytes` and `max_packet_bytes` (R21). The engine and the profile are not included; they are recorded in the rounds, and their effects are already downgrades (R24). |
 | content | `content`: the sha256 of the path-sorted list of `(path, sha256 of the bytes)` pairs of the document and of all sources resolved by R7 from the document, before per-reviewer packaging and regardless of who ran, plus `checks_sha` (the sha256 of the checkers' inputs: each checked path with type and existence). The bytes come from the worktree in interactive mode and from the blob in gate mode (R7a). |
 | convergence record | A record that ties a `content` to a convergence (R23). |
 | counted rounds | The `egm.clean_rounds` consecutive clean rounds, over the same `content`, that produced a convergence record. |
@@ -123,7 +121,7 @@ tb only calls git in phases 1 and 3, never while a goldfish is running (R3).
 
 ### Requirements
 
-**R0: spike.** This requirement blocks R1, R2, R3, R4, R4b and R5, and the move of ADR-015 to `accepted`. R4c and R4d do not depend on the spike. R18 to R27 were revised with the R0 data ([dogfood #31 and #32](../campo/dogfood.md)). Before ADR-015 goes to `accepted`, the spike measures the convergence rate again with the revised rules (R19 links, `late` lineages, `max_rounds: 8`).
+**R0: spike.** This requirement blocks R1, R2, R3, R4, R4b and R5, and the move of ADR-015 to `accepted`. R4c and R4d do not depend on the spike. R18 to R27 were revised with the R0 data ([dogfood #31–#33](../campo/dogfood.md)). Convergence was measured twice and neither run converged within its budget; Phase A accepts that (see Open Questions), so only item 8 still blocks ADR-015 from `accepted`.
 
 A prototype in `bench/egm-spike/` must prove that `claude -p`:
 1. runs in `sandbox.New` with the packet as a read-only workdir, private `TMPDIR`, disposable HOME, minimal env (R4b) and minimal `PATH`;
@@ -140,8 +138,8 @@ The spike must also:
 - **Token refresh:** test whether a refresh in the disposable HOME invalidates the real credential.
 - **Runtime:** define the allowed runtime directories (R4).
 - **macOS:** record the Keychain as a limitation.
-- **Matching:** collect at least 30 paraphrased pairs and 30 distinct pairs in the same region, and calibrate R18–R20 for wrong merges ≤ 5% and missed matches ≤ 20%.
-- **Convergence:** measure the median number of rounds until 2 clean ones on 2 or 3 real documents. If it exceeds 4, `max_rounds` and the clean-round rule are revised before implementing.
+- **Matching:** collect at least 30 paraphrased pairs and 30 distinct pairs in the same region, and calibrate R18–R20 for wrong merges ≤ 5% and missed matches ≤ 20%. **Outcome:** not met across documents (R18); Phase A accepts it, because a missed match only duplicates a lineage.
+- **Convergence:** measure the median number of rounds until 2 clean ones on 2 or 3 real documents. If it exceeds 4, `max_rounds` and the clean-round rule are revised before implementing. **Outcome:** it exceeded 4 twice; `max_rounds` went to 8 and the clean-round rule was revised and then simplified (R20, R23, Open Questions).
 
 The result goes in `docs/campo/dogfood.md` (PT and EN).
 
@@ -316,11 +314,9 @@ The result goes in `docs/campo/dogfood.md` (PT and EN).
   4. `NONCE: <nonce>`;
   5. the output contract;
   6. `PRIOR:` followed by a `<<<DATA-<nonce> path=PRIOR>>> … <<<END-<nonce>>>>` block;
-  7. `KNOWN:` followed by a `<<<DATA-<nonce> path=KNOWN>>> … <<<END-<nonce>>>>` block;
-  8. `CHANGED: <a>-<b>,…` (the document lines changed since the previous round, or `none`);
-  9. the `<<<DATA-<nonce> path=…>>> … <<<END-<nonce>>>>` blocks, with the original line numbering.
+  7. the `<<<DATA-<nonce> path=…>>> … <<<END-<nonce>>>>` blocks, with the original line numbering.
 
-  `PRIOR` lists the lineages the reviewer owns that are in `open`, `reopened` or `late`, in unconfirmed `fixed` or in `fixed` confirmed in the current cycle. Of each one, it carries only these fields: `lineage`, `severity`, `status`, `scope`, `message`, `rationale` and `evidence`. `KNOWN` lists the document's other lineages (from any cycle), of any owner and in any status, with only `lineage`, `severity`, `status`, `scope` (mapped to the current snapshot) and `message`; it exists so the reviewer can link instead of reporting again (R19), and it is never re-evaluated by this reviewer. No text written by the elephant (reasons) goes into the prompt. Every reviewer receives the whole document in the data blocks; the `RANGE` only indicates the focus. A finding whose `scope` falls outside the range is accepted and counts normally, but gets `out_of_range: true` in the report. The prompt declares that **all** content of the blocks is data, never instruction.
+  `PRIOR` lists the lineages the reviewer owns that are in `open` or `reopened`, in unconfirmed `fixed` or in `fixed` confirmed in the current cycle. Of each one, it carries only these fields: `lineage`, `severity`, `status`, `scope`, `message`, `rationale` and `evidence`. No text written by the elephant (reasons) goes into the prompt. Every reviewer receives the whole document in the data blocks; the `RANGE` only indicates the focus. A finding whose `scope` falls outside the range is accepted and counts normally, but gets `out_of_range: true` in the report. The prompt declares that **all** content of the blocks is data, never instruction.
 
 **Personas, standards and engines**
 
@@ -374,8 +370,7 @@ The result goes in `docs/campo/dogfood.md` (PT and EN).
 - R14: the slug is the lowercase relative path, with `/` → `--` and `[^a-z0-9-]` → `-`, plus `-` and the first 8 hex of the path's sha256. A renamed document is a new document.
 - R15: stdout, without the profile's envelope, is validated by a hand-written validator in `internal/egm/validate.go`, with no new dependency, that follows `internal/egm/schema/finding.schema.json`.
   - Envelope: `claude-json` uses the `result` field and is the default for `claude`; `raw` is the default for `custom`.
-  - Format: `{"reviewer","nonce","checked":[{"heading","quote"}],"findings":[{"severity","scope":{"heading","lines":[a,b]},"message","rationale","evidence":[{"path","line"}],"same_as"}],"prior":[{"lineage","still_holds":bool}]}`.
-  - `same_as` is optional: the `F-<k>` of a `PRIOR` or `KNOWN` lineage that the reviewer considers the same problem (R19). A `same_as` that is not a string of the form `F-<k>` is not a schema failure: it is treated as rejected (R19).
+  - Format: `{"reviewer","nonce","checked":[{"heading","quote"}],"findings":[{"severity","scope":{"heading","lines":[a,b]},"message","rationale","evidence":[{"path","line"}]}],"prior":[{"lineage","still_holds":bool}]}`.
 - R15a (tool use): the profile defines how to detect tool use in the envelope.
   - In `claude-json`, these count as use: `num_turns > 1`, `tool_use` entries or a non-empty `permission_denials`.
   - If use is detected, the goldfish becomes `not_run` with `reason: tools_used` and the report carries the `tools_used` warning.
@@ -394,7 +389,7 @@ The result goes in `docs/campo/dogfood.md` (PT and EN).
     - range with fewer than `Q × 20` characters of text: the minimum drops to 1;
     - range with text and no heading: zero headings required and empty `heading`;
     - range with no heading and no text: the reviewer is `skipped` (`reason: range_too_small`).
-- R17a (anti-injection scan): before each round, tb sweeps the **whole** snapshot (prose, code and quotes), each reviewer's `PRIOR` and `KNOWN` blocks and the sources sent.
+- R17a (anti-injection scan): before each round, tb sweeps the **whole** snapshot (prose, code and quotes), each reviewer's `PRIOR` block and the sources sent.
   - **Patterns:** they live in `internal/egm/injection_patterns.txt` (RE2, one per line, case-insensitive). The initial content is **exactly**:
     - `ignore (all |the )?(previous|prior|above) instructions`
     - `do not report (any|this|these|the) (findings?|issues?|problems?)`
@@ -405,8 +400,8 @@ The result goes in `docs/campo/dogfood.md` (PT and EN).
     - `responda apenas (com|o) json`
   - **Finding:** the matches under the same heading, or from the same source file, form **one** `major` finding of `injection-scan`.
     - `scope` is the union of the lines.
-    - It also carries `context` and `match_sha` (the sha256 of the matched text). `context` is `code` (fenced block or inline code), `quote` (line starting with `>`), `source` (source), `prior` (`PRIOR` or `KNOWN` block) or `prose` (the rest).
-    - A match in `PRIOR` or `KNOWN` produces no lineage. The matched excerpt is replaced with `[PADRÃO-REMOVIDO]` in that round's block, and tb produces the `prior_injection` or `known_injection` warning.
+    - It also carries `context` and `match_sha` (the sha256 of the matched text). `context` is `code` (fenced block or inline code), `quote` (line starting with `>`), `source` (source), `prior` (`PRIOR` block) or `prose` (the rest).
+    - A match in `PRIOR` produces no lineage. The matched excerpt is replaced with `[PADRÃO-REMOVIDO]` in that round's `PRIOR`, and tb produces the `prior_injection` warning.
   - **Contest** (R29):
     - the `scope` lines go to the arbiter quoted and escaped, in a `TRECHO-SINALIZADO` block;
     - the contest is refused if there is a term directed at the arbiter (`arbiter`, `árbitro`, `withdraw`, `uphold`, `verdict`, `veredito`) within 80 characters of any match;
@@ -422,42 +417,35 @@ The result goes in `docs/campo/dogfood.md` (PT and EN).
 - R18 (comparison functions): `normalize(msg)` lowercases, strips accents and punctuation, collapses whitespace, removes the stopwords in `internal/egm/stopwords.txt` and cuts each token to its first `egm.match.stem` runes (default 4; 0 keeps whole words).
   - `sim(a,b)` is the Jaccard of the `normalize` tokens.
   - `region(a,b)` holds when both have the same `heading` and, if both have `lines`, the gap between the ranges, `max(0, max(a₁,b₁) − min(a₂,b₂))`, is at most `egm.match.gap` (default 3). The scope of an existing lineage is mapped to the current snapshot first (R20).
-  - Defaults calibrated in R0 over `internal/egm/testdata/paraphrases.json` (dogfood #31): `sim` 0.23 with `stem` 4 gives about 3% wrong merges and 20% missed matches on the corpus, and, tuned on one document and tested on the other, 22–24% missed and 4–7% wrong merges, both above the targets. A line-overlap threshold had no effect and was dropped. Lexical matching is therefore only a fallback (R19).
-- R19 (link and merge): each new finding goes through these steps, in this order:
-  1. **Declared link:** if `same_as` names a lineage that was in this reviewer's `PRIOR` or `KNOWN` in the round, is in `open`, `reopened`, `late` or `fixed`, and `region` holds between the finding and the lineage, the finding is an occurrence of that lineage. A link to a lineage of another owner with a lower severity than the finding is not accepted either: the finding becomes a new lineage owned by its reviewer. Otherwise `same_as` is ignored, the report carries `same_as_rejected` with the occurrence and the lineage, and the finding goes to step 2.
-  2. **Lexical fallback:** the finding is an occurrence of the first lineage, in `F-<k>` order, with `sim ≥ egm.match.sim` and `region` (the cross-owner severity rule of step 1 applies here too); otherwise it merges with new findings of the same round that meet the same two conditions; otherwise it is new.
+  - Defaults calibrated in R0 over `internal/egm/testdata/paraphrases.json` (dogfood #31): `sim` 0.23 with `stem` 4 gives about 3% wrong merges and 20% missed matches on the corpus, and, tuned on one document and tested on the other, 22–24% missed and 4–7% wrong merges, both above the targets. A line-overlap threshold had no effect and was dropped. Missed matches show up as duplicate lineages, which cost rounds but never hide a finding.
+  - A link declared by the reviewer (`same_as`) and a list of other reviewers' lineages in the prompt were tried in R0 and dropped: reviewers never used them (dogfood #33).
+- R19 (merge): lineages of another owner with a lower severity than the finding are not candidates. A new finding is an occurrence of the first candidate, in `F-<k>` order, with `sim ≥ egm.match.sim` and `region`; otherwise it merges with new findings of the same round that meet the same conditions; otherwise it is new.
 
   A merge keeps the highest severity and the `reviewers[]` list. The owner is the reviewer of the **highest-severity** occurrence. Ties are broken in this order: reviewer with code sources, then the R10 order, and checkers after reviewers.
 - R20 (re-evaluation): between rounds, the one who re-evaluates is the **owning reviewer**. The R9 set goes into its `PRIOR`, and it answers `prior[].still_holds` for each lineage. Omitting a lineage from that set invalidates the output.
 
   | Status | `still_holds: true` | `still_holds: false` |
   |--------|---------------------|----------------------|
-  | open / reopened / late | stays | → fixed (`by: reviewer`, confirmed) |
+  | open / reopened | stays | → fixed (`by: reviewer`, confirmed) |
   | fixed | → reopened | stays fixed (confirmed) |
 
-  - **A fix needs a change:** `still_holds: false` on an `open`, `reopened` or `late` lineage is applied as follows:
-    - a change since `opened_round` touches the mapped `scope` lines (± `egm.late_margin`) or the `evidence[].line ± 5` lines of a `cited` source (the R28 test): the lineage becomes `fixed`, confirmed;
+  - **A fix needs a change:** `still_holds: false` on an `open` or `reopened` lineage is applied as follows:
+    - a change since `opened_round` touches the mapped `scope` lines or the `evidence[].line ± 5` lines of a `cited` source (the R28 test): the lineage becomes `fixed`, confirmed;
     - the `content` changed, but no change touches those lines: the lineage becomes `fixed`, confirmed, and the report carries `fixed_elsewhere`, so a fix that only the owner vouches for is visible;
     - the `content` did not change: the answer is ignored, the lineage stays, and the report carries `fixed_without_edit`.
 
-    In R0 the owners never kept a lineage open (0 of 188 re-evaluations, dogfood #32); `fixed_elsewhere` is how that leniency shows up in the report.
+    In R0 the owners never kept a lineage open (0 of 267 re-evaluations over two measurements, dogfood #32 and #33); `fixed_elsewhere` is how that leniency shows up in the report.
   - **Checker lineages:** re-evaluated by re-running the checker.
     - Not reproduced: becomes `fixed`, confirmed.
     - Reproduced: `fixed` becomes `reopened`.
   - **Fixed owner:** a lineage's owner never changes in Phase A. If the owner does not run in the round (`skipped`, `unavailable` or removed by `--reviewers`), the lineage does not change. A blocking lineage whose owner cannot run makes R26 refuse the round.
-  - **Line mapping:** the scopes of existing lineages are mapped to the current snapshot by `git diff --no-index -U0` between the snapshots; the same diffs, for the document and for the `cited` sources, give the changed lines.
+  - **Line mapping:** the scopes of existing lineages are mapped to the current snapshot by `git diff --no-index -U0` between the snapshots; the same diffs, for the document and for the `cited` sources, give the changed lines that the fix test uses.
   - **New findings:** they go through R19.
     - Matched a `fixed` lineage: it reopens.
-    - Matched an `open`, `reopened` or `late` lineage: it records the occurrence; if the new severity is higher, the lineage rises to it. A `late` lineage becomes `open` when it rises to blocker or when the new occurrence touches the lines changed since the previous round (± `egm.late_margin`).
+    - Matched an `open` or `reopened` lineage: it records the occurrence; if the new severity is higher, the lineage rises to it.
     - Matched `settled`, `declined`, `contest_pending` or `escalated` and the new severity **is not higher**: it only records the occurrence, except for R17a.
     - Matched one of these, but the new severity is higher: it becomes a new `F-<k>`.
-    - Did not match: it becomes a new `F-<k>` in `open`, or in `late` when all of these hold:
-      - the severity is `major` and the finding comes from an LLM reviewer (not a checker nor `injection-scan`);
-      - the same reviewer was `completed` in an earlier round *m* of this cycle, and its range in round *m* covered the finding's mapped `scope`;
-      - the `scope` is not within `egm.late_margin` lines of a line changed since round *m*, and no `evidence` of the finding points to a line changed since round *m* in a source.
-
-      A reviewer that did not run, was `unavailable` or was removed by `--reviewers` in the earlier rounds therefore never produces `late`.
-  - **Why `late` exists:** in R0 every round brought new majors after the author's edits, and no round was ever clean (dogfood #32). The data does not say whether those majors were in edited regions; the re-measurement records it. A `late` lineage is reported and can be fixed or declined, but does not keep the loop open; it is a lineage downgrade while it stays `late` (R24).
+    - Did not match: it becomes a new `F-<k>`.
 - R21 (state): the state directory contains:
   - `state.json` (`0600`), written to a temporary file followed by `rename` and an `fsync` of the directory;
   - `round-<n>/`;
@@ -466,7 +454,7 @@ The result goes in `docs/campo/dogfood.md` (PT and EN).
   `state.json` stores:
   - **Rounds:** `n`, `cycle`, `content`, `policy_sha`, `doc_sha256`, `head_commit`, `sources` (path → sha256), engine, required and executed reviewers with status, and `argv_sha256`.
   - **Map** from occurrence to lineage.
-  - **Lineages:** `severity`, `owner`, `persona`, `status ∈ open|late|fixed|reopened|contest_pending|settled|escalated|declined`, `confirmed`, `contests`, `origin_round`, `opened_round`, `cited`, `match_sha` (in `injection-scan`) and `downgrade` (R24).
+  - **Lineages:** `severity`, `owner`, `persona`, `status ∈ open|fixed|reopened|contest_pending|settled|escalated|declined`, `confirmed`, `contests`, `origin_round`, `opened_round`, `cited`, `match_sha` (in `injection-scan`) and `downgrade` (R24).
   - **Transitions:** command, round, reason and `by ∈ elephant|reviewer|rerun|arbiter`.
   - **Convergence records:** `content`, `policy_sha`, the counted rounds and the cycle downgrade flags.
 
@@ -476,7 +464,7 @@ The result goes in `docs/campo/dogfood.md` (PT and EN).
 **Convergence and verdict**
 
 - R23 (clean round and convergence): a round is clean when, **after** matching and re-evaluation, all three conditions hold:
-  - no blocker or major lineage is in `open`, `reopened`, `contest_pending` or `escalated` (`late` does not count);
+  - no blocker or major lineage is in `open`, `reopened`, `contest_pending` or `escalated`;
   - none is `fixed` without confirmation;
   - no required reviewer ended up `not_run`.
 
@@ -484,7 +472,7 @@ The result goes in `docs/campo/dogfood.md` (PT and EN).
 
   Cycle cap: `capped` when round `egm.max_rounds` (default 8; R0 had no clean round in 4 effective rounds per document, dogfood #32) of the cycle ends without converging. From then on, `loop next` is refused with exit 1 (`FAIL`). The way out is `--restart`, which requires a new `content`.
 - R24 (downgrades): there are two kinds, and all are recorded.
-  - **Lineage downgrades**, which apply while the lineage stays in the status: `forced` (`--force-settle`), `declined` of a `major`, and `late`. A `forced` of a **blocker** is marked `forced_blocker`, and `tb stack` gives `ok: false` with it even without `--strict` (R33). They persist across cycles. `forced` and `declined` only go away through `--fix` from `settled` or `declined` (R28), followed by the owner's confirmation (`still_holds: false`); `late` goes away when the lineage leaves `late`.
+  - **Lineage downgrades**, which apply while the lineage stays in the status: `forced` (`--force-settle`) and `declined` of a `major`. A `forced` of a **blocker** is marked `forced_blocker`, and `tb stack` gives `ok: false` with it even without `--strict` (R33). They persist across cycles. They only go away through `--fix` from `settled` or `declined` (R28), followed by the owner's confirmation (`still_holds: false`).
   - **Cycle downgrades**, which apply to that cycle's convergence record:
     - `--restart`;
     - some required reviewer that did not end up `completed` in a counted round, for any reason other than structural `skipped`, including having been removed by `--reviewers`. The `policy_sha` always uses the full required set, never the `--reviewers` subset;
@@ -514,9 +502,9 @@ The result goes in `docs/campo/dogfood.md` (PT and EN).
 
   | Flag | From | To | Restriction |
   |------|------|----|-------------|
-  | `--fix F-…` | open, late, reopened, escalated, contest_pending, settled, declined | fixed (unconfirmed; not blocking when it came from `late`) | Since the **reference round** (the one of the lineage's last status transition: the `opened_round`, or the round in which it went to `settled` or `declined`), there was a diff with some changed line that, ignoring whitespace, touched the mapped `scope` lines or the `evidence[].line ± 5` lines of a source in `cited`. `resolve` compares a new, redacted snapshot of the worktree (the document and the `cited` sources, resolved by `resolveSource`, written to `<state-dir>/resolve-<n>/`) against the reference round's snapshot. The whitespace normalization is done in Go over the hunks. From `contest_pending`, it cancels the contest (`contests` stays 1). From `settled`/`declined`, the lineage downgrade only goes away with the owner's confirmation. A fix elsewhere closes through the owner's re-evaluation, without `--fix`. |
+  | `--fix F-…` | open, reopened, escalated, contest_pending, settled, declined | fixed (unconfirmed) | Since the **reference round** (the one of the lineage's last status transition: the `opened_round`, or the round in which it went to `settled` or `declined`), there was a diff with some changed line that, ignoring whitespace, touched the mapped `scope` lines or the `evidence[].line ± 5` lines of a source in `cited`. `resolve` compares a new, redacted snapshot of the worktree (the document and the `cited` sources, resolved by `resolveSource`, written to `<state-dir>/resolve-<n>/`) against the reference round's snapshot. The whitespace normalization is done in Go over the hunks. From `contest_pending`, it cancels the contest (`contests` stays 1). From `settled`/`declined`, the lineage downgrade only goes away with the owner's confirmation. A fix elsewhere closes through the owner's re-evaluation, without `--fix`. |
   | `--contest F-x --evidence path:line` | open, reopened | contest_pending | Effective engine with an agent; `contests == 0`; the path is in `cited` and goes through `resolveSource` again; the persona is not comprehension. If the path is the document, the evidence comes from the current round's snapshot. If it is another source, it must be versioned, and the sha256 of the worktree bytes, that of the blob bytes at `HEAD` and the one recorded at the `opened_round` must be equal. Recording the contest sets `contests = 1`. |
-  | `--decline F-…` | open, late, reopened | declined | `contests == 0`. Applies only to `nit` and `major`; a declined `major` gets a lineage downgrade. Never applies to `blocker`. |
+  | `--decline F-…` | open, reopened | declined | `contests == 0`. Applies only to `nit` and `major`; a declined `major` gets a lineage downgrade. Never applies to `blocker`. |
   | `--force-settle F-x --reason "…"` | open, reopened, contest_pending, escalated | settled | `forced: true`, lineage downgrade |
 
 - R29 (arbiter): the arbiter receives, in the R9 blocks:
@@ -575,7 +563,7 @@ The result goes in `docs/campo/dogfood.md` (PT and EN).
   - `coverage`, `engine` and `engine_reason`;
   - `findings` per lineage;
   - `skipped_sources`;
-  - `warnings` (`config_untrusted`, `tools_used`, `prior_injection`, `known_injection`, `same_as_rejected`, `fixed_elsewhere`, `fixed_without_edit`, `unstaged_source`, `filtered_source`, `secret_like`…); the `no_gated_docs` warning belongs to `tb stack`, not to the report;
+  - `warnings` (`config_untrusted`, `tools_used`, `prior_injection`, `fixed_elsewhere`, `fixed_without_edit`, `unstaged_source`, `filtered_source`, `secret_like`…); the `no_gated_docs` warning belongs to `tb stack`, not to the report;
   - `downgrades` and `budget`.
 
   The ordering is stable and the body has no timestamps. `report.md` is generated from the JSON.
@@ -588,7 +576,7 @@ The result goes in `docs/campo/dogfood.md` (PT and EN).
   **Limit keys:** `max_agent_runs`, `max_rounds`, `max_parallel`, `timeout_per_reviewer`, `max_source_bytes`, `max_packet_bytes` and `max_stdout_bytes`. The repository can only **lower** these values. A repository value above the user config value (or the default) is capped to it, and tb emits `config_untrusted`.
 
   **Policy keys:** the repository can only **harden**.
-  - `clean_rounds`, `attest.min_quotes`, `match.sim`, `match.stem` (with 0, whole words, counting as above any other value) and `late_margin` only go up; `match.gap` only goes down.
+  - `clean_rounds`, `attest.min_quotes`, `match.sim`, and `match.stem` (with 0, whole words, counting as above any other value) only go up; `match.gap` only goes down.
   - `require_full_coverage` only becomes `true`.
   - `doc_globs` only gains items, and the repository's items apply only to the gate selection (R33), not to the source exclusion (R7).
   - `doc_types`, `refs_ignore` and `detail_headings` come only from the user config.
@@ -623,7 +611,6 @@ egm:
   detail_headings: ["## Detailed Implementation Plan", "## Plano de Implementação Detalhado", "## Implementation Plan"]
   refs_ignore: ["refs/**"]
   match: {sim: 0.23, stem: 4, gap: 3}   # 0 < sim ≤ 1; stem ≥ 0; gap ≥ 0 (lines)
-  late_margin: 3             # ≥ 0 (lines), R20
   attest: {min_quotes: 3}    # ≥ 1
   require_full_coverage: false
   max_rounds: 8              # ≥ 1, per cycle
@@ -657,7 +644,7 @@ egm:
 | Leaked or rotated credential | R0, R4 |
 | Fake output on stderr, truncated JSON | R2 |
 | Sloppy shortcut (`--fix` without fixing, contesting until it passes, downgrading severity, `--decline`/`--force-settle` laundered by an edit, blocker absorbed by a declined nit, reverting to a content that already converged with an open blocker) | R28, R29, R20 (higher severity becomes a new lineage), R23, R24, R25 (row 2 requires zero open blocking lineages), R26 |
-| A reviewer hides a new finding behind `same_as`, or the owner closes a lineage without a change | R19 (`same_as` only to a lineage shown in the round, not closed, with `region` and without raising another owner's severity), R20 (`fixed_without_edit`, `fixed_elsewhere`), R17a over `KNOWN`. Residual risk: an owner that vouches for a fix elsewhere is believed, and only the warning shows it |
+| The owner closes a lineage without a change, or a new finding is absorbed by another owner's milder lineage | R20 (`fixed_without_edit`, `fixed_elsewhere`), R19 (no merge into another owner's lower-severity lineage). Residual risk: an owner that vouches for a fix elsewhere is believed, and only the warning shows it |
 | Convergence over different texts, swapping the content after review | R23, R25, R33 (`status --at head`) |
 | Crash in the middle of a write, or two processes at the same time | R21 (atomic write, non-blocking `flock`) |
 | Repository config loosening the policy | R34 (the repository only hardens) |
@@ -676,10 +663,9 @@ See [ADR-015](../adr/015-egm-nativo.md#alternatives-considered).
 
 ## Open Questions
 
-- R0 defined authentication (copy of `claudeAiOauth` into the disposable HOME with `CLAUDE_CONFIG_DIR`, only while the access token is fresh), the no-tools flags and tool-use detection, the runtime directories (binary directory, `resolv.conf` realpath) and the matching and convergence data ([dogfood #22–#32](../campo/dogfood.md)). R18–R27 were revised with it. Still open from R0: item 8 (`safe.directory` with another uid) and the re-measurement of convergence with the revised rules.
+- R0 defined authentication (copy of `claudeAiOauth` into the disposable HOME with `CLAUDE_CONFIG_DIR`, only while the access token is fresh), the no-tools flags and tool-use detection, the runtime directories (binary directory, `resolv.conf` realpath) and the matching and convergence data ([dogfood #22–#33](../campo/dogfood.md)). R18–R27 were revised with it. Still open from R0: item 8 (`safe.directory` with another uid).
 - R4 must check the access token's `expiresAt` before phase 2 and stop with a clear error, since a copy cannot refresh an expired token (dogfood #29); `egm-spike` already does this.
-- **Re-measurement with the revised rules** ([dogfood #33](../campo/dogfood.md)): still no convergence within the US$ 20 budget (5–6 rounds). 41 of 42 new unlinked blocking findings in rounds ≥ 2 were on lines changed since the previous round, so `late` almost never applies; reviewers never used `same_as`, and the lexical fallback did all the linking. `vault.md` stopped producing new blocking findings after round 3 and was held by one lineage the author did not edit. Open decisions: drop `late` (complexity with no measured effect) or keep it; make `same_as` mandatory in the prompt or drop it; and whether convergence on a growing draft is a goal at all, since the author tripled `egm-trust.md`.
-- If the re-measurement still does not converge in `max_rounds`, the next candidates are: only the owners of the cycle's lineages and the reviewers whose range touches the changed lines run after round 1, or `clean_rounds: 1`.
+- **Convergence in Phase A** ([dogfood #32 and #33](../campo/dogfood.md)): two measurements, 9 reviewers and an author goldfish, did not converge within US$ 16 and US$ 20 (4–6 rounds). In rounds 2 and later, 41 of 42 new unlinked blocking findings were on lines the author had just changed: new problems come from the edits. The more mature `vault.md` stopped producing new blocking findings after round 3; the draft `egm-trust.md` grew from 73 to 193 lines and kept producing them. Phase A therefore targets documents past the draft stage, keeps `max_rounds: 8`, and reports `capped` instead of promising convergence on a growing draft. `late` lineages and `same_as` links were tried and dropped (no measured effect). If capped loops turn out common in use, the next candidates are: only the owners of the cycle's lineages and the reviewers whose range touches the changed lines run after round 1, or `clean_rounds: 1`.
 - Findings from the last review round that were left until after R0:
   - code reviewers see the whole document, but `implementation-readiness` stays only on the DetailedRange;
   - offline coverage: an `injection-scan` lineage without an agent only leaves through a re-run, `--fix` or `--force-settle`;
@@ -821,11 +807,8 @@ Note on the fake-agent:
   - invalid attestation, headings-only, valid in this spec's DetailedRange, and `range_too_small`;
   - CUJ-7 and CUJ-8;
   - two clean rounds over different contents do not converge;
-  - `same_as` to a `KNOWN` lineage with `region` links; `same_as` to a lineage not shown, or without `region`, gives `same_as_rejected` and falls back to R19 step 2;
   - `still_holds: false` with no change since `opened_round` gives `fixed_without_edit`; with a change elsewhere, `fixed` and `fixed_elsewhere`;
-  - `same_as` to a `declined` or `settled` lineage is rejected; a blocker linked to another owner's major opens a new lineage; a `KNOWN` message with an injection pattern is redacted with `known_injection`;
-  - round 2: a new unlinked major outside the changed lines becomes `late`, does not block R23 and gives `PASS_PARTIAL`; the same finding as a blocker, or touching the changed lines, becomes `open`; a `late` lineage rises to `open` when a later occurrence touches the changed lines;
-  - round 1 never produces `late`; checker and `injection-scan` findings never become `late`; a reviewer removed by `--reviewers` in round 1 does not produce `late` in round 2; a major at a deletion point or about a changed source line is not `late`; `--fix` of a `late` lineage does not make the round unclean;
+  - a blocker that matches another owner's major opens a new lineage;
   - `withdraw` of a blocker reopened by the owner;
   - coverage narrowing;
   - `max_*` exclusion;
