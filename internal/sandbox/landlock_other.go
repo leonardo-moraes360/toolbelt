@@ -8,7 +8,9 @@ func CheckLandlockSupport() (bool, int, error) {
 	return false, 0, ErrUnsupported
 }
 
-func applyLandlock(workDir string, allowed []PathAccess, forbidden []string) error {
+type childPayload struct{}
+
+func applyLandlock(p *childPayload) error {
 	return fmt.Errorf("%w", ErrUnsupported)
 }
 
