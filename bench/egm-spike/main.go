@@ -48,7 +48,7 @@ func (r *report) add(name string, ok bool, detail string) {
 
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Fprintln(os.Stderr, "uso: egm-spike isolation|claude")
+		fmt.Fprintln(os.Stderr, "uso: egm-spike isolation|claude|collect|calibrate")
 		os.Exit(2)
 	}
 	rep := &report{Mode: os.Args[1], Extra: map[string]any{}}
@@ -58,6 +58,10 @@ func main() {
 		err = runIsolation(rep)
 	case "claude":
 		err = runClaude(rep)
+	case "collect":
+		err = runCollect(rep, os.Args[2:])
+	case "calibrate":
+		err = runCalibrate(rep, os.Args[2:])
 	default:
 		err = fmt.Errorf("modo desconhecido %q", os.Args[1])
 	}
