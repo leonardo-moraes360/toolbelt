@@ -44,3 +44,21 @@ Signature/Rekor **not** verified (no `cosign`); `gh attestation verify` unavaila
 | 14 | `tb stack drift review` | — | ok: caught `internal/review/review_test.go` outside the rd.md Scope | info |
 | 15 | `tb guard` (via stack) | environment-conditional `t.Skip` (Landlock/git missing) distinguishable from cheating skips | 24 `test_skip` warnings for legitimate environment skips; noise | low |
 | 16 | `tb sandbox run -- sh -c 'echo > /dev/null'` | writing to `/dev/null` allowed | `Permission denied` (also in v0.0.3): git/shells break inside the sandbox — fixed in this phase | high |
+
+## 2026-11-18 — `tb egm` R0 spike (`bench/egm-spike`, `claude` 2.1.326)
+
+Environment: kernel 7.0, git 2.53, `claude` as a native ELF binary (no interpreter) in
+`~/.local/share/claude/versions/`. Authentication: only the `claudeAiOauth` key of
+`~/.claude/.credentials.json` copied into a disposable `0700` HOME, with `CLAUDE_CONFIG_DIR`
+pointing to it. Goldfish flags: `-p --output-format json --tools "" --strict-mcp-config
+--setting-sources "" --no-session-persistence`, prompt on stdin.
+
+| # | Command | Expected | Actual | Sev. |
+|---|---------|----------|--------|------|
+| 17 | `egm-spike isolation` | packet RO, private `TMPDIR`/HOME, real HOME, credential, repository, `/proc/<ppid>/environ`, `/proc/1/environ`, `/dev/pts` and `/dev/shm` unreadable, minimal env, no orphans | ok: 16/16 probes; a canary in the parent's environ does not leak (Landlock's ptrace restriction blocks the read) | info |
+| 18 | `egm-spike claude` (1st run) | goldfish answers | `EAI_AGAIN`: `/etc/resolv.conf` is a symlink to `/run/systemd/resolve/stub-resolv.conf`, and `/run` is not allowed. Fixed with a read-only file rule on the `resolv.conf` realpath. Probably affects router agents too | high |
+| 19 | `egm-spike claude` | no tools, no `CLAUDE.md`/memories, valid attestation | ok: `SEM-FERRAMENTAS` with `num_turns=1` and no `permission_denials`; `NENHUMA` for prior instructions; nonce echoed, 3/3 literal quotes. Cost ~US$ 0.03 per goldfish | info |
+| 20 | control outside the sandbox (same memory prompt) | the canary discriminates | ok: with the real HOME, the answer quotes `graphify` and `token-reducer` from the global `CLAUDE.md`. Cost US$ 3.47 (the environment's full context) | info |
+| 21 | real credential | unchanged by the spike | ok: same hash and `expiresAt` before and after the goldfish runs; the copy was not refreshed. The real file was only rewritten by `claude` outside the sandbox (normal use), with no token refresh | info |
+| 22 | `go test ./internal/sandbox/` | shared tmp rule applies with a workdir outside `/tmp` | `isSubpath` treats `../x` as a subpath: `addTmpWriteRule` never applies the rule and `ValidatePath` accepts paths outside the workdir. Pre-existing, proposed as a separate task | high |
+| 23 | remaining R0 items 5 to 8 | — | pending: matching calibration (paraphrase corpus), convergence rate, refresh near token expiry, `safe.directory` with another uid (needs another user) | info |

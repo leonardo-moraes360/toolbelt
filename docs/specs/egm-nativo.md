@@ -178,7 +178,7 @@ O resultado vai em `docs/campo/dogfood.md` (PT e EN).
 - R4: para o perfil `claude`, o tb:
   1. cria, **por goldfish**, o HOME e o `PrivateTmp` em `os.TempDir()/tb-egm-<rand>/`, com permissão `0700` e um arquivo `owner.pid` com o pid do `tb`;
   2. autentica pela forma definida no R0;
-  3. libera só-leitura o diretório do binário resolvido e os diretórios de `egm.home.read_only`;
+  3. libera só-leitura o diretório do binário resolvido, os diretórios de `egm.home.read_only` e, como regra de arquivo, o realpath de `/etc/resolv.conf` quando ele fica fora de `/etc` (systemd-resolved aponta para `/run`; sem isso o DNS falha, achado do R0);
   4. apaga tudo no final (com defer, inclusive em timeout) e varre os `tb-egm-*` com mais de 1h cujo `owner.pid` não está mais vivo.
 
   `egm.agent_cmd[0]` precisa ser absoluto. O processo roda com `PATH = egm.path` (padrão `/usr/bin:/bin`).
