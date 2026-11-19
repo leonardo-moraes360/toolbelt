@@ -169,7 +169,11 @@ func sideEffectMode(mode string, stdout io.Writer) (bool, error) {
 	case "stderr-json":
 		fmt.Fprintln(os.Stderr, `{"type":"result","result":"{}"}`)
 	case "escape", "escape-anon":
-		cmd := exec.Command("setsid", "sleep", "30")
+		setsid, sleep := fixedBin("setsid"), fixedBin("sleep")
+		if setsid == "" || sleep == "" {
+			return true, errors.New("fake-agent-egm: setsid/sleep not found in /usr/bin or /bin")
+		}
+		cmd := exec.Command(setsid, sleep, "30")
 		if mode == "escape-anon" {
 			cmd.Env = []string{"PATH=" + os.Getenv("PATH")}
 		}
@@ -178,6 +182,17 @@ func sideEffectMode(mode string, stdout io.Writer) (bool, error) {
 		}
 	}
 	return false, nil
+}
+
+// fixedBin resolves name only in fixed system directories, never via PATH.
+func fixedBin(name string) string {
+	for _, dir := range []string{"/usr/bin", "/bin"} {
+		p := dir + "/" + name
+		if fi, err := os.Stat(p); err == nil && fi.Mode().IsRegular() {
+			return p
+		}
+	}
+	return ""
 }
 
 func fakePayload(fp *fakePrompt, mode string) (payload string, turns int) {
