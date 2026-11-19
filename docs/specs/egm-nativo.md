@@ -655,6 +655,7 @@ See [ADR-015](../adr/015-egm-nativo.md#alternatives-considered).
 ## Open Questions
 
 - R0 defines: authentication, no-tools flags, tool-use detection and runtime directories for `claude`, matching thresholds and convergence rate. With that, R18 to R27 are revised.
+- **R0 matching result** ([dogfood #31](../campo/dogfood.md)): with the R18 defaults, 53% of the paraphrase pairs in `internal/egm/testdata/paraphrases.json` do not merge. No lexical variant tried (Jaccard or containment, with or without stems) meets wrong merges ≤ 5% and missed matches ≤ 20% when tuned on one document and tested on the other; `egm.match.overlap` has no effect. R18–R20 must change before implementation, for example by having the owning reviewer link new findings to `PRIOR` lineages, with lexical matching only as a fallback.
 - Findings from the last review round that were left until after R0:
   - code reviewers see the whole document, but `implementation-readiness` stays only on the DetailedRange;
   - offline coverage: an `injection-scan` lineage without an agent only leaves through a re-run, `--fix` or `--force-settle`;

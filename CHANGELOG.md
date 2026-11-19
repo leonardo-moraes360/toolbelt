@@ -12,7 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - ADR-015 (proposed) and the Phase A specs for the native EGM (`tb egm`): core (`docs/specs/egm-nativo.md`: LLM goldfish isolated in a sandbox with a disposable HOME and minimal env, no tools, defenses against third-party content, content-based convergence, fresh arbiter) and a draft trust spec against active fraud by the same user (`docs/specs/egm-trust.md`)
 - `internal/sandbox`: `ReadOnlyWorkDir`, `PrivateTmp`, `Home`, `Path`, `Stdin`, `Stdout`/`MaxStdoutBytes` (separate stdout, excess drained) and `MinimalDev` fields; Landlock file rules without directory-only rights; an absolute command skips `LookPath`
-- `bench/egm-spike`: R0 spike for `tb egm` (goldfish isolation with a real `claude -p`)
+- `bench/egm-spike`: R0 spike for `tb egm` (goldfish isolation with a real `claude -p`), with `collect`/`calibrate` modes and the matching corpus `internal/egm/testdata/paraphrases.json`
 
 ## [0.0.6] - 2026-11-18
 

@@ -51,6 +51,12 @@ func loadStopwords(path string) (map[string]bool, error) {
 // normalize implements R18: lowercase, strip accents and punctuation, collapse
 // whitespace, drop stopwords. It returns the token set.
 func normalize(msg string, stop map[string]bool) map[string]bool {
+	return normalizeStem(msg, stop, 0)
+}
+
+// normalizeStem is normalize with each token cut to its first stem runes
+// (stem <= 0 keeps whole words): a crude, language-agnostic stemmer tried in R0.
+func normalizeStem(msg string, stop map[string]bool, stem int) map[string]bool {
 	t := transform.Chain(norm.NFD, runes.Remove(runes.In(unicode.Mn)), norm.NFC)
 	s, _, err := transform.String(t, strings.ToLower(msg))
 	if err != nil {
@@ -64,9 +70,13 @@ func normalize(msg string, stop map[string]bool) map[string]bool {
 	}, s)
 	out := map[string]bool{}
 	for _, w := range strings.Fields(s) {
-		if !stop[w] {
-			out[w] = true
+		if stop[w] {
+			continue
 		}
+		if r := []rune(w); stem > 0 && len(r) > stem {
+			w = string(r[:stem])
+		}
+		out[w] = true
 	}
 	return out
 }
@@ -84,6 +94,20 @@ func jaccard(a, b map[string]bool) float64 {
 	return float64(inter) / float64(len(a)+len(b)-inter)
 }
 
+// containment is |a∩b| / min(|a|,|b|), the alternative to Jaccard tried in R0.
+func containment(a, b map[string]bool) float64 {
+	if len(a) == 0 || len(b) == 0 {
+		return 0
+	}
+	inter := 0
+	for w := range a {
+		if b[w] {
+			inter++
+		}
+	}
+	return float64(inter) / float64(min(len(a), len(b)))
+}
+
 // overlap is |r1∩r2| / min(|r1|,|r2|) over inclusive line ranges [a,b].
 // ok is false when either side has no lines.
 func overlap(r1, r2 []int) (float64, bool) {
@@ -96,9 +120,26 @@ func overlap(r1, r2 []int) (float64, bool) {
 	return float64(inter) / float64(min(l1, l2)), true
 }
 
-// merges is the R19 rule.
-func merges(a, b *finding, stop map[string]bool, simT, ovT float64) bool {
-	if jaccard(normalize(a.Message, stop), normalize(b.Message, stop)) < simT {
+// variant selects the token similarity and stemming for merges.
+type variant struct {
+	Name    string
+	Contain bool
+	Stem    int
+}
+
+var variants = []variant{
+	{"jaccard", false, 0}, {"jaccard+stem5", false, 5}, {"jaccard+stem4", false, 4},
+	{"containment", true, 0}, {"containment+stem5", true, 5}, {"containment+stem4", true, 4},
+}
+
+// merges is the R19 rule; variant{} is the rule as the spec states it.
+func merges(a, b *finding, stop map[string]bool, v variant, simT, ovT float64) bool {
+	ta, tb := normalizeStem(a.Message, stop, v.Stem), normalizeStem(b.Message, stop, v.Stem)
+	sim := jaccard(ta, tb)
+	if v.Contain {
+		sim = containment(ta, tb)
+	}
+	if sim < simT {
 		return false
 	}
 	if ov, ok := overlap(a.Scope.Lines, b.Scope.Lines); ok {
@@ -259,6 +300,10 @@ type sweepPoint struct {
 }
 
 // runCalibrate: egm-spike calibrate <corpus.json> <stopwords.txt>
+//
+// For each variant it sweeps sim (0.05-0.80) and overlap (0.0-1.0) over all
+// pairs, and cross-checks by tuning on one document's pairs and testing on the
+// other's (pair ids start with the document letter).
 func runCalibrate(rep *report, args []string) error {
 	if len(args) != 2 {
 		return errors.New("uso: egm-spike calibrate <corpus.json> <stopwords.txt>")
@@ -275,55 +320,86 @@ func runCalibrate(rep *report, args []string) error {
 	if err != nil {
 		return err
 	}
-	var same, diff []corpusPair
-	for _, p := range c.Pairs {
-		if p.Same {
-			same = append(same, p)
-		} else {
-			diff = append(diff, p)
-		}
-	}
-	rep.Extra["same_pairs"], rep.Extra["distinct_pairs"] = len(same), len(diff)
-	if len(same) == 0 || len(diff) == 0 {
-		return errors.New("corpus precisa de pares iguais e distintos")
-	}
-	rate := func(ps []corpusPair, s, o float64) (float64, []string) {
-		n := 0
-		var ids []string
+	rates := func(ps []corpusPair, v variant, s, o float64) (wrong, missed float64, wrongIDs []string) {
+		var same, diff, hit, bad int
 		for i := range ps {
-			if merges(&ps[i].A, &ps[i].B, stop, s, o) {
-				n++
-				ids = append(ids, ps[i].ID)
+			m := merges(&ps[i].A, &ps[i].B, stop, v, s, o)
+			if ps[i].Same {
+				same++
+				if m {
+					hit++
+				}
+			} else {
+				diff++
+				if m {
+					bad++
+					wrongIDs = append(wrongIDs, ps[i].ID)
+				}
 			}
 		}
-		return float64(n) / float64(len(ps)), ids
+		if same == 0 || diff == 0 {
+			return 1, 1, nil
+		}
+		return float64(bad) / float64(diff), 1 - float64(hit)/float64(same), wrongIDs
 	}
-	var grid []sweepPoint
-	var best *sweepPoint
-	for si := 5; si <= 60; si += 5 {
-		for oi := 0; oi <= 10; oi++ {
-			s, o := float64(si)/100, float64(oi)/10
-			wm, _ := rate(diff, s, o)
-			hit, _ := rate(same, s, o)
-			p := sweepPoint{Sim: s, Overlap: o, WrongMerge: wm, Missed: 1 - hit}
-			p.OK = p.WrongMerge <= 0.05 && p.Missed <= 0.20
-			grid = append(grid, p)
-			if p.OK && (best == nil || p.WrongMerge+p.Missed < best.WrongMerge+best.Missed) {
-				pp := p
-				best = &pp
+	best := func(ps []corpusPair, v variant) *sweepPoint {
+		var b *sweepPoint
+		for si := 5; si <= 80; si++ {
+			for oi := 0; oi <= 10; oi++ {
+				s, o := float64(si)/100, float64(oi)/10
+				w, m, _ := rates(ps, v, s, o)
+				if w <= 0.05 && m <= 0.20 && (b == nil || w+m < b.WrongMerge+b.Missed) {
+					b = &sweepPoint{Sim: s, Overlap: o, WrongMerge: w, Missed: m, OK: true}
+				}
 			}
 		}
+		return b
 	}
-	rep.Extra["grid"] = grid
-	wm, wmIDs := rate(diff, 0.3, 0.5)
-	hit, hitIDs := rate(same, 0.3, 0.5)
-	rep.Extra["default"] = map[string]any{"sim": 0.3, "overlap": 0.5, "wrong_merge": wm, "missed": 1 - hit, "wrong_merge_ids": wmIDs, "matched_ids": hitIDs}
-	rep.add("defaults sim=0.3 overlap=0.5", wm <= 0.05 && 1-hit <= 0.20, fmt.Sprintf("wrong_merge=%.3f missed=%.3f", wm, 1-hit))
-	if best == nil {
-		rep.add("calibração", false, "nenhum ponto da grade satisfaz wrong_merge<=5% e missed<=20%")
-		return nil
+	byDoc := map[byte][]corpusPair{}
+	nSame := 0
+	for _, p := range c.Pairs {
+		byDoc[p.ID[0]] = append(byDoc[p.ID[0]], p)
+		if p.Same {
+			nSame++
+		}
 	}
-	rep.Extra["best"] = best
-	rep.add("calibração", true, fmt.Sprintf("sim=%.2f overlap=%.1f wrong_merge=%.3f missed=%.3f", best.Sim, best.Overlap, best.WrongMerge, best.Missed))
+	rep.Extra["same_pairs"], rep.Extra["distinct_pairs"] = nSame, len(c.Pairs)-nSame
+	w, m, ids := rates(c.Pairs, variant{}, 0.3, 0.5)
+	rep.Extra["default_wrong_merge_ids"] = ids
+	rep.add("spec defaults (jaccard, sim=0.30, overlap=0.5)", w <= 0.05 && m <= 0.20, fmt.Sprintf("wrong_merge=%.3f missed=%.3f", w, m))
+	results := map[string]any{}
+	for _, v := range variants {
+		entry := map[string]any{}
+		b := best(c.Pairs, v)
+		entry["best_all_pairs"] = b
+		detail := "no grid point meets wrong_merge<=5% and missed<=20%"
+		if b != nil {
+			detail = fmt.Sprintf("sim=%.2f overlap=%.1f wrong_merge=%.3f missed=%.3f", b.Sim, b.Overlap, b.WrongMerge, b.Missed)
+		}
+		holdOK := true
+		for _, tr := range []byte{'T', 'V'} {
+			te := byte('T')
+			if tr == 'T' {
+				te = 'V'
+			}
+			key := string(tr) + "->" + string(te)
+			tb := best(byDoc[tr], v)
+			if tb == nil {
+				entry[key] = "no point on the training document"
+				detail += " | " + key + ": none"
+				holdOK = false
+				continue
+			}
+			tw, tm, _ := rates(byDoc[te], v, tb.Sim, tb.Overlap)
+			entry[key] = map[string]float64{"sim": tb.Sim, "overlap": tb.Overlap, "test_wrong_merge": tw, "test_missed": tm}
+			detail += fmt.Sprintf(" | %s: sim=%.2f test wrong_merge=%.3f missed=%.3f", key, tb.Sim, tw, tm)
+			if tw > 0.05 || tm > 0.20 {
+				holdOK = false
+			}
+		}
+		results[v.Name] = entry
+		rep.add(v.Name, b != nil && holdOK, detail)
+	}
+	rep.Extra["variants"] = results
 	return nil
 }

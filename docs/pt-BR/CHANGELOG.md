@@ -12,7 +12,7 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 ### Adicionado
 - ADR-015 (proposed) e specs da Fase A do EGM nativo (`tb egm`): núcleo (`docs/specs/egm-nativo.md`, goldfish LLM isolados em sandbox com HOME descartável e env mínimo, sem ferramentas, defesas contra conteúdo de terceiros, convergência por conteúdo, árbitro fresco) e rascunho da spec de trust contra fraude ativa do mesmo usuário (`docs/specs/egm-trust.md`)
 - `internal/sandbox`: campos `ReadOnlyWorkDir`, `PrivateTmp`, `Home`, `Path`, `Stdin`, `Stdout`/`MaxStdoutBytes` (stdout separado, excedente drenado) e `MinimalDev`; regras Landlock de arquivo sem direitos de diretório; comando absoluto sem `LookPath`
-- `bench/egm-spike`: spike R0 do `tb egm` (isolamento do goldfish com `claude -p` real)
+- `bench/egm-spike`: spike R0 do `tb egm` (isolamento do goldfish com `claude -p` real), com os modos `collect`/`calibrate` e o corpus de matching `internal/egm/testdata/paraphrases.json`
 
 ## [0.0.6] - 2026-11-18
 

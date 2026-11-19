@@ -655,6 +655,7 @@ Ver o [ADR-015](../adr/015-egm-nativo.md#alternativas-consideradas).
 ## Questões em aberto
 
 - O R0 define: autenticação, flags sem ferramentas, detecção de uso de ferramenta e diretórios de runtime do `claude`, limiares de matching e taxa de convergência. Com isso, R18 a R27 são revistos.
+- **Resultado do matching no R0** ([dogfood #31](../campo/dogfood.md)): com os padrões do R18, 53% dos pares de paráfrase de `internal/egm/testdata/paraphrases.json` não se fundem. Nenhuma variante léxica testada (Jaccard ou containment, com ou sem radicais) atinge merges errados ≤ 5% e matches perdidos ≤ 20% calibrando num documento e testando no outro; `egm.match.overlap` não tem efeito. R18–R20 precisam mudar antes da implementação, por exemplo com o revisor dono ligando findings novos às linhagens do `PRIOR`, com o matching léxico só como reserva.
 - Findings da última rodada de revisão que ficaram para depois do R0:
   - revisores de código veem o documento inteiro, mas o `implementation-readiness` continua só no DetailedRange;
   - cobertura offline: uma linhagem `injection-scan` sem agente só sai por re-execução, `--fix` ou `--force-settle`;
