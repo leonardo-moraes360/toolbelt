@@ -16,7 +16,179 @@
  "clusters": 47,
  "same_pairs": 87,
  "distinct_pairs": 351,
- "convergence": null,
+ "convergence": {
+  "date": "2026-11-19",
+  "reviewers": 9,
+  "author": "goldfish claude -p fixing open blocker/major lineages",
+  "clean_rounds": 2,
+  "max_rounds": 6,
+  "budget_usd": 16,
+  "total_cost_usd": 17.11,
+  "median_rounds_to_converge": null,
+  "result": "no document converged before the budget; no clean round observed",
+  "documents": [
+   {
+    "doc": "docs/pt-BR/specs/egm-trust.md",
+    "stop": "budget",
+    "rounds_run": 4,
+    "converged": false,
+    "cost_usd": 7.28,
+    "per_round": [
+     {
+      "round": 1,
+      "clean": false,
+      "findings_by_severity": {
+       "blocker": 3,
+       "major": 20,
+       "nit": 38
+      },
+      "prior_still_holds": 0,
+      "prior_fixed": 0,
+      "new_blocking_lineages": 21,
+      "blocking_matched_by_spec_rule": 2,
+      "blocking_matched_by_jaccard_stem4": 6,
+      "open_blocking_after": 21,
+      "author_changed_doc": true,
+      "not_run": 0
+     },
+     {
+      "round": 2,
+      "clean": false,
+      "findings_by_severity": {
+       "major": 27,
+       "nit": 36
+      },
+      "prior_still_holds": 0,
+      "prior_fixed": 21,
+      "new_blocking_lineages": 24,
+      "blocking_matched_by_spec_rule": 3,
+      "blocking_matched_by_jaccard_stem4": 12,
+      "open_blocking_after": 24,
+      "author_changed_doc": true,
+      "not_run": 0
+     },
+     {
+      "round": 3,
+      "clean": false,
+      "findings_by_severity": {
+       "major": 23,
+       "nit": 31
+      },
+      "prior_still_holds": 0,
+      "prior_fixed": 45,
+      "new_blocking_lineages": 21,
+      "blocking_matched_by_spec_rule": 2,
+      "blocking_matched_by_jaccard_stem4": 9,
+      "open_blocking_after": 21,
+      "author_changed_doc": true,
+      "not_run": 0
+     },
+     {
+      "round": 4,
+      "clean": false,
+      "findings_by_severity": {
+       "major": 9,
+       "nit": 23
+      },
+      "prior_still_holds": 0,
+      "prior_fixed": 51,
+      "new_blocking_lineages": 9,
+      "blocking_matched_by_spec_rule": 0,
+      "blocking_matched_by_jaccard_stem4": 4,
+      "open_blocking_after": 13,
+      "author_changed_doc": false,
+      "not_run": 3
+     }
+    ]
+   },
+   {
+    "doc": "docs/specs/vault.md",
+    "stop": "budget",
+    "rounds_run": 5,
+    "converged": false,
+    "cost_usd": 9.83,
+    "per_round": [
+     {
+      "round": 1,
+      "clean": false,
+      "findings_by_severity": {
+       "major": 20,
+       "nit": 48
+      },
+      "prior_still_holds": 0,
+      "prior_fixed": 0,
+      "new_blocking_lineages": 18,
+      "blocking_matched_by_spec_rule": 2,
+      "blocking_matched_by_jaccard_stem4": 3,
+      "open_blocking_after": 18,
+      "author_changed_doc": true,
+      "not_run": 1
+     },
+     {
+      "round": 2,
+      "clean": false,
+      "findings_by_severity": {
+       "major": 6,
+       "nit": 42
+      },
+      "prior_still_holds": 0,
+      "prior_fixed": 18,
+      "new_blocking_lineages": 6,
+      "blocking_matched_by_spec_rule": 0,
+      "blocking_matched_by_jaccard_stem4": 1,
+      "open_blocking_after": 6,
+      "author_changed_doc": true,
+      "not_run": 0
+     },
+     {
+      "round": 3,
+      "clean": false,
+      "findings_by_severity": {
+       "major": 6,
+       "nit": 47
+      },
+      "prior_still_holds": 0,
+      "prior_fixed": 24,
+      "new_blocking_lineages": 5,
+      "blocking_matched_by_spec_rule": 1,
+      "blocking_matched_by_jaccard_stem4": 1,
+      "open_blocking_after": 5,
+      "author_changed_doc": true,
+      "not_run": 0
+     },
+     {
+      "round": 4,
+      "clean": false,
+      "findings_by_severity": {
+       "major": 4,
+       "nit": 52
+      },
+      "prior_still_holds": 0,
+      "prior_fixed": 29,
+      "new_blocking_lineages": 3,
+      "blocking_matched_by_spec_rule": 1,
+      "blocking_matched_by_jaccard_stem4": 1,
+      "open_blocking_after": 3,
+      "author_changed_doc": true,
+      "not_run": 0
+     },
+     {
+      "round": 5,
+      "clean": false,
+      "findings_by_severity": {},
+      "prior_still_holds": 0,
+      "prior_fixed": 0,
+      "new_blocking_lineages": 0,
+      "blocking_matched_by_spec_rule": 0,
+      "blocking_matched_by_jaccard_stem4": 0,
+      "open_blocking_after": 3,
+      "author_changed_doc": false,
+      "not_run": 9
+     }
+    ]
+   }
+  ]
+ },
  "pairs": [
   {
    "id": "Tcl1.0~Tcl1.1",
