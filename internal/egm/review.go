@@ -147,23 +147,34 @@ func (s *snapshot) phase1(ctx context.Context) error {
 	return nil
 }
 
-// resolveEngine applies R12. Phase A slice 1 has no llm engine yet.
-func resolveEngine(o *Options, set *Settings) (engine, reason string, err error) {
+// resolveEngine applies R12 and opens the llm engine when it runs.
+func resolveEngine(o *Options, set *Settings) (engine, reason string, env *llmEnv, err error) {
 	switch o.Engine {
 	case "", EngineAuto:
 		if len(set.AgentCmd) == 0 {
-			return EngineDeterministic, "agent_cmd ausente na config de usuário (agent_cmd missing from user config)", nil
+			return EngineDeterministic, "agent_cmd ausente na config de usuário (agent_cmd missing from user config)", nil, nil
 		}
-		return EngineDeterministic, "llm engine not available in this build", nil
+		env, fallback, err := openLLM(set)
+		if fallback {
+			return EngineDeterministic, "llm engine unavailable: " + err.Error(), nil, nil
+		}
+		if err != nil {
+			return "", "", nil, err
+		}
+		return EngineLLM, "", env, nil
 	case EngineDeterministic:
-		return EngineDeterministic, "", nil
+		return EngineDeterministic, "", nil, nil
 	case EngineLLM:
 		if len(set.AgentCmd) == 0 {
-			return "", "", errorf(ExitError, "usage", "--engine llm needs egm.agent_cmd in the user config")
+			return "", "", nil, errorf(ExitError, "usage", "--engine llm needs egm.agent_cmd in the user config")
 		}
-		return "", "", errorf(ExitError, "engine_unavailable", "the llm engine is not available in this build")
+		env, _, err := openLLM(set)
+		if err != nil {
+			return "", "", nil, err
+		}
+		return EngineLLM, "", env, nil
 	}
-	return "", "", errorf(ExitError, "usage", "--engine must be auto, llm or deterministic")
+	return "", "", nil, errorf(ExitError, "usage", "--engine must be auto, llm or deterministic")
 }
 
 func (s *snapshot) report(st *State, rd *Round, engine, reason string) *Report {
@@ -215,13 +226,14 @@ func runRound(ctx context.Context, o *Options, isReview bool) (*Outcome, error) 
 	if err != nil {
 		return nil, err
 	}
-	engine, reason, err := resolveEngine(o, &s.set)
-	if err != nil {
-		return nil, err
-	}
 	if err := checkReviewers(o.Reviewers); err != nil {
 		return nil, err
 	}
+	engine, reason, env, err := resolveEngine(o, &s.set)
+	if err != nil {
+		return nil, err
+	}
+	defer env.close()
 	unlock, err := lockState(s.stateDir)
 	if err != nil {
 		return nil, err
@@ -231,24 +243,8 @@ func runRound(ctx context.Context, o *Options, isReview bool) (*Outcome, error) 
 	if err != nil {
 		return nil, err
 	}
-	if out, err := s.gate(st, o, isReview, engine); out != nil || err != nil {
-		return out, err
-	}
-	if st == nil {
-		st = newState(s.rel, Slug(s.rel))
-	}
-	if o.DryRun {
-		return &Outcome{Report: s.report(st, st.lastRound(), engine, reason), Message: "dry run: worst case 0 agent runs (deterministic engine)"}, nil
-	}
-	rd, err := s.round(ctx, st, o, engine, reason)
-	if err != nil {
-		return nil, err
-	}
-	rep := s.report(st, rd, engine, reason)
-	if err := s.persist(st, rd, rep); err != nil {
-		return nil, err
-	}
-	return &Outcome{Report: rep, ExitCode: exitFor(rep.Verdict)}, nil
+	rc := &roundCtx{s: s, o: o, st: st, engine: engine, reason: reason, env: env, isReview: isReview}
+	return rc.run(ctx)
 }
 
 func checkReviewers(names []string) error {
@@ -258,26 +254,6 @@ func checkReviewers(names []string) error {
 		}
 	}
 	return nil
-}
-
-// gate refuses a round per R23 (cap), R26 (no change), R31 (review vs loop
-// next, --restart) before anything is written.
-func (s *snapshot) gate(st *State, o *Options, isReview bool, engine string) (*Outcome, error) {
-	if done, err := s.gateEntry(st, o, isReview); done || err != nil {
-		return nil, err
-	}
-	last := st.lastRound()
-	if cy := st.cycle(); cy != nil && cy.Capped {
-		return &Outcome{Report: s.report(st, last, engine, ""), ExitCode: ExitFail,
-			Message: fmt.Sprintf("cycle %d is capped at %d rounds: edit and run `tb egm review --restart`", cy.N, s.set.MaxRounds)}, nil
-	}
-	if err := ownersAvailable(st, engine); err != nil {
-		return nil, err
-	}
-	if last != nil && last.Content == s.content && stuck(st) {
-		return nil, errorf(ExitError, "no_change", "documento e fontes não mudaram desde a rodada %d; há findings bloqueantes abertos (document and sources have not changed since round %d; there are open blocking findings)", last.N, last.N)
-	}
-	return nil, nil
 }
 
 // gateEntry checks review vs loop next and --restart; done means the round
@@ -302,57 +278,20 @@ func (s *snapshot) gateEntry(st *State, o *Options, isReview bool) (done bool, e
 
 // stuck is R26: a blocking lineage that cannot change without an edit or a
 // resolve, and no unconfirmed fixed lineage.
-func stuck(st *State) bool {
+func stuck(st *State, arbiter bool) bool {
 	blocked := false
 	for _, l := range st.Lineages {
 		if l.Status == StFixed && !l.Confirmed {
 			return false
+		}
+		if l.Status == StContestPending && arbiter && l.ArbiterNotRun < 2 {
+			continue // an eligible arbiter can still change it
 		}
 		if l.blocking() {
 			blocked = true
 		}
 	}
 	return blocked
-}
-
-// ownersAvailable is R26's owner_unavailable: a blocking lineage whose owner
-// cannot run in the effective engine.
-func ownersAvailable(st *State, engine string) error {
-	for _, l := range st.Lineages {
-		if l.blocking() && !isChecker(l.Owner) && engine == EngineDeterministic {
-			return errorf(ExitError, "owner_unavailable", "%s is owned by %s, which does not run in the %s engine", l.ID, l.Owner, engine)
-		}
-	}
-	return nil
-}
-
-func (s *snapshot) round(ctx context.Context, st *State, o *Options, engine, reason string) (*Round, error) {
-	n := len(st.Rounds) + 1
-	if cy := st.cycle(); cy == nil || cy.Converged || o.Restart {
-		st.Cycles = append(st.Cycles, Cycle{N: len(st.Cycles) + 1, FirstRound: n, Restart: o.Restart})
-	}
-	rd := Round{
-		N: n, Cycle: st.cycle().N, Content: s.content, PolicySHA: s.policy, DocSHA256: s.docSHA, HeadCommit: s.head,
-		Sources: map[string]string{}, Engine: engine, EngineReason: reason, Required: RequiredReviewers(s.hasDetailed),
-		Reviewers: planReviewers(s.docType, s.hasDetailed, o.Reviewers),
-	}
-	for _, src := range s.sources.Included {
-		rd.Sources[src.Path] = src.SHA256
-	}
-	mapper, err := s.mapper(ctx, st)
-	if err != nil {
-		return nil, err
-	}
-	r := &reconciler{st: st, round: n, mapper: mapper, docRel: s.rel, ran: map[string]bool{
-		checkRefs: true, checkSections: true, checkPlan: true, injectionChecker: true,
-	}}
-	r.fold(s.checks.Findings)
-	rd.Warnings = r.warnings
-	rd.Clean = roundClean(st, &rd, s.sources.Unstaged)
-	rd.Downgrades = roundDowngrades(&rd, s.docType, s.hasDetailed, s.sources.MaxExcluded && codeReviewerRan(&rd))
-	st.Rounds = append(st.Rounds, rd)
-	advanceCycle(st, &s.set)
-	return st.lastRound(), nil
 }
 
 // mapper maps each lineage's scope from its round's snapshot to the current

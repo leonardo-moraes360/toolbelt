@@ -2,9 +2,7 @@ package egm
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 )
@@ -35,7 +33,24 @@ func (r *ResolveOptions) ops() []resolveOp {
 	if r.ForceSettle != "" {
 		ops = append(ops, resolveOp{"force-settle", r.ForceSettle})
 	}
+	if r.Contest != "" {
+		ops = append(ops, resolveOp{"contest", r.Contest})
+	}
 	return ops
+}
+
+func (r *ResolveOptions) checkOps() ([]resolveOp, error) {
+	if r.Contest != "" && r.Evidence == "" {
+		return nil, errorf(ExitError, "usage", "--contest needs --evidence path:line")
+	}
+	if r.ForceSettle != "" && strings.TrimSpace(r.Reason) == "" {
+		return nil, errorf(ExitError, "usage", "--force-settle needs --reason")
+	}
+	ops := r.ops()
+	if len(ops) == 0 {
+		return nil, errorf(ExitError, "usage", "nothing to resolve: pass --fix, --decline, --force-settle or --contest")
+	}
+	return ops, nil
 }
 
 // Resolve runs `tb egm resolve` (R28). Every transition is validated before
@@ -45,15 +60,9 @@ func Resolve(ctx context.Context, o *ResolveOptions) (*Outcome, error) {
 	if err != nil {
 		return nil, err
 	}
-	if o.Contest != "" {
-		return nil, errorf(ExitError, "contest_refused", "--contest needs the llm engine with an agent (arbiter, R29); not available in this build")
-	}
-	ops := o.ops()
-	if len(ops) == 0 {
-		return nil, errorf(ExitError, "usage", "nothing to resolve: pass --fix, --decline or --force-settle")
-	}
-	if o.ForceSettle != "" && strings.TrimSpace(o.Reason) == "" {
-		return nil, errorf(ExitError, "usage", "--force-settle needs --reason")
+	ops, err := o.checkOps()
+	if err != nil {
+		return nil, err
 	}
 	unlock, err := lockState(s.stateDir)
 	if err != nil {
@@ -70,7 +79,11 @@ func Resolve(ctx context.Context, o *ResolveOptions) (*Outcome, error) {
 	rv := &resolver{s: s, st: st, ctx: ctx, round: len(st.Rounds)}
 	var applies []func()
 	for _, op := range ops {
-		f, err := rv.validate(op, o.Reason)
+		arg := o.Reason
+		if op.kind == "contest" {
+			arg = o.Evidence
+		}
+		f, err := rv.validate(op, arg)
 		if err != nil {
 			return nil, err
 		}
@@ -119,6 +132,8 @@ func (rv *resolver) validate(op resolveOp, reason string) (func(), error) {
 		return rv.validateFix(l)
 	case "decline":
 		return rv.validateDecline(l)
+	case "contest":
+		return rv.validateContest(rv.ctx, l, reason)
 	default:
 		return rv.validateForce(l, reason)
 	}
@@ -132,7 +147,7 @@ func (rv *resolver) validateFix(l *Lineage) (func(), error) {
 	if l.Status == StFixed {
 		return func() { rv.msgs = append(rv.msgs, l.ID+" already fixed (no-op)") }, nil
 	}
-	ok, err := rv.touched(l)
+	ok, err := rv.s.touchedSince(rv.ctx, l, l.RefRound)
 	if err != nil {
 		return nil, err
 	}
@@ -180,82 +195,4 @@ func (rv *resolver) validateForce(l *Lineage, reason string) (func(), error) {
 		}
 		rv.move(l, "force-settle", StSettled, reason)
 	}, nil
-}
-
-func (rv *resolver) readRound(n int, rel string) (string, error) {
-	p := filepath.Join(rv.s.stateDir, fmt.Sprintf("round-%d", n), "target.md")
-	if rel != rv.s.rel {
-		p = filepath.Join(rv.s.stateDir, fmt.Sprintf("round-%d", n), "sources", filepath.FromSlash(rel))
-	}
-	b, err := os.ReadFile(p)
-	if errors.Is(err, os.ErrNotExist) {
-		return "", nil
-	}
-	return string(b), err
-}
-
-// touched is R28's change test: since the reference round, a non-whitespace
-// change touched the mapped scope or the evidence ±5 lines of a cited source.
-func (rv *resolver) touched(l *Lineage) (bool, error) {
-	ref, err := rv.readRound(l.RefRound, rv.s.rel)
-	if err != nil {
-		return false, err
-	}
-	lm, err := DiffSnapshots(rv.ctx, rv.s.stateDir, ref, rv.s.text)
-	if err != nil {
-		return false, err
-	}
-	changed := lm.Changed()
-	// Scope and evidence lines are numbered in ScopeRound's snapshot.
-	sm := lm
-	if l.ScopeRound != l.RefRound {
-		old, err := rv.readRound(l.ScopeRound, rv.s.rel)
-		if err != nil {
-			return false, err
-		}
-		if sm, err = DiffSnapshots(rv.ctx, rv.s.stateDir, old, rv.s.text); err != nil {
-			return false, err
-		}
-	}
-	if Touches(sm.MapScope(l.Scope).Lines, changed, 0) {
-		return true, nil
-	}
-	return rv.evidenceTouched(l, sm, changed)
-}
-
-func (rv *resolver) evidenceTouched(l *Lineage, docMap *LineMap, changed map[int]bool) (bool, error) {
-	for _, e := range l.Evidence {
-		if !containsStr(l.Cited, e.Path) {
-			continue
-		}
-		if e.Path == rv.s.rel {
-			if Touches([]int{docMap.Map(e.Line), docMap.Map(e.Line)}, changed, 5) {
-				return true, nil
-			}
-			continue
-		}
-		ok, err := rv.sourceTouched(l.RefRound, e)
-		if err != nil || ok {
-			return ok, err
-		}
-	}
-	return false, nil
-}
-
-func (rv *resolver) sourceTouched(ref int, e Evidence) (bool, error) {
-	old, err := rv.readRound(ref, e.Path)
-	if err != nil {
-		return false, err
-	}
-	cur := ""
-	for _, src := range rv.s.sources.Included {
-		if src.Path == e.Path {
-			cur = src.Text
-		}
-	}
-	sm, err := DiffSnapshots(rv.ctx, rv.s.stateDir, old, cur)
-	if err != nil {
-		return false, err
-	}
-	return Touches([]int{sm.Map(e.Line), sm.Map(e.Line)}, sm.Changed(), 5), nil
 }

@@ -76,7 +76,7 @@ tb  (implemented today)
 ├── init         Initializes local toolbelt configuration
 ├── bench        Benchmark harness (run|list|report|compare)
 ├── drift        Detects scope and base commit drift
-├── egm          Design-document review loop (review|loop next|resolve|status)  ✓ Phase A (deterministic)
+├── egm          Design-document review loop (review|loop next|resolve|status)  ✓ Phase A
 ├── graph        On-demand code graph (TB_GRAPH=on or --enable)
 ├── guard        Anti-cheat protections (check)
 ├── mcp          Starts an MCP server over stdio
@@ -955,15 +955,30 @@ tb drift --ticket rd.md --json | jq '.out_of_scope | length' | xargs -I {} test 
 
 ---
 
-### `tb egm` — Loop de Revisão de Documentos de Design (Fase A, engine determinística)
+### `tb egm` — Loop de Revisão de Documentos de Design (Fase A)
 
 Revisa specs e ADRs e repete a rodada até que duas rodadas limpas sobre o mesmo
 conteúdo convirjam ([spec](specs/egm-nativo.md), [ADR-015](adr/015-egm-nativo.md)).
-Este build traz a **engine determinística**: os checkers `refs-exist`,
-`required-sections` e `plan-files-listed` e o scan anti-injeção. As personas LLM
-aparecem como `unavailable`, então o melhor veredito é `PASS_PARTIAL`; a engine
-`llm`, `--contest`/árbitro, `status --at`, a op `egm` do `tb stack` e as tools MCP
-vêm nas próximas fatias.
+As duas engines rodam os checkers `refs-exist`, `required-sections` e
+`plan-files-listed` e o scan anti-injeção. A **engine `llm`** também roda os 9
+revisores do preset consolidado como goldfish: processos únicos de `egm.agent_cmd`
+num sandbox Landlock com packet só de leitura, HOME descartável, env mínimo e sem
+ferramentas (Linux). Sem `egm.agent_cmd`, o `auto` usa a **engine determinística**,
+em que as personas LLM ficam `unavailable` e o melhor veredito é `PASS_PARTIAL`.
+`status --at`, a op `egm` do `tb stack` e as tools MCP vêm numa próxima fatia.
+
+```yaml
+# ~/.config/toolbelt/config.yaml
+egm:
+  agent_cmd: [/home/eu/.local/bin/claude]   # absoluto; o vendor claude acrescenta as flags sem ferramentas
+  # timeout_per_reviewer: 5m, max_parallel: 4, max_agent_runs: 120, clean_rounds: 2, max_rounds: 8
+```
+
+Com o perfil `claude`, o tb copia só a chave `claudeAiOauth` de
+`~/.claude/.credentials.json` para o HOME descartável de cada goldfish e se recusa a
+começar (`auth_expired`) quando o access token tem menos de 10 minutos: uma cópia não
+consegue renová-lo, então rode `claude` uma vez fora do tb antes. Uma rodada de 9
+revisores custa cerca de US$ 2–2,5.
 
 ```bash
 tb egm review docs/specs/x.md            # rodada 1 (exit 0; 1 em FAIL)
@@ -971,6 +986,7 @@ tb egm loop next docs/specs/x.md         # próxima rodada; recusada se nada mud
 tb egm resolve docs/specs/x.md --fix F-1,F-2
 tb egm resolve docs/specs/x.md --decline F-4
 tb egm resolve docs/specs/x.md --force-settle F-3 --reason "risco aceito"
+tb egm resolve docs/specs/x.md --contest F-5 --evidence internal/x.go:40   # o árbitro roda no próximo loop next
 tb egm status docs/specs/x.md [--strict]  # 0 PASS, 1 FAIL, 3 IN_PROGRESS/STALE/NO_STATE
 tb egm review docs/specs/x.md --restart   # novo ciclo depois do teto (exige edição)
 ```
@@ -979,7 +995,7 @@ tb egm review docs/specs/x.md --restart   # novo ciclo depois do teto (exige edi
 - **Config:** lida da config de usuário (`~/.config/toolbelt/config.yaml`, seção `egm:`) ou do `-c`, nunca da config mesclada. O `.toolbelt/config.yaml` do repositório só pode endurecê-la: chaves de execução (`agent_cmd`, `env`, …) são ignoradas com `config_untrusted`, limites só descem, política só sobe.
 - **Git:** lista fechada de chamadas git endurecidas (sem hooks, filtros, fsmonitor, pager nem diff externo); um `.git` com chaves fatais (`include.*`, partial clone, alternates, …) para com exit 2 `hostile_git_dir`.
 - **Estado:** `$XDG_STATE_HOME/tb/egm/<repo-id>/<slug>/` (`state.json`, `round-<n>/target.md`, `report.{json,md}`), fora do repositório e compartilhado pelas worktrees dele.
-- **Exit 2** para erros de uso e recusas: `state_exists`, `no_state`, `no_change`, `locked`, `invalid_transition`, `contest_refused`, `restart_needs_change`, `no_repository`, `hostile_git_dir`.
+- **Exit 2** para erros de uso e recusas: `state_exists`, `no_state`, `no_change`, `locked`, `invalid_transition`, `contest_refused`, `restart_needs_change`, `budget`, `owner_unavailable`, `auth_expired`, `forbidden_flag`, `env_forbidden`, `no_repository`, `hostile_git_dir`.
 
 ---
 

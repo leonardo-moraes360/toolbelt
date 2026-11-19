@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/leonardo-moraes360/toolbelt/internal/egm/schema/finding.schema.json",
+  "title": "egm reviewer output (R15)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["reviewer", "nonce", "checked", "findings", "prior"],
+  "properties": {
+    "reviewer": {"type": "string", "minLength": 1},
+    "nonce": {"type": "string", "minLength": 1},
+    "checked": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["heading", "quote"],
+        "properties": {
+          "heading": {"type": "string"},
+          "quote": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["severity", "scope", "message"],
+        "properties": {
+          "severity": {"type": "string", "enum": ["blocker", "major", "nit"]},
+          "scope": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["heading", "lines"],
+            "properties": {
+              "heading": {"type": "string"},
+              "lines": {
+                "type": "array",
+                "items": {"type": "integer", "minimum": 1},
+                "minItems": 2,
+                "maxItems": 2
+              }
+            }
+          },
+          "message": {"type": "string", "minLength": 1},
+          "rationale": {"type": "string"},
+          "evidence": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["path", "line"],
+              "properties": {
+                "path": {"type": "string", "minLength": 1},
+                "line": {"type": "integer", "minimum": 1}
+              }
+            }
+          }
+        }
+      }
+    },
+    "prior": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["lineage", "still_holds"],
+        "properties": {
+          "lineage": {"type": "string", "minLength": 1},
+          "still_holds": {"type": "boolean"}
+        }
+      }
+    }
+  }
+}

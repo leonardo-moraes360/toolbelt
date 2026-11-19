@@ -30,9 +30,13 @@ var egmCmd = &cobra.Command{
 	Long: `tb egm reviews specs and ADRs with isolated reviewers and repeats the round
 until it converges over the same content (docs/specs/egm-nativo.md).
 
-This build has the deterministic engine: the checkers (refs-exist,
-required-sections, plan-files-listed) and the anti-injection scan. The LLM
-personas show as unavailable, so the best verdict is PASS_PARTIAL.
+Two engines (--engine auto|llm|deterministic). Both run the checkers
+(refs-exist, required-sections, plan-files-listed) and the anti-injection scan.
+The llm engine also runs the 9 reviewers of the consolidated preset as
+goldfish: one-shot egm.agent_cmd processes in a Landlock sandbox with a
+read-only packet, a disposable HOME, a minimal env and no tools (Linux).
+Without egm.agent_cmd, auto uses the deterministic engine, where the LLM
+personas are unavailable and the best verdict is PASS_PARTIAL.
 
 State lives outside the repository, in $XDG_STATE_HOME/tb/egm/<repo-id>/<slug>/.
 The config comes from the user config (or -c), never from the merged config;
@@ -108,7 +112,7 @@ func init() {
 	f.StringSliceVar(&egmResolve.Decline, "decline", nil, "nit/major lineages declined (a major is a downgrade)")
 	f.StringVar(&egmResolve.ForceSettle, "force-settle", "", "lineage settled without a fix (downgrade; needs --reason)")
 	f.StringVar(&egmResolve.Reason, "reason", "", "reason for --force-settle")
-	f.StringVar(&egmResolve.Contest, "contest", "", "lineage contested at the arbiter (needs the llm engine)")
+	f.StringVar(&egmResolve.Contest, "contest", "", "lineage contested at the arbiter, which runs on the next loop next (llm engine)")
 	f.StringVar(&egmResolve.Evidence, "evidence", "", "path:line of the contest evidence")
 
 	egmLoopCmd.AddCommand(egmLoopNextCmd)

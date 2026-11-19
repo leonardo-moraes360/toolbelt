@@ -76,7 +76,7 @@ tb  (implemented today)
 ├── init         Initializes local toolbelt configuration
 ├── bench        Benchmark harness (run|list|report|compare)
 ├── drift        Detects scope and base commit drift
-├── egm          Design-document review loop (review|loop next|resolve|status)  ✓ Phase A (deterministic)
+├── egm          Design-document review loop (review|loop next|resolve|status)  ✓ Phase A
 ├── graph        On-demand code graph (TB_GRAPH=on or --enable)
 ├── guard        Anti-cheat protections (check)
 ├── mcp          Starts an MCP server over stdio
@@ -943,15 +943,31 @@ tb drift --ticket rd.md --json | jq '.out_of_scope | length' | xargs -I {} test 
 
 ---
 
-### `tb egm` — Design-Document Review Loop (Phase A, deterministic engine)
+### `tb egm` — Design-Document Review Loop (Phase A)
 
 Reviews specs and ADRs and repeats the round until two clean rounds over the same
 content converge ([spec](specs/egm-nativo.md), [ADR-015](adr/015-egm-nativo.md)).
-This build ships the **deterministic engine**: the checkers `refs-exist`,
-`required-sections` and `plan-files-listed` plus the anti-injection scan. The LLM
-personas show as `unavailable`, so the best verdict is `PASS_PARTIAL`; the `llm`
-engine, `--contest`/arbiter, `status --at`, the `egm` op of `tb stack` and the MCP
-tools come in later slices.
+Both engines run the checkers `refs-exist`, `required-sections` and
+`plan-files-listed` plus the anti-injection scan. The **`llm` engine** also runs the
+9 reviewers of the consolidated preset as goldfish: one-shot `egm.agent_cmd`
+processes in a Landlock sandbox with a read-only packet, a disposable HOME, a minimal
+env and no tools (Linux). Without `egm.agent_cmd`, `auto` uses the **deterministic
+engine**, where the LLM personas are `unavailable` and the best verdict is
+`PASS_PARTIAL`. `status --at`, the `egm` op of `tb stack` and the MCP tools come in a
+later slice.
+
+```yaml
+# ~/.config/toolbelt/config.yaml
+egm:
+  agent_cmd: [/home/me/.local/bin/claude]   # absolute; vendor claude adds the no-tools flags
+  # timeout_per_reviewer: 5m, max_parallel: 4, max_agent_runs: 120, clean_rounds: 2, max_rounds: 8
+```
+
+With the `claude` profile, tb copies only the `claudeAiOauth` key of
+`~/.claude/.credentials.json` into each goldfish's disposable HOME and refuses to start
+(`auth_expired`) when the access token has less than 10 minutes left: a copy cannot
+refresh it, so run `claude` once outside tb first. A round of 9 reviewers costs about
+US$ 2–2.5.
 
 ```bash
 tb egm review docs/specs/x.md            # round 1 (exit 0; 1 on FAIL)
@@ -959,6 +975,7 @@ tb egm loop next docs/specs/x.md         # next round; refused when nothing chan
 tb egm resolve docs/specs/x.md --fix F-1,F-2
 tb egm resolve docs/specs/x.md --decline F-4
 tb egm resolve docs/specs/x.md --force-settle F-3 --reason "accepted risk"
+tb egm resolve docs/specs/x.md --contest F-5 --evidence internal/x.go:40   # arbiter runs on the next loop next
 tb egm status docs/specs/x.md [--strict]  # 0 PASS, 1 FAIL, 3 IN_PROGRESS/STALE/NO_STATE
 tb egm review docs/specs/x.md --restart   # new cycle after a cap (needs an edit)
 ```
@@ -967,7 +984,7 @@ tb egm review docs/specs/x.md --restart   # new cycle after a cap (needs an edit
 - **Config:** read from the user config (`~/.config/toolbelt/config.yaml`, `egm:` section) or from `-c`, never from the merged config. The repository's `.toolbelt/config.yaml` can only harden it: execution keys (`agent_cmd`, `env`, …) are ignored with `config_untrusted`, limits only go down, policy only goes up.
 - **Git:** a closed list of hardened git calls (no hooks, filters, fsmonitor, pager or external diff); a `.git` with fatal keys (`include.*`, partial clone, alternates, …) stops with exit 2 `hostile_git_dir`.
 - **State:** `$XDG_STATE_HOME/tb/egm/<repo-id>/<slug>/` (`state.json`, `round-<n>/target.md`, `report.{json,md}`), outside the repository and shared by its worktrees.
-- **Exit 2** for usage errors and refusals: `state_exists`, `no_state`, `no_change`, `locked`, `invalid_transition`, `contest_refused`, `restart_needs_change`, `no_repository`, `hostile_git_dir`.
+- **Exit 2** for usage errors and refusals: `state_exists`, `no_state`, `no_change`, `locked`, `invalid_transition`, `contest_refused`, `restart_needs_change`, `budget`, `owner_unavailable`, `auth_expired`, `forbidden_flag`, `env_forbidden`, `no_repository`, `hostile_git_dir`.
 
 ---
 
