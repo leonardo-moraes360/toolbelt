@@ -24,6 +24,7 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ### Corrigido
 - Op `egm` do `tb stack`: um índice `README.md` sob `egm.doc_globs` deixou de ser documento sob gate, então editar `docs/adr/README.md` não derruba o gate com `NO_STATE` (dogfood #38)
+- `tb egm loop next` depois de uma convergência sobre o mesmo `content` e `policy_sha` não abre mais ciclo e rodada novos (cerca de 9 execuções de agente com a engine `llm`): mostra `already converged over this content in cycle N` com o relatório existente e sai com exit 0 (R26, dogfood #39)
 
 ## [0.0.6] - 2026-11-18
 

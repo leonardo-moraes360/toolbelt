@@ -3,6 +3,8 @@ package egm
 import (
 	"context"
 	"fmt"
+	"strconv"
+	"strings"
 )
 
 // roundCtx runs one review or loop next under the state lock.
@@ -58,14 +60,20 @@ func (rc *roundCtx) run(ctx context.Context) (*Outcome, error) {
 	return &Outcome{Report: rep, ExitCode: exitFor(rep.Verdict)}, nil
 }
 
-// gateLoop is loop next's order: cap (R23), engine fallback (R26), the
-// arbiters of pending contests, then R26's no-change refusal.
+// gateLoop is loop next's order: cap (R23), convergence over the current
+// content (R26), engine fallback (R26), the arbiters of pending contests,
+// then R26's no-change refusal.
 func (rc *roundCtx) gateLoop(ctx context.Context) (*Outcome, error) {
 	s, st := rc.s, rc.st
 	last := st.lastRound()
 	if cy := st.cycle(); cy != nil && cy.Capped {
 		return &Outcome{Report: s.report(st, last, rc.engine, ""), ExitCode: ExitFail,
 			Message: fmt.Sprintf("cycle %d is capped at %d rounds: edit and run `tb egm review --restart`", cy.N, s.set.MaxRounds)}, nil
+	}
+	if rec := convergedOver(st, s.content, s.policy); rec != nil {
+		rep := s.report(st, last, last.Engine, last.EngineReason) // the converged round's, not this run's
+		return &Outcome{Report: rep, ExitCode: exitFor(rep.Verdict),
+			Message: fmt.Sprintf("already converged over this content in cycle %d (rounds %s): edit the document or its sources, or change the policy, to open a new cycle", rec.Cycle, joinInts(rec.Rounds))}, nil
 	}
 	if rc.engine == EngineDeterministic && rc.o.Engine != EngineDeterministic && llmOwned(st) {
 		return nil, errorf(ExitError, "owner_unavailable", "the llm engine is unavailable (%s) and the state has lineages owned by LLM reviewers: pass --engine deterministic to fall back", rc.reason)
@@ -181,4 +189,37 @@ func (rc *roundCtx) round(ctx context.Context, planned []ReviewerRun) (*Round, e
 	st.Rounds = append(st.Rounds, rd)
 	advanceCycle(st, &s.set)
 	return st.lastRound(), nil
+}
+
+// convergedOver is R26's converged refusal: the current cycle converged over
+// this content and policy, and no lineage can still change in a new round
+// (blocking, unconfirmed fixed, or a pending contest). It returns that
+// cycle's convergence record.
+func convergedOver(st *State, content, policy string) *Convergence {
+	cy := st.cycle()
+	if cy == nil || !cy.Converged {
+		return nil
+	}
+	for _, l := range st.Lineages {
+		if l.blocking() || (l.Status == StFixed && !l.Confirmed) || l.Status == StContestPending {
+			return nil
+		}
+	}
+	for i := len(st.Convergences) - 1; i >= 0; i-- {
+		if c := &st.Convergences[i]; c.Cycle == cy.N {
+			if c.Content == content && c.PolicySHA == policy {
+				return c
+			}
+			return nil
+		}
+	}
+	return nil
+}
+
+func joinInts(ns []int) string {
+	parts := make([]string, len(ns))
+	for i, n := range ns {
+		parts[i] = strconv.Itoa(n)
+	}
+	return strings.Join(parts, ", ")
 }

@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - `tb stack` `egm` op: a `README.md` index under `egm.doc_globs` is no longer a gated document, so editing `docs/adr/README.md` does not fail the gate with `NO_STATE` (dogfood #38)
+- `tb egm loop next` after a convergence over the same `content` and `policy_sha` no longer opens a new cycle and round (about 9 agent runs with the `llm` engine): it shows `already converged over this content in cycle N` with the existing report and exits 0 (R26, dogfood #39)
 
 ## [0.0.6] - 2026-11-18
 

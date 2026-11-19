@@ -1005,7 +1005,7 @@ revisores custa cerca de US$ 2–2,5.
 
 ```bash
 tb egm review docs/specs/x.md            # rodada 1 (exit 0; 1 em FAIL)
-tb egm loop next docs/specs/x.md         # próxima rodada; recusada se nada mudou
+tb egm loop next docs/specs/x.md         # próxima rodada; recusada se nada mudou ou já convergiu (exit 0)
 tb egm resolve docs/specs/x.md --fix F-1,F-2
 tb egm resolve docs/specs/x.md --decline F-4
 tb egm resolve docs/specs/x.md --force-settle F-3 --reason "risco aceito"

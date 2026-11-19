@@ -993,7 +993,7 @@ US$ 2–2.5.
 
 ```bash
 tb egm review docs/specs/x.md            # round 1 (exit 0; 1 on FAIL)
-tb egm loop next docs/specs/x.md         # next round; refused when nothing changed
+tb egm loop next docs/specs/x.md         # next round; refused when nothing changed or already converged (exit 0)
 tb egm resolve docs/specs/x.md --fix F-1,F-2
 tb egm resolve docs/specs/x.md --decline F-4
 tb egm resolve docs/specs/x.md --force-settle F-3 --reason "accepted risk"

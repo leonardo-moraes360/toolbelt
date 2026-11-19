@@ -344,3 +344,84 @@ func TestFlowDuplicatePlanPath(t *testing.T) {
 		t.Fatalf("lineages grew: %d %d %d", n1, n2, n3)
 	}
 }
+
+// TestFlowConvergedRefusal: after convergence, loop next over the same
+// content and policy opens no round or cycle and exits 0 with the report
+// (R26, dogfood #39); a new content or policy opens a new cycle.
+func TestFlowConvergedRefusal(t *testing.T) {
+	f := newFlow(t, "")
+	ctx := context.Background()
+	f.edit("`internal/missing.go`", "`internal/kept.go` again")
+	f.must(Review(ctx, f.optsP()))
+	conv := f.must(LoopNext(ctx, f.optsP())).Report
+	if conv.LoopState != "converged" || conv.Round != 2 || conv.Cycle != 1 {
+		t.Fatalf("convergence: %s round %d cycle %d", conv.LoopState, conv.Round, conv.Cycle)
+	}
+	for i := 0; i < 2; i++ {
+		out := f.must(LoopNext(ctx, f.optsP()))
+		r := out.Report
+		if out.ExitCode != ExitOK || !strings.Contains(out.Message, "already converged over this content in cycle 1 (rounds 1, 2)") {
+			t.Fatalf("refusal %d: exit %d %q", i, out.ExitCode, out.Message)
+		}
+		if r.Round != 2 || r.Cycle != 1 || r.Verdict != conv.Verdict || r.LoopState != "converged" ||
+			r.Engine != conv.Engine || r.EngineReason != conv.EngineReason {
+			t.Fatalf("refusal %d opened a round: round %d cycle %d %s", i, r.Round, r.Cycle, r.Verdict)
+		}
+	}
+	dry := f.optsP()
+	dry.DryRun = true
+	if out := f.must(LoopNext(ctx, dry)); !strings.Contains(out.Message, "already converged") {
+		t.Fatalf("dry run: %q", out.Message)
+	}
+	f.checkReopensAfterConvergence(ctx)
+}
+
+// checkReopensAfterConvergence: a new policy, then a new content, each open
+// a round after the converged refusal.
+func (f *flow) checkReopensAfterConvergence(ctx context.Context) {
+	t := f.t
+	t.Helper()
+	writeFile(t, f.cfg, "egm:\n  clean_rounds: 3\n")
+	if r := f.must(LoopNext(ctx, f.optsP())).Report; r.Round != 3 || r.Cycle != 2 {
+		t.Fatalf("new policy: round %d cycle %d", r.Round, r.Cycle)
+	}
+	writeFile(t, f.cfg, "egm:\n")
+	f.must(LoopNext(ctx, f.optsP())) // round 4, cycle 2: policy back, not converged yet
+	f.edit("The problem.", "The problem, edited.")
+	if r := f.must(LoopNext(ctx, f.optsP())).Report; r.Round != 5 || r.Cycle != 2 {
+		t.Fatalf("new content: round %d cycle %d", r.Round, r.Cycle)
+	}
+}
+
+// TestConvergedOverLineages: a lineage that can still change in a new round
+// lets loop next run even over the converged content (R26).
+func TestConvergedOverLineages(t *testing.T) {
+	st := &State{
+		Cycles:       []Cycle{{N: 1, FirstRound: 1, Converged: true}},
+		Convergences: []Convergence{{Content: "c", PolicySHA: "p", Cycle: 1, Rounds: []int{1, 2}}},
+	}
+	if convergedOver(st, "c", "p") == nil {
+		t.Fatal("same content and policy: want a record")
+	}
+	if convergedOver(st, "other", "p") != nil || convergedOver(st, "c", "other") != nil {
+		t.Fatal("other content or policy: want nil")
+	}
+	for _, l := range []Lineage{
+		{ID: "F-1", Severity: SevNit, Status: StFixed},
+		{ID: "F-1", Severity: SevNit, Status: StContestPending},
+		{ID: "F-1", Severity: SevMajor, Status: StOpen},
+	} {
+		st.Lineages = []*Lineage{&l}
+		if convergedOver(st, "c", "p") != nil {
+			t.Fatalf("%s %s: want nil", l.Severity, l.Status)
+		}
+	}
+	st.Lineages = []*Lineage{{ID: "F-1", Severity: SevNit, Status: StOpen}}
+	if convergedOver(st, "c", "p") == nil {
+		t.Fatal("an open nit does not change without an edit: want a record")
+	}
+	st.Cycles = append(st.Cycles, Cycle{N: 2, FirstRound: 3})
+	if convergedOver(st, "c", "p") != nil {
+		t.Fatal("a running cycle: want nil")
+	}
+}
