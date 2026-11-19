@@ -29,6 +29,7 @@ const (
 	OpReview Op = "review"
 	OpDrift  Op = "drift"
 	OpGuard  Op = "guard"
+	OpEgm    Op = "egm"
 
 	maxJobs = 32
 )
@@ -38,19 +39,20 @@ var knownOps = map[string]Op{
 	"review": OpReview,
 	"drift":  OpDrift,
 	"guard":  OpGuard,
+	"egm":    OpEgm,
 }
 
 func ParseOp(name string) (Op, error) {
 	op, ok := knownOps[strings.ToLower(strings.TrimSpace(name))]
 	if !ok {
-		return "", fmt.Errorf("unknown operation: %q (use verify, review, drift or guard)", name)
+		return "", fmt.Errorf("unknown operation: %q (use verify, review, drift, guard or egm)", name)
 	}
 	return op, nil
 }
 
 func ParseOps(names []string) ([]Op, error) {
 	if len(names) == 0 {
-		return nil, fmt.Errorf("provide at least one operation (verify, review, drift, guard)")
+		return nil, fmt.Errorf("provide at least one operation (verify, review, drift, guard, egm)")
 	}
 	ops := make([]Op, 0, len(names))
 	for _, name := range names {
@@ -92,6 +94,10 @@ type Options struct {
 	Loaders            *Loaders
 	EnvAllow           []string
 	EnvPass            []string
+	// EgmDocs are added to the egm op's selection (R33).
+	EgmDocs []string
+	// Strict makes PASS_PARTIAL and an empty egm selection fail (R33).
+	Strict bool
 }
 
 type Loaders struct {
@@ -128,11 +134,15 @@ type StepResult struct {
 	DurationMs float64 `json:"duration_ms"`
 	Reason     string  `json:"reason,omitempty"`
 	Error      string  `json:"error,omitempty"`
-	Result     any     `json:"result"`
+	// Warn is set by a step that passed with a downgrade (egm PASS_PARTIAL,
+	// empty selection); it never changes the exit code.
+	Warn   bool `json:"warn,omitempty"`
+	Result any  `json:"result"`
 }
 
 type Result struct {
 	OK              bool         `json:"ok"`
+	Warn            bool         `json:"warn,omitempty"`
 	Steps           []StepResult `json:"steps"`
 	TotalDurationMs float64      `json:"total_duration_ms"`
 }
@@ -194,6 +204,7 @@ func Run(ctx context.Context, opts *Options) (*Result, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	opts.Ops = egmLast(opts.Ops)
 
 	jobs := ResolveJobs(opts.Jobs)
 	start := time.Now()
@@ -208,8 +219,29 @@ func Run(ctx context.Context, opts *Options) (*Result, error) {
 	}
 
 	out := runWaves(ctx, opts, shared, jobs)
+	for i := range out.Steps {
+		out.Warn = out.Warn || out.Steps[i].Warn
+	}
 	out.TotalDurationMs = durationMillis(time.Since(start))
 	return out, nil
+}
+
+// egmLast moves the egm op to the end, keeping the order of the others: it
+// is not parallel and gates on the final content (R33).
+func egmLast(ops []Op) []Op {
+	out := make([]Op, 0, len(ops))
+	n := 0
+	for _, op := range ops {
+		if op == OpEgm {
+			n++
+			continue
+		}
+		out = append(out, op)
+	}
+	if n > 0 {
+		out = append(out, OpEgm)
+	}
+	return out
 }
 
 func runWaves(ctx context.Context, opts *Options, shared *Shared, jobs int) *Result {
@@ -520,6 +552,8 @@ func runOp(ctx context.Context, op Op, opts *Options, shared *Shared) (StepResul
 		return runDrift(ctx, opts, shared)
 	case OpGuard:
 		return runGuard(ctx, opts, shared)
+	case OpEgm:
+		return runEgm(ctx, opts, shared)
 	default:
 		return StepResult{}, fmt.Errorf("unknown operation: %q", op)
 	}

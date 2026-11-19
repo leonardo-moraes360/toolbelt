@@ -76,6 +76,11 @@ var toolAnnotations = map[string]ToolAnnotations{
 	"tb_guard_check": annReadOnly,
 	"tb_stack":       annExec,
 
+	// status reads the state outside the repository; resolve rewrites it, and
+	// a transition to the current status is a no-op (R28).
+	"tb_egm_status":  annReadOnly,
+	"tb_egm_resolve": annOverwrite,
+
 	"tb_router_status":   annReadOnly,
 	"tb_watchdog_alerts": annReadOnly,
 }

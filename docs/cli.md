@@ -649,7 +649,7 @@ tb agent reject action-124 --reason "Not authorized for external network"
 
 ### `tb stack` — Verification Operation Stacking (✓ Phase 2)
 
-Runs `verify`, `review`, `drift`, and/or `guard` in a single invocation, sharing
+Runs `verify`, `review`, `drift`, `guard` and/or `egm` in a single invocation, sharing
 expensive work (unified diff, changed-file index, memory/invariants, and
 config). Independent read-only steps (`guard`, `drift`, `review`) run in
 parallel (errgroup + `--jobs`); `verify` (build/test) stays serial/isolated.
@@ -687,12 +687,14 @@ Flags:
   --timeout <duration>   verify: timeout (default: 10m)
   --reviewers <n>        review: max goldfish
   --standards <csv>      review: roles (scope,quality,acceptance)
+  --egm-doc <path>       egm: document added to the selection (repeatable)
+  --strict               egm: PASS_PARTIAL and an empty selection fail
   --env <KEY>            (global) extra allowlist for stacked verify
   --pass-env <KEY>       (global) explicit secret opt-in for verify
 ```
 
 With no operation, or an unknown operation, exits with a short error listing the valid
-ops (`verify`, `review`, `drift`, `guard`) — no `Usage` dump.
+ops (`verify`, `review`, `drift`, `guard`, `egm`) — no `Usage` dump.
 A missing or unreadable ticket (file/ID pointed to by `--ticket`) makes the
 `review`/`drift` steps fail with exit ≠ 0 and a message citing the path looked up
 (same semantics as `tb review` / `tb drift` / MCP).
@@ -718,6 +720,26 @@ also run in parallel. Stacked `verify` uses the same shared `--base`/`--head`:
 if head diverges from the worktree `HEAD`, build/lint/test run in a temporary
 detached worktree (see `tb verify`); the step `result` includes `head_sha` and
 `workdir`.
+
+**`egm` op (gate):** selects the gated documents (`egm.doc_globs`, default
+`docs/specs/**` and `docs/adr/**`) added or modified in `merge-base(base, head)..head`,
+plus `--egm-doc`, and evaluates each one with `tb egm status --at <head>`. The
+document, its sources and the repository config come from the commit, so a converged
+document that changed after the review is `STALE`. `PASS` is `ok`; `PASS_PARTIAL` is
+`ok` with `warn: true` (`ok: false` with `--strict` or `egm.require_full_coverage`);
+any other verdict, or a lineage with `forced_blocker`, is `ok: false`. An empty
+selection is `ok: true, warn: true` with `no_gated_docs` (`ok: false` with
+`--strict`), and `ok: false` with `uncommitted_gated_docs` when the worktree has
+gated documents that differ from head. A document with state whose sources changed in
+the range, but that was not touched, only gets a `sources_changed` warning. `egm`
+never runs in parallel and is always moved to the end; `Result.warn` is the OR of the
+steps' `warn` and never changes the exit code. The gate is local: in a CI checkout
+there is no state, so the result is `NO_STATE`.
+
+```bash
+tb stack verify guard egm --base origin/main
+tb stack egm --base origin/main --egm-doc docs/adr/015-egm-nativo.md --strict
+```
 
 ---
 
@@ -953,8 +975,8 @@ Both engines run the checkers `refs-exist`, `required-sections` and
 processes in a Landlock sandbox with a read-only packet, a disposable HOME, a minimal
 env and no tools (Linux). Without `egm.agent_cmd`, `auto` uses the **deterministic
 engine**, where the LLM personas are `unavailable` and the best verdict is
-`PASS_PARTIAL`. `status --at`, the `egm` op of `tb stack` and the MCP tools come in a
-later slice.
+`PASS_PARTIAL`. `status --at <rev>` is the gate mode used by the `egm` op of
+[`tb stack`](#tb-stack--verification-operation-stacking--phase-2).
 
 ```yaml
 # ~/.config/toolbelt/config.yaml
@@ -977,10 +999,13 @@ tb egm resolve docs/specs/x.md --decline F-4
 tb egm resolve docs/specs/x.md --force-settle F-3 --reason "accepted risk"
 tb egm resolve docs/specs/x.md --contest F-5 --evidence internal/x.go:40   # arbiter runs on the next loop next
 tb egm status docs/specs/x.md [--strict]  # 0 PASS, 1 FAIL, 3 IN_PROGRESS/STALE/NO_STATE
+tb egm status docs/specs/x.md --at HEAD   # gate mode: document, sources and config from the commit
 tb egm review docs/specs/x.md --restart   # new cycle after a cap (needs an edit)
 ```
 
-- **Flags:** `review` and `loop next` take `--engine auto|llm|deterministic`, `--reviewers a,b` and `--dry-run`; `review` takes `--restart`; `status` takes `--strict`. Every command accepts `--json`.
+- **Flags:** `review` and `loop next` take `--engine auto|llm|deterministic`, `--reviewers a,b` and `--dry-run`; `review` takes `--restart`; `status` takes `--strict` and `--at <rev>`. Every command accepts `--json`.
+- **Gate mode (`--at`):** the document, the sources (mode from `ls-tree`, bytes from `cat-file blob`; a source behind a versioned symlink is excluded) and the repository config come from the commit, never from the worktree. The repository is found from the current directory, and the document path is resolved lexically against it, so a missing or symlinked directory in the worktree changes nothing. A tracked source counts even when it matches `.gitignore`, in both modes. The `content` of a committed, unchanged worktree is the same in both modes. A source with a `.gitattributes` filter is not detected (`filtered_source` is a declared limitation).
+- **MCP:** `tb_egm_status` (`cwd`, `doc`, `at`, `strict`) and `tb_egm_resolve` (`cwd`, `doc` and the resolve flags as `fix`, `decline`, `force_settle`, `reason`, `contest`, `evidence`). `cwd` must be absolute. `review` and `loop next` take minutes and stay CLI-only.
 - **Config:** read from the user config (`~/.config/toolbelt/config.yaml`, `egm:` section) or from `-c`, never from the merged config. The repository's `.toolbelt/config.yaml` can only harden it: execution keys (`agent_cmd`, `env`, …) are ignored with `config_untrusted`, limits only go down, policy only goes up.
 - **Git:** a closed list of hardened git calls (no hooks, filters, fsmonitor, pager or external diff); a `.git` with fatal keys (`include.*`, partial clone, alternates, …) stops with exit 2 `hostile_git_dir`.
 - **State:** `$XDG_STATE_HOME/tb/egm/<repo-id>/<slug>/` (`state.json`, `round-<n>/target.md`, `report.{json,md}`), outside the repository and shared by its worktrees.
@@ -1888,7 +1913,8 @@ Unix/tcp transport and `--socket`/`--port`/`--tls-*` flags are planned; today on
 | `tb_review` | `tb review` | ticket/base/head/approved_sha/require_approved_sha/reviewers/standards |
 | `tb_drift` | `tb drift` | returns `{drift, has_drift, pinned_approval}` (`checked` explicit) |
 | `tb_guard_check` | `tb guard check` | `base`/`head` or `range=A..B`; `strict_fail` by default on SeverityError; `warn_only=true` opt-out; `strict` deprecated (boolean) |
-| `tb_stack` | `tb stack` | `ops` (array), `base`/`head`, `fail_fast` (boolean), `jobs` (integer), `approved_sha`/`approved_base`/`require_approved_sha`, `env`/`pass_env`; returns aggregated JSON |
+| `tb_stack` | `tb stack` | `ops` (array, includes `egm`, always moved to the end), `base`/`head`, `fail_fast` (boolean), `jobs` (integer), `approved_sha`/`approved_base`/`require_approved_sha`, `env`/`pass_env`, `egm_docs` (array), `strict` (boolean); returns aggregated JSON with `warn` |
+| `tb_egm_status` / `tb_egm_resolve` | `tb egm status` / `tb egm resolve` | `cwd` (absolute) and `doc`; status takes `at`/`strict`, resolve takes `fix`/`decline` (arrays), `force_settle`/`reason`, `contest`/`evidence`; returns `{report, exit_code}` |
 | `tb_ticket_list` / `tb_ticket_show` | `tb ticket list` / `tb ticket show` | `status`, `deps` / `id`; optional arg `cwd` |
 | `tb_ticket_create` | `tb ticket create` | `title`, `description`, `scope`/`forbid`/`accept`/`dep` (arrays), `priority` (integer), `timeout`, `dry_run` (boolean) |
 | `tb_board` | `tb board` | `action=list\|pause\|resume\|drain`, `strategy`, `status`, `worker` |

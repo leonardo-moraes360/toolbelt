@@ -649,7 +649,7 @@ tb agent reject action-124 --reason "Não autorizado para rede externa"
 
 ### `tb stack` — Empilhamento de Operações de Verificação (✓ Fase 2)
 
-Executa `verify`, `review`, `drift` e/ou `guard` numa única invocação, compartilhando
+Executa `verify`, `review`, `drift`, `guard` e/ou `egm` numa única invocação, compartilhando
 o trabalho caro (diff unificado, índice de arquivos alterados, memória/invariantes e
 config). Etapas somente leitura e independentes (`guard`, `drift`, `review`) rodam em
 paralelo (errgroup + `--jobs`); `verify` (build/test) fica serial/isolado. A saída JSON
@@ -686,12 +686,14 @@ Flags:
   --timeout <duration>   verify: timeout (default: 10m)
   --reviewers <n>        review: max goldfish
   --standards <csv>      review: roles (scope,quality,acceptance)
+  --egm-doc <path>       egm: document added to the selection (repeatable)
+  --strict               egm: PASS_PARTIAL and an empty selection fail
   --env <KEY>            (global) extra allowlist for stacked verify
   --pass-env <KEY>       (global) explicit secret opt-in for verify
 ```
 
 Sem operação, ou com operação desconhecida, sai com erro curto listando as ops
-válidas (`verify`, `review`, `drift`, `guard`) — sem dump de `Usage`.
+válidas (`verify`, `review`, `drift`, `guard`, `egm`) — sem dump de `Usage`.
 Ticket inexistente ou ilegível (arquivo/ID apontado por `--ticket`) faz as etapas
 `review`/`drift` falharem com exit ≠ 0 e mensagem citando o caminho procurado
 (mesma semântica de `tb review` / `tb drift` / MCP).
@@ -717,6 +719,26 @@ de invariantes também rodam em paralelo. O `verify` empilhado usa o mesmo
 `--base`/`--head` do contexto compartilhado: se o head divergir do `HEAD` do
 worktree, build/lint/test rodam num worktree detach temporário (ver `tb verify`); o
 `result` do passo inclui `head_sha` e `workdir`.
+
+**Op `egm` (gate):** seleciona os documentos sob gate (`egm.doc_globs`, por padrão
+`docs/specs/**` e `docs/adr/**`) adicionados ou modificados em
+`merge-base(base, head)..head`, mais os de `--egm-doc`, e avalia cada um com
+`tb egm status --at <head>`. O documento, as fontes e a config do repositório vêm do
+commit, então um documento convergido que mudou depois da revisão fica `STALE`.
+`PASS` é `ok`; `PASS_PARTIAL` é `ok` com `warn: true` (`ok: false` com `--strict` ou
+`egm.require_full_coverage`); qualquer outro veredito, ou uma linhagem com
+`forced_blocker`, é `ok: false`. Seleção vazia é `ok: true, warn: true` com
+`no_gated_docs` (`ok: false` com `--strict`), e `ok: false` com
+`uncommitted_gated_docs` quando a worktree tem documentos sob gate diferentes do head.
+Um documento com estado cujas fontes mudaram no intervalo, mas que não foi tocado, só
+recebe o aviso `sources_changed`. A `egm` nunca roda em paralelo e é sempre movida para
+o fim; `Result.warn` é o OR dos `warn` das etapas e nunca muda o exit code. O gate é
+local: num checkout de CI não há estado, então o resultado é `NO_STATE`.
+
+```bash
+tb stack verify guard egm --base origin/main
+tb stack egm --base origin/main --egm-doc docs/adr/015-egm-nativo.md --strict
+```
 
 ---
 
@@ -965,7 +987,8 @@ revisores do preset consolidado como goldfish: processos únicos de `egm.agent_c
 num sandbox Landlock com packet só de leitura, HOME descartável, env mínimo e sem
 ferramentas (Linux). Sem `egm.agent_cmd`, o `auto` usa a **engine determinística**,
 em que as personas LLM ficam `unavailable` e o melhor veredito é `PASS_PARTIAL`.
-`status --at`, a op `egm` do `tb stack` e as tools MCP vêm numa próxima fatia.
+`status --at <rev>` é o modo gate usado pela op `egm` do
+[`tb stack`](#tb-stack--empilhamento-de-operações-de-verificação--fase-2).
 
 ```yaml
 # ~/.config/toolbelt/config.yaml
@@ -988,10 +1011,13 @@ tb egm resolve docs/specs/x.md --decline F-4
 tb egm resolve docs/specs/x.md --force-settle F-3 --reason "risco aceito"
 tb egm resolve docs/specs/x.md --contest F-5 --evidence internal/x.go:40   # o árbitro roda no próximo loop next
 tb egm status docs/specs/x.md [--strict]  # 0 PASS, 1 FAIL, 3 IN_PROGRESS/STALE/NO_STATE
+tb egm status docs/specs/x.md --at HEAD   # modo gate: documento, fontes e config do commit
 tb egm review docs/specs/x.md --restart   # novo ciclo depois do teto (exige edição)
 ```
 
-- **Flags:** `review` e `loop next` aceitam `--engine auto|llm|deterministic`, `--reviewers a,b` e `--dry-run`; `review` aceita `--restart`; `status` aceita `--strict`. Todo comando aceita `--json`.
+- **Flags:** `review` e `loop next` aceitam `--engine auto|llm|deterministic`, `--reviewers a,b` e `--dry-run`; `review` aceita `--restart`; `status` aceita `--strict` e `--at <rev>`. Todo comando aceita `--json`.
+- **Modo gate (`--at`):** o documento, as fontes (modo vindo do `ls-tree`, bytes do `cat-file blob`; uma fonte atrás de um symlink versionado fica de fora) e a config do repositório vêm do commit, nunca da worktree. O repositório é encontrado a partir do diretório atual, e o caminho do documento é resolvido lexicamente contra ele, então um diretório ausente ou com symlink na worktree não muda nada. Uma fonte versionada conta mesmo quando casa com o `.gitignore`, nos dois modos. O `content` de uma worktree commitada e sem mudanças é o mesmo nos dois modos. Uma fonte com filtro de `.gitattributes` não é detectada (`filtered_source` é uma limitação declarada).
+- **MCP:** `tb_egm_status` (`cwd`, `doc`, `at`, `strict`) e `tb_egm_resolve` (`cwd`, `doc` e as flags do resolve como `fix`, `decline`, `force_settle`, `reason`, `contest`, `evidence`). `cwd` precisa ser absoluto. `review` e `loop next` levam minutos e ficam só na CLI.
 - **Config:** lida da config de usuário (`~/.config/toolbelt/config.yaml`, seção `egm:`) ou do `-c`, nunca da config mesclada. O `.toolbelt/config.yaml` do repositório só pode endurecê-la: chaves de execução (`agent_cmd`, `env`, …) são ignoradas com `config_untrusted`, limites só descem, política só sobe.
 - **Git:** lista fechada de chamadas git endurecidas (sem hooks, filtros, fsmonitor, pager nem diff externo); um `.git` com chaves fatais (`include.*`, partial clone, alternates, …) para com exit 2 `hostile_git_dir`.
 - **Estado:** `$XDG_STATE_HOME/tb/egm/<repo-id>/<slug>/` (`state.json`, `round-<n>/target.md`, `report.{json,md}`), fora do repositório e compartilhado pelas worktrees dele.
@@ -1909,7 +1935,8 @@ Transporte unix/tcp e flags `--socket`/`--port`/`--tls-*` são planejados; hoje 
 | `tb_review` | `tb review` | ticket/base/head/approved_sha/approved_base/require_approved_sha/reviewers/standards |
 | `tb_drift` | `tb drift` | retorna `{drift, has_drift, pinned_approval}` (`checked` explícito); `approved_sha`/`approved_base` |
 | `tb_guard_check` | `tb guard check` | `base`/`head` ou `range=A..B`; `strict_fail` por default em SeverityError; `warn_only=true` opt-out; `strict` deprecated (boolean) |
-| `tb_stack` | `tb stack` | `ops` (array), `base`/`head`, `fail_fast` (boolean), `jobs` (integer), `approved_sha`/`approved_base`/`require_approved_sha`, `env`/`pass_env`; retorna JSON agregado |
+| `tb_stack` | `tb stack` | `ops` (array, inclui `egm`, sempre movida para o fim), `base`/`head`, `fail_fast` (boolean), `jobs` (integer), `approved_sha`/`approved_base`/`require_approved_sha`, `env`/`pass_env`, `egm_docs` (array), `strict` (boolean); retorna JSON agregado com `warn` |
+| `tb_egm_status` / `tb_egm_resolve` | `tb egm status` / `tb egm resolve` | `cwd` (absoluto) e `doc`; status aceita `at`/`strict`, resolve aceita `fix`/`decline` (arrays), `force_settle`/`reason`, `contest`/`evidence`; retorna `{report, exit_code}` |
 | `tb_ticket_list` / `tb_ticket_show` | `tb ticket list` / `tb ticket show` | `status`, `deps` / `id`; arg opcional `cwd` |
 | `tb_ticket_create` | `tb ticket create` | `title`, `description`, `scope`/`forbid`/`accept`/`dep` (arrays), `priority` (integer), `timeout`, `dry_run` (boolean) |
 | `tb_board` | `tb board` | `action=list\|pause\|resume\|drain`, `strategy`, `status`, `worker` |

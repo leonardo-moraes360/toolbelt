@@ -21,6 +21,7 @@ var (
 	egmDryRun    bool
 	egmRestart   bool
 	egmStrict    bool
+	egmAt        string
 	egmResolve   egm.ResolveOptions
 )
 
@@ -89,11 +90,11 @@ var egmResolveCmd = &cobra.Command{
 
 var egmStatusCmd = &cobra.Command{
 	Use:   "status <doc>",
-	Short: "Shows the verdict for the worktree content (exit 0 PASS, 1 FAIL, 3 not passing)",
+	Short: "Shows the verdict for the worktree content, or a commit with --at (exit 0 PASS, 1 FAIL, 3 not passing)",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runEgm(cmd, func(ctx context.Context, o egm.Options) (*egm.Outcome, error) {
-			o.Strict = egmStrict
+			o.Strict, o.At = egmStrict, egmAt
 			return egm.Status(ctx, &o)
 		}, args[0])
 	},
@@ -107,6 +108,7 @@ func init() {
 	}
 	egmReviewCmd.Flags().BoolVar(&egmRestart, "restart", false, "opens a new cycle (needs a changed content; downgrades the cycle)")
 	egmStatusCmd.Flags().BoolVar(&egmStrict, "strict", false, "PASS_PARTIAL exits 1")
+	egmStatusCmd.Flags().StringVar(&egmAt, "at", "", "gate mode: evaluates the document, sources and config at this commit (R7a)")
 	f := egmResolveCmd.Flags()
 	f.StringSliceVar(&egmResolve.Fix, "fix", nil, "lineages fixed by an edit (F-1,F-2)")
 	f.StringSliceVar(&egmResolve.Decline, "decline", nil, "nit/major lineages declined (a major is a downgrade)")

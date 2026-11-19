@@ -320,6 +320,18 @@ func (r *Repo) LsTree(ctx context.Context, rev string, paths ...string) ([]Index
 	if err != nil {
 		return nil, err
 	}
+	return r.lsTreeOID(ctx, oid, paths...)
+}
+
+// lsTreeOID is LsTree for an oid this package already got from RevParse,
+// without resolving it again (gate mode runs it once per checked path).
+func (r *Repo) lsTreeOID(ctx context.Context, oid string, paths ...string) ([]IndexEntry, error) {
+	if err := validPaths(paths); err != nil {
+		return nil, err
+	}
+	if !isObjectID(oid) {
+		return nil, errorf(ExitError, "git_forbidden", "programming error: ls-tree of %q, not an object id", oid)
+	}
 	tail := append([]string{"--end-of-options", oid, "--"}, paths...)
 	out, err := runGit(ctx, r.call(opLsTree, tail...))
 	if err != nil {
