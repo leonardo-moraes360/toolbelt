@@ -26,6 +26,7 @@ type finding struct {
 		Lines   []int  `json:"lines,omitempty"`
 	} `json:"scope"`
 	Message string `json:"message"`
+	SameAs  string `json:"same_as,omitempty"`
 }
 
 func loadStopwords(path string) (map[string]bool, error) {

@@ -48,7 +48,7 @@ func (r *report) add(name string, ok bool, detail string) {
 
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Fprintln(os.Stderr, "uso: egm-spike isolation|claude|collect|calibrate|converge")
+		fmt.Fprintln(os.Stderr, "uso: egm-spike isolation|claude|collect|calibrate|converge|converge2")
 		os.Exit(2)
 	}
 	rep := &report{Mode: os.Args[1], Extra: map[string]any{}}
@@ -60,6 +60,8 @@ func main() {
 		err = runClaude(rep)
 	case "collect":
 		err = runCollect(rep, os.Args[2:])
+	case "converge2":
+		err = runConverge2(rep, os.Args[2:])
 	case "converge":
 		err = runConverge(rep, os.Args[2:])
 	case "calibrate":
