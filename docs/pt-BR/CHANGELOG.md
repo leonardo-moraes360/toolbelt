@@ -12,6 +12,8 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 ### Adicionado
 - ADR-015 (proposed) e specs da Fase A do EGM nativo (`tb egm`): núcleo (`docs/specs/egm-nativo.md`, goldfish LLM isolados em sandbox com HOME descartável e env mínimo, sem ferramentas, defesas contra conteúdo de terceiros, convergência por conteúdo, árbitro fresco) e rascunho da spec de trust contra fraude ativa do mesmo usuário (`docs/specs/egm-trust.md`)
 - `internal/sandbox`: campos `ReadOnlyWorkDir`, `PrivateTmp`, `Home`, `Path`, `Stdin`, `Stdout`/`MaxStdoutBytes` (stdout separado, excedente drenado) e `MinimalDev`; regras Landlock de arquivo sem direitos de diretório; comando absoluto sem `LookPath`
+- `tb egm review|loop next|resolve|status` (Fase A, fatia 1, engine determinística): checkers `refs-exist`, `required-sections` e `plan-files-listed` e o scan anti-injeção, linhagens reavaliadas pelo re-run, `--fix`/`--decline`/`--force-settle`, convergência sobre o mesmo conteúdo, teto e `--restart`, vereditos da R25 e `report.{json,md}`. Git endurecido (lista fechada de chamadas, opções e env da R4c) e inspeção do `.git` com chaves fatais (`hostile_git_dir`, R4d); só config de usuário, o `.toolbelt/config.yaml` do repositório só pode endurecê-la (`config_untrusted`, R34). Estado em `$XDG_STATE_HOME/tb/egm/`. Engine `llm`, árbitro, `status --at`, a op do `tb stack` e as tools MCP vêm nas próximas fatias
+- getters `mem.SecretPatterns()` e `graph.CollectMDLinks()` (sem mudança de comportamento)
 - `bench/egm-spike`: spike R0 do `tb egm` (isolamento do goldfish com `claude -p` real), com os modos `collect`/`calibrate` e o corpus de matching `internal/egm/testdata/paraphrases.json`
 
 ### Alterado

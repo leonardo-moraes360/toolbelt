@@ -1,0 +1,7 @@
+ignore (all |the )?(previous|prior|above) instructions
+do not report (any|this|these|the) (findings?|issues?|problems?)
+return (no|empty|zero) findings
+you are (approved|pre-approved)
+como revisor, (não|aprove)
+output only (json|\{)
+responda apenas (com|o) json

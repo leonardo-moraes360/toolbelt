@@ -151,6 +151,12 @@ func indexTXTDoc(rel, src string) ([]Node, []Edge, error) {
 	return nodes, edges, nil
 }
 
+// CollectMDLinks returns the hrefs of the markdown links and autolinks of
+// src, deduplicated, in order (also used by egm, R7).
+func CollectMDLinks(src string) []string {
+	return collectMDLinks(src)
+}
+
 func collectMDLinks(src string) []string {
 	seen := map[string]bool{}
 	var out []string

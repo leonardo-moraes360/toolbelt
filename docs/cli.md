@@ -76,6 +76,7 @@ tb  (implemented today)
 ├── init         Initializes local toolbelt configuration
 ├── bench        Benchmark harness (run|list|report|compare)
 ├── drift        Detects scope and base commit drift
+├── egm          Design-document review loop (review|loop next|resolve|status)  ✓ Phase A (deterministic)
 ├── graph        On-demand code graph (TB_GRAPH=on or --enable)
 ├── guard        Anti-cheat protections (check)
 ├── mcp          Starts an MCP server over stdio
@@ -939,6 +940,34 @@ JSON (`--json` / `--output`) uses `out_of_scope`, `forbidden_hit`,
 # In CI, fail if there are files out of scope
 tb drift --ticket rd.md --json | jq '.out_of_scope | length' | xargs -I {} test {} -eq 0
 ```
+
+---
+
+### `tb egm` — Design-Document Review Loop (Phase A, deterministic engine)
+
+Reviews specs and ADRs and repeats the round until two clean rounds over the same
+content converge ([spec](specs/egm-nativo.md), [ADR-015](adr/015-egm-nativo.md)).
+This build ships the **deterministic engine**: the checkers `refs-exist`,
+`required-sections` and `plan-files-listed` plus the anti-injection scan. The LLM
+personas show as `unavailable`, so the best verdict is `PASS_PARTIAL`; the `llm`
+engine, `--contest`/arbiter, `status --at`, the `egm` op of `tb stack` and the MCP
+tools come in later slices.
+
+```bash
+tb egm review docs/specs/x.md            # round 1 (exit 0; 1 on FAIL)
+tb egm loop next docs/specs/x.md         # next round; refused when nothing changed
+tb egm resolve docs/specs/x.md --fix F-1,F-2
+tb egm resolve docs/specs/x.md --decline F-4
+tb egm resolve docs/specs/x.md --force-settle F-3 --reason "accepted risk"
+tb egm status docs/specs/x.md [--strict]  # 0 PASS, 1 FAIL, 3 IN_PROGRESS/STALE/NO_STATE
+tb egm review docs/specs/x.md --restart   # new cycle after a cap (needs an edit)
+```
+
+- **Flags:** `review` and `loop next` take `--engine auto|llm|deterministic`, `--reviewers a,b` and `--dry-run`; `review` takes `--restart`; `status` takes `--strict`. Every command accepts `--json`.
+- **Config:** read from the user config (`~/.config/toolbelt/config.yaml`, `egm:` section) or from `-c`, never from the merged config. The repository's `.toolbelt/config.yaml` can only harden it: execution keys (`agent_cmd`, `env`, …) are ignored with `config_untrusted`, limits only go down, policy only goes up.
+- **Git:** a closed list of hardened git calls (no hooks, filters, fsmonitor, pager or external diff); a `.git` with fatal keys (`include.*`, partial clone, alternates, …) stops with exit 2 `hostile_git_dir`.
+- **State:** `$XDG_STATE_HOME/tb/egm/<repo-id>/<slug>/` (`state.json`, `round-<n>/target.md`, `report.{json,md}`), outside the repository and shared by its worktrees.
+- **Exit 2** for usage errors and refusals: `state_exists`, `no_state`, `no_change`, `locked`, `invalid_transition`, `contest_refused`, `restart_needs_change`, `no_repository`, `hostile_git_dir`.
 
 ---
 

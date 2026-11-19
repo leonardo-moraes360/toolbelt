@@ -17,6 +17,12 @@ var secretPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)[A-Za-z0-9_]*_TOKEN=[^\s"'&]+`),
 }
 
+// SecretPatterns returns a copy of the patterns RedactText uses, for callers
+// that redact with their own replacement (egm keeps line numbering).
+func SecretPatterns() []*regexp.Regexp {
+	return append([]*regexp.Regexp(nil), secretPatterns...)
+}
+
 func RedactText(s string) string {
 	if s == "" {
 		return s

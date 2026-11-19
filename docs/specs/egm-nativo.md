@@ -2,7 +2,7 @@
 
 # Spec: native EGM, Phase A, core (`tb egm review|loop|resolve|status`)
 
-Author: toolbelt · Status: R18–R27 revised with the R0 data and simplified after the re-measurement (not reviewed); R0 open only for item 8 · Date: 2026-11-17 · Decision: [ADR-015](../adr/015-egm-nativo.md) · Companion: [egm trust](egm-trust.md)
+Author: toolbelt · Status: R18–R27 revised with the R0 data and simplified after the re-measurement (not reviewed); R0 open only for item 8; implementation slice 1 (deterministic engine, interactive mode) done · Date: 2026-11-17 · Decision: [ADR-015](../adr/015-egm-nativo.md) · Companion: [egm trust](egm-trust.md)
 
 ## Overview
 
@@ -417,7 +417,7 @@ The result goes in `docs/campo/dogfood.md` (PT and EN).
 - R18 (comparison functions): `normalize(msg)` lowercases, strips accents and punctuation, collapses whitespace, removes the stopwords in `internal/egm/stopwords.txt` and cuts each token to its first `egm.match.stem` runes (default 4; 0 keeps whole words).
   - `sim(a,b)` is the Jaccard of the `normalize` tokens.
   - `region(a,b)` holds when both have the same `heading` and, if both have `lines`, the gap between the ranges, `max(0, max(a₁,b₁) − min(a₂,b₂))`, is at most `egm.match.gap` (default 3). The scope of an existing lineage is mapped to the current snapshot first (R20).
-  - Defaults calibrated in R0 over `internal/egm/testdata/paraphrases.json` (dogfood #31): `sim` 0.23 with `stem` 4 gives about 3% wrong merges and 20% missed matches on the corpus, and, tuned on one document and tested on the other, 22–24% missed and 4–7% wrong merges, both above the targets. A line-overlap threshold had no effect and was dropped. Missed matches show up as duplicate lineages, which cost rounds but never hide a finding.
+  - Defaults calibrated in R0 over `internal/egm/testdata/paraphrases.json` (dogfood #31): `sim` 0.23 with `stem` 4 gives about 3% wrong merges and 24% missed matches on the corpus (20% from the wording alone; 4 of the 87 paraphrased pairs sit under different headings, which `region` never merges, dogfood #34), and, tuned on one document and tested on the other, 22–24% missed and 4–7% wrong merges, both above the targets. A line-overlap threshold had no effect and was dropped. Missed matches show up as duplicate lineages, which cost rounds but never hide a finding.
   - A link declared by the reviewer (`same_as`) and a list of other reviewers' lineages in the prompt were tried in R0 and dropped: reviewers never used them (dogfood #33).
 - R19 (merge): lineages of another owner with a lower severity than the finding are not candidates. A new finding is an occurrence of the first candidate, in `F-<k>` order, with `sim ≥ egm.match.sim` and `region`; otherwise it merges with new findings of the same round that meet the same conditions; otherwise it is new.
 
@@ -691,7 +691,7 @@ See [ADR-015](../adr/015-egm-nativo.md#alternatives-considered).
 | `internal/egm/gitconfig.go` | Create | Classification of the `git config --list` keys (R4d) |
 | `internal/egm/redact.go` | Create | egm redaction with line preservation (R8) |
 | `internal/egm/personas/*.md`, `internal/egm/standards/*.md` | Create | 8 personas and `arbiter`; standards `feature-spec`, `adr`, `implementation-readiness`, `zoom-out` (R10, R11, R13, R29) |
-| `internal/egm/checkers/refs.go`, `internal/egm/checkers/sections.go`, `internal/egm/checkers/planfiles.go` | Create | Checkers (R13) |
+| `internal/egm/checkers.go`, `internal/egm/checker_refs.go`, `internal/egm/checker_plan.go` | Create | Checkers (R13); in the `egm` package, since a separate checkers subpackage would import `Repo` and `Doc` from `egm` and form a cycle |
 | `internal/egm/injection.go`, `internal/egm/injection_patterns.txt` | Create | Scan (R17a) |
 | `internal/egm/attest.go` | Create | Attestation (R17) |
 | `internal/egm/stopwords.txt` | Create | Stopwords (R18) |
