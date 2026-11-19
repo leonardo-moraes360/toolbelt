@@ -13069,5 +13069,318 @@
     "message": "Não estão definidos o código de saída nem o erro de `show`, `links` e `backlinks` quando `<target>` não resolve ou é ambíguo."
    }
   }
- ]
+ ],
+ "convergence_revised": {
+  "date": "2026-11-19",
+  "rules": "revised R18-R27 (same_as over PRIOR/KNOWN, jaccard+stem4 fallback sim 0.23 gap 3, late lineages with late_margin 3, fix needs a change)",
+  "reviewers": 9,
+  "clean_rounds": 2,
+  "max_rounds": 8,
+  "budget_usd": 20,
+  "total_cost_usd": 20.76,
+  "median_rounds_to_converge": null,
+  "result": "no document converged before the budget",
+  "documents": [
+   {
+    "doc": "docs/pt-BR/specs/egm-trust.md",
+    "stop": "budget",
+    "rounds_run": 5,
+    "converged": false,
+    "cost_usd": 9.2,
+    "per_round": [
+     {
+      "round": 1,
+      "clean": false,
+      "findings_by_severity": {
+       "blocker": 3,
+       "major": 14,
+       "nit": 26
+      },
+      "still_holds": 0,
+      "fixed_touching": 0,
+      "fixed_elsewhere": 0,
+      "fixed_without_edit": 0,
+      "same_as_accepted": 0,
+      "same_as_rejected": 0,
+      "lexical_matched": 2,
+      "new_open": 15,
+      "new_late": 0,
+      "unlinked_blocking_on_changed_lines": 0,
+      "unlinked_blocking_off_changed_lines": 0,
+      "late_promoted": 0,
+      "reopened": 0,
+      "open_blocking_after": 15,
+      "late_total_after": 0,
+      "author_changed_doc": true,
+      "not_run": 0
+     },
+     {
+      "round": 2,
+      "clean": false,
+      "findings_by_severity": {
+       "blocker": 3,
+       "major": 16,
+       "nit": 33
+      },
+      "still_holds": 0,
+      "fixed_touching": 14,
+      "fixed_elsewhere": 1,
+      "fixed_without_edit": 0,
+      "same_as_accepted": 0,
+      "same_as_rejected": 0,
+      "lexical_matched": 2,
+      "new_open": 17,
+      "new_late": 0,
+      "unlinked_blocking_on_changed_lines": 17,
+      "unlinked_blocking_off_changed_lines": 0,
+      "late_promoted": 0,
+      "reopened": 0,
+      "open_blocking_after": 17,
+      "late_total_after": 0,
+      "author_changed_doc": true,
+      "not_run": 0
+     },
+     {
+      "round": 3,
+      "clean": false,
+      "findings_by_severity": {
+       "blocker": 2,
+       "major": 12,
+       "nit": 22
+      },
+      "still_holds": 0,
+      "fixed_touching": 17,
+      "fixed_elsewhere": 0,
+      "fixed_without_edit": 0,
+      "same_as_accepted": 0,
+      "same_as_rejected": 0,
+      "lexical_matched": 4,
+      "new_open": 10,
+      "new_late": 0,
+      "unlinked_blocking_on_changed_lines": 10,
+      "unlinked_blocking_off_changed_lines": 0,
+      "late_promoted": 0,
+      "reopened": 0,
+      "open_blocking_after": 10,
+      "late_total_after": 0,
+      "author_changed_doc": true,
+      "not_run": 0
+     },
+     {
+      "round": 4,
+      "clean": false,
+      "findings_by_severity": {
+       "major": 10,
+       "nit": 20
+      },
+      "still_holds": 0,
+      "fixed_touching": 10,
+      "fixed_elsewhere": 0,
+      "fixed_without_edit": 0,
+      "same_as_accepted": 0,
+      "same_as_rejected": 0,
+      "lexical_matched": 3,
+      "new_open": 7,
+      "new_late": 0,
+      "unlinked_blocking_on_changed_lines": 7,
+      "unlinked_blocking_off_changed_lines": 0,
+      "late_promoted": 0,
+      "reopened": 2,
+      "open_blocking_after": 9,
+      "late_total_after": 0,
+      "author_changed_doc": true,
+      "not_run": 0
+     },
+     {
+      "round": 5,
+      "clean": false,
+      "findings_by_severity": {
+       "major": 2,
+       "nit": 10
+      },
+      "still_holds": 0,
+      "fixed_touching": 6,
+      "fixed_elsewhere": 0,
+      "fixed_without_edit": 0,
+      "same_as_accepted": 0,
+      "same_as_rejected": 0,
+      "lexical_matched": 0,
+      "new_open": 1,
+      "new_late": 1,
+      "unlinked_blocking_on_changed_lines": 1,
+      "unlinked_blocking_off_changed_lines": 1,
+      "late_promoted": 0,
+      "reopened": 0,
+      "open_blocking_after": 4,
+      "late_total_after": 1,
+      "author_changed_doc": false,
+      "not_run": 3
+     }
+    ],
+    "lines_before_after": [
+     73,
+     193
+    ]
+   },
+   {
+    "doc": "docs/specs/vault.md",
+    "stop": "budget",
+    "rounds_run": 6,
+    "converged": false,
+    "cost_usd": 11.56,
+    "per_round": [
+     {
+      "round": 1,
+      "clean": false,
+      "findings_by_severity": {
+       "major": 25,
+       "nit": 45
+      },
+      "still_holds": 0,
+      "fixed_touching": 0,
+      "fixed_elsewhere": 0,
+      "fixed_without_edit": 0,
+      "same_as_accepted": 0,
+      "same_as_rejected": 0,
+      "lexical_matched": 1,
+      "new_open": 24,
+      "new_late": 0,
+      "unlinked_blocking_on_changed_lines": 0,
+      "unlinked_blocking_off_changed_lines": 0,
+      "late_promoted": 0,
+      "reopened": 0,
+      "open_blocking_after": 24,
+      "late_total_after": 0,
+      "author_changed_doc": true,
+      "not_run": 0
+     },
+     {
+      "round": 2,
+      "clean": false,
+      "findings_by_severity": {
+       "major": 5,
+       "nit": 33
+      },
+      "still_holds": 0,
+      "fixed_touching": 24,
+      "fixed_elsewhere": 0,
+      "fixed_without_edit": 0,
+      "same_as_accepted": 0,
+      "same_as_rejected": 0,
+      "lexical_matched": 0,
+      "new_open": 5,
+      "new_late": 0,
+      "unlinked_blocking_on_changed_lines": 5,
+      "unlinked_blocking_off_changed_lines": 0,
+      "late_promoted": 0,
+      "reopened": 0,
+      "open_blocking_after": 5,
+      "late_total_after": 0,
+      "author_changed_doc": true,
+      "not_run": 0
+     },
+     {
+      "round": 3,
+      "clean": false,
+      "findings_by_severity": {
+       "major": 1,
+       "nit": 19
+      },
+      "still_holds": 0,
+      "fixed_touching": 5,
+      "fixed_elsewhere": 0,
+      "fixed_without_edit": 0,
+      "same_as_accepted": 0,
+      "same_as_rejected": 0,
+      "lexical_matched": 0,
+      "new_open": 1,
+      "new_late": 0,
+      "unlinked_blocking_on_changed_lines": 1,
+      "unlinked_blocking_off_changed_lines": 0,
+      "late_promoted": 0,
+      "reopened": 0,
+      "open_blocking_after": 1,
+      "late_total_after": 0,
+      "author_changed_doc": true,
+      "not_run": 0
+     },
+     {
+      "round": 4,
+      "clean": false,
+      "findings_by_severity": {
+       "major": 1,
+       "nit": 14
+      },
+      "still_holds": 0,
+      "fixed_touching": 1,
+      "fixed_elsewhere": 0,
+      "fixed_without_edit": 0,
+      "same_as_accepted": 0,
+      "same_as_rejected": 0,
+      "lexical_matched": 1,
+      "new_open": 0,
+      "new_late": 0,
+      "unlinked_blocking_on_changed_lines": 0,
+      "unlinked_blocking_off_changed_lines": 0,
+      "late_promoted": 0,
+      "reopened": 1,
+      "open_blocking_after": 1,
+      "late_total_after": 0,
+      "author_changed_doc": false,
+      "not_run": 0
+     },
+     {
+      "round": 5,
+      "clean": false,
+      "findings_by_severity": {
+       "nit": 20
+      },
+      "still_holds": 0,
+      "fixed_touching": 0,
+      "fixed_elsewhere": 0,
+      "fixed_without_edit": 1,
+      "same_as_accepted": 0,
+      "same_as_rejected": 0,
+      "lexical_matched": 0,
+      "new_open": 0,
+      "new_late": 0,
+      "unlinked_blocking_on_changed_lines": 0,
+      "unlinked_blocking_off_changed_lines": 0,
+      "late_promoted": 0,
+      "reopened": 0,
+      "open_blocking_after": 1,
+      "late_total_after": 0,
+      "author_changed_doc": false,
+      "not_run": 0
+     },
+     {
+      "round": 6,
+      "clean": false,
+      "findings_by_severity": {},
+      "still_holds": 0,
+      "fixed_touching": 0,
+      "fixed_elsewhere": 0,
+      "fixed_without_edit": 0,
+      "same_as_accepted": 0,
+      "same_as_rejected": 0,
+      "lexical_matched": 0,
+      "new_open": 0,
+      "new_late": 0,
+      "unlinked_blocking_on_changed_lines": 0,
+      "unlinked_blocking_off_changed_lines": 0,
+      "late_promoted": 0,
+      "reopened": 0,
+      "open_blocking_after": 1,
+      "late_total_after": 0,
+      "author_changed_doc": false,
+      "not_run": 9
+     }
+    ],
+    "lines_before_after": [
+     284,
+     317
+    ]
+   }
+  ]
+ }
 }
