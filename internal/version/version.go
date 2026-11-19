@@ -1,4 +1,4 @@
-// Package version fornece informações de versão do toolbelt.
+// Package version exposes build metadata.
 package version
 
 import (
@@ -6,21 +6,13 @@ import (
 	"runtime"
 )
 
+// Overwritten by goreleaser via ldflags.
 var (
-	// Version é a versão semântica do toolbelt.
-	// Será sobrescrita pelo goreleaser via ldflags.
-	Version = "dev"
-
-	// Commit é o hash do commit git.
-	// Será sobrescrito pelo goreleaser via ldflags.
-	Commit = "unknown"
-
-	// BuildTime é o timestamp da build.
-	// Será sobrescrito pelo goreleaser via ldflags.
+	Version   = "dev"
+	Commit    = "unknown"
 	BuildTime = "unknown"
 )
 
-// Info contém todas as informações de versão.
 type Info struct {
 	Version   string `json:"version"`
 	Commit    string `json:"commit"`
@@ -30,7 +22,6 @@ type Info struct {
 	Arch      string `json:"arch"`
 }
 
-// Get retorna as informações de versão.
 func Get() Info {
 	return Info{
 		Version:   Version,
@@ -42,13 +33,11 @@ func Get() Info {
 	}
 }
 
-// String retorna uma representação textual da versão.
 func (i Info) String() string {
 	return fmt.Sprintf("toolbelt %s\n  commit: %s\n  built:  %s\n  go:     %s\n  os:     %s/%s",
 		i.Version, i.Commit, i.BuildTime, i.GoVersion, i.OS, i.Arch)
 }
 
-// Short retorna apenas a versão.
 func (i Info) Short() string { //nolint:gocritic // small struct, value receiver is fine
 	return i.Version
 }

@@ -22,27 +22,27 @@ import (
 
 func jsonIndent(v any) ([]byte, error) { return json.MarshalIndent(v, "", "  ") }
 
-// wsCreateMu serializa createWorkspace entre workers (git worktree add disputa
-// locks de refs). NÃO é tomado por Sweep/settleGroup: o git do workspace manager
-// é rastreado no Registry (SetRunner), então varreduras nunca o confundem com um
-// órfão nem esperam por ele.
+// wsCreateMu serializes createWorkspace across workers (git worktree add
+// contends for ref locks). Sweep/settleGroup do NOT take it: the workspace
+// manager's git is tracked in the Registry (SetRunner), so sweeps never mistake
+// it for an orphan nor wait for it.
 var wsCreateMu sync.Mutex
 
-// procs rastreia todo filho direto do router (agentes e git). Varreduras
-// (Sweep) matam e colhem qualquer filho direto não rastreado: descendentes de
-// agentes que fizeram setsid/setpgid e foram reparentados ao router (Linux,
-// PR_SET_CHILD_SUBREAPER). TB_TICKET_ID (herdado do ambiente do agente) atribui
-// o escape ao ticket e é também o dono de cada grupo de agente (um processo que
-// entra no grupo de outro agente via setpgid é detectado).
+// procs tracks every direct child of the router (agents and git). Sweeps kill
+// and reap any untracked direct child: agent descendants that called
+// setsid/setpgid and were reparented to the router (Linux,
+// PR_SET_CHILD_SUBREAPER). TB_TICKET_ID (inherited from the agent's environment)
+// attributes the escape to a ticket and also names the owner of each agent group
+// (a process that joins another agent's group via setpgid is detected).
 var procs = func() *sandbox.Registry {
 	r := sandbox.NewRegistry(ticketIDVar)
 	r.SetOwnerVar(ticketIDVar)
 	return r
 }()
 
-// workspaceGitArgs neutralizam código do usuário/repositório no git do workspace
-// manager (worktree add/remove): sem hooks (post-checkout), fsmonitor nem
-// manutenção destacada, que viriam como daemons órfãos.
+// workspaceGitArgs neutralize user/repository code in the workspace manager's
+// git (worktree add/remove): no hooks (post-checkout), fsmonitor or detached
+// maintenance, which would show up as orphan daemons.
 var workspaceGitArgs = []string{
 	"-c", "core.hooksPath=" + os.DevNull,
 	"-c", "core.fsmonitor=false",
@@ -51,10 +51,10 @@ var workspaceGitArgs = []string{
 	"-c", "gc.autoDetach=false",
 }
 
-// newWorkspaceManager cria o workspace.Manager do router: git rastreado no
-// Registry (nunca confundido com um órfão, sem lock global durante o spawn) e sem
-// hooks/fsmonitor/manutenção do usuário (workspaceGitArgs): worktrees criados
-// pelo router nunca executam código do repositório/usuário.
+// newWorkspaceManager tracks its git in the Registry (never mistaken for an
+// orphan, no global lock during spawn) and disables user hooks/fsmonitor/
+// maintenance (workspaceGitArgs): router-created worktrees never run
+// repository/user code.
 func newWorkspaceManager(root string) (*workspace.Manager, error) {
 	wsm, err := workspace.NewManager(root)
 	if err != nil {
@@ -65,7 +65,7 @@ func newWorkspaceManager(root string) (*workspace.Manager, error) {
 	return wsm, nil
 }
 
-// runTracked executa cmd registrando o pid em procs (CombinedOutput rastreado).
+// runTracked registers the pid in procs (a tracked CombinedOutput).
 func runTracked(cmd *exec.Cmd) ([]byte, error) {
 	var buf bytes.Buffer
 	cmd.Stdout = &buf
@@ -74,9 +74,8 @@ func runTracked(cmd *exec.Cmd) ([]byte, error) {
 	return buf.Bytes(), err
 }
 
-// gitOut roda git em dir e devolve a saída aparada.
 func gitOut(dir string, args ...string) (string, error) {
-	cmd := exec.Command("git", args...) //nolint:gosec // argumentos controlados pelo router
+	cmd := exec.Command("git", args...) //nolint:gosec // args controlled by the router
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
 	out, err := runTracked(cmd)
@@ -87,8 +86,8 @@ func gitOut(dir string, args ...string) (string, error) {
 	return s, nil
 }
 
-// execute roda o agente de um ticket (goroutine do worker). Não toca no
-// estado do router; devolve tudo por workerDone.
+// execute runs in the worker goroutine. It never touches router state;
+// everything is returned through workerDone.
 func (r *Router) execute(ctx context.Context, s *slot, worker string, t *ticket.Ticket, base string) workerDone {
 	ev := workerDone{slot: s, id: t.ID, base: base, branch: "tb-workspace/" + t.ID, exit: -1}
 	logRel := filepath.Join(".toolbelt", "router", "logs", t.ID+".log")
@@ -126,7 +125,7 @@ func (r *Router) execute(ctx context.Context, s *slot, worker string, t *ticket.
 		ev.err = err
 		return ev
 	}
-	r.takeEscaped(t.ID) // marca velha de tentativa anterior não pode envenenar esta
+	r.takeEscaped(t.ID) // a stale mark from a previous attempt must not poison this one
 	r.markActive(t.ID, worker)
 	defer r.unmarkActive(t.ID)
 	res, err := sb.Run(ctx, r.argv[0], r.argv[1:]...)
@@ -136,10 +135,10 @@ func (r *Router) execute(ctx context.Context, s *slot, worker string, t *ticket.
 		ev.canceled = res.Canceled
 		ev.timedOut = res.TimedOut
 	}
-	// Descendentes que escaparam do grupo (setsid/setpgid) já foram mortos pelo
-	// Sweep. Só falhamos ESTE ticket se algum escape foi atribuído a ele (por
-	// TB_TICKET_ID ou, sem atribuição possível, por estar rodando no momento da
-	// detecção); escapes de outros tickets, varridos aqui, apenas os marcam.
+	// Descendants that escaped the group (setsid/setpgid) were already killed by
+	// Sweep. Fail THIS ticket only if an escape was attributed to it (via
+	// TB_TICKET_ID or, when attribution is impossible, because it was running at
+	// detection time); escapes of other tickets swept here only mark them.
 	ev.alerts = r.collectEscapes()
 	if r.takeEscaped(t.ID) {
 		ev.err = fmt.Errorf("%w: processo(s) escaparam do grupo do agente (setsid/setpgid) e foram encerrados; agentes não podem se desacoplar", errAgentEscaped)
@@ -149,8 +148,8 @@ func (r *Router) execute(ctx context.Context, s *slot, worker string, t *ticket.
 		ev.err = err
 		return ev
 	}
-	// Não marcamos canceled só porque ctx foi cancelado depois: se o agente já
-	// terminou com 0 antes do cancelamento, o trabalho é válido (finding 4).
+	// Do not mark canceled just because ctx was canceled afterwards: if the agent
+	// already exited 0 before the cancellation, the work is valid (finding 4).
 	if ev.exit != 0 || ev.canceled || ev.timedOut {
 		return ev
 	}
@@ -165,14 +164,14 @@ func (r *Router) execute(ctx context.Context, s *slot, worker string, t *ticket.
 
 func (r *Router) appendLog(rel, worker, id, output string) {
 	path := filepath.Join(r.opts.Root, rel)
-	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600) //nolint:gosec // dentro de .toolbelt/router/logs
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600) //nolint:gosec // inside .toolbelt/router/logs
 	if err != nil {
 		return
 	}
 	defer f.Close()
-	_ = f.Chmod(0o600) // logs antigos criados com 0644
-	// A saída do agente já vem limitada (sandbox.MaxOutputBytes, só o tail);
-	// reforça o teto caso o chamador mude.
+	_ = f.Chmod(0o600) // old logs were created with 0644
+	// Agent output is already capped (sandbox.MaxOutputBytes, tail only);
+	// enforce the cap again in case the caller changes.
 	if len(output) > sandbox.MaxOutputBytes {
 		output = output[len(output)-sandbox.MaxOutputBytes:]
 	}
@@ -182,13 +181,13 @@ func (r *Router) appendLog(rel, worker, id, output string) {
 	}
 }
 
-// createWorkspace cria o worktree do ticket em base, limpando resíduos de
-// tentativas anteriores. Serializado: git worktree add disputa locks de refs.
+// createWorkspace cleans up leftovers from previous attempts. Serialized: git
+// worktree add contends for ref locks.
 func (r *Router) createWorkspace(t *ticket.Ticket, base string) (*workspace.Workspace, error) {
 	wsCreateMu.Lock()
 	defer wsCreateMu.Unlock()
-	// Janela de spawn: o git (e o que ele dispara) pode deixar daemons destacados
-	// que não são de nenhum agente; vide Registry.BeginSpawnWindow.
+	// Spawn window: git (and whatever it triggers) may leave detached daemons
+	// that belong to no agent; see Registry.BeginSpawnWindow.
 	defer procs.BeginSpawnWindow()()
 	path := filepath.Join(r.opts.Root, ".toolbelt", "workspaces", t.ID)
 	if _, err := os.Stat(path); err == nil {
@@ -203,18 +202,18 @@ func (r *Router) createWorkspace(t *ticket.Ticket, base string) (*workspace.Work
 	})
 }
 
-// errWorkspaceIntegrity indica que o worktree foi adulterado pelo agente (ou
-// não corresponde ao registrado no repositório); nunca roda git nele e o ticket
-// falha sem nova tentativa.
+// errWorkspaceIntegrity means the agent tampered with the worktree (or it does
+// not match the one registered in the repository); git never runs in it and the
+// ticket fails without retry.
 var errWorkspaceIntegrity = errors.New("integridade do worktree violada")
 
-// errAgentEscaped: o agente deixou descendentes fora do seu grupo de processos.
-// É uma violação de integridade (sem retry, sem git no worktree).
+// errAgentEscaped: the agent left descendants outside its process group. It is
+// an integrity violation (no retry, no git in the worktree).
 var errAgentEscaped = fmt.Errorf("%w: agent_escaped", errWorkspaceIntegrity)
 
-// hardenedGitArgs são as opções que neutralizam execução de código via config:
-// o router roda git FORA do sandbox, então nada que o agente consiga escrever
-// pode virar comando (fsmonitor, hooks, ssh, diff externo, pager, assinatura).
+// hardenedGitArgs neutralize code execution via config: the router runs git
+// OUTSIDE the sandbox, so nothing the agent can write may become a command
+// (fsmonitor, hooks, ssh, external diff, pager, signing).
 var hardenedGitArgs = []string{
 	"-c", "core.fsmonitor=false",
 	"-c", "core.hooksPath=" + os.DevNull,
@@ -222,31 +221,31 @@ var hardenedGitArgs = []string{
 	"-c", "diff.external=",
 	"-c", "core.pager=cat",
 	"-c", "commit.gpgsign=false",
-	// Submódulos: o agente pode criar <gitlink>/.git com config própria; sem
-	// estas opções status/diff/add recursariam nele e rodariam filtros dele.
+	// Submodules: the agent can create <gitlink>/.git with its own config; without
+	// these options status/diff/add would recurse into it and run its filters.
 	"-c", "diff.ignoreSubmodules=all",
 	"-c", "status.submoduleSummary=false",
 	"-c", "submodule.recurse=false",
 	"-c", "fetch.recurseSubmodules=false",
-	// git commit pode lançar `maintenance`/`gc --auto` destacado (setsid): viraria
-	// um órfão que o Sweep tomaria por agente escapado.
+	// git commit may launch a detached `maintenance`/`gc --auto` (setsid): it would
+	// become an orphan that Sweep mistakes for an escaped agent.
 	"-c", "maintenance.auto=false",
 	"-c", "gc.auto=0",
 	"-c", "gc.autoDetach=false",
 }
 
-// trustedGit descreve um worktree verificado: gitDir é o diretório
-// <common>/worktrees/<nome> registrado pelo próprio git (fora do worktree, logo
-// fora do alcance de escrita do agente).
+// trustedGit is a verified worktree: gitDir is the <common>/worktrees/<name>
+// directory registered by git itself (outside the worktree, hence outside the
+// agent's write reach).
 type trustedGit struct {
 	root, gitDir, ws string
 }
 
-// verifyWorkspace garante que <ws>/.git é um arquivo regular (não symlink, não
-// diretório) cujo "gitdir:" aponta para um worktree registrado em
-// <git-common-dir>/worktrees/<nome> do repositório da raiz, e que esse registro
-// aponta de volta para <ws>/.git. O common-dir vem de `git rev-parse` com cwd
-// na raiz (nunca no worktree).
+// verifyWorkspace ensures <ws>/.git is a regular file (not a symlink, not a
+// directory) whose "gitdir:" points to a worktree registered in
+// <git-common-dir>/worktrees/<name> of the root repository, and that this
+// registration points back to <ws>/.git. The common dir comes from
+// `git rev-parse` with cwd at the root (never in the worktree).
 func verifyWorkspace(root, ws string) (*trustedGit, error) {
 	dotgit := filepath.Join(ws, ".git")
 	gitDir, err := readGitdirPointer(ws, dotgit)
@@ -260,13 +259,12 @@ func verifyWorkspace(root, ws string) (*trustedGit, error) {
 	return &trustedGit{root: root, gitDir: realGitDir, ws: ws}, nil
 }
 
-// integrityErr embrulha errWorkspaceIntegrity com a mensagem formatada.
 func integrityErr(format string, a ...any) error {
 	return fmt.Errorf("%w: "+format, append([]any{errWorkspaceIntegrity}, a...)...)
 }
 
-// readGitdirPointer valida que <ws>/.git é um arquivo regular pequeno no
-// formato "gitdir: <path>" e devolve o caminho (absoluto e limpo).
+// readGitdirPointer requires <ws>/.git to be a small regular file of the form
+// "gitdir: <path>" and returns the path (absolute and cleaned).
 func readGitdirPointer(ws, dotgit string) (string, error) {
 	fi, err := os.Lstat(ws)
 	if err != nil || !fi.IsDir() {
@@ -282,7 +280,7 @@ func readGitdirPointer(ws, dotgit string) (string, error) {
 	if fi.Size() > 4096 {
 		return "", integrityErr("%s grande demais", dotgit)
 	}
-	data, err := os.ReadFile(dotgit) //nolint:gosec // caminho do worktree do próprio ticket
+	data, err := os.ReadFile(dotgit) //nolint:gosec // path inside the ticket's own worktree
 	if err != nil {
 		return "", integrityErr("%s: %v", dotgit, err)
 	}
@@ -297,9 +295,9 @@ func readGitdirPointer(ws, dotgit string) (string, error) {
 	return filepath.Clean(gitDir), nil
 }
 
-// checkRegisteredWorktree confirma que gitDir está registrado em
-// <git-common-dir>/worktrees e aponta de volta para dotgit; devolve o gitDir
-// real (symlinks resolvidos).
+// checkRegisteredWorktree confirms gitDir is registered under
+// <git-common-dir>/worktrees and points back to dotgit; it returns the real
+// gitDir (symlinks resolved).
 func checkRegisteredWorktree(root, dotgit, gitDir string) (string, error) {
 	out, err := gitOut(root, "rev-parse", "--git-common-dir")
 	if err != nil {
@@ -319,8 +317,8 @@ func checkRegisteredWorktree(root, dotgit, gitDir string) (string, error) {
 	if filepath.Dir(realGitDir) != filepath.Join(common, "worktrees") {
 		return "", integrityErr("gitdir %s não está em %s/worktrees", realGitDir, common)
 	}
-	// o registro do git (fora do worktree) deve apontar de volta para <ws>/.git
-	back, err := os.ReadFile(filepath.Join(realGitDir, "gitdir")) //nolint:gosec // dentro do .git do repositório
+	// git's registration (outside the worktree) must point back to <ws>/.git
+	back, err := os.ReadFile(filepath.Join(realGitDir, "gitdir")) //nolint:gosec // inside the repository's .git
 	if err != nil {
 		return "", integrityErr("registro do worktree ilegível: %v", err)
 	}
@@ -332,19 +330,19 @@ func checkRegisteredWorktree(root, dotgit, gitDir string) (string, error) {
 	return realGitDir, nil
 }
 
-// run executa git com --git-dir/--work-tree explícitos, cwd na raiz (nunca no
-// worktree) e ambiente endurecido. Como --git-dir aponta para fora do worktree,
-// o git nunca lê <ws>/.git nem o config dele.
+// run executes git with explicit --git-dir/--work-tree, cwd at the root (never
+// in the worktree) and a hardened environment. Since --git-dir points outside
+// the worktree, git never reads <ws>/.git or its config.
 //
-// Por que .gitattributes no worktree é inofensivo: drivers de filtro/diff/merge
-// (filter.*.clean, diff.*.textconv, merge.*.driver) só executam se definidos em
-// config, e todo config lido (repo, worktree-config em gitDir, global) fica fora
-// do alcance de escrita do agente. O agente pode escrever .gitattributes, mas
-// sem driver configurado o atributo é ignorado.
+// Why .gitattributes in the worktree is harmless: filter/diff/merge drivers
+// (filter.*.clean, diff.*.textconv, merge.*.driver) only run if defined in
+// config, and all config read (repo, worktree config in gitDir, global) is out
+// of the agent's write reach. The agent can write .gitattributes, but without a
+// configured driver the attribute is ignored.
 func (g *trustedGit) run(args ...string) (string, error) {
 	full := append([]string{"--git-dir=" + g.gitDir, "--work-tree=" + g.ws}, hardenedGitArgs...)
 	full = append(full, args...)
-	cmd := exec.Command("git", full...) //nolint:gosec // argumentos controlados pelo router
+	cmd := exec.Command("git", full...) //nolint:gosec // args controlled by the router
 	cmd.Dir = g.root
 	cmd.Env = append(cleanGitEnv(os.Environ()), "GIT_TERMINAL_PROMPT=0", "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL="+os.DevNull)
 	out, err := runTracked(cmd)
@@ -355,7 +353,7 @@ func (g *trustedGit) run(args ...string) (string, error) {
 	return s, nil
 }
 
-// cleanGitEnv remove variáveis que redirecionariam o repositório.
+// cleanGitEnv drops variables that would redirect the repository.
 func cleanGitEnv(env []string) []string {
 	out := make([]string, 0, len(env))
 	for _, e := range env {
@@ -369,9 +367,9 @@ func cleanGitEnv(env []string) []string {
 	return out
 }
 
-// commitWorkspace comita mudanças do worktree e devolve o HEAD resultante.
-// A identidade vem de identityArgs (lida da raiz com a config normal; fallback tb).
-// Antes de qualquer git, verifica a integridade do worktree (finding 1).
+// commitWorkspace returns the resulting HEAD. The identity comes from
+// identityArgs (read from the root with normal config; tb fallback). Worktree
+// integrity is verified before any git call (finding 1).
 func (r *Router) commitWorkspace(dir string, t *ticket.Ticket) (string, error) {
 	g, err := verifyWorkspace(r.opts.Root, dir)
 	if err != nil {
@@ -399,11 +397,11 @@ func (r *Router) commitWorkspace(dir string, t *ticket.Ticket) (string, error) {
 	return g.run("rev-parse", "HEAD")
 }
 
-// refuseNestedGit recusa o worktree se houver qualquer entrada ".git" (arquivo,
-// diretório ou symlink) além do ponteiro raiz: um repositório aninhado (p.ex.
-// dentro de um gitlink do commit base) traria config/filtros controlados pelo
-// agente para o git que o router roda FORA do sandbox. WalkDir não segue
-// symlinks.
+// refuseNestedGit rejects the worktree if it has any ".git" entry (file,
+// directory or symlink) besides the root pointer: a nested repository (e.g.
+// inside a gitlink of the base commit) would bring agent-controlled
+// config/filters into the git the router runs OUTSIDE the sandbox. WalkDir does
+// not follow symlinks.
 func refuseNestedGit(ws string) error {
 	rootGit := filepath.Join(ws, ".git")
 	var found string
@@ -427,17 +425,17 @@ func refuseNestedGit(ws string) error {
 	return nil
 }
 
-// refuseStagedSubmodules recusa o commit se o índice adicionou/alterou um
-// gitlink (modo 160000) ou .gitmodules. --ignore-submodules=none sobrepõe o
-// diff.ignoreSubmodules=all endurecido.
+// refuseStagedSubmodules rejects the commit if the index added/changed a
+// gitlink (mode 160000) or .gitmodules. --ignore-submodules=none overrides the
+// hardened diff.ignoreSubmodules=all.
 //
-// Nota: .gitattributes/.gitmodules no worktree não executam nada por si: drivers
-// filter/diff/merge só resolvem contra config (repositório, worktree-config),
-// todo fora do alcance de escrita do agente; core.attributesFile e include.path
-// também vivem nesse config. Config global e de sistema ficam desligadas no git
-// do router (trustedGit.run), então filtros do usuário (git-lfs) não rodam com o
-// conteúdo do agente; um filtro definido na config do PRÓPRIO repositório ainda
-// rodaria (escolha do dono do repositório).
+// Note: .gitattributes/.gitmodules in the worktree execute nothing by
+// themselves: filter/diff/merge drivers only resolve against config (repository,
+// worktree config), all out of the agent's write reach; core.attributesFile and
+// include.path live in that config too. Global and system config are disabled in
+// the router's git (trustedGit.run), so user filters (git-lfs) never run on agent
+// content; a filter defined in the repository's OWN config would still run (the
+// repository owner's choice).
 func refuseStagedSubmodules(g *trustedGit) error {
 	out, err := g.run("diff", "--cached", "--raw", "-z", "--no-renames", "--ignore-submodules=none")
 	if err != nil {
@@ -462,9 +460,10 @@ func refuseStagedSubmodules(g *trustedGit) error {
 	return nil
 }
 
-// withGitNoDetach impede que o git DO AGENTE lance manutenção destacada
-// (gc --auto faz setsid) que seria indistinguível de um processo escapado.
-// Não sobrescreve GIT_CONFIG_COUNT já definido no ambiente.
+// withGitNoDetach stops the AGENT's git from launching detached maintenance
+// (gc --auto calls setsid), which would be indistinguishable from an escaped
+// process. It does not override a GIT_CONFIG_COUNT already set in the
+// environment.
 func withGitNoDetach(env []string) []string {
 	for _, e := range env {
 		if strings.HasPrefix(e, "GIT_CONFIG_COUNT=") {
@@ -479,9 +478,10 @@ func withGitNoDetach(env []string) []string {
 	)
 }
 
-// identityArgs devolve os "-c user.name=… -c user.email=…" do commit do router.
-// Como o git confiável ignora a config global, a identidade é lida uma vez da
-// raiz do repositório com a config normal (repo + global); sem ela, tb/tb@localhost.
+// identityArgs returns the "-c user.name=… -c user.email=…" for router
+// commits. Since the trusted git ignores global config, the identity is read
+// once from the repository root with normal config (repo + global); without
+// it, tb/tb@localhost.
 func (r *Router) identityArgs() []string {
 	r.identOnce.Do(func() {
 		name, _ := gitOut(r.opts.Root, "config", "--get", "user.name")

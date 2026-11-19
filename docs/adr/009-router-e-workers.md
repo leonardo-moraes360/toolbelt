@@ -1,59 +1,59 @@
-🇧🇷 Português | [🇺🇸 English](../en/adr/009-router-e-workers.md)
+🇺🇸 English | [🇧🇷 Português](../pt-BR/adr/009-router-e-workers.md)
 
-# ADR-009: Padrão Router e Workers para Delegação de Tarefas
+# ADR-009: Router and Workers Pattern for Task Delegation
 
 ## Status
 
 proposed
 
-## Contexto
+## Context
 
-Em sistemas de agentes de codificação, uma arquitetura centralizada onde um único agente processa todas as tarefas apresenta limitações:
+In coding agent systems, a centralized architecture where a single agent processes all tasks has limitations:
 
-1. **Acúmulo de contexto**: contexto cresce indefinidamente, aumentando custo e latência
-2. **Gargalo serial**: tarefas independentes executam sequencialmente
-3. **Escopo de falha amplo**: erro em uma subtarefa pode corromper todo o contexto
-4. **Dificuldade de especialização**: um único prompt deve cobrir todos os domínios
+1. **Context accumulation**: context grows indefinitely, increasing cost and latency
+2. **Serial bottleneck**: independent tasks run sequentially
+3. **Wide failure scope**: an error in one subtask can corrupt the entire context
+4. **Specialization difficulty**: a single prompt must cover all domains
 
-Pesquisas em escalabilidade de agentes demonstram que a delegação para workers isolados pode melhorar significativamente throughput e custo-eficiência. Observações empíricas sugerem:
+Research on agent scalability shows that delegation to isolated workers can significantly improve throughput and cost-efficiency. Empirical observations suggest:
 
-- Redução de ~40% em tokens de input via isolamento de contexto
-- Aumento de ~60% em throughput via paralelização
-- Melhoria em p95 de latência via distribuição de carga
+- ~40% reduction in input tokens via context isolation
+- ~60% increase in throughput via parallelization
+- Improvement in p95 latency via load distribution
 
-**Nota**: Estas métricas são hipóteses iniciais baseadas em pesquisas de escalabilidade de agentes. Benchmarks específicos do toolbelt validarão os valores reais.
+**Note**: These metrics are initial hypotheses based on agent scalability research. toolbelt-specific benchmarks will validate the real values.
 
-## Decisão
+## Decision
 
-Adotamos o padrão **Router/Workers** inspirado em arquiteturas de delegação escalável:
+We adopt the **Router/Workers** pattern inspired by scalable delegation architectures:
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                          ROUTER                                 │
-│  • Recebe tarefa do usuário/planner                            │
-│  • Decompõe em subtarefas atômicas (Tickets)                   │
-│  • Delega para Workers via Board                               │
-│  • Não executa implementação                                    │
+│  • Receives task from user/planner                              │
+│  • Decomposes into atomic subtasks (Tickets)                    │
+│  • Delegates to Workers via Board                               │
+│  • Does not execute implementation                              │
 └─────────────────────────────────────────────────────────────────┘
                               │
                     ┌─────────┴─────────┐
                     │      BOARD        │
-                    │  (fila de tickets)│
+                    │  (ticket queue)   │
                     └─────────┬─────────┘
           ┌───────────────────┼───────────────────┐
           ▼                   ▼                   ▼
 ┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐
 │    WORKER A     │ │    WORKER B     │ │    WORKER C     │
-│  (sandbox iso)  │ │  (sandbox iso)  │ │  (sandbox iso)  │
-│  Contexto mín.  │ │  Contexto mín.  │ │  Contexto mín.  │
+│  (iso sandbox)  │ │  (iso sandbox)  │ │  (iso sandbox)  │
+│  Min. context   │ │  Min. context   │ │  Min. context   │
 └─────────────────┘ └─────────────────┘ └─────────────────┘
 ```
 
-### Conceitos Principais
+### Main Concepts
 
 #### Ticket
 
-Unidade atômica de trabalho delegável:
+Atomic unit of delegable work:
 
 ```yaml
 ticket:
@@ -74,102 +74,102 @@ ticket:
 
 #### Mandate
 
-Define o escopo e permissões do worker:
+Defines the worker's scope and permissions:
 
-- **scope**: arquivos que pode ler/escrever
-- **permissions**: operações permitidas
-- **forbidden**: paths explicitamente bloqueados
-- **resource_limits**: CPU, memória, tempo
+- **scope**: files it can read/write
+- **permissions**: allowed operations
+- **forbidden**: explicitly blocked paths
+- **resource_limits**: CPU, memory, time
 
 #### Board
 
-Fila de coordenação entre Router e Workers:
+Coordination queue between Router and Workers:
 
-- Workers puxam tickets quando disponíveis
-- Suporta priorização e dependências
-- Detecta deadlocks em dependências circulares
-- Fornece visibilidade do progresso
+- Workers pull tickets when available
+- Supports prioritization and dependencies
+- Detects deadlocks in circular dependencies
+- Provides progress visibility
 
 #### Watchdog
 
-Monitor independente que observa workers:
+Independent monitor that observes workers:
 
-- Detecta workers travados ou lentos
-- Cancela tickets que excedem timeout
-- Escala workers se fila cresce
-- Reporta métricas para o Router
+- Detects stuck or slow workers
+- Cancels tickets that exceed timeout
+- Scales workers if the queue grows
+- Reports metrics to the Router
 
 #### Merge
 
-Agregador de resultados:
+Result aggregator:
 
-- Coleta outputs dos workers
-- Resolve conflitos de arquivos editados por múltiplos workers
-- Aplica mudanças atomicamente
-- Reporta resultado consolidado ao Router
+- Collects worker outputs
+- Resolves conflicts on files edited by multiple workers
+- Applies changes atomically
+- Reports consolidated result to the Router
 
-### Princípios de Delegação
+### Delegation Principles
 
-1. **Contexto mínimo**: worker recebe apenas o necessário para sua tarefa
-2. **Isolamento de falha**: erro em um worker não afeta outros
-3. **Paralelização**: tickets independentes executam em paralelo
-4. **Especialização opcional**: workers podem ter prompts especializados
-5. **Transparência**: todo o fluxo é auditável
-6. **Entrega direta**: follow-ups podem ir direto ao worker dono
+1. **Minimal context**: worker receives only what is needed for its task
+2. **Failure isolation**: an error in one worker does not affect others
+3. **Parallelization**: independent tickets run in parallel
+4. **Optional specialization**: workers can have specialized prompts
+5. **Transparency**: the entire flow is auditable
+6. **Direct delivery**: follow-ups can go straight to the owning worker
 
-### Entrega Direta (Direct Delivery / Subscription)
+### Direct Delivery (Subscription)
 
-Quando um worker completa um ticket que tem dependentes, ele pode **se inscrever** para receber os tickets dependentes diretamente, sem que esses passem pelo Board. Isso é chamado de **entrega direta** (direct delivery) ou **subscription**.
+When a worker completes a ticket that has dependents, it can **subscribe** to receive dependent tickets directly, without those going through the Board. This is called **direct delivery** or **subscription**.
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                    FLUXO VIA BOARD (padrão)                     │
+│                    FLOW VIA BOARD (default)                     │
 │  Router → Board → Worker A (TKT-001 done)                       │
-│  Router → Board → Worker B (TKT-002 depende de TKT-001)         │
+│  Router → Board → Worker B (TKT-002 depends on TKT-001)         │
 │                                                                 │
-│  Latência: ticket passa pelo Board, worker B pode ser outro     │
+│  Latency: ticket goes through Board, worker B may be another    │
 └─────────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────────┐
-│                    ENTREGA DIRETA (subscription)                │
+│                    DIRECT DELIVERY (subscription)               │
 │  Router → Board → Worker A (TKT-001 done)                       │
-│           Worker A se inscreve para TKT-002                     │
-│  Router ────────→ Worker A (TKT-002 direto, sem Board)          │
+│           Worker A subscribes to TKT-002                        │
+│  Router ────────→ Worker A (TKT-002 direct, no Board)           │
 │                                                                 │
-│  Latência: ticket vai direto, contexto do TKT-001 reutilizado   │
+│  Latency: ticket goes direct, TKT-001 context reused            │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-**Benefícios da entrega direta**:
+**Benefits of direct delivery**:
 
-1. **Menor latência**: ticket não espera na fila do Board
-2. **Afinidade de contexto**: worker que fez TKT-001 já tem contexto relevante para TKT-002
-3. **Cache-read maximizado**: tokens de contexto do ticket anterior estão em cache
-4. **Menos conflitos**: mesmo worker edita arquivos relacionados sequencialmente
+1. **Lower latency**: ticket does not wait in the Board queue
+2. **Context affinity**: worker that did TKT-001 already has relevant context for TKT-002
+3. **Maximized cache-read**: previous ticket context tokens are in cache
+4. **Fewer conflicts**: same worker edits related files sequentially
 
-**Mecanismo de subscription**:
+**Subscription mechanism**:
 
 ```yaml
 ticket:
   id: "TKT-001"
   title: "Criar modelo User"
-  # ... outros campos ...
+  # ... other fields ...
   
   subscription:
-    worker: "worker-001"           # worker que completou este ticket
-    subscribed_to: ["TKT-002"]     # tickets que este worker receberá diretamente
-    ttl: "30m"                     # subscription expira se ticket não chegar
-    direct_delivery: true          # habilita entrega direta
+    worker: "worker-001"           # worker that completed this ticket
+    subscribed_to: ["TKT-002"]     # tickets this worker will receive directly
+    ttl: "30m"                     # subscription expires if ticket does not arrive
+    direct_delivery: true          # enables direct delivery
 ```
 
-**Regras de subscription**:
+**Subscription rules**:
 
-- Worker só pode se inscrever para tickets que **dependem** de um que ele completou
-- Subscription tem TTL (time-to-live) para evitar locks eternos
-- Se worker falhar ou subscription expirar, ticket volta para o Board
-- Router pode vetar subscription se worker estiver sobrecarregado
+- Worker can only subscribe to tickets that **depend** on one it completed
+- Subscription has a TTL (time-to-live) to avoid eternal locks
+- If the worker fails or the subscription expires, the ticket returns to the Board
+- Router can veto subscription if the worker is overloaded
 
-**Configuração do Router**:
+**Router configuration**:
 
 ```yaml
 router:
@@ -177,118 +177,118 @@ router:
     enabled: true
     subscription_ttl: 30m
     max_subscriptions_per_worker: 5
-    veto_on_worker_load: 80%  # veta se worker > 80% utilização
+    veto_on_worker_load: 80%  # vetoes if worker > 80% utilization
 ```
 
-### Fluxo de Execução
+### Execution Flow
 
 ```
-1. Router recebe tarefa complexa
-2. Router decompõe em tickets atômicos
-3. Router analisa dependências e ordena tickets
-4. Tickets sem dependência vão para o Board
-5. Workers disponíveis puxam tickets
-6. Cada worker:
-   a. Spawna em sandbox isolado
-   b. Recebe apenas arquivos do mandate
-   c. Executa com contexto mínimo
-   d. Retorna resultado ou erro
-   e. (opcional) Se inscreve para tickets dependentes
-7. Watchdog monitora timeouts e saúde
-8. Tickets dependentes são:
-   a. Entregues diretamente ao worker subscrito, OU
-   b. Liberados para o Board se não houver subscription
-9. Merge agrega todos os resultados
-10. Router reporta sucesso/falha consolidado
+1. Router receives a complex task
+2. Router decomposes into atomic tickets
+3. Router analyzes dependencies and orders tickets
+4. Tickets without dependencies go to the Board
+5. Available workers pull tickets
+6. Each worker:
+   a. Spawns in an isolated sandbox
+   b. Receives only files from the mandate
+   c. Executes with minimal context
+   d. Returns result or error
+   e. (optional) Subscribes to dependent tickets
+7. Watchdog monitors timeouts and health
+8. Dependent tickets are:
+   a. Delivered directly to the subscribed worker, OR
+   b. Released to the Board if there is no subscription
+9. Merge aggregates all results
+10. Router reports consolidated success/failure
 ```
 
-## Consequências
+## Consequences
 
-### Positivas
+### Positive
 
-- **Redução de contexto**: cada worker tem contexto ~80% menor que abordagem monolítica
-- **Paralelização**: tarefas independentes executam simultaneamente
-- **Isolamento**: falha em um worker não polui contexto dos outros
-- **Escalabilidade**: adicionar workers aumenta throughput linearmente
-- **Auditoria**: cada ticket tem histórico isolado e rastreável
-- **Cache-read**: workers aproveitam cache de tokens via contextos repetidos
-- **Especialização**: workers podem ser otimizados por domínio
+- **Context reduction**: each worker has ~80% less context than a monolithic approach
+- **Parallelization**: independent tasks run simultaneously
+- **Isolation**: failure in one worker does not pollute others' context
+- **Scalability**: adding workers increases throughput linearly
+- **Audit**: each ticket has an isolated, traceable history
+- **Cache-read**: workers leverage token cache via repeated contexts
+- **Specialization**: workers can be optimized by domain
 
-### Negativas
+### Negative
 
-- **Overhead de coordenação**: Router + Board + Merge adicionam latência
-- **Complexidade de merge**: conflitos entre workers requerem resolução
-- **Decomposição imperfeita**: tickets mal definidos podem falhar ou duplicar trabalho
-- **Custo de spawn**: cada worker tem custo de inicialização
-- **Dependências complexas**: grafos de dependência podem criar gargalos
+- **Coordination overhead**: Router + Board + Merge add latency
+- **Merge complexity**: conflicts between workers require resolution
+- **Imperfect decomposition**: poorly defined tickets may fail or duplicate work
+- **Spawn cost**: each worker has an initialization cost
+- **Complex dependencies**: dependency graphs can create bottlenecks
 
-### Métricas de Sucesso
+### Success Metrics
 
-| Métrica | Meta | Justificativa |
-|---------|------|---------------|
-| cache_read_tokens_pct | ≥ 70% | Workers reusam contexto |
-| router_latency_p50 | < 500ms | Delegação deve ser rápida |
-| tickets_parallel_max | ≥ 3 | Paralelização efetiva |
-| merge_conflict_rate | < 5% | Mandates bem definidos |
-| direct_delivery_rate | ≥ 50% | Entrega direta reduz latência |
+| Metric | Target | Justification |
+|--------|--------|---------------|
+| cache_read_tokens_pct | ≥ 70% | Workers reuse context |
+| router_latency_p50 | < 500ms | Delegation must be fast |
+| tickets_parallel_max | ≥ 3 | Effective parallelization |
+| merge_conflict_rate | < 5% | Well-defined mandates |
+| direct_delivery_rate | ≥ 50% | Direct delivery reduces latency |
 
-## Alternativas Consideradas
+## Alternatives Considered
 
-### Monolito com Contexto Comprimido
+### Monolith with Compressed Context
 
-- **Descrição**: manter agente único, comprimir contexto via resumos
-- **Por que não**: não resolve gargalo serial nem escopo de falha
+- **Description**: keep a single agent, compress context via summaries
+- **Why not**: does not solve the serial bottleneck or failure scope
 
-### Workers Sem Router
+### Workers Without Router
 
-- **Descrição**: workers autônomos que competem por arquivos
-- **Por que não**: conflitos frequentes, sem coordenação de dependências
+- **Description**: autonomous workers that compete for files
+- **Why not**: frequent conflicts, no dependency coordination
 
-### Microservices Stateless
+### Stateless Microservices
 
-- **Descrição**: workers como funções puras sem estado
-- **Por que não**: overhead de serialização/deserialização do estado do código
+- **Description**: workers as pure functions without state
+- **Why not**: overhead of serializing/deserializing code state
 
-## Implementação (Fase 3)
+## Implementation (Phase 3)
 
-Implementado (ver [cli.md](../cli.md)): `tb ticket` (tickets YAML em
+Implemented (see [cli.md](../cli.md)): `tb ticket` (YAML tickets under
 `.toolbelt/tickets/`), `tb board` (pause/resume/drain), `tb router run`
-(scheduler **em primeiro plano**, workers `w1..wN` em worktrees próprias,
-execução dentro do sandbox fail-closed), entrega direta (subscription com TTL e
-limite por worker; base no commit da dependência), `tb watchdog` (alertas
+(**foreground** scheduler, workers `w1..wN` in their own worktrees, execution
+inside the fail-closed sandbox), direct delivery (subscription with TTL and a
+per-worker limit; base on the dependency's commit), `tb watchdog` (alerts
 `worker_slow`, `worker_stuck`, `worker_crash`, `worker_killed`, `queue_growing`,
-`global_timeout`, `ticket_canceled`, `multi_dep_base`, `agent_escaped`, `board_unreadable`; roda no loop do router, sem auto-scaling) e `tb merge`
-(estratégias `fail` e `last_wins`, atômico via compare-and-swap).
+`global_timeout`, `ticket_canceled`, `multi_dep_base`, `agent_escaped`, `board_unreadable`; runs in the router loop, no auto-scaling) and `tb merge`
+(`fail` and `last_wins` strategies, atomic via compare-and-swap).
 
-Endurecimento do router: instância única por repositório (lock exclusivo
-`.toolbelt/router/lock`), verificação de integridade do worktree antes do commit
-(git com fsmonitor/hooks desabilitados, `--no-verify`; violação ⇒ `failed` sem
-retry), saída do agente limitada a 1 MiB, resumo `stalled` (exit ≠ 0) quando
-tickets `pending` ficam bloqueados por dependências `failed`/`canceled`, e base
-no `head_commit` da dependência única independentemente da entrega direta
-(≥ 2 dependências: `HEAD` + alerta `multi_dep_base`).
+Router hardening: single instance per repository (exclusive lock
+`.toolbelt/router/lock`), worktree integrity check before committing (git with
+fsmonitor/hooks disabled, `--no-verify`; violation ⇒ `failed` without retry),
+agent output capped at 1 MiB, a `stalled` summary (non-zero exit) when `pending`
+tickets stay blocked by `failed`/`canceled` dependencies, and a base on the
+single dependency's `head_commit` regardless of direct delivery (≥ 2
+dependencies: `HEAD` + `multi_dep_base` alert).
 
-Isolamento do git do router (que roda fora do sandbox): `.git` aninhado no
-worktree, gitlinks e `.gitmodules` adicionados pelo agente são recusados
-(`failed` sem retry); submódulos são ignorados no git do router. No Linux o
-router é *subreaper* e mata descendentes que escapam do grupo de processos
-(`setsid`/`setpgid`), falhando o ticket com `agent_escaped` sem rodar git;
-agentes não devem se desacoplar. Em macOS/Windows isso não é detectado
-(limitação). O mandato (`Scope`/`Forbidden`/`Permissions`) é só registrado: o
-router **não o impõe** — use `tb drift`/`tb review`/`tb guard` (ou
-`tb stack --ticket`) antes de `tb merge`.
+Isolation of the router's git (which runs outside the sandbox): nested `.git`
+in the worktree and gitlinks/`.gitmodules` added by the agent are refused
+(`failed` without retry); submodules are ignored by the router's git. On Linux
+the router is a *subreaper* and kills descendants that escape the process group
+(`setsid`/`setpgid`), failing the ticket with `agent_escaped` without running
+git; agents must not detach. On macOS/Windows this is not detected
+(limitation). The mandate (`Scope`/`Forbidden`/`Permissions`) is only recorded:
+the router does **not enforce** it — use `tb drift`/`tb review`/`tb guard` (or
+`tb stack --ticket`) before `tb merge`.
 
-Diferenças em relação ao desenho acima: sem daemon `start`/`stop`; configuração
-na seção `router:` de `.toolbelt/config.yaml` (sem `router.yaml`);
-`prompt`/`semantic` do merge **não implementados**; `resource_high` e
-`watchdog scale` **não existem**.
+Differences from the design above: no `start`/`stop` daemon; configuration in
+the `router:` section of `.toolbelt/config.yaml` (no `router.yaml`); merge
+`prompt`/`semantic` are **not implemented**; `resource_high` and
+`watchdog scale` **do not exist**.
 
-Ainda hipóteses, **não medidas** com o benchmark do toolbelt: redução de ~40%
-em tokens de input, ganho de ~60% em throughput e melhoria de p95 — por isso o
-status permanece `proposed`.
+Still hypotheses, **not measured** with the toolbelt benchmark: ~40% input-token
+reduction, ~60% throughput gain and p95 improvement — which is why the status
+stays `proposed`.
 
-## Referências
+## References
 
-- Pesquisas em escalabilidade de agentes de codificação
-- Padrões de sistemas distribuídos: work queues, fan-out/fan-in
-- Estudos de isolamento de contexto em LLMs
+- Research on coding agent scalability
+- Distributed systems patterns: work queues, fan-out/fan-in
+- Studies of context isolation in LLMs

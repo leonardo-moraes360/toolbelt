@@ -1,183 +1,183 @@
-🇧🇷 Português | [🇺🇸 English](../en/adr/007-inspiracao-elephant-goldfish.md)
+🇺🇸 English | [🇧🇷 Português](../pt-BR/adr/007-inspiracao-elephant-goldfish.md)
 
-# ADR-007: Inspiração — Elephant-Goldfish Model (EGM)
+# ADR-007: Inspiration — Elephant-Goldfish Model (EGM)
 
 ## Status
 
 accepted
 
-## Contexto
+## Context
 
-O [Elephant-Goldfish Model (EGM)](https://github.com/google/elephant-goldfish-model) do Google apresenta um padrão poderoso para revisão de documentos e especificações por agentes de IA:
+Google's [Elephant-Goldfish Model (EGM)](https://github.com/google/elephant-goldfish-model) presents a powerful pattern for reviewing documents and specifications with AI agents:
 
-- **Elephant**: agente que detém o contexto completo do projeto. Faz brainstorm, escreve briefs de conceitos e redige especificações.
-- **Goldfish**: revisores em contextos **frescos** (subagentes). Veem apenas o documento e o material fonte referenciado, nunca a conversa anterior. Encontram suposições não declaradas, requisitos ambíguos, desalinhamento com o código e riscos de implementação.
-- **Human**: resolve trade-offs e aprova.
+- **Elephant**: agent that holds the full project context. Brainstorms, writes concept briefs, and drafts specifications.
+- **Goldfish**: reviewers in **fresh** contexts (subagents). They see only the document and referenced source material, never the prior conversation. They find undeclared assumptions, ambiguous requirements, misalignment with code, and implementation risks.
+- **Human**: resolves trade-offs and approves.
 
-O EGM inclui skills como:
-- `brainstorm`: gera ideias iniciais
-- `draft`: redige especificação
-- `resolve`: consolida feedback
-- `bootstrap`: documenta codebase existente
-- `review`: revisão única
-- `review-loop`: grupo de revisores configurável com padrões
-- `drift-report`: compara docs com código atual
+EGM includes skills such as:
+- `brainstorm`: generates initial ideas
+- `draft`: drafts a specification
+- `resolve`: consolidates feedback
+- `bootstrap`: documents an existing codebase
+- `review`: single review
+- `review-loop`: configurable reviewer group with standards
+- `drift-report`: compares docs with current code
 
-**Requisito crítico**: se o agente não consegue criar contextos frescos, a revisão para. O isolamento de contexto é essencial.
+**Critical requirement**: if the agent cannot create fresh contexts, review stops. Context isolation is essential.
 
-## Decisão
+## Decision
 
-Adotar o padrão Elephant-Goldfish como workflow de primeira classe no toolbelt, mapeando-o à hierarquia de agentes existente.
+Adopt the Elephant-Goldfish pattern as a first-class workflow in toolbelt, mapping it to the existing agent hierarchy.
 
-### Mapeamento para a Hierarquia
+### Mapping to the Hierarchy
 
 ```
 EGM                    toolbelt
 ───────────────────────────────────────
-Elephant          →    Planner (contexto completo)
-Goldfish (N)      →    Workers/Reviewers (contexto fresco)
-Human             →    Human (aprova via tb md ou CLI)
+Elephant          →    Planner (full context)
+Goldfish (N)      →    Workers/Reviewers (fresh context)
+Human             →    Human (approves via tb md or CLI)
 ```
 
-### Implementação
+### Implementation
 
-1. **`tb review`**: spawna N revisores goldfish em contextos frescos
-2. **`tb drift`**: compara vault/docs contra grafo de código
-3. **Isolamento de contexto obrigatório**: revisores não herdam contexto do planner
+1. **`tb review`**: spawns N goldfish reviewers in fresh contexts
+2. **`tb drift`**: compares vault/docs against the code graph
+3. **Mandatory context isolation**: reviewers do not inherit the planner's context
 
-### Princípios Reforçados
+### Reinforced Principles
 
-O EGM reforça dois princípios já presentes no toolbelt:
+EGM reinforces two principles already present in toolbelt:
 
-| Princípio Existente | Como EGM Reforça |
-|---------------------|------------------|
-| Implementador ≠ avaliador | Goldfish revisor nunca é o elephant autor |
-| Contexto mínimo por nível | Goldfish recebe apenas doc + fontes, não histórico |
+| Existing Principle | How EGM Reinforces It |
+|--------------------|-----------------------|
+| Implementer ≠ evaluator | Goldfish reviewer is never the elephant author |
+| Minimal context per level | Goldfish receives only doc + sources, not history |
 
-### Isolamento como Guarda e Economia
+### Isolation as Guard and Economy
 
-O contexto fresco dos goldfish serve dois propósitos:
+Fresh goldfish context serves two purposes:
 
-1. **Guarda de qualidade**: revisor sem contexto encontra lacunas que o autor cego pelo contexto não vê
-2. **Economia de tokens**: revisores recebem apenas o necessário, não o projeto inteiro
+1. **Quality guard**: a reviewer without context finds gaps that the context-blind author misses
+2. **Token economy**: reviewers receive only what is needed, not the entire project
 
-## Consequências
+## Consequences
 
-### Positivas
+### Positive
 
-- **Revisões mais rigorosas**: perspectivas frescas encontram mais problemas
-- **Alinhamento com anti-trapaça**: reforça separação autor/revisor
-- **Economia de tokens**: contexto mínimo para revisores
-- **Workflow estruturado**: fases claras (draft → review → resolve)
-- **Detecção de drift**: mantém docs sincronizados com código
+- **Stricter reviews**: fresh perspectives find more problems
+- **Alignment with anti-cheat**: reinforces author/reviewer separation
+- **Token savings**: minimal context for reviewers
+- **Structured workflow**: clear phases (draft → review → resolve)
+- **Drift detection**: keeps docs in sync with code
 
-### Negativas
+### Negative
 
-- **Overhead de spawn**: criar N contextos frescos tem custo
-- **Coordenação**: agregar feedback de múltiplos revisores requer lógica
-- **Dependência de isolamento**: se o runtime não isolar contexto, perde-se o benefício
+- **Spawn overhead**: creating N fresh contexts has a cost
+- **Coordination**: aggregating feedback from multiple reviewers requires logic
+- **Isolation dependency**: if the runtime does not isolate context, the benefit is lost
 
-## Alternativas Consideradas
+## Alternatives Considered
 
-### Revisão no Mesmo Contexto (Self-Review)
+### Same-Context Review (Self-Review)
 
-**Por que considerado**:
-- Mais simples, sem spawn de subagentes
-- Menor latência
+**Why considered**:
+- Simpler, no subagent spawn
+- Lower latency
 
-**Por que não escolhido**:
-- Cegueira do autor: mesmo contexto = mesmos pontos cegos
-- Benchmarks do EGM mostram superioridade do contexto fresco
-- Viola o princípio implementador ≠ avaliador
+**Why not chosen**:
+- Author blindness: same context = same blind spots
+- EGM benchmarks show superiority of fresh context
+- Violates the implementer ≠ evaluator principle
 
-### Revisão por Outro Agente Persistente
+### Review by Another Persistent Agent
 
-**Por que considerado**:
-- Agente revisor dedicado acumula experiência
+**Why considered**:
+- Dedicated reviewer agent accumulates experience
 
-**Por que não escolhido**:
-- Contexto acumulado contamina revisões futuras
-- Goldfish precisa ser fresco por design
+**Why not chosen**:
+- Accumulated context contaminates future reviews
+- Goldfish must be fresh by design
 
-## Questões em Aberto
+## Open Questions
 
-### Integrar EGM ou Reimplementar?
+### Integrate EGM or Reimplement?
 
-**Opção A: Chamar skills do EGM via MCP**
+**Option A: Call EGM skills via MCP**
 
 ```yaml
 pros:
-  - Aproveita implementação madura
-  - Comunidade ativa
-  - Skills já testados
+  - Leverages mature implementation
+  - Active community
+  - Skills already tested
 
 cons:
-  - Dependência externa
-  - Pode não integrar perfeitamente com hierarquia tb
-  - Overhead de comunicação
+  - External dependency
+  - May not integrate perfectly with tb hierarchy
+  - Communication overhead
 ```
 
-**Opção B: Reimplementar nativamente**
+**Option B: Reimplement natively**
 
 ```yaml
 pros:
-  - Controle total
-  - Integração nativa com tb agent, tb guard
-  - Otimizado para nosso caso
+  - Full control
+  - Native integration with tb agent, tb guard
+  - Optimized for our case
 
 cons:
-  - Mais trabalho
-  - Precisa replicar lógica de review-loop, drift-report
+  - More work
+  - Need to replicate review-loop, drift-report logic
 ```
 
-**Decisão pendente**: Experimentar integração com EGM. Se funcionar bem, manter. Se houver fricção significativa (latência, incompatibilidades), reimplementar as skills críticas (`review`, `review-loop`, `drift-report`).
+**Pending decision**: Experiment with EGM integration. If it works well, keep it. If there is significant friction (latency, incompatibilities), reimplement the critical skills (`review`, `review-loop`, `drift-report`).
 
-> **Atualização (2026-11-17):** proposta de reimplementação nativa (Opção B) em [ADR-014](014-egm-nativo.md).
+> **Update (2026-11-17):** native reimplementation (Option B) proposed in [ADR-015](015-egm-nativo.md).
 
-### Número de Revisores
+### Number of Reviewers
 
-- Quantos goldfish por revisão?
-- EGM sugere 5 estágios de revisão — devemos seguir ou adaptar?
-- Trade-off: mais revisores = mais cobertura = mais custo
+- How many goldfish per review?
+- EGM suggests 5 review stages — should we follow or adapt?
+- Trade-off: more reviewers = more coverage = more cost
 
-### Padrões de Revisão
+### Review Standards
 
-- Quais standards configurar para o review-loop?
-- Como categorizar severity dos findings?
-- Como lidar com conflitos entre revisores?
+- Which standards to configure for the review-loop?
+- How to categorize finding severity?
+- How to handle conflicts between reviewers?
 
-## Fluxo Proposto
+## Proposed Flow
 
 ```mermaid
 sequenceDiagram
-    participant H as Humano
+    participant H as Human
     participant E as Elephant (Planner)
     participant G1 as Goldfish 1
     participant G2 as Goldfish 2
     participant G3 as Goldfish 3
 
-    H->>E: Tarefa: revisar design de auth
-    E->>E: Carrega contexto completo
-    E->>E: Prepara documento + fontes
+    H->>E: Task: review auth design
+    E->>E: Loads full context
+    E->>E: Prepares document + sources
     
-    par Revisão Paralela
-        E->>G1: Doc + fontes (contexto fresco)
-        E->>G2: Doc + fontes (contexto fresco)
-        E->>G3: Doc + fontes (contexto fresco)
+    par Parallel Review
+        E->>G1: Doc + sources (fresh context)
+        E->>G2: Doc + sources (fresh context)
+        E->>G3: Doc + sources (fresh context)
     end
 
-    G1->>E: Findings (severity, categoria)
-    G2->>E: Findings (severity, categoria)
-    G3->>E: Findings (severity, categoria)
+    G1->>E: Findings (severity, category)
+    G2->>E: Findings (severity, category)
+    G3->>E: Findings (severity, category)
 
-    E->>E: Agrega e deduplica
-    E->>H: Relatório consolidado
-    H->>E: Resolve trade-offs
-    E->>E: Atualiza documento
+    E->>E: Aggregates and deduplicates
+    E->>H: Consolidated report
+    H->>E: Resolves trade-offs
+    E->>E: Updates document
 ```
 
-## Referências
+## References
 
 - [Elephant-Goldfish Model](https://github.com/google/elephant-goldfish-model)
-- [ADR-005: Estratégia Anti-Trapaça](005-anti-trapaca.md) — princípio implementador ≠ avaliador
-- [ADR-006: Graphify e Obsidian](006-inspiracoes-graphify-obsidian.md) — outras inspirações
+- [ADR-005: Anti-Cheat Strategy](005-anti-trapaca.md) — implementer ≠ evaluator principle
+- [ADR-006: Graphify and Obsidian](006-inspiracoes-graphify-obsidian.md) — other inspirations

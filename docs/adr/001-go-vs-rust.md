@@ -1,93 +1,93 @@
-🇧🇷 Português | [🇺🇸 English](../en/adr/001-go-vs-rust.md)
+🇺🇸 English | [🇧🇷 Português](../pt-BR/adr/001-go-vs-rust.md)
 
-# ADR-001: Go como Linguagem Principal
+# ADR-001: Go as the Primary Language
 
 ## Status
 
 accepted
 
-## Contexto
+## Context
 
-O toolbelt precisa de uma linguagem para seu binário principal que atenda aos requisitos:
+toolbelt needs a language for its main binary that meets these requirements:
 
-1. **Binário único estático**: distribuição simples sem dependências de runtime
-2. **Concorrência nativa**: orquestrar múltiplos agentes, processos e I/O em paralelo
-3. **Iteração rápida**: compilação rápida para ciclos curtos de desenvolvimento
-4. **Ecossistema MCP**: suporte oficial ao protocolo MCP
-5. **Performance adequada**: não é o gargalo (inferência é na GPU/API)
+1. **Single static binary**: simple distribution without runtime dependencies
+2. **Native concurrency**: orchestrate multiple agents, processes, and I/O in parallel
+3. **Fast iteration**: quick compilation for short development cycles
+4. **MCP ecosystem**: official support for the MCP protocol
+5. **Adequate performance**: not the bottleneck (inference is on GPU/API)
 
-## Decisão
+## Decision
 
-**Go** será a linguagem principal do toolbelt.
+**Go** will be the primary language of toolbelt.
 
-### Justificativas
+### Rationale
 
-1. **Binário estático**: `CGO_ENABLED=0 go build` produz binário sem dependências
-2. **Goroutines e channels**: modelo de concorrência leve, ideal para orquestrar agentes
-3. **Context**: propagação de cancelamento e timeouts nativa
-4. **Compilação**: segundos, não minutos
-5. **SDK MCP oficial**: [github.com/modelcontextprotocol/go-sdk](https://github.com/modelcontextprotocol/go-sdk)
-6. **Ecossistema CLI**: cobra, bubbletea, lipgloss para CLIs e TUIs modernas
-7. **Familiaridade**: linguagem mainstream, fácil de contribuir
+1. **Static binary**: `CGO_ENABLED=0 go build` produces a binary with no dependencies
+2. **Goroutines and channels**: lightweight concurrency model, ideal for orchestrating agents
+3. **Context**: native cancellation and timeout propagation
+4. **Compilation**: seconds, not minutes
+5. **Official MCP SDK**: [github.com/modelcontextprotocol/go-sdk](https://github.com/modelcontextprotocol/go-sdk)
+6. **CLI ecosystem**: cobra, bubbletea, lipgloss for modern CLIs and TUIs
+7. **Familiarity**: mainstream language, easy to contribute to
 
-## Consequências
+## Consequences
 
-### Positivas
+### Positive
 
-- Deploy simples (um arquivo)
-- Boa performance de I/O e concorrência
-- Comunidade ativa, muitas bibliotecas
-- Curva de aprendizado suave
-- Tooling maduro (go vet, staticcheck, golangci-lint)
+- Simple deploy (one file)
+- Good I/O and concurrency performance
+- Active community, many libraries
+- Gentle learning curve
+- Mature tooling (go vet, staticcheck, golangci-lint)
 
-### Negativas
+### Negative
 
-- Sem generics avançados (pode complicar abstrações)
-- Garbage collector pode causar latência em cenários edge
-- Menos expressivo que Rust para invariantes de tipo
-- Error handling verboso
+- No advanced generics (may complicate abstractions)
+- Garbage collector can cause latency in edge scenarios
+- Less expressive than Rust for type invariants
+- Verbose error handling
 
-## Alternativas Consideradas
+## Alternatives Considered
 
 ### Rust
 
-**Por que considerado**:
-- Performance máxima
-- Segurança de memória garantida em compile-time
-- Ecossistema emergente para LLM (mistral.rs, candle)
+**Why considered**:
+- Maximum performance
+- Compile-time memory safety guarantees
+- Emerging LLM ecosystem (mistral.rs, candle)
 
-**Por que não escolhido**:
-- A velocidade de inferência vem dos kernels GPU (llama.cpp, vLLM), não do cliente
-- Rust só se paga se formos embedar inferência local, o que não é MVP
-- Compilação lenta prejudica iteração
-- Curva de aprendizado íngreme para contribuidores
-- SDK MCP em Rust menos maduro
+**Why not chosen**:
+- Inference speed comes from GPU kernels (llama.cpp, vLLM), not the client
+- Rust only pays off if we embed local inference, which is not MVP
+- Slow compilation hurts iteration
+- Steep learning curve for contributors
+- Less mature MCP SDK in Rust
 
-**Decisão futura**: se adicionarmos inferência local via mistral.rs/candle, componentes específicos podem ser escritos em Rust e chamados via FFI ou como processo separado.
+**Future decision**: if we add local inference via mistral.rs/candle, specific components may be written in Rust and called via FFI or as a separate process.
 
 ### Python
 
-**Por que considerado**:
-- Ecossistema ML/AI dominante
-- Prototipagem rápida
+**Why considered**:
+- Dominant ML/AI ecosystem
+- Fast prototyping
 
-**Por que não escolhido**:
-- Distribuição complexa (virtualenv, dependências)
-- Performance de concorrência inferior (GIL)
-- Não produz binário estático facilmente
+**Why not chosen**:
+- Complex distribution (virtualenv, dependencies)
+- Inferior concurrency performance (GIL)
+- Does not easily produce a static binary
 
 ### TypeScript/Node
 
-**Por que considerado**:
-- SDK MCP oficial
-- Ecossistema web forte
+**Why considered**:
+- Official MCP SDK
+- Strong web ecosystem
 
-**Por que não escolhido**:
-- Runtime pesado (Node.js)
-- Distribuição requer bundler ou Node instalado
-- Concorrência menos previsível
+**Why not chosen**:
+- Heavy runtime (Node.js)
+- Distribution requires a bundler or Node installed
+- Less predictable concurrency
 
-## Referências
+## References
 
 - [Go SDK MCP](https://github.com/modelcontextprotocol/go-sdk)
-- [Discussão interna sobre linguagem] — não documentada formalmente
+- [Internal language discussion] — not formally documented

@@ -55,8 +55,8 @@ func handleMerge(_ context.Context, args map[string]any) (any, error) {
 	})
 	if err != nil {
 		if (errors.Is(err, merge.ErrConflict) || errors.Is(err, merge.ErrSensitive)) && res != nil {
-			// Conflito é resultado, não falha de protocolo: devolve o relatório
-			// completo com ok=false (como tb_stack agrega erros no payload).
+			// A conflict is a result, not a protocol failure: return the full
+			// report with ok=false (like tb_stack aggregates errors in the payload).
 			return mergeFailure{Result: res, OK: false, Error: err.Error()}, nil
 		}
 		return nil, err
@@ -64,7 +64,7 @@ func handleMerge(_ context.Context, args map[string]any) (any, error) {
 	return res, nil
 }
 
-// mergeFailure é o payload de tb_merge quando há conflito (strategy fail).
+// mergeFailure is tb_merge's payload on conflict (strategy fail).
 type mergeFailure struct {
 	*merge.Result
 	OK    bool   `json:"ok"`

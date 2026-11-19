@@ -1,13 +1,13 @@
-// Command egm-spike é o protótipo do requisito R0 da spec docs/specs/egm-nativo.md.
+// Command egm-spike is the prototype for requirement R0 of docs/specs/egm-nativo.md.
 //
-// Ele não faz parte do tb: só prova (ou derruba) as premissas de isolamento do
-// goldfish antes da implementação. Dois modos:
+// It is not part of tb: it only proves (or disproves) the goldfish isolation
+// assumptions before the implementation. Two modes:
 //
-//	egm-spike isolation   sondas de filesystem/env dentro do sandbox, sem LLM
-//	egm-spike claude      goldfish reais com o `claude -p` local
+//	egm-spike isolation   filesystem/env probes inside the sandbox, no LLM
+//	egm-spike claude      real goldfish with the local `claude -p`
 //
-// O relatório sai em JSON no stdout. Nada aqui imprime segredos: da
-// credencial só são registrados sha256 e expiresAt.
+// The report goes to stdout as JSON. Nothing here prints secrets: only the
+// credential's sha256 and expiresAt are recorded.
 package main
 
 import (
@@ -72,7 +72,7 @@ func main() {
 	}
 }
 
-// env monta o ambiente goldfish (R4b): do zero, sem os.Environ().
+// env builds the goldfish environment (R4b) from scratch, without os.Environ().
 type env struct {
 	root, packet, home, tmp string
 }
@@ -171,8 +171,8 @@ func runIsolation(rep *report) error {
 		}
 		rep.add(p.name, res.ExitCode == 0, strings.TrimSpace(res.Output))
 	}
-	// Sonda de environ com leitura real: se a leitura funcionar, o canário
-	// (vindo do ambiente do spike) aparece no conteúdo.
+	// environ probe with a real read: if the read works, the canary (from the
+	// spike's own environment) shows up in the content.
 	if canary != "" {
 		res, err := sb.Run(context.Background(), "/bin/sh", "-c", `cat /proc/$PPID/environ 2>/dev/null | tr '\0' '\n' | grep -c '^TB_SPIKE_CANARY=' || true`)
 		if err == nil {
@@ -185,7 +185,7 @@ func runIsolation(rep *report) error {
 	return nil
 }
 
-// envelope é o subconjunto do `claude -p --output-format json` que o spike usa.
+// envelope is the subset of `claude -p --output-format json` the spike uses.
 type envelope struct {
 	Type              string            `json:"type"`
 	Subtype           string            `json:"subtype"`
@@ -206,8 +206,8 @@ func sha(path string) string {
 	return hex.EncodeToString(h[:8])
 }
 
-// installCredential copia só a chave claudeAiOauth para o HOME descartável,
-// sem nunca imprimir valores.
+// installCredential copies only the claudeAiOauth key into the disposable HOME,
+// never printing values.
 func installCredential(realPath, home string) (expires string, err error) {
 	raw, err := os.ReadFile(realPath)
 	if err != nil {
@@ -270,8 +270,8 @@ func runGoldfish(bin string, prompt string, owner string) (*goldfishRun, error) 
 	defer release()
 
 	ro := []string{filepath.Dir(bin)}
-	// /etc/resolv.conf costuma ser symlink para /run (systemd-resolved), que a
-	// Landlock não libera: sem esta regra de arquivo o DNS falha (EAI_AGAIN).
+	// /etc/resolv.conf is often a symlink into /run (systemd-resolved), which
+	// Landlock does not allow: without this file rule DNS fails (EAI_AGAIN).
 	if target, err := filepath.EvalSymlinks("/etc/resolv.conf"); err == nil && !strings.HasPrefix(target, "/etc/") {
 		ro = append(ro, target)
 	}

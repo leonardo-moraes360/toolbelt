@@ -56,10 +56,9 @@ func TestReadOnlyWorkDirBlocksWrite(t *testing.T) {
 
 func TestPrivateTmpIsTheOnlyTmp(t *testing.T) {
 	requireLandlock(t)
-	// O workdir fica fora de os.TempDir() para não depender da regra de tmp
-	// compartilhado. Hoje essa regra nunca é aplicada (isSubpath trata "../x"
-	// como subcaminho), então o teste só afirma o que PrivateTmp garante:
-	// TMPDIR privado gravável, e nada mais em os.TempDir().
+	// The workdir lives outside os.TempDir() so the test only asserts what
+	// PrivateTmp guarantees: a writable private TMPDIR and nothing else under
+	// os.TempDir().
 	work, err := os.MkdirTemp(".", "work-")
 	if err != nil {
 		t.Fatal(err)

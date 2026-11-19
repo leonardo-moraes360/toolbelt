@@ -1,35 +1,35 @@
-🇧🇷 Português | [🇺🇸 English](../en/pesquisa/top-10.md)
+🇺🇸 English | [🇧🇷 Português](../pt-BR/pesquisa/top-10.md)
 
-# Top 10 Leituras para Começar
+# Top 10 Readings to Start With
 
-> Lista ordenada das 10 fontes primárias mais importantes para entender o contexto e as decisões de design do toolbelt.
+> Ordered list of the 10 most important primary sources for understanding toolbelt's context and design decisions.
 
 1. **[Effective context engineering for AI agents](https://www.anthropic.com/research/effective-context-engineering-for-ai-agents)** (Anthropic, 2025)  
-   O vocabulário de compaction, notas e contexto just-in-time pro `tb ctx`.
+   The vocabulary of compaction, notes, and just-in-time context for `tb ctx`.
 
 2. **[Code execution with MCP](https://www.anthropic.com/research/code-execution-with-mcp) + [Introducing advanced tool use](https://www.anthropic.com/research/advanced-tool-use)** (Anthropic, 2025)  
-   Como o tb expõe ferramentas sem pagar o catálogo inteiro em tokens.
+   How tb exposes tools without paying the full catalog in tokens.
 
 3. **[MCP Specification 2026-07-28](https://modelcontextprotocol.io/specification/2026-07-28/changelog)** (MCP / AAIF, 2026)  
-   O `tb mcp` deve nascer sobre o núcleo stateless e a extensão Tasks.
+   `tb mcp` should be born on the stateless core and the Tasks extension.
 
 4. **[ImpossibleBench](https://arxiv.org/abs/2510.20270)** (Zhong, Raghunathan, Carlini, 2025)  
-   Mede a taxa de trapaça do setup e lista as quatro estratégias que o guard precisa pegar.
+   Measures the cheat rate of the setup and lists the four strategies the guard needs to catch.
 
 5. **[SpecBench](https://arxiv.org/abs/2605.21384)** (Zhao et al., 2026)  
-   Testes held-out compostos como régua do verify e o gap visível/oculto como KPI. **(preprint)**
+   Held-out composite tests as the verify ruler and the visible/hidden gap as a KPI. **(preprint)**
 
 6. **[Benchmarks Are Surprisingly Compaction-Friendly](https://arxiv.org/abs/2610.31778)** (Salle et al., 2026)  
-   Por que restrições precisam viver fora do resumo. **(preprint)**
+   Why constraints need to live outside the summary. **(preprint)**
 
 7. **[Effective harnesses for long-running agents](https://www.anthropic.com/research/effective-harnesses-for-long-running-agents)** (Anthropic, 2025)  
-   O esqueleto de progress log + lista de features pro board.
+   The skeleton of progress log + feature list for the board.
 
 8. **[Effective Strategies for Asynchronous SWE Agents (CAID)](https://arxiv.org/abs/2603.21489)** (Geng et al., 2026)  
-   Evidência a favor de worktree + delegação central + merge testado. **(preprint)**
+   Evidence for worktree + central delegation + tested merge. **(preprint)**
 
 9. **[How Should Agents See Code?](https://arxiv.org/abs/2611.07286) + [Analyzing and Mitigating Cost-Inefficient Behaviors in Coding Agents](https://arxiv.org/abs/2609.30725)** (2026)  
-   Quando o grafo economiza e quando encarece. **(preprints)**
+   When the graph saves and when it costs more. **(preprints)**
 
 10. **[Defeating Prompt Injections by Design (CaMeL)](https://arxiv.org/abs/2503.18813)** (Debenedetti et al., Google DeepMind, 2025)  
-    Defesa contra prompt injection por desenho, não por prompt.
+    Defense against prompt injection by design, not by prompt.

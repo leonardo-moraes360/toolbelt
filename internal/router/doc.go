@@ -1,11 +1,11 @@
-// Package router implementa o scheduler em primeiro plano de tickets (Fase 3):
-// pool de workers, entrega direta (afinidade ticket -> worker), retry e o
-// watchdog embutido no loop (alertas, state.json, controle por arquivos).
+// Package router implements the foreground ticket scheduler (Phase 3): a
+// worker pool, direct delivery (ticket -> worker affinity), retries, and the
+// watchdog embedded in the loop (alerts, state.json, file-based control).
 //
-// Layout em disco (tudo sob .toolbelt/router/, ignorado pelo git):
+// On-disk layout (all under .toolbelt/router/, ignored by git):
 //
-//	state.json         estado vivo do router (lido por tb router status / watchdog)
-//	alerts.jsonl       alertas do watchdog (append-only)
-//	control/           pedidos de controle (kill-<worker>.json)
-//	logs/TKT-001.log   saída do agente por ticket
+//	state.json         live router state (read by tb router status / watchdog)
+//	alerts.jsonl       watchdog alerts (append-only)
+//	control/           control requests (kill-<worker>.json)
+//	logs/TKT-001.log   per-ticket agent output
 package router

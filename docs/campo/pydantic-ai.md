@@ -1,129 +1,129 @@
-🇧🇷 Português | [🇺🇸 English](../en/campo/pydantic-ai.md)
+🇺🇸 English | [🇧🇷 Português](../pt-BR/campo/pydantic-ai.md)
 
-# Campo: pydantic/pydantic-ai
+# Field: pydantic/pydantic-ai
 
-Estudo de campo do `tb` (build local `make build`, versão injetada `c8aae04`) contra clone local de [pydantic/pydantic-ai](https://github.com/pydantic/pydantic-ai) em `/tmp/target/pydantic-ai`. Sem push, issues, PRs ou comentários no alvo.
+Field study of `tb` (local `make build`, injected version `c8aae04`) against a local clone of [pydantic/pydantic-ai](https://github.com/pydantic/pydantic-ai) at `/tmp/target/pydantic-ai`. No push, issues, PRs, or comments on the target.
 
-## Repositório
+## Repository
 
-| Campo | Valor |
+| Field | Value |
 |-------|-------|
-| Nome | `pydantic/pydantic-ai` |
-| Linguagem | Python ≥3.11 (workspace `uv`: `pydantic-ai-slim`, `pydantic-graph`, `pydantic-evals`, `pydantic-ai-harness`, `clai`, `pydantic-clai2`) |
-| Tamanho (clone shallow) | ~473 MiB; ~6023 arquivos no tree; ~2507 `.py` (antes de `.venv` / `.toolbelt`) |
-| Commit base do estudo | `f93bcff0` (main no momento do clone) |
-| Instrumentação AI existente | `AGENTS.md` + symlink `CLAUDE.md`; `AGENTS.md`/`CLAUDE.md` em vários subpacotes (`docs/`, `tests/`, `pydantic_ai_slim/…`, harness, clai2); `.agents/skills/` e `.claude/skills/` (branch-context, pushing-commits, initialize-worktree, etc.); `.claude/settings.json`; `.gemini/config.yaml`; `agent_docs/`; `PLAN.md`; `THREAT_MODEL.md` |
-| Toolchain | **Sim, parcial.** `uv` 0.13.8 instalado; `make install` (sync + pre-commit) ok; `make lint` ok; `uv run pytest` ok nos testes alvo; `pyright` pontual no arquivo alterado ok. **Não rodado:** suite completa `make test` / `make` / matrix multi-Python (`install-all-python`), por custo; keys de providers LLM não configuradas (irrelevantes para a tarefa escolhida). |
+| Name | `pydantic/pydantic-ai` |
+| Language | Python ≥3.11 (`uv` workspace: `pydantic-ai-slim`, `pydantic-graph`, `pydantic-evals`, `pydantic-ai-harness`, `clai`, `pydantic-clai2`) |
+| Size (shallow clone) | ~473 MiB; ~6023 files in the tree; ~2507 `.py` (before `.venv` / `.toolbelt`) |
+| Study base commit | `f93bcff0` (main at clone time) |
+| Existing AI instrumentation | `AGENTS.md` + `CLAUDE.md` symlink; `AGENTS.md`/`CLAUDE.md` in several subpackages (`docs/`, `tests/`, `pydantic_ai_slim/…`, harness, clai2); `.agents/skills/` and `.claude/skills/` (branch-context, pushing-commits, initialize-worktree, etc.); `.claude/settings.json`; `.gemini/config.yaml`; `agent_docs/`; `PLAN.md`; `THREAT_MODEL.md` |
+| Toolchain | **Yes, partial.** `uv` 0.13.8 installed; `make install` (sync + pre-commit) ok; `make lint` ok; `uv run pytest` ok on target tests; spot `pyright` on the changed file ok. **Not run:** full `make test` / `make` / multi-Python matrix (`install-all-python`), for cost; LLM provider keys not configured (irrelevant to the chosen task). |
 
-## Tarefa escolhida
+## Chosen task
 
-| Campo | Valor |
+| Field | Value |
 |-------|-------|
-| O quê | Corrigir `MessagesBuilder.last_modified` para devolver a mensagem **mais recente** do tipo pedido desde o checkpoint (usar `reversed(_modified_since(...))`), com teste de regressão |
-| Por quê | Bug pequeno, reprodutível sem LLM, um arquivo + teste; maintainer já descreveu a correção em uma linha |
+| What | Fix `MessagesBuilder.last_modified` to return the **most recent** message of the requested type since the checkpoint (use `reversed(_modified_since(...))`), with a regression test |
+| Why | Small bug, reproducible without an LLM, one file + test; maintainer already described the one-line fix |
 | Issue | https://github.com/pydantic/pydantic-ai/issues/13535 |
-| Completa? | **Sim, localmente.** Commit local `1ddd0d1` em branch `campo/fix-last-modified` (nunca pushado). Diff: `_messages_builder.py` + `tests/test_ui.py` |
-| Checks nativos | `ruff format/check` nos arquivos: pass; `pyright` no arquivo: 0 erros; `pytest tests/test_ui.py -k messages_builder`: 3 passed. Suite completa / typecheck global: **não executados** |
+| Completed? | **Yes, locally.** Local commit `1ddd0d1` on branch `campo/fix-last-modified` (never pushed). Diff: `_messages_builder.py` + `tests/test_ui.py` |
+| Native checks | `ruff format/check` on the files: pass; `pyright` on the file: 0 errors; `pytest tests/test_ui.py -k messages_builder`: 3 passed. Full suite / global typecheck: **not run** |
 
-## Uso do tb por comando
+## tb usage by command
 
-| comando | resultado | ajudou/atrapalhou/neutro | evidência |
-|---------|-----------|--------------------------|-----------|
-| `tb init` | OK (0.007 s); criou `.toolbelt/` com defaults Go | atrapalhou (defaults) | `verify.test_cmd: go test ./...` num repo Python; `config.yaml` mode `600` |
-| `tb mem init/add/list/check` | OK; 4 invariantes | neutro/ajudou | `mem add` só posicional (`tb mem add <regra>`); `invariants.yaml` mode `600`; check sha256 ok |
-| `tb graph --enable rebuild` | OK (5.5 s); 70906 nós / 135068 arestas | ajudou (mapa) | Index Python/markdown; `graph.json` ~53 MiB mode `600` |
-| `tb graph search last_modified` | Achou `func:…ui.last_modified` | ajudou | Localizou o símbolo rápido |
-| `tb graph impact` sem `--file` | Erro `--file é obrigatório` | atrapalhou | UX exige flag; não infere do diff |
-| `tb graph impact --file …/_messages_builder.py` | OK mas saída `(vazio)` | atrapalhou | Sem impacto útil apesar do índice |
-| `tb graph callers` / `deps` | Posicional rejeitado; com flags OK | atrapalhou (UX) | `callers --function last_modified` → vazio; `deps --file` listou pkgs |
-| Ticket `rd.md` (Scope) | Drift limpo com paths literais | ajudou | Frontmatter `base_commit` + `scope` + `forbidden` |
-| `tb verify run` (pytest) | PASS visível; oculto `disponível: false` | parcial | Só roda hidden se existir dir `tests/hidden/`; ignora `--hidden-test-cmd` sem esse dir |
-| `tb verify` + thresholds no diff | FAIL iter 0, sem rodar testes | atrapalhou | Guard `protected_path` em `.toolbelt/thresholds.yaml` aborta verify |
-| `tb verify --ruler visual` | PASS com skip | neutro | JSON: `"skipped": true`, reason manifesto ausente |
-| `tb review` | OK; 1 warning completeness | neutro | Critério “existing … tests still pass” “pouco evidenciado” apesar do teste novo |
-| `tb drift` | OK no scope literal | ajudou | Sem out_of_scope no ticket real |
-| `tb drift` com `**/*.py` | Marcou arquivos in-scope como fora | atrapalhou | `filepath.Match` não trata `**` recursivo |
-| `tb guard check` | OK no diff limpo; viola `thresholds.yaml` | ajudou (anti-cheat) | `guard.yaml` custom **ignorado** (deny do arquivo do fix → `violations: null`) |
-| `tb bench run --fake` | OK em `bugfix-go` (repo toolbelt) | neutro | No alvo não há `bench/tasks`; harness usa fixtures do toolbelt |
-| `tb bench compare` | A/B fake OK; flag `--agent` inexistente | atrapalhou | `unknown flag: --agent` |
-| `tb mcp` | tools/list + `tb_version` OK | neutro | Ferramentas graph/mem/verify **não** espelhadas além de graph_* + echo/env/run/version |
-| Onboarding vs AGENTS.md | tb **não lê** AGENTS.md/skills | atrapalhou | `tb ctx`/import AGENTS.md só em docs de pesquisa (“pendente”); init não referencia skills do repo |
+| command | result | helped / hindered / neutral | evidence |
+|---------|--------|-----------------------------|----------|
+| `tb init` | OK (0.007 s); created `.toolbelt/` with Go defaults | hindered (defaults) | `verify.test_cmd: go test ./...` in a Python repo; `config.yaml` mode `600` |
+| `tb mem init/add/list/check` | OK; 4 invariants | neutral/helped | `mem add` only positional (`tb mem add <regra>`); `invariants.yaml` mode `600`; check sha256 ok |
+| `tb graph --enable rebuild` | OK (5.5 s); 70906 nodes / 135068 edges | helped (map) | Indexed Python/markdown; `graph.json` ~53 MiB mode `600` |
+| `tb graph search last_modified` | Found `func:…ui.last_modified` | helped | Located the symbol quickly |
+| `tb graph impact` without `--file` | Error `--file é obrigatório` | hindered | UX requires the flag; does not infer from the diff |
+| `tb graph impact --file …/_messages_builder.py` | OK but output `(vazio)` | hindered | No useful impact despite the index |
+| `tb graph callers` / `deps` | Positional rejected; with flags OK | hindered (UX) | `callers --function last_modified` → empty; `deps --file` listed pkgs |
+| Ticket `rd.md` (Scope) | Clean drift with literal paths | helped | Frontmatter `base_commit` + `scope` + `forbidden` |
+| `tb verify run` (pytest) | Visible PASS; hidden `disponível: false` | partial | Only runs hidden if `tests/hidden/` dir exists; ignores `--hidden-test-cmd` without that dir |
+| `tb verify` + thresholds in the diff | FAIL iter 0, without running tests | hindered | Guard `protected_path` on `.toolbelt/thresholds.yaml` aborts verify |
+| `tb verify --ruler visual` | PASS with skip | neutral | JSON: `"skipped": true`, reason manifesto absent |
+| `tb review` | OK; 1 completeness warning | neutral | Criterion “existing … tests still pass” “weakly evidenced” despite the new test |
+| `tb drift` | OK on literal scope | helped | No out_of_scope on the real ticket |
+| `tb drift` with `**/*.py` | Marked in-scope files as out | hindered | `filepath.Match` does not treat recursive `**` |
+| `tb guard check` | OK on clean diff; violates `thresholds.yaml` | helped (anti-cheat) | Custom `guard.yaml` **ignored** (deny of the fix file → `violations: null`) |
+| `tb bench run --fake` | OK on `bugfix-go` (toolbelt repo) | neutral | Target has no `bench/tasks`; harness uses toolbelt fixtures |
+| `tb bench compare` | Fake A/B OK; `--agent` flag nonexistent | hindered | `unknown flag: --agent` |
+| `tb mcp` | tools/list + `tb_version` OK | neutral | graph/mem/verify tools **not** mirrored beyond graph_* + echo/env/run/version |
+| Onboarding vs AGENTS.md | tb **does not read** AGENTS.md/skills | hindered | `tb ctx`/import AGENTS.md only in research docs (“pending”); init does not reference repo skills |
 
-## Problemas conhecidos
+## Known problems
 
-| problema | confirmado/refutado/não testado | evidência |
-|----------|--------------------------------|-----------|
-| `bench compare` lacks `--agent` | **confirmado** | `tb bench compare … --agent` → `unknown flag: --agent`; help sem a flag |
-| `guard.yaml` ignored | **confirmado** | `.toolbelt/guard.yaml` com deny do path do fix; `guard check` → `violations: null` |
-| outdated CLI docs | **confirmado** | `docs/cli.md` documenta `tb ticket`/`tb board`/`tb run`/`tb proc`; CLI real: `ticket`/`board` inexistentes; `router` “não implementado” |
-| version shows `unknown` | **confirmado (sem ldflags)** | `go build` sem `-ldflags`: `commit: unknown` / `built: unknown`; `make build` injeta hash (`c8aae04`) |
-| config files created 0600 | **confirmado** | `stat`: `config.yaml`, `invariants.yaml`, `graph.json` → mode `600` |
-| visual ruler reports `skipped=false` when skipping | **refutado** | `/tmp/verify-visual.json`: `"skipped": true`, `"skip_reason": "manifesto de telas ausente"` |
-| `default_agent` ignored | **confirmado** | `bench.default_agent` no YAML; `tb bench run` sem `--agent`/`--fake` → `--agent ou --fake é obrigatório` |
-| guard aborts verify when diff touches hardcoded config path | **confirmado** | Diff com `.toolbelt/thresholds.yaml` → violation `protected_path`; verify FAIL iterações 0 |
-| default fake agent needs `--fake-config` | **refutado** | `tb bench run --fake --task bugfix-go` sucesso sem `--fake-config`; `FakeAgentCommand("")` embutido |
-| `mem add` positional | **confirmado** | Usage `tb mem add <regra>`; `--rule` → unknown flag |
-| Drift/Scope need literal paths (no globs) | **confirmado (parcial)** | Prefixo de dir e `foo/**` ok; `pydantic_ai_slim/**/*.py` **não** casa (ambos arquivos out_of_scope); `ui/*` single-segment via `filepath.Match` ok |
-| `graph impact` needs `--file` | **confirmado** | Sem flag: exit 1 `--file é obrigatório` |
-| review false positives on the tests/hidden invariant | **refutado (neste fluxo)** | Review do fix limpo: só warning de completeness; invariante `tests/hidden` só disparou ao editar de fato `tests/hidden/` |
-| verify runs only partial checks and misses build errors | **confirmado** | Erro de sintaxe em `scripts/_tb_campo_broken.py` + `test-cmd` pytest pontual → verify **PASS**; ruff nativo falha. Defaults `go test` num repo Python → ESCALATE sem validar Python |
-| tb does not push the agent toward completing the whole task | **confirmado (observacional)** | AGENTS.md exige skills, docs, typecheck amplo, PR template, etc.; tb não importa nem cobra isso — só diff/scope/test_cmd. Agente pode “passar” no tb com tarefa incompleta perante o padrão do projeto |
+| problem | confirmed / refuted / not tested | evidence |
+|---------|----------------------------------|----------|
+| `bench compare` lacks `--agent` | **confirmed** | `tb bench compare … --agent` → `unknown flag: --agent`; help without the flag |
+| `guard.yaml` ignored | **confirmed** | `.toolbelt/guard.yaml` with deny of the fix path; `guard check` → `violations: null` |
+| outdated CLI docs | **confirmed** | `docs/cli.md` documents `tb ticket`/`tb board`/`tb run`/`tb proc`; real CLI: `ticket`/`board` nonexistent; `router` “não implementado” |
+| version shows `unknown` | **confirmed (without ldflags)** | `go build` without `-ldflags`: `commit: unknown` / `built: unknown`; `make build` injects hash (`c8aae04`) |
+| config files created 0600 | **confirmed** | `stat`: `config.yaml`, `invariants.yaml`, `graph.json` → mode `600` |
+| visual ruler reports `skipped=false` when skipping | **refuted** | `/tmp/verify-visual.json`: `"skipped": true`, `"skip_reason": "manifesto de telas ausente"` |
+| `default_agent` ignored | **confirmed** | `bench.default_agent` in YAML; `tb bench run` without `--agent`/`--fake` → `--agent ou --fake é obrigatório` |
+| guard aborts verify when diff touches hardcoded config path | **confirmed** | Diff with `.toolbelt/thresholds.yaml` → `protected_path` violation; verify FAIL iterations 0 |
+| default fake agent needs `--fake-config` | **refuted** | `tb bench run --fake --task bugfix-go` success without `--fake-config`; embedded `FakeAgentCommand("")` |
+| `mem add` positional | **confirmed** | Usage `tb mem add <regra>`; `--rule` → unknown flag |
+| Drift/Scope need literal paths (no globs) | **confirmed (partial)** | dir prefix and `foo/**` ok; `pydantic_ai_slim/**/*.py` **does not** match (both files out_of_scope); single-segment `ui/*` via `filepath.Match` ok |
+| `graph impact` needs `--file` | **confirmed** | Without flag: exit 1 `--file é obrigatório` |
+| review false positives on the tests/hidden invariant | **refuted (in this flow)** | Clean fix review: only completeness warning; `tests/hidden` invariant only fired when actually editing `tests/hidden/` |
+| verify runs only partial checks and misses build errors | **confirmed** | Syntax error in `scripts/_tb_campo_broken.py` + spot pytest `test-cmd` → verify **PASS**; native ruff fails. Go `go test` defaults in a Python repo → ESCALATE without validating Python |
+| tb does not push the agent toward completing the whole task | **confirmed (observational)** | AGENTS.md requires skills, docs, broad typecheck, PR template, etc.; tb neither imports nor enforces that — only diff/scope/test_cmd. Agent can “pass” tb with an incomplete task vs the project standard |
 
-## Problemas novos
+## New problems
 
-| ID | sev | repro | esperado | atual |
-|----|-----|-------|----------|-------|
-| N1 | P1 | `tb init` em repo Python; `tb verify run` sem sobrescrever cmds | Detectar ecossistema ou falhar com orientação clara | Defaults `go test ./...`; ESCALATE opaco |
-| N2 | P1 | `tb verify … --hidden-test-cmd 'pytest …'` sem dir `tests/hidden/` | Honrar o comando passado | `hidden_available: false`; comando ignorado |
-| N3 | P2 | `tb graph impact --file <py com símbolos>` após rebuild | Lista callers/deps impactados | `(vazio)` |
-| N4 | P2 | `tb graph callers last_modified` (posicional, como search) | Aceitar posicional ou mensagem única | Exige `--function`; UX inconsistente com `search` |
-| N5 | P2 | MCP `tools/list` após usar CLI mem/verify/review | Paridade CLI↔MCP | Só `tb_graph_*`, `tb_version`, `tb_echo`, `tb_env`, `tb_run` |
-| N6 | P3 | Scope `pydantic_ai_slim/pydantic_ai/ui/*` vs arquivo no dir | Documentar que `*` é single-segment / preferir `dir/` ou `dir/**` | Comportamento misto confunde (“globs”) |
-| N7 | P2 | Repo com AGENTS.md rico; `tb init` | Importar/resumir regras do projeto no vault/invariants | Ignora por completo; risco de conflito com invariantes genéricas Go-oriented (`tests/hidden/`) |
+| ID | sev | repro | expected | actual |
+|----|-----|-------|----------|--------|
+| N1 | P1 | `tb init` in a Python repo; `tb verify run` without overriding cmds | Detect ecosystem or fail with clear guidance | Defaults `go test ./...`; opaque ESCALATE |
+| N2 | P1 | `tb verify … --hidden-test-cmd 'pytest …'` without `tests/hidden/` dir | Honor the passed command | `hidden_available: false`; command ignored |
+| N3 | P2 | `tb graph impact --file <py with symbols>` after rebuild | List impacted callers/deps | `(vazio)` |
+| N4 | P2 | `tb graph callers last_modified` (positional, like search) | Accept positional or a single message | Requires `--function`; UX inconsistent with `search` |
+| N5 | P2 | MCP `tools/list` after using CLI mem/verify/review | CLI↔MCP parity | Only `tb_graph_*`, `tb_version`, `tb_echo`, `tb_env`, `tb_run` |
+| N6 | P3 | Scope `pydantic_ai_slim/pydantic_ai/ui/*` vs file in the dir | Document that `*` is single-segment / prefer `dir/` or `dir/**` | Mixed behavior confuses (“globs”) |
+| N7 | P2 | Repo with rich AGENTS.md; `tb init` | Import/summarize project rules into vault/invariants | Ignores entirely; risk of conflict with generic Go-oriented invariants (`tests/hidden/`) |
 
-## O que o tb pegou e o que deixou passar
+## What tb caught and what it let slip
 
-**Pegou**
-- Drift de escopo quando o ticket listava paths literais corretos.
-- Edição de `tests/hidden/` (forbidden + invariantes) e de `.toolbelt/thresholds.yaml` (guard).
-- Falha de testes visíveis quando o próprio `test_cmd` importava arquivo com sintaxe quebrada.
-- Skip visual com manifesto ausente (`skipped: true`).
+**Caught**
+- Scope drift when the ticket listed correct literal paths.
+- Edits to `tests/hidden/` (forbidden + invariants) and `.toolbelt/thresholds.yaml` (guard).
+- Visible test failure when `test_cmd` itself imported a file with broken syntax.
+- Visual skip with missing manifesto (`skipped: true`).
 
-**Deixou passar**
-- Erro de sintaxe em arquivo **fora** do `test_cmd` (PASS do verify vs FAIL do ruff).
-- Defaults Go em projeto Python (agente precisa reconfigurar na mão).
-- Completeness “soft”: warning por critério de aceite textual, mas sem checar se docs/skills/THREAT_MODEL do AGENTS.md foram atualizados (neste caso não precisavam — o ponto é que tb não sabe).
-- `graph impact` vazio → não sugeriu `tests/test_ui.py` como arquivo a tocar.
-- `guard.yaml` do operador não aplicado.
-- Não cobrou lint/typecheck do projeto; só o que estava em `test_cmd`.
+**Let slip**
+- Syntax error in a file **outside** `test_cmd` (verify PASS vs ruff FAIL).
+- Go defaults in a Python project (agent must reconfigure by hand).
+- Soft completeness: warning for a textual acceptance criterion, but no check whether AGENTS.md docs/skills/THREAT_MODEL were updated (they did not need to here — the point is tb does not know).
+- Empty `graph impact` → did not suggest `tests/test_ui.py` as a file to touch.
+- Operator `guard.yaml` not applied.
+- Did not require project lint/typecheck; only whatever was in `test_cmd`.
 
-## Interação com instrumentação existente / onboarding
+## Interaction with existing instrumentation / onboarding
 
-- **tb não lê** `AGENTS.md`, skills `.agents/`/`.claude/`, nem `agent_docs/`. Busca no código Go/docs do toolbelt: AGENTS.md aparece só como ideia futura (`tb ctx`, arquitetura “pendente”).
-- **Duplicação potencial:** invariantes default (`tests/hidden/`, `thresholds.yaml`) são do harness Go do tb; pydantic-ai já tem anti-patterns e workflow em AGENTS.md/skills — conjuntos distintos, sem merge.
-- **Conflito:** onboarding `tb init` sugere workflow centrado em `rd.md` + `.toolbelt/`, enquanto o repo manda usar skills (`initialize-worktree`, `branch-context`, `pushing-commits-to-the-repo`) e não empurrar a main (pre-commit `no-commit-to-branch`). O agente que seguir só o tb ignora o processo real.
-- **O que tb deveria importar:** (1) paths de AGENTS.md hierárquicos; (2) comandos de `Makefile`/`docs/contributing.md` → `verify.test_cmd` / lint / typecheck; (3) restrições de scope das skills (narrow bugfix); (4) invariantes de qualidade do projeto (type-safety, sem `Co-Authored-By` de bot, etc.) para `tb mem`.
+- **tb does not read** `AGENTS.md`, `.agents/`/`.claude/` skills, or `agent_docs/`. Search in toolbelt Go/docs: AGENTS.md appears only as a future idea (`tb ctx`, architecture “pending”).
+- **Potential duplication:** default invariants (`tests/hidden/`, `thresholds.yaml`) are from tb’s Go harness; pydantic-ai already has anti-patterns and workflow in AGENTS.md/skills — distinct sets, no merge.
+- **Conflict:** `tb init` onboarding suggests a workflow centered on `rd.md` + `.toolbelt/`, while the repo requires skills (`initialize-worktree`, `branch-context`, `pushing-commits-to-the-repo`) and not pushing to main (pre-commit `no-commit-to-branch`). An agent that only follows tb ignores the real process.
+- **What tb should import:** (1) hierarchical AGENTS.md paths; (2) `Makefile`/`docs/contributing.md` commands → `verify.test_cmd` / lint / typecheck; (3) skill scope restrictions (narrow bugfix); (4) project quality invariants (type-safety, no bot `Co-Authored-By`, etc.) for `tb mem`.
 
-## Sugestões de melhoria
+## Improvement suggestions
 
-1. **[P0 · verify/init]** Auto-detect Python/`uv`/`make` e preencher `verify.test_cmd` (e lint) no `tb init`; nunca defaultar `go test` fora de repos Go.  
-2. **[P0 · verify]** Se `--hidden-test-cmd` for passado, executar sempre; não amarrar a existência de `tests/hidden/`.  
-3. **[P0 · mem/ctx]** `tb init`/`tb ctx`: ler AGENTS.md (e skills index) → invariantes + checklist de completion do projeto.  
-4. **[P1 · guard]** Honrar `.toolbelt/guard.yaml` (ou documentar que é morto e remover).  
-5. **[P1 · bench]** Usar `bench.default_agent` quando `--agent` omitido; adicionar `--agent` a `bench compare` (ou documentar só `--fake`/configs).  
-6. **[P1 · drift/review]** Suportar globs `**` de verdade; docs com exemplos `dir/`, `dir/**`, paths literais.  
-7. **[P1 · graph]** `impact` a partir do diff `base..head` sem `--file`; popular arestas `calls` em Python (hoje impact vazio).  
-8. **[P2 · mcp]** Expor mem/verify/review/drift/guard no MCP com paridade CLI.  
-9. **[P2 · docs]** Marcar comandos não implementados em `docs/cli.md` / README; alinhar árvore “planejada” vs `tb --help`.  
-10. **[P2 · verify]** Ruler composto: `test_cmd` + `lint_cmd` + `typecheck_cmd` + opcional build, para não “passar” com checks parciais.  
-11. **[P3 · ux]** Uniformizar posicionais (`graph search` vs `callers --function`); permissões de arquivos `.toolbelt` alinhadas ao umask do repo (não forçar 0600 se o time compartilha worktree).
+1. **[P0 · verify/init]** Auto-detect Python/`uv`/`make` and fill `verify.test_cmd` (and lint) in `tb init`; never default `go test` outside Go repos.  
+2. **[P0 · verify]** If `--hidden-test-cmd` is passed, always run it; do not tie it to existence of `tests/hidden/`.  
+3. **[P0 · mem/ctx]** `tb init`/`tb ctx`: read AGENTS.md (and skills index) → invariants + project completion checklist.  
+4. **[P1 · guard]** Honor `.toolbelt/guard.yaml` (or document that it is dead and remove it).  
+5. **[P1 · bench]** Use `bench.default_agent` when `--agent` is omitted; add `--agent` to `bench compare` (or document only `--fake`/configs).  
+6. **[P1 · drift/review]** Really support `**` globs; docs with `dir/`, `dir/**`, literal path examples.  
+7. **[P1 · graph]** `impact` from diff `base..head` without `--file`; populate Python `calls` edges (today impact is empty).  
+8. **[P2 · mcp]** Expose mem/verify/review/drift/guard on MCP with CLI parity.  
+9. **[P2 · docs]** Mark unimplemented commands in `docs/cli.md` / README; align “planned” tree vs `tb --help`.  
+10. **[P2 · verify]** Composite ruler: `test_cmd` + `lint_cmd` + `typecheck_cmd` + optional build, so partial checks cannot “pass”.  
+11. **[P3 · ux]** Uniform positionals (`graph search` vs `callers --function`); `.toolbelt` file permissions aligned to the repo umask (do not force 0600 if the team shares the worktree).
 
-## Métricas
+## Metrics
 
-| métrica | valor |
-|---------|-------|
-| Wall time (soma dos comandos cronometrados no log) | ~57 s de CPU-wall de invocações; sessão de estudo ~25–30 min incluindo clone/`make install`/leitura |
-| Invocações tb (+ checks nativos no harness de evidência) | ~65 seções no log; ~53 comandos com EXIT/TIME parseáveis na primeira passagem estruturada |
-| Falhas tb (exit ≠ 0) no log estruturado | 26 na amostra principal (inclui negativos esperados: flags ausentes, drift proposital, shallow HEAD~1 inicial, etc.) |
-| Crash/segfault | nenhum observado |
-| Tarefa entregue no alvo | sim (local only); evidência: pytest MessagesBuilder 3/3 pass; diff 2 arquivos |
+| metric | value |
+|--------|-------|
+| Wall time (sum of timed commands in the log) | ~57 s of invocation CPU-wall; study session ~25–30 min including clone/`make install`/reading |
+| tb invocations (+ native checks in the evidence harness) | ~65 log sections; ~53 commands with parseable EXIT/TIME on the first structured pass |
+| tb failures (exit ≠ 0) in the structured log | 26 in the main sample (includes expected negatives: missing flags, deliberate drift, initial shallow HEAD~1, etc.) |
+| Crash/segfault | none observed |
+| Task delivered on target | yes (local only); evidence: MessagesBuilder pytest 3/3 pass; 2-file diff |

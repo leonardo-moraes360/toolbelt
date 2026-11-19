@@ -103,7 +103,7 @@ func handledAccessFS(abi int) uint64 {
 	if abi >= 3 {
 		mask |= landlockAccessFSTruncate
 	}
-	if abi >= 5 { // LANDLOCK_ACCESS_FS_IOCTL_DEV chegou na ABI 5 (ABI 4 é rede)
+	if abi >= 5 { // LANDLOCK_ACCESS_FS_IOCTL_DEV arrived in ABI 5 (ABI 4 is networking)
 		mask |= landlockAccessFSIoctlDev
 	}
 	return mask
@@ -130,12 +130,13 @@ func applyLandlock(p *childPayload) error {
 	if err := addRule(ruleset, p.WorkDir, p.ReadOnlyWorkDir, abi); err != nil {
 		return fmt.Errorf("regra do workdir %q: %w", p.WorkDir, err)
 	}
+	// No rule for os.TempDir(): the shared /tmp gets no access (writes only in
+	// the workdir, PrivateTmp, Home and AllowedPaths). Anything that needs temp
+	// space should set PrivateTmp or point TMPDIR inside the workdir.
 	if p.PrivateTmp != "" {
 		if err := addRule(ruleset, p.PrivateTmp, false, abi); err != nil {
 			return fmt.Errorf("regra do tmp privado %q: %w", p.PrivateTmp, err)
 		}
-	} else if err := addTmpWriteRule(ruleset, p.WorkDir, abi); err != nil {
-		return err
 	}
 	if p.Home != "" {
 		if err := addRule(ruleset, p.Home, false, abi); err != nil {
@@ -173,21 +174,27 @@ func addSystemReadRules(ruleset, abi int, minimalDev bool) error {
 	for _, p := range roPaths {
 		_ = addRuleOptional(ruleset, p, true, abi)
 	}
+	// /etc/resolv.conf is often a symlink outside /etc (e.g.
+	// /run/systemd/resolve/stub-resolv.conf); without reading the target, the child
+	// cannot resolve DNS. Allow only the target's directory, read-only.
+	if target, err := filepath.EvalSymlinks("/etc/resolv.conf"); err == nil && !strings.HasPrefix(target, "/etc/") {
+		_ = addRuleOptional(ruleset, filepath.Dir(target), true, abi)
+	}
 	addDeviceRules(ruleset, abi)
 	return nil
 }
 
-// deviceRule descreve um nó de /dev liberado para escrita. O /dev como um todo
-// continua somente leitura; só estes nós ganham escrita (git, shells e
-// agentes precisam de /dev/null etc.). Opcionais: ausentes são ignorados.
+// deviceRule is a /dev node allowed for writing. /dev as a whole stays
+// read-only; only these nodes get write access (git, shells and agents need
+// /dev/null etc.). Optional: missing nodes are skipped.
 //
-// Terminais (/dev/tty, /dev/ptmx, /dev/pts/*) ficam de fora de propósito:
-// escrita em /dev/pts permitiria injetar sequências de escape nos outros
-// terminais do usuário, e ioctl em tty habilita injeção via TIOCSTI onde
-// legacy_tiocsti está ativo.
+// Terminals (/dev/tty, /dev/ptmx, /dev/pts/*) are left out on purpose: write
+// access to /dev/pts would allow injecting escape sequences into the user's
+// other terminals, and ioctl on a tty enables TIOCSTI injection where
+// legacy_tiocsti is enabled.
 type deviceRule struct {
 	path     string
-	readOnly bool // random/urandom: leitura basta
+	readOnly bool // random/urandom: read access is enough
 }
 
 var deviceRules = []deviceRule{
@@ -207,9 +214,9 @@ func addDeviceRules(ruleset, abi int) {
 	}
 }
 
-// deviceFileMask devolve só direitos válidos para arquivo (não-diretório):
-// o kernel responde EINVAL se uma regra de arquivo incluir direitos de
-// diretório. TRUNCATE exige ABI>=3. Nunca inclui IOCTL_DEV (sem ttys).
+// deviceFileMask returns only rights valid for a file (non-directory): the
+// kernel returns EINVAL if a file rule includes directory rights. TRUNCATE
+// requires ABI>=3. Never includes IOCTL_DEV (no ttys).
 func deviceFileMask(readOnly bool, abi int) uint64 {
 	mask := uint64(landlockAccessFSReadFile)
 	if !readOnly {
@@ -219,22 +226,6 @@ func deviceFileMask(readOnly bool, abi int) uint64 {
 		}
 	}
 	return mask
-}
-
-func addTmpWriteRule(ruleset int, workDir string, abi int) error {
-	absTmp, err := filepath.Abs(os.TempDir())
-	if err != nil {
-		return nil
-	}
-	workAbs, err := filepath.Abs(workDir)
-	if err != nil {
-		return err
-	}
-	if absTmp == workAbs || isSubpath(absTmp, workAbs) || isSubpath(workAbs, absTmp) {
-		return nil
-	}
-	_ = addRuleOptional(ruleset, absTmp, false, abi)
-	return nil
 }
 
 func restrictSelf(ruleset int) error {
@@ -273,8 +264,8 @@ func addRule(ruleset int, path string, readOnly bool, abi int) error {
 	return addRuleMask2(ruleset, abs, parent, mask)
 }
 
-// fileOnlyMask remove de mask os direitos que só valem para diretório: o kernel
-// responde EINVAL se uma regra sobre arquivo incluir algum deles.
+// fileOnlyMask drops the directory-only rights from mask: the kernel returns
+// EINVAL when a rule on a regular file includes any of them.
 func fileOnlyMask(mask uint64) uint64 {
 	dirOnly := uint64(landlockAccessFSReadDir |
 		landlockAccessFSRemoveDir |
@@ -290,7 +281,7 @@ func fileOnlyMask(mask uint64) uint64 {
 	return mask &^ dirOnly
 }
 
-// addRuleMask adiciona uma regra path-beneath com a máscara exata dada.
+// addRuleMask adds a path-beneath rule with exactly the given mask.
 func addRuleMask(ruleset int, path string, mask uint64) error {
 	abs, err := filepath.Abs(path)
 	if err != nil {
@@ -305,7 +296,7 @@ func addRuleMask(ruleset int, path string, mask uint64) error {
 }
 
 func addRuleMask2(ruleset int, abs string, parent int, mask uint64) error {
-	pba := pathBeneathAttr{allowedAccess: mask, parentFd: int32(parent)} //nolint:gosec // descritor fd do kernel
+	pba := pathBeneathAttr{allowedAccess: mask, parentFd: int32(parent)} //nolint:gosec // kernel file descriptor
 	_, _, errno := syscall.Syscall6(sysLandlockAddRule, uintptr(ruleset), landlockRulePathBeneath, uintptr(unsafe.Pointer(&pba)), 0, 0, 0)
 	if errno != 0 {
 		return fmt.Errorf("landlock_add_rule %s: %v", abs, errno)
@@ -392,7 +383,7 @@ func runLandlockChild() error {
 	}
 
 	argv := append([]string{p.Command}, p.Args...)
-	return syscall.Exec(p.Command, argv, childCleanEnv()) //nolint:gosec // comando resolvido via LookPath no pai
+	return syscall.Exec(p.Command, argv, childCleanEnv()) //nolint:gosec // command resolved via LookPath in the parent
 }
 
 func childCleanEnv() []string {

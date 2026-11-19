@@ -1,73 +1,73 @@
-🇧🇷 Português | [🇺🇸 English](../en/specs/egm-trust.md)
+🇺🇸 English | [🇧🇷 Português](../pt-BR/specs/egm-trust.md)
 
-# Spec: EGM trust, Fase A.2 (fraude ativa do mesmo usuário)
+# Spec: EGM trust, Phase A.2 (active fraud by the same user)
 
-Autor: toolbelt · Status: Rascunho, não revisado · Data: 2026-11-17 · Decisão: [ADR-014](../adr/014-egm-nativo.md) · Depende de: [núcleo](egm-nativo.md), spike R0
+Author: toolbelt · Status: Draft, not reviewed · Date: 2026-11-17 · Decision: [ADR-015](../adr/015-egm-nativo.md) · Depends on: [core](egm-nativo.md), R0 spike
 
-## Visão geral
+## Overview
 
-O [núcleo](egm-nativo.md) assume um elephant honesto, mas desleixado. Esta spec reúne as proteções contra um elephant que **frauda ativamente** com shell como o mesmo usuário: um agente que tenta chegar a `PASS` sem revisão real editando config, estado, binários ou refs.
+The [core](egm-nativo.md) assumes an honest but sloppy elephant. This spec gathers the protections against an elephant that **actively commits fraud** with a shell as the same user: an agent that tries to reach `PASS` without a real review by editing config, state, binaries or refs.
 
-O conteúdo veio das rodadas 2 a 8 de revisão da versão monolítica da spec. Ali ficou claro que essa parte não converge enquanto o núcleo não estiver implementado e o spike R0 não trouxer dados reais. A meta desta fase é tornar a fraude **detectável e cara**, não impossível.
+The content came from review rounds 2 to 8 of the monolithic version of the spec. There it became clear that this part does not converge while the core is not implemented and the R0 spike has not brought real data. The goal of this phase is to make fraud **detectable and expensive**, not impossible.
 
-## Problema
+## Problem
 
-Contra um processo do mesmo usuário, toda defesa local pode ser contornada, porque o atacante lê chaves, apaga estado, reescreve refs e forja TTY. Sem nenhuma defesa, porém, um agente consegue chegar a `PASS` em segundos, por exemplo:
+Against a process of the same user, every local defense can be bypassed, because the attacker reads keys, deletes state, rewrites refs and forges a TTY. With no defense at all, however, an agent can reach `PASS` in seconds, for example:
 
-- apontando `egm.agent_cmd` para um script que devolve atestações válidas;
-- baixando `clean_rounds`;
-- apagando o estado;
-- escolhendo o range do gate.
+- pointing `egm.agent_cmd` at a script that returns valid attestations;
+- lowering `clean_rounds`;
+- deleting the state;
+- choosing the gate's range.
 
-## Objetivos
+## Goals
 
-- T-G1: cada atalho de fraude conhecido deixa rastro verificável, ou exige um passo humano registrado.
-- T-G2: o gate do `tb stack` não pode ser escolhido pelo elephant: nem o range, nem o documento, nem o conteúdo.
-- T-G3: o limite declarado é completo, ou seja, tudo o que continua possível está listado.
+- T-G1: every known fraud shortcut leaves a verifiable trace, or requires a recorded human step.
+- T-G2: the `tb stack` gate cannot be chosen by the elephant: not the range, not the document, not the content.
+- T-G3: the declared limit is complete, that is, everything that remains possible is listed.
 
-## Não-objetivos
+## Non-Goals
 
-- Impedir fraude de um processo do mesmo usuário (é impossível localmente).
-- Rodar sob outro usuário ou numa VM (fica para depois).
-- Implementar os tokens de capacidade do [ADR-005](../adr/005-anti-trapaca.md) §4.
+- Preventing fraud by a process of the same user (it is impossible locally).
+- Running under another user or in a VM (left for later).
+- Implementing the capability tokens of [ADR-005](../adr/005-anti-trapaca.md) §4.
 
-## Plano técnico
+## Technical Plan
 
-Os mecanismos abaixo são candidatos. Cada um virou requisito na versão monolítica e foi revisado pelo menos uma vez. A tabela resume o desenho e os problemas que ficaram abertos.
+The mechanisms below are candidates. Each one became a requirement in the monolithic version and was reviewed at least once. The table summarizes the design and the problems that remained open.
 
-| Mecanismo | Resumo | Problemas já conhecidos |
-|-----------|--------|-------------------------|
-| Raiz de usuário | Config de usuário, `<state>` e âncoras resolvidos por `os/user.Current().HomeDir`, ignorando `XDG_*`/`HOME`, com o aviso `xdg_ignored`; `-c` ignorado para chaves sensíveis | Diverge de `config.GlobalConfigPath()`; afeta usuários com `XDG_*` legítimo |
-| Classes de chave | Execução e segredo só na config de usuário (já no núcleo); política do ref de confiança via `cat-file blob`; `config_untrusted` por divergência | Ref de confiança local é reescrevível; fallback para o `main` local seleciona range vazio quando o commit é direto no `main` |
-| Agente fixado | sha256 do binário, do interpretador (incluindo `/usr/bin/env X`) e das árvores de runtime; canário de ferramenta no `pin`; `agent_cmd` diferente do binário do tb | TOCTOU entre a verificação e o `exec`; hash de árvore custa I/O a cada execução; atualizações do vendor exigem `pin` |
-| Build do tb | `debug.ReadBuildInfo` por rodada; build local rebaixa salvo `trust_dev_builds` | Atrapalha o dogfooding deste repositório |
-| Cadeia e âncora | `hash = sha256(prev ‖ registro)`, `audit.jsonl` append-only, âncora separada por `repo-id`, `repair` humano | Um crash entre o audit e o estado bifurca a cadeia, então é preciso WAL em lote; forks e clones compartilham o `repo-id` e geram falso `trust_ref_rewound` |
-| Confirmação humana | TTY (`os.ModeCharDevice`) para `--force-settle`, `--restart`, `--narrow`, `--past-cap`, `--decline` de major, `pin`, `repair` e rewind | TTY forjável; bloqueia fluxos 100% agênticos |
-| Gate por ref de confiança | Documentos selecionados por `merge-base(trust_sha, head)..head`, independente de `--base` | Seleção vazia, ou indefinida sem merge-base (clone raso) |
-| Séries por branch | Contadores de teto e orçamento por branch | Identidade de série ambígua com `--restart` |
-| `internal/gitsafe` | Unificar o endurecimento de git de router, merge e egm | A união das listas leva `diff.ignoreSubmodules=all` ao merge e esconde gitlinks na checagem de caminhos sensíveis; o env sem `GIT_CONFIG_*` quebra o `withGitNoDetach` do router e o `hooksDirs` do merge |
+| Mechanism | Summary | Already known problems |
+|-----------|---------|------------------------|
+| User root | User config, `<state>` and anchors resolved via `os/user.Current().HomeDir`, ignoring `XDG_*`/`HOME`, with the `xdg_ignored` warning; `-c` ignored for sensitive keys | Diverges from `config.GlobalConfigPath()`; affects users with legitimate `XDG_*` |
+| Key classes | Execution and secret only in the user config (already in the core); trust-ref policy via `cat-file blob`; `config_untrusted` on divergence | The local trust ref is rewritable; the fallback to the local `main` selects an empty range when the commit goes straight to `main` |
+| Pinned agent | sha256 of the binary, the interpreter (including `/usr/bin/env X`) and the runtime trees; tool canary on `pin`; `agent_cmd` different from tb's binary | TOCTOU between the check and the `exec`; tree hashing costs I/O on every run; vendor updates require `pin` |
+| tb build | `debug.ReadBuildInfo` per round; a local build downgrades unless `trust_dev_builds` | Gets in the way of dogfooding in this repository |
+| Chain and anchor | `hash = sha256(prev ‖ record)`, append-only `audit.jsonl`, separate anchor per `repo-id`, human `repair` | A crash between the audit and the state forks the chain, so a batched WAL is needed; forks and clones share the `repo-id` and produce a false `trust_ref_rewound` |
+| Human confirmation | TTY (`os.ModeCharDevice`) for `--force-settle`, `--restart`, `--narrow`, `--past-cap`, `--decline` of a major, `pin`, `repair` and rewind | TTY is forgeable; blocks 100% agentic flows |
+| Gate by trust ref | Documents selected by `merge-base(trust_sha, head)..head`, independent of `--base` | Empty selection, or undefined without a merge-base (shallow clone) |
+| Per-branch series | Cap and budget counters per branch | Ambiguous series identity with `--restart` |
+| `internal/gitsafe` | Unify the git hardening of router, merge and egm | The union of the lists brings `diff.ignoreSubmodules=all` to merge and hides gitlinks in the sensitive-path check; the env without `GIT_CONFIG_*` breaks the router's `withGitNoDetach` and merge's `hooksDirs` |
 
-## Limite declarado (rascunho)
+## Declared Limit (draft)
 
-Mesmo com tudo acima, um processo do mesmo usuário pode fazer qualquer uma destas coisas:
+Even with everything above, a process of the same user can do any of these things:
 
-- editar a config de usuário;
-- reescrever refs locais e fazer commits;
-- apagar ou editar `<state>`;
-- fazer um clone raso;
-- renomear o documento para recomeçar;
-- forjar um TTY;
-- trocar arquivos fixados entre a verificação e o `exec`;
-- rodar um `tb` modificado;
-- montar um `.git/config` hostil num repositório que ele mesmo criou.
+- edit the user config;
+- rewrite local refs and make commits;
+- delete or edit `<state>`;
+- make a shallow clone;
+- rename the document to start over;
+- forge a TTY;
+- swap pinned files between the check and the `exec`;
+- run a modified `tb`;
+- set up a hostile `.git/config` in a repository it created itself.
 
-## Questões em aberto
+## Open Questions
 
-- Vale a pena manter cada mecanismo, dado que todos são contornáveis localmente? O spike R0 e o uso real do núcleo devem dizer quais atalhos aparecem na prática.
-- O gate estrito deveria exigir execução em outro usuário, numa VM ou em CI com credenciais próprias, em vez de defesas locais?
+- Is it worth keeping each mechanism, given that all of them can be bypassed locally? The R0 spike and real use of the core should tell which shortcuts show up in practice.
+- Should the strict gate require running under another user, in a VM or in CI with its own credentials, instead of local defenses?
 
-## Plano de Implementação Detalhado
+## Detailed Implementation Plan
 
-Ainda não definido. Esta spec só segue para revisão depois que o núcleo convergir e o R0 for concluído.
+Not defined yet. This spec only moves on to review after the core converges and R0 is completed.
 
-*Elaborado com base no padrão EGM*
+*Based on the EGM pattern*

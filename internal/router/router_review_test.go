@@ -31,7 +31,7 @@ func waitSummary(t *testing.T, ch chan *Summary, d time.Duration) *Summary {
 	}
 }
 
-// Finding 1: agente troca <ws>/.git por um repo com core.fsmonitor malicioso.
+// Finding 1: the agent swaps <ws>/.git for a repo with a malicious core.fsmonitor.
 func TestWorkspaceGitReplacedByAgentIsNeverExecuted(t *testing.T) {
 	root := newRepo(t)
 	st := ticket.Open(root)
@@ -72,13 +72,13 @@ func TestWorkspaceGitSymlinkIsRefused(t *testing.T) {
 	}
 }
 
-// Finding 2: cancel durante a execução + shutdown não ressuscita o ticket.
+// Finding 2: cancel during execution + shutdown does not resurrect the ticket.
 func TestCanceledWhileRunningStaysCanceledOnShutdown(t *testing.T) {
 	root := newRepo(t)
 	st := ticket.Open(root)
 	tk := mk(t, st, "longo")
 	ctx, cancel := context.WithCancel(context.Background())
-	// tick enorme: o watchdog não age; só o shutdown encontra o ticket cancelado
+	// huge tick: the watchdog does not act; only shutdown finds the canceled ticket
 	r := newRouter(t, root, func(o *Options) { o.AgentCmd = sh("sleep 30"); o.Tick = time.Hour })
 	ch := startRun(ctx, r)
 	waitFor(t, "running", func() bool { return get(t, st, tk.ID).Status == ticket.StatusRunning })
@@ -105,7 +105,7 @@ func TestCancelWhileRunningKillsAgentPromptly(t *testing.T) {
 	if _, err := st.Cancel(tk.ID); err != nil {
 		t.Fatal(err)
 	}
-	sum := waitSummary(t, ch, 15*time.Second) // sleep 30 só termina cedo se o agente for morto
+	sum := waitSummary(t, ch, 15*time.Second) // sleep 30 only ends early if the agent is killed
 	if got := get(t, st, tk.ID); got.Status != ticket.StatusCanceled {
 		t.Fatalf("esperava canceled: %+v", got)
 	}
@@ -114,7 +114,7 @@ func TestCancelWhileRunningKillsAgentPromptly(t *testing.T) {
 	}
 }
 
-// Finding 4: motivo tardio não descarta resultado de agente que já saiu com 0.
+// Finding 4: a late reason does not drop the result of an agent that already exited 0.
 func TestLateReasonDoesNotDiscardFinishedWork(t *testing.T) {
 	for _, reason := range []string{reasonStuck, reasonKilled, reasonShutdown} {
 		t.Run(reason, func(t *testing.T) {
@@ -139,7 +139,7 @@ func TestLateReasonDoesNotDiscardFinishedWork(t *testing.T) {
 			}
 		})
 	}
-	// com cancelamento real, o motivo continua valendo
+	// with a real cancellation, the reason still applies
 	root := newRepo(t)
 	st := ticket.Open(root)
 	tk := mk(t, st, "x")
@@ -158,7 +158,7 @@ func TestLateReasonDoesNotDiscardFinishedWork(t *testing.T) {
 	}
 }
 
-// Finding 5: singleton por flock.
+// Finding 5: flock singleton.
 func TestSecondRunFailsWhileFirstActive(t *testing.T) {
 	root := newRepo(t)
 	st := ticket.Open(root)
@@ -174,7 +174,7 @@ func TestSecondRunFailsWhileFirstActive(t *testing.T) {
 	}
 	cancel()
 	waitSummary(t, ch, 20*time.Second)
-	// lock liberado ao terminar
+	// lock released on exit
 	r3 := newRouter(t, root, nil)
 	if _, err := r3.Run(context.Background()); err != nil {
 		t.Fatalf("lock deveria ter sido liberado: %v", err)
@@ -237,7 +237,7 @@ func TestMultiDepBaseNoAlertWhenMerged(t *testing.T) {
 	}
 }
 
-// Finding 13: log 0600.
+// Finding 13: 0600 log.
 func TestAgentLogIs0600(t *testing.T) {
 	root := newRepo(t)
 	st := ticket.Open(root)

@@ -22,46 +22,47 @@ type Config struct {
 	ForbiddenPaths   []string
 	Timeout          time.Duration
 	AllowUnsandboxed bool
-	// Env, quando não nil, é o ambiente completo do processo filho (use
-	// execenv.Filter para remover segredos). nil mantém o comportamento
-	// anterior: o filho herda o ambiente do processo atual.
+	// Env, when non-nil, is the child's full environment (use execenv.Filter
+	// to strip secrets). nil keeps the previous behavior: the child inherits the
+	// current process environment.
 	Env []string
-	// ProcessGroup isola o filho num grupo de processos próprio e mata o grupo
-	// inteiro ao cancelar o contexto/timeout (usado pelo router/watchdog).
+	// ProcessGroup puts the child in its own process group and kills the whole
+	// group on context cancellation/timeout (used by the router/watchdog).
 	ProcessGroup bool
-	// Registry, quando não nil (só com ProcessGroup), rastreia o pid do filho e,
-	// após o agente terminar, espera o grupo esvaziar para que descendentes que
-	// escaparam (setsid/setpgid) apareçam como órfãos em Registry.Sweep. nil
-	// (padrão, `tb sandbox run`) mantém o comportamento anterior.
+	// Registry, when non-nil (only with ProcessGroup), tracks the child's pid and,
+	// after the agent exits, waits for the group to drain so descendants that
+	// escaped (setsid/setpgid) show up as orphans in Registry.Sweep. nil
+	// (default, `tb sandbox run`) keeps the previous behavior.
 	Registry *Registry
-	// GroupOwner identifica o dono do grupo (o ticket) no Registry: descendentes
-	// órfãos achados nesse grupo cujo ambiente aponte outro dono são tratados como
-	// escape (ver Registry.sweepLocked). Só vale com ProcessGroup e Registry.
+	// GroupOwner identifies the group's owner (the ticket) in the Registry:
+	// orphaned descendants found in this group whose environment names another
+	// owner are treated as an escape (see Registry.sweepLocked). Only applies with
+	// ProcessGroup and Registry.
 	GroupOwner string
-
-	// ReadOnlyWorkDir torna a regra do workdir somente leitura (padrão: leitura
-	// e escrita).
-	ReadOnlyWorkDir bool
-	// PrivateTmp, quando não vazio, é um diretório gravável que substitui a
-	// regra de escrita em os.TempDir() e é exportado como TMPDIR.
-	PrivateTmp string
-	// Home, quando não vazio, é um diretório gravável exportado como HOME e
-	// como base de XDG_CONFIG_HOME, XDG_CACHE_HOME e XDG_DATA_HOME. Sobrescreve
-	// os valores de Env.
-	Home string
-	// Path, quando não vazio, é exportado como PATH e sobrescreve Env.
-	Path string
-	// Stdin, quando não nil, é a entrada padrão do filho.
+	// Stdin, when non-nil, becomes the child's standard input (it survives the
+	// Landlock trampoline: syscall.Exec preserves descriptors).
 	Stdin io.Reader
-	// Stdout, quando não nil, recebe só o stdout do filho (o stderr continua
-	// em Result.Output). MaxStdoutBytes limita o que é repassado: o excedente é
-	// lido e descartado (o filho não trava no pipe) e Result.StdoutOverflow
-	// fica true. MaxStdoutBytes <= 0 usa MaxOutputBytes.
+
+	// ReadOnlyWorkDir makes the workdir rule read-only (default: read-write).
+	ReadOnlyWorkDir bool
+	// PrivateTmp, when non-empty, is a writable directory exported as TMPDIR.
+	PrivateTmp string
+	// Home, when non-empty, is a writable directory exported as HOME and used as
+	// the base of XDG_CONFIG_HOME, XDG_CACHE_HOME and XDG_DATA_HOME. It
+	// overrides the values in Env.
+	Home string
+	// Path, when non-empty, is exported as PATH and overrides Env.
+	Path string
+	// Stdout, when non-nil, receives only the child's stdout (stderr stays in
+	// Result.Output). MaxStdoutBytes caps what is forwarded: the excess is read
+	// and discarded, so the child never blocks on the pipe, and
+	// Result.StdoutOverflow becomes true. MaxStdoutBytes <= 0 uses
+	// MaxOutputBytes.
 	Stdout         io.Writer
 	MaxStdoutBytes int
-	// MinimalDev troca a leitura de /dev inteiro por regras só para /dev/null,
-	// /dev/zero, /dev/full, /dev/random e /dev/urandom (sem /dev/pts e
-	// /dev/shm).
+	// MinimalDev replaces read access to all of /dev with rules only for
+	// /dev/null, /dev/zero, /dev/full, /dev/random and /dev/urandom, so /dev/pts
+	// and /dev/shm stay closed.
 	MinimalDev bool
 }
 
@@ -82,13 +83,12 @@ type Result struct {
 	TimedOut  bool          `json:"timed_out"`
 	Canceled  bool          `json:"canceled,omitempty"`
 	Sandboxed bool          `json:"sandboxed"`
-	// StdoutOverflow indica que o stdout passou de MaxStdoutBytes (só com
+	// StdoutOverflow reports that stdout went past MaxStdoutBytes (only with
 	// Config.Stdout).
 	StdoutOverflow bool `json:"stdout_overflow,omitempty"`
 }
 
-func New(config Config) (*Sandbox, error) { //nolint:gocritic // API pública estável por valor
-
+func New(config Config) (*Sandbox, error) { //nolint:gocritic // stable public API passed by value
 	if config.WorkDir == "" {
 		return nil, errors.New("workdir obrigatório")
 	}
@@ -138,8 +138,9 @@ func (s *Sandbox) Run(ctx context.Context, command string, args ...string) (*Res
 }
 
 func (s *Sandbox) runPlain(ctx context.Context, bin string, args ...string) (*Result, error) {
-	cmd := exec.CommandContext(ctx, bin, args...) //nolint:gosec // sandbox invocado explicitamente pelo operador
+	cmd := exec.CommandContext(ctx, bin, args...) //nolint:gosec // sandbox explicitly invoked by the operator
 	cmd.Dir = s.config.WorkDir
+	cmd.Stdin = s.config.Stdin
 	if s.config.Env != nil || s.config.hasEnvOverrides() {
 		base := s.config.Env
 		if base == nil {
@@ -159,8 +160,9 @@ func (s *Sandbox) runIsolated(ctx context.Context, bin string, args ...string) (
 	if err != nil {
 		return nil, err
 	}
-	cmd := exec.CommandContext(ctx, self) //nolint:gosec // re-exec do próprio binário como trampolim Landlock
+	cmd := exec.CommandContext(ctx, self) //nolint:gosec // re-exec of our own binary as the Landlock trampoline
 	cmd.Dir = s.config.WorkDir
+	cmd.Stdin = s.config.Stdin
 	cmd.Env = env
 	return finishRun(ctx, cmd, true, &s.config)
 }
@@ -169,8 +171,8 @@ func (c *Config) hasEnvOverrides() bool {
 	return c.Home != "" || c.Path != "" || c.PrivateTmp != ""
 }
 
-// applyEnvOverrides devolve uma cópia de env com HOME/XDG_*, PATH e TMPDIR
-// substituídos pelos campos Home, Path e PrivateTmp (os que não estão vazios).
+// applyEnvOverrides returns a copy of env with HOME/XDG_*, PATH and TMPDIR
+// replaced by the non-empty Home, Path and PrivateTmp fields.
 func (c *Config) applyEnvOverrides(env []string) []string {
 	set := map[string]string{}
 	if c.Home != "" {
@@ -201,8 +203,8 @@ func (c *Config) applyEnvOverrides(env []string) []string {
 	return out
 }
 
-// limitedWriter repassa até max bytes para w e descarta o resto, sem devolver
-// erro (o filho nunca trava no pipe).
+// limitedWriter forwards up to max bytes to w and discards the rest without
+// returning an error, so the child never blocks on the pipe.
 type limitedWriter struct {
 	mu       sync.Mutex
 	w        io.Writer
@@ -238,14 +240,14 @@ func (l *limitedWriter) Overflow() bool {
 	return l.overflow
 }
 
-// MaxOutputBytes limita a saída do filho mantida em memória/log: só o final
-// (tail) é preservado.
+// MaxOutputBytes caps the child output kept in memory/log: only the tail is
+// preserved.
 const MaxOutputBytes = 1 << 20
 
 const truncatedMarker = "[... saída anterior truncada; mantidos os últimos 1 MiB ...]\n"
 
-// tailBuffer é um io.Writer seguro entre goroutines que guarda só os últimos
-// max bytes escritos. Nunca devolve erro (não aplica backpressure ao filho).
+// tailBuffer is a goroutine-safe io.Writer that keeps only the last max bytes
+// written. It never returns an error (no backpressure on the child).
 type tailBuffer struct {
 	mu        sync.Mutex
 	max       int
@@ -283,8 +285,8 @@ func finishRun(ctx context.Context, cmd *exec.Cmd, sandboxed bool, cfg *Config) 
 	group, reg, owner := cfg.ProcessGroup, cfg.Registry, cfg.GroupOwner
 	if group {
 		killProcessGroup(cmd)
-		// Pdeathsig (linux) vale para a thread que faz o fork: mantém esta
-		// goroutine presa à mesma thread até o filho terminar.
+		// Pdeathsig (linux) applies to the thread that forks: keep this goroutine
+		// pinned to the same thread until the child exits.
 		runtime.LockOSThread()
 		defer runtime.UnlockOSThread()
 	}
@@ -300,9 +302,6 @@ func finishRun(ctx context.Context, cmd *exec.Cmd, sandboxed bool, cfg *Config) 
 		stdout = &limitedWriter{w: cfg.Stdout, max: limit}
 		cmd.Stdout = stdout
 	}
-	if cfg.Stdin != nil {
-		cmd.Stdin = cfg.Stdin
-	}
 	start := time.Now()
 	var err error
 	if group && reg != nil {
@@ -311,8 +310,8 @@ func finishRun(ctx context.Context, cmd *exec.Cmd, sandboxed bool, cfg *Config) 
 		err = cmd.Run()
 	}
 	if group {
-		// Em qualquer caminho (sucesso, falha, cancelamento) nada do grupo pode
-		// sobreviver ao agente: netos em segundo plano são encerrados.
+		// On every path (success, failure, cancellation) nothing in the group may
+		// outlive the agent: background grandchildren are terminated.
 		reapProcessGroup(cmd)
 		if reg != nil && cmd.Process != nil {
 			settleGroup(reg, cmd.Process.Pid)
@@ -323,8 +322,8 @@ func finishRun(ctx context.Context, cmd *exec.Cmd, sandboxed bool, cfg *Config) 
 		res.StdoutOverflow = stdout.Overflow()
 	}
 
-	// Agente saiu com 0 mas deixou um filho segurando stdout/stderr: o Go devolve
-	// ErrWaitDelay. O agente terminou com sucesso; o grupo já foi encerrado acima.
+	// The agent exited 0 but left a child holding stdout/stderr: Go returns
+	// ErrWaitDelay. The agent succeeded; the group was already terminated above.
 	if err != nil && errors.Is(err, exec.ErrWaitDelay) && cmd.ProcessState != nil && cmd.ProcessState.Success() {
 		err = nil
 	}
@@ -374,12 +373,19 @@ func (s *Sandbox) ValidatePath(path string) error {
 	return fmt.Errorf("fora do escopo: %s", path)
 }
 
+// isSubpath reports whether path is a strict descendant of base (base itself
+// does not count). filepath.Rel results that climb up ("..", "../x") are
+// excluded; names that merely start with ".." (e.g. "..x") are legitimate
+// children.
 func isSubpath(path, base string) bool {
 	rel, err := filepath.Rel(base, path)
 	if err != nil {
 		return false
 	}
-	return rel != ".." && !filepath.IsAbs(rel) && rel != "."
+	if rel == "." || rel == ".." || filepath.IsAbs(rel) {
+		return false
+	}
+	return !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
 func landlockAvailable() bool {
@@ -390,15 +396,15 @@ func landlockAvailable() bool {
 	return ok
 }
 
-// landlockSupported é a sonda de Landlock usada por New. É uma variável para que
-// os testes simulem um host sem Landlock (ver OverrideLandlockProbe); em
-// produção é sempre CheckLandlockSupport.
+// landlockSupported is the Landlock probe used by New. It is a variable so
+// tests can simulate a host without Landlock (see OverrideLandlockProbe); in
+// production it is always CheckLandlockSupport.
 var landlockSupported = CheckLandlockSupport
 
-// OverrideLandlockProbe substitui a sonda de Landlock e devolve a função que a
-// restaura. SOMENTE para testes (do próprio pacote e de pacotes que precisam
-// exercitar o fail-closed, como o router): permite verificar que sem Landlock e
-// sem AllowUnsandboxed nada é executado, independentemente do kernel do CI.
+// OverrideLandlockProbe replaces the Landlock probe and returns a function that
+// restores it. Tests ONLY (this package's and packages that need to exercise
+// fail-closed, like the router): it verifies that without Landlock and without
+// AllowUnsandboxed nothing runs, regardless of the CI kernel.
 func OverrideLandlockProbe(fn func() (bool, int, error)) (restore func()) {
 	prev := landlockSupported
 	landlockSupported = fn

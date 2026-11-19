@@ -1,177 +1,177 @@
-🇧🇷 Português | [🇺🇸 English](../en/campo/cobra.md)
+🇺🇸 English | [🇧🇷 Português](../pt-BR/campo/cobra.md)
 
-# Estudo de campo: spf13/cobra
+# Field study: spf13/cobra
 
-Grupo: **sem instrumentação de agente de IA**. Trabalho apenas em clone local (`/tmp/target/cobra`). Nenhuma interação com o upstream (sem push, issue, PR ou comentário).
+Group: **without AI agent instrumentation**. Work only on local clone (`/tmp/target/cobra`). No interaction with upstream (no push, issue, PR, or comment).
 
-`tb` usado: binário local de `/agent/repos/toolbelt` (`make build`, versão `c8aae04` com ldflags).
-
----
-
-## Repositório
-
-| Campo | Valor |
-|-------|--------|
-| Nome | [spf13/cobra](https://github.com/spf13/cobra) |
-| Linguagem | Go (`go 1.15` no `go.mod`; CI testa 1.17–1.24) |
-| Tamanho | shallow clone ~1,3 MiB no disco; **36** arquivos `.go`; ~15–17 kLOC Go (wc nas fontes) |
-| Instrumentação AI existente | **Nenhuma** (`AGENTS.md`, `CLAUDE.md`, `.cursorrules`, Copilot, Windsurf, Aider: ausentes no tree) |
-| Toolchain | **Parcialmente ok**: `go test ./...` e `go vet` ok; `gofmt` ok; `golangci-lint` instalado via `go install` (script oficial falhou checksum); `make lint`/`richtest` dependem do linter; Docker/`addlicense` da CI **não** configurados; não rodei matriz multi-versão Go |
+`tb` used: local binary from `/agent/repos/toolbelt` (`make build`, version `c8aae04` with ldflags).
 
 ---
 
-## Tarefa escolhida
+## Repository
 
-| Campo | Valor |
+| Field | Value |
 |-------|--------|
-| O quê | Permitir `SetErrPrefix("")` (prefixo vazio, sem fallback para `"Error:"` e sem espaço leading na impressão) |
-| Por quê | Feature pequena, API clara, testes naturais; maintainer discutiu no thread |
+| Name | [spf13/cobra](https://github.com/spf13/cobra) |
+| Language | Go (`go 1.15` in `go.mod`; CI tests 1.17–1.24) |
+| Size | shallow clone ~1.3 MiB on disk; **36** `.go` files; ~15–17 kLOC Go (wc on sources) |
+| Existing AI instrumentation | **None** (`AGENTS.md`, `CLAUDE.md`, `.cursorrules`, Copilot, Windsurf, Aider: absent in the tree) |
+| Toolchain | **Partially ok**: `go test ./...` and `go vet` ok; `gofmt` ok; `golangci-lint` installed via `go install` (official script failed checksum); `make lint`/`richtest` depend on the linter; CI Docker/`addlicense` **not** configured; did not run multi-version Go matrix |
+
+---
+
+## Chosen task
+
+| Field | Value |
+|-------|--------|
+| What | Allow `SetErrPrefix("")` (empty prefix, no fallback to `"Error:"` and no leading space on print) |
+| Why | Small feature, clear API, natural tests; maintainer discussed in the thread |
 | Issue | https://github.com/spf13/cobra/issues/2226 |
-| Completou? | **Sim, só localmente** (commit `a6ef947` no clone; **não** enviado ao GitHub) |
-| Testes nativos | `go test ./...` → **PASS** (~0,2–1,1 s) |
-| Lint nativo | `golangci-lint run ./...` → **FAIL** por issue **pré-existente** em `completions.go` (`nolintlint`/gosec); mudança ErrPrefix não introduziu achados |
-| Build nativo | `go build ./...` → **PASS** no commit da tarefa |
+| Completed? | **Yes, locally only** (commit `a6ef947` on the clone; **not** sent to GitHub) |
+| Native tests | `go test ./...` → **PASS** (~0.2–1.1 s) |
+| Native lint | `golangci-lint run ./...` → **FAIL** due to **pre-existing** issue in `completions.go` (`nolintlint`/gosec); ErrPrefix change introduced no findings |
+| Native build | `go build ./...` → **PASS** on the task commit |
 
-Implementação: `errPrefix *string`, `printErrWithPrefix`, testes `TestEmptyErrPrefix` e `TestEmptyErrPrefixOnSubcommand`.
-
----
-
-## Uso do tb por comando
-
-| comando | resultado | ajudou/atrapalhou/neutro | evidência |
-|---------|-----------|--------------------------|-----------|
-| `tb init` | ok (0,006 s); cria `.toolbelt/config.yaml` mode **0600**, dirs `vault/`, `bench/`, `logs/` | **ajudou** (bootstrap mínimo) | `verify.test_cmd: go test ./...` útil; vault vazio; sem `AGENTS.md`/lint/build |
-| `tb version` | com `make build`: `c8aae04`; `go build` sem ldflags: `0.1.0-dev`, **commit/built unknown** | neutro | confirma metadados só com ldflags |
-| `tb mem init/list/add/check` | init gera 3 invariantes; add posicional ok; `--type/--title` **rejeitados** | **misto** | docs `cli.md` desatualizados vs CLI real (`tb mem add <regra>`) |
-| ticket/`rd.md` + Scope | **não há** `tb ticket`; Scope só na **mesma linha** (`Scope: a, b`); lista Markdown captura só o 1º bullet (`- command.go`) | **atrapalhou** | `## Scope` + bullets → `scope-missing` ou scope parcial; `command_test.go`/`rd.md` marcados fora do escopo |
-| `tb graph --enable index/stats/search/rebuild` | index 467 nós / 2108 arestas (~0,03–0,05 s); search achou `ErrPrefix`/`SetErrPrefix` | **ajudou** | localizou API rápido; sem `--enable`/`TB_GRAPH=on` falha (ADR-011) |
-| `tb graph callers/deps/impact` | exigem `--function` / `--file` (args posicionais falham); impact útil mas ruidoso em `command.go` | **misto** | `impact` sem `--file` → exit 1; callers devolveu só o próprio nó |
-| `tb verify run` (tests) | PASS no diff da tarefa (~0,2–0,5 s); só roda `test_cmd` (+ hidden); **ignora** `lint_cmd`/`build_cmd` no YAML | **misto** | com `go test ./standalone/...` → PASS enquanto `go build ./...` quebrava (`broken_syntax.go`) |
-| `tb verify --ruler visual` | sem manifesto: PASS `skipped=true`; com manifesto e ref ausente: PASS **`skipped=false`** no relatório, screen `skipped=true` | **atrapalhou** | falso “não skipped” no agregador |
-| `tb review` | fix-only limpo (findings `[]`); menção textual a `tests/hidden`/`thresholds.yaml` no diff → **FP critical** | **misto** | goldfish heurístico por substring, não por path tocado |
-| `tb drift` | ok com `Scope: command.go, command_test.go, rd.md`; globs simples `command*.go` **funcionam** | **misto** | UX de Scope frágil; globs não são o pior problema |
-| `tb guard check` | hardcoded `tests/hidden/*`, `benchmarks/*`, `.toolbelt/thresholds.yaml`; **não lê** `.toolbelt/guard.yaml` | **misto** | proteção custom em `command.go` no YAML → **zero** violations |
-| `tb verify` + path hardcoded | diff tocando `.toolbelt/thresholds.yaml` → verify **FAIL** imediato (iterações 0), sem rodar testes | **atrapalhou** (no fluxo de probe) | aborta mesmo com `guard.yaml` custom |
-| `tb bench run/list/compare` | list ok; `--fake` ok **sem** `--fake-config`; `default_agent` no YAML **ignorado**; `compare` só tem `--fake`, **sem** `--agent` | **misto** | `Error: --agent ou --fake é obrigatório` com `default_agent` setado |
-| `tb mcp` | stdio JSON-RPC ok; `tools/list` expõe graph/version/echo/env/run | **ajudou** (smoke) | stateless; graph tools exigem `TB_GRAPH=on` no processo servidor (não exercitado além do list) |
-| checks nativos vs tb | tb verify PASS ≠ lint CI; narrow `test_cmd` esconde build break | **atrapalhou** se o agente confiar só no tb | ver seção “O que o tb pegou…” |
+Implementation: `errPrefix *string`, `printErrWithPrefix`, tests `TestEmptyErrPrefix` and `TestEmptyErrPrefixOnSubcommand`.
 
 ---
 
-## Problemas conhecidos
+## tb usage by command
 
-| problema | confirmado/refutado/não testado | evidência |
-|----------|----------------------------------|-----------|
-| `bench compare` lacks `--agent` | **confirmado** | `tb bench compare --help` lista `--fake`, não `--agent` |
-| `guard.yaml` ignored | **confirmado** | YAML protegia `command.go`; `guard check` no diff ErrPrefix → `violations: null` |
-| outdated CLI docs | **confirmado** | `docs/cli.md` descreve `tb mem add --type/--title` e `tb ticket`; CLI: add posicional; `ticket` inexistente |
-| version shows `unknown` | **confirmado** (sem ldflags) | `go build -o /tmp/tb-nolflags` → `commit: unknown`, `built: unknown` |
-| config files created 0600 | **confirmado** | `.toolbelt/config.yaml` e `invariants.yaml` → `-rw-------` |
-| visual ruler reports `skipped=false` when skipping | **confirmado** | manifesto presente, ref ausente: top-level `"skipped": false`, screen `"skipped": true` / `"referência ausente"` |
-| `default_agent` ignored | **confirmado** | YAML `default_agent: echo AGENT_RAN {prompt}` → ainda exige `--agent` ou `--fake` |
-| guard aborts verify when diff touches hardcoded config path | **confirmado** | toque em `.toolbelt/thresholds.yaml` → verify FAIL, `iterations: 0` |
-| default fake agent needs `--fake-config` | **refutado** | `tb bench run --fake ... --task bugfix-go` PASS sem `--fake-config` |
-| `mem add` positional | **confirmado** | help: `tb mem add <regra>`; `--type` → `unknown flag` |
-| Drift/Scope need literal paths (no globs) | **parcialmente refutado** | `Scope: command*.go` aceitou os `.go`; falha real: listas Markdown multilinha / parser de uma linha |
-| `graph impact` needs `--file` | **confirmado** | sem flag → `Error: --file é obrigatório` |
-| review false positives on tests/hidden invariant | **confirmado** | comentário `// note about tests/hidden thresholds.yaml` → 2 findings critical sem alterar esses paths |
-| verify runs only partial checks / misses build errors | **confirmado** | `test_cmd=go test ./standalone/...` PASS com `broken_syntax.go` no módulo; `go build ./...` FAIL |
-| tb não empurra completar a tarefa toda | **confirmado (qualitativo)** | verify PASS com testes bastou; tb não cobrou lint/`golangci`, build dedicado, docs da API nem checklist de aceite; agente precisou lembrar checks nativos à parte |
+| command | result | helped/hindered/neutral | evidence |
+|---------|--------|-------------------------|----------|
+| `tb init` | ok (0.006 s); creates `.toolbelt/config.yaml` mode **0600**, dirs `vault/`, `bench/`, `logs/` | **helped** (minimal bootstrap) | `verify.test_cmd: go test ./...` useful; empty vault; no `AGENTS.md`/lint/build |
+| `tb version` | with `make build`: `c8aae04`; `go build` without ldflags: `0.1.0-dev`, **commit/built unknown** | neutral | confirms metadata only with ldflags |
+| `tb mem init/list/add/check` | init generates 3 invariants; positional add ok; `--type/--title` **rejected** | **mixed** | `cli.md` docs outdated vs real CLI (`tb mem add <regra>`) |
+| ticket/`rd.md` + Scope | **no** `tb ticket`; Scope only on the **same line** (`Scope: a, b`); Markdown list captures only the 1st bullet (`- command.go`) | **hindered** | `## Scope` + bullets → `scope-missing` or partial scope; `command_test.go`/`rd.md` marked out of scope |
+| `tb graph --enable index/stats/search/rebuild` | index 467 nodes / 2108 edges (~0.03–0.05 s); search found `ErrPrefix`/`SetErrPrefix` | **helped** | located API quickly; without `--enable`/`TB_GRAPH=on` fails (ADR-011) |
+| `tb graph callers/deps/impact` | require `--function` / `--file` (positional args fail); impact useful but noisy on `command.go` | **mixed** | `impact` without `--file` → exit 1; callers returned only the node itself |
+| `tb verify run` (tests) | PASS on task diff (~0.2–0.5 s); only runs `test_cmd` (+ hidden); **ignores** YAML `lint_cmd`/`build_cmd` | **mixed** | with `go test ./standalone/...` → PASS while `go build ./...` broke (`broken_syntax.go`) |
+| `tb verify --ruler visual` | without manifesto: PASS `skipped=true`; with manifesto and missing ref: PASS **`skipped=false`** in report, screen `skipped=true` | **hindered** | false “not skipped” in the aggregator |
+| `tb review` | clean fix-only (findings `[]`); textual mention of `tests/hidden`/`thresholds.yaml` in the diff → **FP critical** | **mixed** | goldfish heuristic by substring, not by touched path |
+| `tb drift` | ok with `Scope: command.go, command_test.go, rd.md`; simple globs `command*.go` **work** | **mixed** | fragile Scope UX; globs are not the worst problem |
+| `tb guard check` | hardcoded `tests/hidden/*`, `benchmarks/*`, `.toolbelt/thresholds.yaml`; **does not read** `.toolbelt/guard.yaml` | **mixed** | custom protection of `command.go` in YAML → **zero** violations |
+| `tb verify` + hardcoded path | diff touching `.toolbelt/thresholds.yaml` → verify **FAIL** immediately (iterations 0), without running tests | **hindered** (in probe flow) | aborts even with custom `guard.yaml` |
+| `tb bench run/list/compare` | list ok; `--fake` ok **without** `--fake-config`; YAML `default_agent` **ignored**; `compare` only has `--fake`, **no** `--agent` | **mixed** | `Error: --agent ou --fake é obrigatório` with `default_agent` set |
+| `tb mcp` | stdio JSON-RPC ok; `tools/list` exposes graph/version/echo/env/run | **helped** (smoke) | stateless; graph tools require `TB_GRAPH=on` in the server process (not exercised beyond list) |
+| native checks vs tb | tb verify PASS ≠ CI lint; narrow `test_cmd` hides build break | **hindered** if the agent trusts only tb | see section “What tb caught…” |
 
 ---
 
-## Problemas novos
+## Known problems
 
-### P1 — Parser de Scope ignora lista Markdown e engole o primeiro bullet via `\s`/newline
+| problem | confirmed/refuted/not tested | evidence |
+|---------|------------------------------|----------|
+| `bench compare` lacks `--agent` | **confirmed** | `tb bench compare --help` lists `--fake`, not `--agent` |
+| `guard.yaml` ignored | **confirmed** | YAML protected `command.go`; `guard check` on ErrPrefix diff → `violations: null` |
+| outdated CLI docs | **confirmed** | `docs/cli.md` describes `tb mem add --type/--title` and `tb ticket`; CLI: positional add; `ticket` nonexistent |
+| version shows `unknown` | **confirmed** (without ldflags) | `go build -o /tmp/tb-nolflags` → `commit: unknown`, `built: unknown` |
+| config files created 0600 | **confirmed** | `.toolbelt/config.yaml` and `invariants.yaml` → `-rw-------` |
+| visual ruler reports `skipped=false` when skipping | **confirmed** | manifesto present, ref missing: top-level `"skipped": false`, screen `"skipped": true` / `"referência ausente"` |
+| `default_agent` ignored | **confirmed** | YAML `default_agent: echo AGENT_RAN {prompt}` → still requires `--agent` or `--fake` |
+| guard aborts verify when diff touches hardcoded config path | **confirmed** | touch `.toolbelt/thresholds.yaml` → verify FAIL, `iterations: 0` |
+| default fake agent needs `--fake-config` | **refuted** | `tb bench run --fake ... --task bugfix-go` PASS without `--fake-config` |
+| `mem add` positional | **confirmed** | help: `tb mem add <regra>`; `--type` → `unknown flag` |
+| Drift/Scope need literal paths (no globs) | **partially refuted** | `Scope: command*.go` accepted the `.go` files; real failure: multiline Markdown lists / one-line parser |
+| `graph impact` needs `--file` | **confirmed** | without flag → `Error: --file é obrigatório` |
+| review false positives on tests/hidden invariant | **confirmed** | comment `// note about tests/hidden thresholds.yaml` → 2 critical findings without altering those paths |
+| verify runs only partial checks / misses build errors | **confirmed** | `test_cmd=go test ./standalone/...` PASS with `broken_syntax.go` in the module; `go build ./...` FAIL |
+| tb does not push completing the whole task | **confirmed (qualitative)** | verify PASS with tests was enough; tb did not demand lint/`golangci`, dedicated build, API docs, or acceptance checklist; agent had to remember native checks separately |
 
-- **Repro**: `rd.md` com
+---
+
+## New problems
+
+### P1 — Scope parser ignores Markdown list and swallows the first bullet via `\s`/newline
+
+- **Repro**: `rd.md` with
   ```
   Scope:
   - command.go
   - command_test.go
   ```
-  depois `tb drift --ticket rd.md --base <base> --head HEAD`
-- **Esperado**: scope = ambos os arquivos (ou erro claro de formato)
-- **Atual**: regex `(?mi)^(?:scope|escopo)\s*:\s*(.+)$` faz `\s*` cruzar newline; captura `- command.go`; `splitList` vira `["-", "command.go"]`; `command_test.go` sai como out_of_scope
+  then `tb drift --ticket rd.md --base <base> --head HEAD`
+- **Expected**: scope = both files (or clear format error)
+- **Actual**: regex `(?mi)^(?:scope|escopo)\s*:\s*(.+)$` lets `\s*` cross newline; captures `- command.go`; `splitList` becomes `["-", "command.go"]`; `command_test.go` comes out as out_of_scope
 
-### P2 — `tb init` não detecta lint/build do Makefile nem gera guia de agente
+### P2 — `tb init` does not detect Makefile lint/build nor generate an agent guide
 
-- **Repro**: `tb init` em cobra (tem `Makefile` com `test`/`lint`/`fmt`)
-- **Esperado**: pelo menos sugerir `golangci-lint run` / `make test`, e/ou `AGENTS.md` mínimo
-- **Atual**: só `verify.test_cmd: go test ./...`; vault vazio; sem lint/build; `lint_cmd`/`build_cmd` manuais no YAML são **ignorados** pelo `verify`
+- **Repro**: `tb init` on cobra (has `Makefile` with `test`/`lint`/`fmt`)
+- **Expected**: at least suggest `golangci-lint run` / `make test`, and/or minimal `AGENTS.md`
+- **Actual**: only `verify.test_cmd: go test ./...`; empty vault; no lint/build; manual YAML `lint_cmd`/`build_cmd` are **ignored** by `verify`
 
-### P3 — `graph callers` / args posicionais inconsistentes com a UX de search
+### P3 — `graph callers` / positional args inconsistent with search UX
 
 - **Repro**: `tb graph --enable callers ErrPrefix` vs `tb graph --enable search ErrPrefix`
-- **Esperado**: mesma convenção posicional ou mensagem que cite a flag
-- **Atual**: search aceita query posicional; callers/deps/impact exigem flags e falham de forma fácil de confundir com “grafo vazio”
+- **Expected**: same positional convention or a message that cites the flag
+- **Actual**: search accepts positional query; callers/deps/impact require flags and fail in a way easy to confuse with “empty graph”
 
-### P3 — Campos extras em `config.yaml` (`lint_cmd`, `build_cmd`) silenciosamente inertes
+### P3 — Extra fields in `config.yaml` (`lint_cmd`, `build_cmd`) silently inert
 
-- **Repro**: gravar `verify.lint_cmd` / `verify.build_cmd` e rodar `tb verify run`
-- **Esperado**: usar, rejeitar schema, ou avisar
-- **Atual**: verify só executa test/hidden; PASS sem lint
-
----
-
-## O que o tb pegou e o que deixou passar
-
-**Pegou**
-
-- Localização da API ErrPrefix via `graph search`
-- Drift quando Scope estava bem formatado na mesma linha
-- Guard em paths hardcoded (`thresholds.yaml`, `tests/hidden/*`)
-- Falha de `go test ./...` / build quebrado quando o `test_cmd` cobria o pacote
-- MCP sobe e lista tools
-
-**Deixou passar / não cobriu**
-
-- Issue pré-existente do `golangci-lint` (verify não roda lint)
-- Build quebrado se `test_cmd` for estreito (`./standalone/...`)
-- Proteções declaradas em `guard.yaml` do usuário
-- Completude “nível maintainer” (docs públicas da issue, changelog, multi-Go) — nenhum nudge
-- Falso positivo de review por substring `tests/hidden` / `thresholds.yaml` no texto do diff
+- **Repro**: write `verify.lint_cmd` / `verify.build_cmd` and run `tb verify run`
+- **Expected**: use, reject schema, or warn
+- **Actual**: verify only runs test/hidden; PASS without lint
 
 ---
 
-## Interação com instrumentação existente / onboarding
+## What tb caught and what it let slip
 
-Repo **sem** instrumentação AI. Avaliação do bootstrap do zero:
+**Caught**
 
-| Artefato | Gerado? | Qualidade |
-|----------|---------|-----------|
-| `.toolbelt/config.yaml` | sim | defaults razoáveis para Go (`go test ./...`); graph languages/frameworks genéricos demais; `default_agent: ""`; hidden tests apontam para path inexistente até o agente criar |
-| `.toolbelt/invariants.yaml` (via `mem init`) | sim | anti-cheat genérico (`tests/hidden`, `thresholds.yaml`) — úteis, mas geram FPs se o texto aparecer no diff |
-| `.toolbelt/vault/` | dir vazio | sem notas de domínio Cobra |
-| `AGENTS.md` / skills / Makefile-aware | **não** | falta o principal para repo sem instrumentação |
-| Detecção automática test/lint/build | **parcial** | só chute `go test ./...`; não leu `Makefile`/`CI` |
+- Located ErrPrefix API via `graph search`
+- Drift when Scope was well formatted on the same line
+- Guard on hardcoded paths (`thresholds.yaml`, `tests/hidden/*`)
+- Failure of `go test ./...` / broken build when `test_cmd` covered the package
+- MCP starts and lists tools
 
-Conclusão: onboarding **insuficiente** para um repo “nu”; o agente ainda precisa inventar ticket, Scope na sintaxe certa, e a suíte completa de qualidade.
+**Let slip / did not cover**
 
----
-
-## Sugestões de melhoria
-
-1. **[P0][review/drift]** Aceitar Scope em lista Markdown / YAML frontmatter multi-item; rejeitar bullets virando token `"-"` — área: `internal/review`  
-2. **[P0][verify]** Honrar `lint_cmd`/`build_cmd` (ou schema estrito + warning); default: detectar `Makefile`/workflow CI — área: `verify` + `init`  
-3. **[P1][guard]** Carregar `.toolbelt/guard.yaml`; não abortar verify só por path hardcoded sem mandate — área: `guard`/`verify`  
-4. **[P1][init/mem]** Gerar `AGENTS.md` + checklist (test/lint/build/Scope) e alinhar `docs/cli.md` ao CLI real — área: `init`, docs  
-5. **[P1][verify/visual]** Relatório agregador: `skipped=true` se todas as screens skipparam — área: `internal/verify/visual.go`  
-6. **[P2][review]** Matching de invariantes por path tocado, não substring no diff — área: `review.suggestsViolation`  
-7. **[P2][bench]** Respeitar `bench.default_agent`; adicionar `--agent` em `bench compare` — área: `bench`  
-8. **[P2][graph]** Unificar args posicionais (`callers`/`deps`/`impact`) com `search` — área: `graph` CLI  
-9. **[P3][version/config]** Documentar ldflags no README; permissões 0644 para config não-secretos em clone compartilhado — área: build/`init`
+- Pre-existing `golangci-lint` issue (verify does not run lint)
+- Broken build if `test_cmd` is narrow (`./standalone/...`)
+- Protections declared in user `guard.yaml`
+- “Maintainer-level” completeness (public issue docs, changelog, multi-Go) — no nudge
+- Review false positive from substring `tests/hidden` / `thresholds.yaml` in the diff text
 
 ---
 
-## Métricas
+## Interaction with existing instrumentation / onboarding
 
-| métrica | valor |
-|---------|--------|
-| Wall time (tb evidence log birth→last) | ~**3,6 min** (20:44:44 → 20:48:19 UTC); estudo completo incl. clone/build/lint install ~**6–8 min** |
-| Soma tempos medidos das invocações tb | **~3,32 s** |
-| Invocações tb registradas | **64** |
-| Invocações com exit ≠ 0 | **19** (maioria probes de falha esperada / known issues; não crashes) |
-| Crashes do tb | **0** observados |
-| Commits locais no clone cobra (tarefa) | 1 funcional (`fix: allow empty ErrPrefix`) + commits de probe depois descartáveis |
-| Interações com GitHub do alvo | **0** |
+Repo **without** AI instrumentation. From-scratch bootstrap evaluation:
+
+| Artifact | Generated? | Quality |
+|----------|------------|---------|
+| `.toolbelt/config.yaml` | yes | reasonable Go defaults (`go test ./...`); graph languages/frameworks too generic; `default_agent: ""`; hidden tests point to nonexistent path until the agent creates it |
+| `.toolbelt/invariants.yaml` (via `mem init`) | yes | generic anti-cheat (`tests/hidden`, `thresholds.yaml`) — useful, but produce FPs if the text appears in the diff |
+| `.toolbelt/vault/` | empty dir | no Cobra domain notes |
+| `AGENTS.md` / skills / Makefile-aware | **no** | missing the main thing for a repo without instrumentation |
+| Automatic test/lint/build detection | **partial** | only guesses `go test ./...`; did not read `Makefile`/`CI` |
+
+Conclusion: onboarding **insufficient** for a “bare” repo; the agent still needs to invent ticket, Scope in the right syntax, and the full quality suite.
+
+---
+
+## Improvement suggestions
+
+1. **[P0][review/drift]** Accept Scope as Markdown list / multi-item YAML frontmatter; reject bullets becoming token `"-"` — area: `internal/review`  
+2. **[P0][verify]** Honor `lint_cmd`/`build_cmd` (or strict schema + warning); default: detect `Makefile`/CI workflow — area: `verify` + `init`  
+3. **[P1][guard]** Load `.toolbelt/guard.yaml`; do not abort verify only for hardcoded path without mandate — area: `guard`/`verify`  
+4. **[P1][init/mem]** Generate `AGENTS.md` + checklist (test/lint/build/Scope) and align `docs/cli.md` with real CLI — area: `init`, docs  
+5. **[P1][verify/visual]** Aggregator report: `skipped=true` if all screens skipped — area: `internal/verify/visual.go`  
+6. **[P2][review]** Match invariants by touched path, not substring in the diff — area: `review.suggestsViolation`  
+7. **[P2][bench]** Respect `bench.default_agent`; add `--agent` to `bench compare` — area: `bench`  
+8. **[P2][graph]** Unify positional args (`callers`/`deps`/`impact`) with `search` — area: `graph` CLI  
+9. **[P3][version/config]** Document ldflags in README; 0644 permissions for non-secret config in shared clone — area: build/`init`
+
+---
+
+## Metrics
+
+| metric | value |
+|--------|--------|
+| Wall time (tb evidence log birth→last) | ~**3.6 min** (20:44:44 → 20:48:19 UTC); full study incl. clone/build/lint install ~**6–8 min** |
+| Sum of measured tb invocation times | **~3.32 s** |
+| Recorded tb invocations | **64** |
+| Invocations with exit ≠ 0 | **19** (mostly expected failure probes / known issues; not crashes) |
+| tb crashes | **0** observed |
+| Local commits on cobra clone (task) | 1 functional (`fix: allow empty ErrPrefix`) + later discardable probe commits |
+| Interactions with target GitHub | **0** |

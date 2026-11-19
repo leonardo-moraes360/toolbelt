@@ -1,46 +1,48 @@
-🇧🇷 Português | [🇺🇸 English](../en/adr/013-barramento-multi-vendor.md)
+🇺🇸 English | [🇧🇷 Português](../pt-BR/adr/013-barramento-multi-vendor.md)
 
-# ADR-013: Barramento Local Multi-Vendor de Agentes (`tb bus`)
+# ADR-013: Local Multi-Vendor Agent Bus (`tb bus`)
 
 ## Status
 
 proposed
 
-## Contexto
+Implementation (v0.0.5): B0 and B1 delivered; B3 partial (`tb bus run` with `exec` and `harness` adapters; the `notify` adapter and `tb bus discover` do not exist yet); B2 and B4 not started. Status stays `proposed` until the success metrics are measured.
 
-O [ADR-002](002-mcp-a2a-protocolos.md) escolheu MCP para agente ↔ ferramenta e A2A sobre JSON-RPC 2.0 para agente ↔ agente, mas não definiu **como** agentes de vendors diferentes (Claude Code, Codex, Grok, ...) se encontram, se autenticam e trocam mensagens na mesma máquina. O [ADR-009](009-router-e-workers.md) define Ticket/Mandate/Board/Watchdog, e a Fase 3 (em andamento) implementa `tb router run` como scheduler **em primeiro plano** que executa um `router.agent_cmd` de uso único por ticket, em worktree própria e dentro do sandbox. Esse modelo cobre workers efêmeros do mesmo repositório, mas não cobre:
+## Context
 
-1. **Agentes persistentes de outros vendors**, com sessão e contexto próprios, que o usuário quer pôr para colaborar numa tarefa grande.
-2. **Conversa a2a** além de "recebe ticket, devolve resultado": perguntas, status, review cruzado.
-3. **Presença**: saber quem está disponível, em que papel, com que capacidade e custo.
+[ADR-002](002-mcp-a2a-protocolos.md) chose MCP for agent ↔ tool and A2A over JSON-RPC 2.0 for agent ↔ agent, but did not define **how** agents from different vendors (Claude Code, Codex, Grok, ...) find each other, authenticate and exchange messages on the same machine. [ADR-009](009-router-e-workers.md) defines Ticket/Mandate/Board/Watchdog, and Phase 3 (delivered in v0.0.4) implements `tb router run` as a **foreground** scheduler that runs a single-use `router.agent_cmd` per ticket, in its own worktree and inside the sandbox. That model covers ephemeral workers within one repository, but does not cover:
 
-O problema central é que **agente de vendor não é daemon**. Claude Code, Codex e apps desktop só agem dentro de um turno; nenhum fica escutando socket. Se o próprio LLM fizer o loop de espera (`bus_recv` → vazio → `bus_recv`):
+1. **Persistent agents from other vendors**, with their own session and context, that the user wants to collaborate on a large task.
+2. **a2a conversation** beyond "receive ticket, return result": questions, status, cross-review.
+3. **Presence**: knowing who is available, in which role, with which capability and cost.
 
-- cada poll vazio é um passo do modelo remoto sobre o contexto inteiro (cache read + output);
-- clientes cortam o turno após N chamadas de ferramenta ou por timeout de tool call;
-- quando o turno acaba, o agente fica parado e as mensagens acumulam sem ninguém para acordá-lo.
+The core problem is that **a vendor agent is not a daemon**. Claude Code, Codex and desktop apps only act inside a turn; none of them listens on a socket. If the LLM itself runs the wait loop (`bus_recv` → empty → `bus_recv`):
 
-Investigação de campo com um app desktop somente GUI (Grok Bot 1.1.0, Electron): sem API local, sem porta de debug, deep links só para callback de OAuth; porém o app é **cliente MCP**. Ou seja: há apps que conseguem chamar ferramentas do `tb`, mas que o `tb` não consegue acordar.
+- every empty poll is a remote model step over the whole context (cache read + output);
+- clients cut the turn after N tool calls or on tool-call timeout;
+- once the turn ends the agent stays idle and messages pile up with nobody to wake it.
 
-Restrições herdadas (invariantes do projeto):
+Field investigation with a GUI-only desktop app (Grok Bot 1.1.0, Electron): no local API, no debug port, deep links only for OAuth callbacks; however, the app is an **MCP client**. In other words: some apps can call `tb` tools, but `tb` cannot wake them.
 
-- `tb` é local: nenhum comando do barramento fala com rede.
-- Sandbox fail-closed: sem Landlock, recusa executar.
-- Funcionalidades caras ficam sob demanda (como `TB_GRAPH`), desligadas por padrão.
-- Segredos nunca aparecem em logs ou prompts.
+Inherited constraints (project invariants):
 
-## Decisão
+- `tb` is local: no bus command talks to the network.
+- Sandbox is fail-closed: without Landlock it refuses to run.
+- Expensive features are on demand (like `TB_GRAPH`), off by default.
+- Secrets never appear in logs or prompts.
 
-Criar o **barramento** (`tb bus`): camada de transporte, presença e despertar entre agentes locais de qualquer vendor, sobre a qual o Router/Board da Fase 3 pode operar depois. Os componentes são:
+## Decision
 
-1. **Store**: SQLite em WAL (`.toolbelt/bus.db`), log durável de mensagens, sem daemon na v1.
-2. **Duas portas de entrada para o mesmo store**: CLI `tb bus ...` (qualquer agente com shell) e ferramentas MCP `bus_*` no `tb mcp` (clientes MCP).
-3. **Dois modos de entrada**: ativação direta (v1) e introspecção (posterior).
-4. **Harness por agente** (`tb bus run`): processo determinístico, dono do loop de espera. O LLM só é invocado quando há trabalho real.
+Create the **bus** (`tb bus`): a transport, presence and wake-up layer between local agents of any vendor, on top of which the Phase 3 Router/Board can later operate. Components:
 
-### 1. Protocolo (envelope)
+1. **Store**: SQLite in WAL mode (`.toolbelt/bus.db`), a durable message log, no daemon in v1.
+2. **Two entry points into the same store**: CLI `tb bus ...` (any agent with a shell) and MCP tools `bus_*` in `tb mcp` (MCP clients).
+3. **Two join modes**: direct activation (v1) and introspection (later).
+4. **Per-agent harness** (`tb bus run`): a deterministic process that owns the wait loop. The LLM is invoked only when there is real work.
 
-JSON-RPC 2.0, com primitivas inspiradas em A2A:
+### 1. Protocol (envelope)
+
+JSON-RPC 2.0, with A2A-inspired primitives:
 
 ```json
 {
@@ -62,208 +64,209 @@ JSON-RPC 2.0, com primitivas inspiradas em A2A:
 }
 ```
 
-- `id` é ULID; a ordem é garantida **por thread**, não globalmente.
-- Entrega **pelo menos uma vez**; o consumidor deduplica por `idempotency_key`.
-- O payload carrega **referências** (path, commit SHA, ID de ticket, símbolo do `tb graph`), não blobs. Cada mensagem se sustenta sozinha: não existe contexto oculto compartilhado entre vendors.
-- Denominador comum entre vendors: texto + JSON com schema versionado. Nenhum formato nativo de vendor.
+- `id` is a ULID; ordering is guaranteed **per thread**, not globally.
+- **At-least-once** delivery; consumers deduplicate by `idempotency_key`.
+- The payload carries **references** (path, commit SHA, ticket ID, `tb graph` symbol), not blobs. Each message stands on its own: there is no hidden context shared across vendors.
+- Lowest common denominator across vendors: text + JSON with a versioned schema. No vendor-native format.
 
-### 2. Modos de entrada
+### 2. Join modes
 
-#### Ativação direta (v1)
+#### Direct activation (v1)
 
-O usuário cria o canal e autoriza cada agente explicitamente:
+The user creates the channel and explicitly authorizes each agent:
 
 ```bash
 tb bus channel create feature-x --owner claude-main --ttl 2h
 # canal: feature-x  convite: K7Q2-9XMD (uso único por agente, expira em 10m)
 ```
 
-O usuário pede a cada agente: "entre no canal `feature-x`, convite `K7Q2-9XMD`, papel `worker`". O agente chama `tb bus join` (ou `bus_join` via MCP). A partir daí os agentes seguem sozinhos.
+The user asks each agent: "join channel `feature-x`, invite `K7Q2-9XMD`, role `worker`". The agent calls `tb bus join` (or `bus_join` via MCP). From then on the agents proceed on their own.
 
-O convite garante:
+The invite guarantees:
 
-- **consentimento explícito**: só entra quem o humano autorizou;
-- **resistência a injeção**: um agente que leu "entre no canal X" numa página ou mensagem não entra sem o código;
-- **papel fixado na entrada**: dono e workers são decididos pelo usuário, não negociados entre agentes.
+- **explicit consent**: only agents the human authorized can join;
+- **injection resistance**: an agent that read "join channel X" in a page or message cannot join without the code;
+- **role fixed at join**: owner and workers are decided by the user, not negotiated between agents.
 
-#### Introspecção (posterior)
+#### Introspection (later)
 
-`tb bus discover` monta um **catálogo** de agentes da máquina: binários de CLI no PATH e se têm modo headless/resume, clientes com config MCP, processos de apps em execução. O catálogo informa o que é possível, mas **não é consentimento nem canal**: entrar num canal continua exigindo convite. A introspecção só fecha o ciclo para agentes headless, que o harness consegue invocar.
+`tb bus discover` builds a **catalog** of the machine's agents: CLI binaries on PATH and whether they support headless/resume, clients with MCP config, running app processes. The catalog tells what is possible, but **it is neither consent nor a channel**: joining a channel still requires an invite. Introspection only closes the loop for headless agents, which the harness can invoke.
 
 ### 3. Handshake
 
-1. `join(channel, invite, agent_card)`. O **Agent Card** declara vendor, model, tier, context window, capabilities, tools, sandbox, `max_concurrency`, modo de despertar (`harness` | `notify` | `manual`) e session handle.
-2. O broker negocia a versão do protocolo (`v`) e devolve `agent_id`, lease token, intervalo de heartbeat e papel.
-3. Lease sem heartbeat expira. O Watchdog devolve ao Board os tickets do agente que perdeu o lease.
+1. `join(channel, invite, agent_card)`. The **Agent Card** declares vendor, model, tier, context window, capabilities, tools, sandbox, `max_concurrency`, wake mode (`harness` | `notify` | `manual`) and session handle.
+2. The broker negotiates the protocol version (`v`) and returns `agent_id`, lease token, heartbeat interval and role.
+3. A lease without heartbeat expires. The Watchdog returns the tickets of an agent that lost its lease to the Board.
 
-O broker aplica papel e mandato. A capacidade declarada no Agent Card **não é permissão**: nenhum agente eleva o próprio privilégio.
+The broker enforces role and mandate. Capability declared in the Agent Card **is not permission**: no agent escalates its own privileges.
 
-### 4. Harness por agente (`tb bus run`)
+### 4. Per-agent harness (`tb bus run`)
 
 ```bash
 tb bus run claude --channel feature-x --invite K7Q2-9XMD --role worker
 ```
 
-O harness é um processo Go, um por agente, dono do loop. Ele:
+The harness is a Go process, one per agent, that owns the loop. It:
 
-1. segura lease e heartbeat no lugar do agente;
-2. espera mensagens sem LLM (notify no store/socket local) — **zero tokens em espera**;
-3. responde o protocolo trivial a partir do estado: `ack`, status de ticket, "terminou?", dedupe;
-4. agrupa mensagens e aplica o **wake budget** (limite de despertares por janela), evitando agentes acordando uns aos outros em loop;
-5. quando chega trabalho real, monta um **wake packet** e invoca o vendor em modo headless, por exemplo:
+1. holds the lease and heartbeat on the agent's behalf;
+2. waits for messages without an LLM (notify on the local store/socket) — **zero tokens while waiting**;
+3. answers trivial protocol from state: `ack`, ticket status, "done yet?", dedupe;
+4. coalesces messages and applies the **wake budget** (max wake-ups per window), preventing agents from waking each other in a loop;
+5. when real work arrives, builds a **wake packet** and invokes the vendor in headless mode, for example:
    ```bash
    claude -p --resume <session> --output-format stream-json --mcp-config tb-bus.json
    ```
-6. lê o resultado estruturado, publica no barramento e volta a esperar.
+6. reads the structured result, publishes it on the bus and goes back to waiting.
 
-O `--resume` preserva afinidade de contexto e cache, como a entrega direta do ADR-009. O agente **nunca faz polling**; durante o turno ele pode usar `bus_send`/`bus_reply` via MCP.
+`--resume` keeps context and cache affinity, like ADR-009's direct delivery. The agent **never polls**; during its turn it can use `bus_send`/`bus_reply` via MCP.
 
-Camadas do harness:
+Harness layers:
 
-| Camada | Função | Custo | Padrão |
+| Layer | Role | Cost | Default |
 |---|---|---|---|
-| L0 determinística | lease, heartbeat, ack, status, coalescer, wake budget | zero | sempre ligada |
-| L1 RAG | wake packet = ticket + top-K da thread via FTS5 ([ADR-003](003-sqlite-fts5-grafo.md)) + IDs das mensagens originais | zero de LLM | ligada |
-| L2 ML local | triagem de mensagem ambígua, resumo de thread longa | CPU local | desligada (flag, como `TB_GRAPH`) |
+| L0 deterministic | lease, heartbeat, ack, status, coalescer, wake budget | zero | always on |
+| L1 RAG | wake packet = ticket + thread top-K via FTS5 ([ADR-003](003-sqlite-fts5-grafo.md)) + original message IDs | zero LLM | on |
+| L2 local ML | triage of ambiguous messages, long-thread summaries | local CPU | off (flag, like `TB_GRAPH`) |
 
-Regras da L2:
+L2 rules:
 
-- O modelo local **adia, nunca descarta**. `task.assign` e `urgent` passam direto, sem triagem.
-- Resumo sempre carrega os IDs das mensagens, para o agente buscar o texto bruto.
-- A saída do modelo local é dado não confiável, como qualquer mensagem.
-- A L2 encaixa nos itens já previstos no roadmap: índice vetorial opcional e componentes de inferência local.
+- The local model **defers, never drops**. `task.assign` and `urgent` bypass triage.
+- Summaries always carry message IDs so the agent can fetch the raw text.
+- Local model output is untrusted data, like any message.
+- L2 fits the items already on the roadmap: optional vector index and local inference components.
 
-Adapters de despertar por tipo de agente:
+Wake adapters per agent type:
 
-| Modo | Agente | Como acorda |
+| Mode | Agent | How it wakes |
 |---|---|---|
-| `harness` | CLIs com headless/resume (Claude Code, Codex, ...) | harness invoca o vendor com wake packet |
-| `notify` | apps somente GUI que são clientes MCP | harness só notifica o humano ("Marin tem 3 mensagens em feature-x"); o agente lê via `bus_recv` quando o humano abre o turno |
-| `manual` | qualquer agente com shell, sem harness | humano pede ao agente para rodar `tb bus recv` |
+| `harness` | CLIs with headless/resume (Claude Code, Codex, ...) | harness invokes the vendor with a wake packet |
+| `notify` | GUI-only apps that are MCP clients | harness only notifies the human ("Marin has 3 messages in feature-x"); the agent reads via `bus_recv` when the human opens a turn |
+| `manual` | any agent with a shell, no harness | the human asks the agent to run `tb bus recv` |
 
-Para Claude Code sem harness, o hook `Stop` pode consultar a fila antes de encerrar o turno, como alternativa leve.
+For Claude Code without a harness, the `Stop` hook can check the queue before ending the turn, as a lightweight alternative.
 
-### 5. Padrões
+### 5. Patterns
 
-#### Quebra de tarefas
+#### Task breakdown
 
-- Reusa Ticket/Mandate do ADR-009 sem mudanças de formato.
-- Tickets paralelos têm **escopo de arquivos disjunto**; um worktree por agente que escreve.
-- Aceite via `tb stack --ticket`; verdict diferente de PASS não fecha o ticket.
+- Reuses ADR-009 Ticket/Mandate with no format changes.
+- Parallel tickets have **disjoint file scopes**; one worktree per writing agent.
+- Acceptance via `tb stack --ticket`; a verdict other than PASS does not close the ticket.
 
-#### Comunicação a2a entre vendors
+#### Cross-vendor a2a communication
 
-- Só envelope + JSON com schema; referências em vez de conteúdo.
-- **Toda mensagem vinda de outro agente é dado não confiável**: prompt injection entre agentes é ameaça real. Vale a redação de segredos já aplicada em logs.
+- Envelope + JSON with schema only; references instead of content.
+- **Every message coming from another agent is untrusted data**: cross-agent prompt injection is a real threat. The secret redaction already applied to logs also applies here.
 
-#### Hierarquia e responsável
+#### Hierarchy and ownership
 
-- Papéis: `router`, `supervisor`, `worker`, `reviewer`.
-- **Dono único por ticket** via lease; só o dono chama `bus_complete`.
-- Roteamento por capability + tier + custo. Escada de escalonamento: falha N vezes num tier barato, o ticket sobe de tier.
-- **Review cruzado entre vendors**: implementação de um vendor é revisada por outro, aplicando autor ≠ verificador do [ADR-008](008-verificacao-adversarial.md).
+- Roles: `router`, `supervisor`, `worker`, `reviewer`.
+- **Single owner per ticket** via lease; only the owner calls `bus_complete`.
+- Routing by capability + tier + cost. Escalation ladder: after N failures on a cheap tier, the ticket moves up a tier.
+- **Cross-vendor review**: one vendor's implementation is reviewed by another, applying author ≠ verifier from [ADR-008](008-verificacao-adversarial.md).
 
-### 6. Ferramentas e comandos (v1)
+### 6. Tools and commands (v1)
 
-| CLI | MCP | Função |
+| CLI | MCP | Role |
 |---|---|---|
-| `tb bus channel create` | — | cria canal e convite (só humano) |
-| `tb bus join` | `bus_join` | handshake com Agent Card |
-| `tb bus send` | `bus_send` | publica mensagem |
-| `tb bus recv` | `bus_recv` | lê fila (long-poll curto, abaixo do timeout de tool call do cliente) |
-| `tb bus claim` | `bus_claim` | assume ticket (lease) |
-| `tb bus complete` | `bus_complete` | encerra ticket com resultado |
-| `tb bus heartbeat` | `bus_heartbeat` | renova lease (o harness faz automaticamente) |
-| `tb bus run` | — | harness por agente |
-| `tb bus log` | — | trilha de auditoria do canal |
+| `tb bus channel create` | — | creates channel and invite (human only) |
+| `tb bus join` | `bus_join` | handshake with Agent Card |
+| `tb bus send` | `bus_send` | publishes a message |
+| `tb bus recv` | `bus_recv` | reads the queue (short long-poll, below the client's tool-call timeout) |
+| `tb bus claim` | `bus_claim` | takes a ticket (lease) |
+| `tb bus complete` | `bus_complete` | closes a ticket with a result |
+| `tb bus heartbeat` | `bus_heartbeat` | renews the lease (the harness does it automatically) |
+| `tb bus run` | — | per-agent harness |
+| `tb bus log` | — | channel audit trail |
 
-`channel create` não é exposto via MCP: só o humano cria canais e emite convites.
+`channel create` is not exposed over MCP: only the human creates channels and issues invites.
 
-### 7. Segurança
+### 7. Security
 
-- Tudo local: store no repositório, socket Unix com permissão `0600` se houver, nenhum tráfego de rede pelo `tb`.
-- Convite de uso único com expiração; o token do lease nunca aparece em logs.
-- O harness invoca agentes com permissões reais: sandbox Landlock fail-closed, mandato do ticket aplicado e **nunca** `bypassPermissions` por padrão.
-- Log de auditoria de toda mensagem, com redação de segredos.
+- Fully local: store inside the repository, Unix socket with `0600` permissions if any, no network traffic from `tb`.
+- Single-use, expiring invite; the lease token never appears in logs.
+- The harness invokes agents with real permissions: fail-closed Landlock sandbox, ticket mandate enforced and **never** `bypassPermissions` by default.
+- Audit log of every message, with secret redaction.
 
-### 8. Relação com a Fase 3
+### 8. Relation to Phase 3
 
-O `tb router run` atual executa `router.agent_cmd` de uso único por ticket. O barramento acrescenta um segundo tipo de worker: **agente registrado no canal**. Integração prevista: o router publica `task.assign` em `topic:board`, harnesses registrados fazem `claim`, e o resultado volta como `task.result` para o `tb merge`. O barramento não substitui o router; é o transporte entre ele e agentes persistentes de outros vendors.
+The current `tb router run` executes a single-use `router.agent_cmd` per ticket. The bus adds a second worker type: **an agent registered on the channel**. Planned integration: the router publishes `task.assign` to `topic:board`, registered harnesses `claim`, and the result comes back as `task.result` for `tb merge`. The bus does not replace the router; it is the transport between it and persistent agents from other vendors.
 
-### Faseamento
+### Phasing
 
-| Etapa | Entrega |
+| Stage | Deliverable |
 |---|---|
-| B0 | Este ADR + spec do envelope e do Agent Card |
-| B1 | Store SQLite, CLI + MCP, ativação direta com convite, `join`/`send`/`recv`/`claim`/`complete`; teste Claude ↔ Claude e Claude ↔ `fake-agent` |
-| B2 | Lease, heartbeat e Watchdog |
-| B3 | `tb bus run` (L0 + L1) e adapters `harness`/`notify`; `tb bus discover` |
-| B4 | Router/Board da Fase 3 sobre o barramento; L2 opcional |
+| B0 | This ADR + envelope and Agent Card spec |
+| B1 | SQLite store, CLI + MCP, direct activation with invite, `join`/`send`/`recv`/`claim`/`complete`; Claude ↔ Claude and Claude ↔ `fake-agent` tests |
+| B2 | Lease, heartbeat and Watchdog |
+| B3 | `tb bus run` (L0 + L1) and `harness`/`notify` adapters; `tb bus discover` |
+| B4 | Phase 3 Router/Board on top of the bus; optional L2 |
 
-## Consequências
+## Consequences
 
-### Positivas
+### Positive
 
-- **Interoperabilidade real entre vendors**: qualquer agente com shell ou cliente MCP participa, sem SDK por vendor.
-- **Zero tokens em espera**: o harness, não o LLM, mantém o loop.
-- **Wake packet enxuto**: o agente acorda com top-K relevante em vez da thread inteira.
-- **Consentimento explícito** e resistência a injeção via convite.
-- **Review cruzado** entre vendors fortalece a verificação adversarial.
-- **Reuso** de SQLite/FTS5, sandbox, worktrees e Ticket/Mandate já existentes.
+- **Real cross-vendor interoperability**: any agent with a shell or MCP client participates, with no per-vendor SDK.
+- **Zero tokens while waiting**: the harness, not the LLM, owns the loop.
+- **Lean wake packet**: the agent wakes with the relevant top-K instead of the whole thread.
+- **Explicit consent** and injection resistance through invites.
+- **Cross-vendor review** strengthens adversarial verification.
+- **Reuse** of existing SQLite/FTS5, sandbox, worktrees and Ticket/Mandate.
 
-### Negativas
+### Negative
 
-- **Agentes somente GUI** não são acordáveis pelo harness; dependem do humano (`notify`/`manual`).
-- **Adapters por vendor** precisam acompanhar mudanças de flags de CLI headless.
-- **Sem daemon na v1**: notificação entre processos depende do store; latência maior que um broker residente.
-- **Entrega pelo menos uma vez** exige idempotência em todos os consumidores.
-- **L2 traz risco de triagem errada**; mitigado por adiar em vez de descartar e por tipos que pulam triagem.
+- **GUI-only agents** cannot be woken by the harness; they depend on the human (`notify`/`manual`).
+- **Per-vendor adapters** must track changes to headless CLI flags.
+- **No daemon in v1**: cross-process notification relies on the store; higher latency than a resident broker.
+- **At-least-once delivery** requires idempotency in every consumer.
+- **L2 brings mis-triage risk**; mitigated by deferring instead of dropping and by types that bypass triage.
 
-### Métricas de sucesso (hipóteses, não medidas)
+### Success metrics (hypotheses, not measured)
 
-| Métrica | Meta |
+| Metric | Target |
 |---|---|
-| tokens gastos com espera ociosa | ≈ 0 com harness |
-| tokens de input por despertar | menores que reenviar a thread inteira |
-| mensagens perdidas | 0 |
-| despertares por mensagem útil | ≤ 1 com coalescer |
+| tokens spent idle-waiting | ≈ 0 with harness |
+| input tokens per wake-up | lower than resending the whole thread |
+| lost messages | 0 |
+| wake-ups per useful message | ≤ 1 with coalescer |
 
-Serão medidas com `tb bus` + `tb bench compare` antes de mudar o status para `accepted`.
+They will be measured with `tb bus` + `tb bench compare` before moving the status to `accepted`.
 
-## Alternativas Consideradas
+## Alternatives Considered
 
-### LLM faz o próprio loop de polling
+### LLM runs its own polling loop
 
-- **Descrição**: agente chama `bus_recv` repetidamente dentro do turno.
-- **Por que não**: custo por poll vazio, corte de turno por N tool calls e nenhum despertar após o fim do turno.
+- **Description**: the agent calls `bus_recv` repeatedly inside its turn.
+- **Why not**: cost per empty poll, turn cut after N tool calls and no wake-up after the turn ends.
 
-### ML local como solução principal
+### Local ML as the main solution
 
-- **Descrição**: modelo local pequeno faz polling, triagem e resumo.
-- **Por que não**: polling e protocolo trivial não precisam de modelo; regra determinística é mais barata e previsível. ML fica como camada opcional (L2).
+- **Description**: a small local model handles polling, triage and summaries.
+- **Why not**: polling and trivial protocol need no model; deterministic rules are cheaper and predictable. ML stays as an optional layer (L2).
 
-### Broker residente (daemon) desde a v1
+### Resident broker (daemon) from v1
 
-- **Descrição**: `tb bus serve` com socket e push.
-- **Por que não agora**: mais estado e ciclo de vida para gerenciar; SQLite em WAL basta para validar o protocolo. Reavaliar no B3/B4.
+- **Description**: `tb bus serve` with socket and push.
+- **Why not now**: more state and lifecycle to manage; SQLite in WAL is enough to validate the protocol. Revisit at B3/B4.
 
-### Spec A2A sobre HTTP como está
+### A2A over HTTP as-is
 
-- **Descrição**: cada agente expõe endpoint A2A HTTP.
-- **Por que não**: agentes de vendor não expõem servidor; exigiria um proxy por agente igual ao harness, com HTTP em vez de store local. O envelope continua inspirado em A2A para facilitar uma ponte futura.
+- **Description**: each agent exposes an A2A HTTP endpoint.
+- **Why not**: vendor agents do not expose servers; it would require a per-agent proxy just like the harness, with HTTP instead of a local store. The envelope stays A2A-inspired to ease a future bridge.
 
-### Injeção de entrada na GUI (tmux `send-keys`, automação de tela)
+### GUI input injection (tmux `send-keys`, screen automation)
 
-- **Descrição**: digitar mensagens diretamente na janela/terminal do agente.
-- **Por que não**: frágil, sem confirmação de entrega, sem auditoria e com superfície de risco alta. Aceitável só como experimento manual.
+- **Description**: type messages directly into the agent's window/terminal.
+- **Why not**: fragile, no delivery confirmation, no audit trail and a large risk surface. Acceptable only as a manual experiment.
 
-## Referências
+## References
 
+- [Bus protocol](../bus-protocolo.md) — B0 spec (envelope, Agent Card, invite)
 - [ADR-002](002-mcp-a2a-protocolos.md) — MCP + A2A
 - [ADR-003](003-sqlite-fts5-grafo.md) — SQLite + FTS5
 - [ADR-004](004-sandbox-isolamento.md) — sandbox
-- [ADR-008](008-verificacao-adversarial.md) — verificação adversarial
-- [ADR-009](009-router-e-workers.md) — Router e Workers
-- [ADR-011](011-grafo-sob-demanda.md) — funcionalidade sob demanda
+- [ADR-008](008-verificacao-adversarial.md) — adversarial verification
+- [ADR-009](009-router-e-workers.md) — Router and Workers
+- [ADR-011](011-grafo-sob-demanda.md) — on-demand features
 - [Google A2A Protocol](https://github.com/google/A2A)
 - [JSON-RPC 2.0 Specification](https://www.jsonrpc.org/specification)

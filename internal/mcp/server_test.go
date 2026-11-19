@@ -144,6 +144,8 @@ func TestToolsListSchemaTypes(t *testing.T) {
 		"tb_graph_callers": {"depth": "integer"},
 		"tb_graph_search":  {"limit": "integer"},
 		"tb_graph_deps":    {"transitive": "boolean"},
+		"tb_graph_explain": {"limit": "integer"},
+		"tb_graph_path":    {"max_depth": "integer"},
 		"tb_guard_check":   {"strict": "boolean"},
 		"tb_review":        {"reviewers": "integer", "standards": "array"},
 	}
@@ -163,4 +165,100 @@ func TestToolsListSchemaTypes(t *testing.T) {
 		}
 	}
 	_ = impact
+}
+
+func TestToolsListEmitsAnnotationsInOrder(t *testing.T) {
+	srv := NewServer(registry.Default())
+	in := `{"jsonrpc":"2.0","id":5,"method":"tools/list","params":{}}` + "\n"
+	out := &bytes.Buffer{}
+	_ = srv.Run(context.Background(), strings.NewReader(in), out)
+
+	var resp struct {
+		Result struct {
+			Tools []struct {
+				Name        string                     `json:"name"`
+				Annotations map[string]json.RawMessage `json:"annotations"`
+			} `json:"tools"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	prev := ""
+	for _, tool := range resp.Result.Tools {
+		if tool.Name < prev {
+			t.Errorf("tools/list out of order: %s after %s", tool.Name, prev)
+		}
+		prev = tool.Name
+		// All four hints must be explicit: the spec defaults are pessimistic.
+		for _, k := range []string{"readOnlyHint", "destructiveHint", "idempotentHint", "openWorldHint"} {
+			if _, ok := tool.Annotations[k]; !ok {
+				t.Errorf("%s: annotations missing %s", tool.Name, k)
+			}
+		}
+	}
+	if len(resp.Result.Tools) == 0 {
+		t.Fatal("tools/list returned no tools")
+	}
+}
+
+func initializeWith(t *testing.T, params string) (string, *Server) {
+	t.Helper()
+	srv := NewServer(registry.New())
+	in := `{"jsonrpc":"2.0","id":1,"method":"initialize","params":` + params + `}` + "\n"
+	out := &bytes.Buffer{}
+	_ = srv.Run(context.Background(), strings.NewReader(in), out)
+
+	var resp struct {
+		Result struct {
+			ProtocolVersion string `json:"protocolVersion"`
+		} `json:"result"`
+		Error *Error `json:"error"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &resp); err != nil {
+		t.Fatalf("%s: %v (%s)", params, err, out.String())
+	}
+	if resp.Error != nil {
+		t.Fatalf("%s: initialize error %+v", params, resp.Error)
+	}
+	return resp.Result.ProtocolVersion, srv
+}
+
+func TestInitializeNegotiatesProtocolVersion(t *testing.T) {
+	cases := []struct {
+		name, params, want string
+	}{
+		// Supported: the server MUST answer with the same version.
+		{"latest", `{"protocolVersion":"2025-11-25"}`, "2025-11-25"},
+		{"2025-06-18", `{"protocolVersion":"2025-06-18"}`, "2025-06-18"},
+		{"oldest", `{"protocolVersion":"2024-11-05"}`, "2024-11-05"},
+		// Unsupported: answer with the latest supported version.
+		{"batching revision", `{"protocolVersion":"2025-03-26"}`, ProtocolVersion},
+		{"stateless revision", `{"protocolVersion":"2026-07-28"}`, ProtocolVersion},
+		{"garbage", `{"protocolVersion":"1.0.0"}`, ProtocolVersion},
+		{"missing", `{}`, ProtocolVersion},
+		{"wrong type", `{"protocolVersion":42}`, ProtocolVersion},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, srv := initializeWith(t, tc.params)
+			if got != tc.want {
+				t.Fatalf("protocolVersion = %q, want %q", got, tc.want)
+			}
+			if srv.NegotiatedVersion() != tc.want {
+				t.Fatalf("NegotiatedVersion = %q, want %q", srv.NegotiatedVersion(), tc.want)
+			}
+		})
+	}
+}
+
+func TestSupportedProtocolVersionsNewestFirst(t *testing.T) {
+	if SupportedProtocolVersions[0] != ProtocolVersion {
+		t.Fatalf("ProtocolVersion %q must be the first supported version, got %v", ProtocolVersion, SupportedProtocolVersions)
+	}
+	for i := 1; i < len(SupportedProtocolVersions); i++ {
+		if SupportedProtocolVersions[i] >= SupportedProtocolVersions[i-1] {
+			t.Fatalf("SupportedProtocolVersions not newest first: %v", SupportedProtocolVersions)
+		}
+	}
 }

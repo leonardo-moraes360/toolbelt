@@ -150,7 +150,7 @@ func TestSandboxEnvAndCancelKillsProcessGroup(t *testing.T) {
 		cancel()
 	}()
 	start := time.Now()
-	// o neto (sleep) segura o pipe de saída; o grupo inteiro precisa morrer
+	// the grandchild (sleep) holds the output pipe; the whole group must die
 	res, err = sb.Run(ctx, "sh", "-c", "sleep 30 & sleep 30")
 	if err != nil {
 		t.Fatal(err)
@@ -163,8 +163,8 @@ func TestSandboxEnvAndCancelKillsProcessGroup(t *testing.T) {
 	}
 }
 
-// Finding 7: o fail-closed é exercitado em qualquer host (inclusive CI com
-// Landlock) simulando a sonda "indisponível".
+// Finding 7: fail-closed is exercised on any host (including CI with
+// Landlock) by simulating an "unavailable" probe.
 func TestNewFailClosedWithSimulatedNoLandlock(t *testing.T) {
 	restore := OverrideLandlockProbe(func() (bool, int, error) { return false, 0, errors.New("simulado: sem Landlock") })
 	defer restore()

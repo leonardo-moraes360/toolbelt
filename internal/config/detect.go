@@ -28,8 +28,7 @@ var golangciConfigFiles = []string{
 	".golangci.json",
 }
 
-// DetectTestCmd inspeciona a raiz do projeto e devolve o test_cmd adequado
-// ao toolchain detectado. Retorna string vazia se nada for reconhecido.
+// DetectTestCmd returns "" when no toolchain is recognized.
 func DetectTestCmd(root string) string {
 	return DetectTestCmdDetailed(root).Cmd
 }
@@ -65,9 +64,8 @@ func DetectTestCmdDetailed(root string) DetectedCmd {
 	return DetectedCmd{}
 }
 
-// DetectBuildCmd inspeciona a raiz e devolve o build_cmd adequado ao toolchain.
-// Conservador: só preenche quando há marcador claro (go.mod, scripts.build,
-// Cargo.toml, target make build). Retorna string vazia se nada for reconhecido.
+// DetectBuildCmd is conservative: it fills in only on a clear marker (go.mod,
+// scripts.build, Cargo.toml, make build target), else returns "".
 func DetectBuildCmd(root string) string {
 	if root == "" {
 		return ""
@@ -92,9 +90,8 @@ func DetectBuildCmd(root string) string {
 	return detectMakeTargetCmd(root, "build")
 }
 
-// DetectLintCmd inspeciona a raiz e devolve o lint_cmd adequado ao toolchain.
-// Conservador: golangci config / make lint, scripts.lint, cargo clippy,
-// ruff/mypy em pyproject. Retorna string vazia se nada for reconhecido.
+// DetectLintCmd is conservative: golangci config / make lint, scripts.lint,
+// cargo clippy, ruff/mypy in pyproject; else returns "".
 func DetectLintCmd(root string) string {
 	if root == "" {
 		return ""
@@ -119,10 +116,16 @@ func DetectLintCmd(root string) string {
 	return detectMakeTargetCmd(root, "lint")
 }
 
+// golangci-lint is written only when the binary is on PATH; with a golangci
+// config but no binary it falls back to `go vet ./...` (the make lint target
+// would almost always call the same missing golangci-lint).
 func detectGoLintCmd(root string) string {
 	for _, name := range golangciConfigFiles {
 		if fileExists(filepath.Join(root, name)) {
-			return "golangci-lint run"
+			if _, err := lookPath("golangci-lint"); err == nil {
+				return "golangci-lint run"
+			}
+			return "go vet ./..."
 		}
 	}
 	return detectMakeTargetCmd(root, "lint")

@@ -1,204 +1,204 @@
-🇧🇷 Português | [🇺🇸 English](../../en/campo/rodada2/gin.md)
+🇺🇸 English | [🇧🇷 Português](../../pt-BR/campo/rodada2/gin.md)
 
-# Estudo de campo rodada 2: gin-gonic/gin
+# Field study round 2: gin-gonic/gin
 
-Estudo do grupo **without existing AI-agent instrumentation**, usando `tb` (toolbelt @ `a46c295`) de ponta a ponta num clone local de [gin-gonic/gin](https://github.com/gin-gonic/gin). Nenhum push, issue, PR ou comentário foi feito no repositório alvo.
+Study for the group **without existing AI-agent instrumentation**, using `tb` (toolbelt @ `a46c295`) end to end on a local clone of [gin-gonic/gin](https://github.com/gin-gonic/gin). No push, issue, PR, or comment was made on the target repository.
 
-## Repositório
+## Repository
 
-| Campo | Valor |
+| Field | Value |
 |-------|-------|
-| Nome | `gin-gonic/gin` |
-| Linguagem | Go (`go 1.26.0` no `go.mod`) |
-| Tamanho | shallow clone ~2,6 MiB; **100** arquivos `.go` após a tarefa; ~**24 579** LOC Go |
-| Commit base do clone | `0f09c3a9b4626d9fe9979cf4d0521d6ae32ab646` (master raso) |
-| Instrumentação AI existente | **Nenhuma** — sem `AGENTS.md`/`CLAUDE.md`/`.cursorrules`/`.copilot*`/`.aider*`/`GEMINI.md` no tree upstream |
-| Toolchain | **Parcialmente ok** |
-| Grupo | without existing AI-agent instrumentation |
+| Name | `gin-gonic/gin` |
+| Language | Go (`go 1.26.0` in `go.mod`) |
+| Size | shallow clone ~2.6 MiB; **100** `.go` files after the task; ~**24 579** LOC Go |
+| Clone base commit | `0f09c3a9b4626d9fe9979cf4d0521d6ae32ab646` (shallow master) |
+| Existing AI instrumentation | **None** — no `AGENTS.md`/`CLAUDE.md`/`.cursorrules`/`.copilot*`/`.aider*`/`GEMINI.md` on the upstream tree |
+| Toolchain | **Partially ok** |
+| Group | without existing AI-agent instrumentation |
 
-Toolchain detalhada:
+Detailed toolchain:
 
-- `go test ./...` — **ok** (~30 s 1ª corrida com download; ~2 s depois).
+- `go test ./...` — **ok** (~30 s first run with download; ~2 s afterward).
 - `go build ./...` — **ok**.
 - `go vet ./binding/...` — **ok**.
-- `golangci-lint`: **não instalado** neste VM (`command not found`); não configurado.
-- Browser headless (`google-chrome` em `/usr/local/bin/google-chrome`) presente; ruler visual exercitado com refs ausentes (skip agregado).
+- `golangci-lint`: **not installed** on this VM (`command not found`); not configured.
+- Headless browser (`google-chrome` at `/usr/local/bin/google-chrome`) present; visual ruler exercised with missing refs (aggregated skip).
 
-Não configurado: suite `tests/hidden/` (não existe no gin); golangci-lint.
+Not configured: `tests/hidden/` suite (does not exist in gin); golangci-lint.
 
-## Tarefa escolhida
+## Chosen task
 
-| Campo | Valor |
+| Field | Value |
 |-------|-------|
-| O quê | Preservar o **índice de entrada** em erros de validação de slices JSON (`[1]:` em vez de `[0]:` quando o 2º elemento falha) |
-| Por quê | Bug realista e pequeno, com teste falhando documentado; distinto da rodada 1 |
-| Issue | https://github.com/gin-gonic/gin/issues/4928 (há PR alheio #4929 — **não interagimos**; implementação independente só no clone local) |
-| Completou? | **Sim**, no clone local |
-| Diff principal | `binding/default_validator.go` (pré-aloca `SliceValidationError` com o tamanho do slice e grava erros na posição original); teste `TestJSONSliceValidationReportsInputIndex` em `binding/slice_index_validation_test.go` |
-| Checks nativos | `go test ./binding/...` PASS; `go test ./...` PASS; `go build ./...` PASS; `go vet ./binding/...` PASS |
-| Rodada 1 (comparação) | Rodada 1 usou issue #4296 — incluir nome do campo em erros de `BindUnmarshaler` / `encoding.TextUnmarshaler` |
+| What | Preserve the **input index** in JSON slice validation errors (`[1]:` instead of `[0]:` when the 2nd element fails) |
+| Why | Realistic, small bug with a documented failing test; distinct from round 1 |
+| Issue | https://github.com/gin-gonic/gin/issues/4928 (there is unrelated PR #4929 — **we did not interact**; independent implementation on the local clone only) |
+| Completed? | **Yes**, on the local clone |
+| Main diff | `binding/default_validator.go` (pre-allocates `SliceValidationError` with the slice size and stores errors at the original position); test `TestJSONSliceValidationReportsInputIndex` in `binding/slice_index_validation_test.go` |
+| Native checks | `go test ./binding/...` PASS; `go test ./...` PASS; `go build ./...` PASS; `go vet ./binding/...` PASS |
+| Round 1 (comparison) | Round 1 used issue #4296 — include field name in `BindUnmarshaler` / `encoding.TextUnmarshaler` errors |
 
-## Verificação das 12 correções
+## Verification of the 12 fixes
 
-| # | correção | funcionou/não funcionou/não testado/não se aplica | evidência |
-|---|----------|-----------------------------------------------------|-----------|
-| 1 | graph SkipDirs na raiz do walk | **funcionou** | `TB_GRAPH=on tb graph index` a partir de `/tmp/target` (basename `target`) → **729** nós / **2573** arestas e `search ValidateStruct` acha `binding/default_validator.go`. Filho `target/` em `/tmp/target-skipprobe` continua ignorado (`Hello` vazio; `Root` ok). |
-| 2 | verify `hidden_test_cmd` sem `tests/hidden/` | **funcionou** | Sem diretório `tests/hidden/`; config com `hidden_test_cmd: go test ./binding/ -run TestDoesNotExistHiddenProbe -count=1` → JSON `hidden_available: true`, `hidden_passed: true`, `verdict: PASS`. |
-| 3 | guard `--strict --json` exit ≠ 0 | **funcionou** | Diff tocando `.toolbelt/thresholds.yaml`: `--json` sozinho → EXIT **0** com violations; `--json --strict` → EXIT **1** com o mesmo JSON de violação. |
-| 4 | guard lê `protected_paths` de `guard.yaml` | **funcionou** (com ressalva de glob) | `.toolbelt/guard.yaml` com `secrets/*` → violação em `secrets/token`. Padrão `secrets/` (só barra final) **não** casa via `filepath.Match` — precisa `secrets/*` ou path literal. |
-| 5 | init detecção de toolchain | **funcionou** | Em gin e em probe com só `go.mod`: `verify.test_cmd: go test ./...`, `hidden_test_cmd: ""`. Não preenche sozinho `build_cmd`/`lint_cmd` (ainda manuais). |
-| 6 | review `tests/hidden` por path | **funcionou** | Diff só com comentário `// note about tests/hidden suite` em `default_validator.go` → findings `[]` (sem FP critical de invariante). |
-| 7 | bench `default_agent` e `compare --agent` | **funcionou** | `bench.default_agent: "echo agent-default"` → `tb bench run -r 1 ...` inicia `agent=external` sem exigir `--agent`/`--fake` (task `bugfix-go` 100%). `tb bench compare ... --agent 'echo hi'` aceito (EXIT 0 no toolbelt com configs A/B). |
-| 8 | review `## Scope`/`## Escopo`, listas MD e `**` globs | **funcionou** (parcial) | Ticket **só Markdown** com `## Escopo` + listas → scope ok (sem `scope-missing`); `binding/**/*.go` no drift EXIT 0. Com **YAML frontmatter sem `scope:`**, o body `## Escopo` é **ignorado** (`LoadTicket` retorna cedo) → falso `scope-missing`. |
-| 9 | verify `build_cmd` e `lint_cmd` | **funcionou** | `build_ran/passed: true`, `lint_ran/passed: true` no `/tmp/verify-gin-r2-ok.json` com `go build ./...` e `go vet ./binding/...`. |
-| 10 | init lê `AGENTS.md`/`CLAUDE.md` e `--write-agents` | **funcionou** | Sem arquivos: log “use `--write-agents`”. Com `--write-agents`: cria `AGENTS.md` + `.toolbelt/agent_docs.yaml` (`sources: [AGENTS.md]`). Re-init posterior lê o existente (não sobrescreve). |
-| 11 | graph Python `calls` edges | **não se aplica** (smoke auxiliar **funcionou**) | Gin é Go. Probe `/tmp/py-calls-probe/mod.py`: `edges_calls: 1`; `callers --function helper` → `mod.main`. |
-| 12 | verify visual skipped agregado + docs CLI | **funcionou** | `.toolbelt/screens.yaml` com 2 telas sem refs → top-level `skipped: true`, `skip_reason: "todas as telas foram skipped"`, cada screen `skipped: true`. `docs/cli.md` documenta o comportamento (L762–763). |
+| # | fix | worked / did not work / not tested / not applicable | evidence |
+|---|-----|-----------------------------------------------------|----------|
+| 1 | graph SkipDirs at walk root | **worked** | `TB_GRAPH=on tb graph index` from `/tmp/target` (basename `target`) → **729** nodes / **2573** edges and `search ValidateStruct` finds `binding/default_validator.go`. Child `target/` under `/tmp/target-skipprobe` remains ignored (`Hello` empty; `Root` ok). |
+| 2 | verify `hidden_test_cmd` without `tests/hidden/` | **worked** | No `tests/hidden/` directory; config with `hidden_test_cmd: go test ./binding/ -run TestDoesNotExistHiddenProbe -count=1` → JSON `hidden_available: true`, `hidden_passed: true`, `verdict: PASS`. |
+| 3 | guard `--strict --json` exit ≠ 0 | **worked** | Diff touching `.toolbelt/thresholds.yaml`: `--json` alone → EXIT **0** with violations; `--json --strict` → EXIT **1** with the same violation JSON. |
+| 4 | guard reads `protected_paths` from `guard.yaml` | **worked** (with a glob caveat) | `.toolbelt/guard.yaml` with `secrets/*` → violation on `secrets/token`. Pattern `secrets/` (trailing slash only) **does not** match via `filepath.Match` — needs `secrets/*` or a literal path. |
+| 5 | init toolchain detection | **worked** | On gin and a probe with only `go.mod`: `verify.test_cmd: go test ./...`, `hidden_test_cmd: ""`. Does not fill `build_cmd`/`lint_cmd` by itself (still manual). |
+| 6 | review `tests/hidden` matches by path | **worked** | Diff with only comment `// note about tests/hidden suite` in `default_validator.go` → findings `[]` (no critical invariant FP). |
+| 7 | bench `default_agent` and `compare --agent` | **worked** | `bench.default_agent: "echo agent-default"` → `tb bench run -r 1 ...` starts `agent=external` without requiring `--agent`/`--fake` (task `bugfix-go` 100%). `tb bench compare ... --agent 'echo hi'` accepted (EXIT 0 on toolbelt with A/B configs). |
+| 8 | review `## Scope`/`## Escopo`, MD lists and `**` globs | **worked** (partial) | **Markdown-only** ticket with `## Escopo` + lists → scope ok (no `scope-missing`); `binding/**/*.go` in drift EXIT 0. With **YAML frontmatter without `scope:`**, the body `## Escopo` is **ignored** (`LoadTicket` returns early) → false `scope-missing`. |
+| 9 | verify `build_cmd` and `lint_cmd` | **worked** | `build_ran/passed: true`, `lint_ran/passed: true` in `/tmp/verify-gin-r2-ok.json` with `go build ./...` and `go vet ./binding/...`. |
+| 10 | init reads `AGENTS.md`/`CLAUDE.md` and `--write-agents` | **worked** | Without files: log “use `--write-agents`”. With `--write-agents`: creates `AGENTS.md` + `.toolbelt/agent_docs.yaml` (`sources: [AGENTS.md]`). Later re-init reads the existing file (does not overwrite). |
+| 11 | graph Python `calls` edges | **not applicable** (auxiliary smoke **worked**) | Gin is Go. Probe `/tmp/py-calls-probe/mod.py`: `edges_calls: 1`; `callers --function helper` → `mod.main`. |
+| 12 | aggregated visual skipped + CLI docs | **worked** | `.toolbelt/screens.yaml` with 2 screens without refs → top-level `skipped: true`, `skip_reason: "todas as telas foram skipped"`, each screen `skipped: true`. `docs/cli.md` documents the behavior (L762–763). |
 
-## Uso do tb por comando
+## tb usage by command
 
-| comando | resultado | ajudou/atrapalhou/neutro | evidência |
-|---------|-----------|--------------------------|-----------|
-| `tb init --write-agents` | EXIT 0; config Go + `AGENTS.md` semeado (mode 600) | **ajudou** | ~4 ms; `test_cmd=go test ./...`; agent_docs registrado |
-| `tb mem init/add/list/check` | EXIT 0; 3 defaults + 1 regra; `compactacao_segura: true` | ajudou (leve) | sha256 estável em `invariants.yaml` |
-| `tb graph` sem enable | (não re-probed em detalhe; ADR-011 mantido) | neutro | exige `--enable`/`TB_GRAPH` |
-| `tb graph --enable index/rebuild/stats` | 729→733 nós após fix; ~35–45 ms | **ajudou** | index rápido no gin |
-| `tb graph search ValidateStruct` | encontra `ValidateStruct`/`validateStruct` | ajudou | melhor que rodada 1 p/ este símbolo |
-| `tb graph impact/deps --file binding/default_validator.go` | impact limitado (`Error`); deps de pkgs ok | neutro/parcial | impact pouco rico para o arquivo |
-| `tb graph callers --function ValidateStruct` | `(vazio)` | atrapalhou | método em interface/`validate()` não ligado como calls úteis |
-| ticket `rd.md` manual | criado à mão (sem `tb ticket`) | neutro | `## Escopo` + globs |
-| `tb drift` | EXIT 0 no scope `binding/**/*.go` / `binding/` | **ajudou** | sem out_of_scope no diff da fix |
-| `tb verify run` (tests+build+lint+hidden) | PASS completo | **ajudou** | build/lint/hidden agora executam |
-| `tb verify` + guard em path do fix | FAIL imediato quando `guard.yaml` listava `binding/default_validator.go` | atrapalhou (se mal configurado) / ajudou (proteção) | `iterations: 0`, build nem roda |
-| `tb verify --ruler visual` | PASS com `skipped: true` agregado | neutro | docs alinhadas; gin sem UI real |
-| `tb review` (diff da fix, ticket MD) | EXIT 0; warning de aceite fraco possível | ajudou (parcial) | sem FP de `tests/hidden` |
-| `tb review` + frontmatter YAML | falso `scope-missing` | **atrapalhou** | body Markdown ignorado |
-| `tb guard check A..B --json/--strict` | limpo no diff da fix; viola thresholds/secrets | **ajudou** | sintaxe `base..head` (não `--base`) |
-| `tb bench run` com `default_agent` | honra default; precisa tasks | ajudou | com `-t` do toolbelt: bugfix-go 100% |
-| `tb bench compare --agent` | flag aceita; A/B roda | **ajudou** | regressão da rodada 1 corrigida |
-| `tb mcp` + `TB_GRAPH=on` | init+tools/list ok; graph tools; sem mem/verify/review | neutro/parcial | `tb_mem_list` → ferramenta não encontrada |
-| `tb version` (`make build`) | `a46c295` | neutro | |
+| command | result | helped / hindered / neutral | evidence |
+|---------|--------|-----------------------------|----------|
+| `tb init --write-agents` | EXIT 0; Go config + seeded `AGENTS.md` (mode 600) | **helped** | ~4 ms; `test_cmd=go test ./...`; agent_docs recorded |
+| `tb mem init/add/list/check` | EXIT 0; 3 defaults + 1 rule; `compactacao_segura: true` | helped (light) | stable sha256 in `invariants.yaml` |
+| `tb graph` without enable | (not re-probed in detail; ADR-011 kept) | neutral | requires `--enable`/`TB_GRAPH` |
+| `tb graph --enable index/rebuild/stats` | 729→733 nodes after fix; ~35–45 ms | **helped** | fast index on gin |
+| `tb graph search ValidateStruct` | finds `ValidateStruct`/`validateStruct` | helped | better than round 1 for this symbol |
+| `tb graph impact/deps --file binding/default_validator.go` | limited impact (`Error`); pkg deps ok | neutral/partial | impact not very rich for the file |
+| `tb graph callers --function ValidateStruct` | `(vazio)` | hindered | method on interface/`validate()` not wired as useful calls |
+| manual ticket `rd.md` | created by hand (no `tb ticket`) | neutral | `## Escopo` + globs |
+| `tb drift` | EXIT 0 on scope `binding/**/*.go` / `binding/` | **helped** | no out_of_scope on the fix diff |
+| `tb verify run` (tests+build+lint+hidden) | full PASS | **helped** | build/lint/hidden now execute |
+| `tb verify` + guard on fix path | immediate FAIL when `guard.yaml` listed `binding/default_validator.go` | hindered (if misconfigured) / helped (protection) | `iterations: 0`, build does not even run |
+| `tb verify --ruler visual` | PASS with aggregated `skipped: true` | neutral | docs aligned; gin has no real UI |
+| `tb review` (fix diff, MD ticket) | EXIT 0; weak acceptance warning possible | helped (partial) | no `tests/hidden` FP |
+| `tb review` + YAML frontmatter | false `scope-missing` | **hindered** | Markdown body ignored |
+| `tb guard check A..B --json/--strict` | clean on fix diff; flags thresholds/secrets | **helped** | `base..head` syntax (not `--base`) |
+| `tb bench run` with `default_agent` | honors default; needs tasks | helped | with toolbelt `-t`: bugfix-go 100% |
+| `tb bench compare --agent` | flag accepted; A/B runs | **helped** | round-1 regression fixed |
+| `tb mcp` + `TB_GRAPH=on` | init+tools/list ok; graph tools; no mem/verify/review | neutral/partial | `tb_mem_list` → tool not found |
+| `tb version` (`make build`) | `a46c295` | neutral | |
 
-## Problemas que continuam
+## Problems that persist
 
-Da rodada 1 (`docs/campo/gin.md`) que **ainda acontecem**:
+From round 1 (`docs/campo/gin.md`) that **still happen**:
 
-| problema | status nesta rodada | evidência |
-|----------|---------------------|-----------|
-| MCP sem mem/verify/review/guard/drift | **continua** | `tools/list` só version/echo/env/run + graph_*; `tb_mem_list` erro |
-| Flags posicionais inconsistentes no graph (`callers`/`deps`/`impact`) | **continua** (não revalidado à exaustão; API ainda flag-only no help) | help de callers exige `--function` |
-| `graph callers` pouco útil / search incompleto para alguns símbolos | **continua** (parcial) | `callers ValidateStruct` vazio |
-| Config files mode `0600` | **continua** | `stat` → `600` em `config.yaml` e `AGENTS.md` |
-| `version` unknown sem ldflags | **não retestado** com build cru; `make build` ok | — |
-| Docs CLI ainda listam comandos não implementados (`run`/`proc`/`ticket`/…) | **continua** (parcial) | árvore no topo de `docs/cli.md` ainda mostra planejados; seções Fase 2 melhoraram |
-| Sem `tb ticket` / checklist de progresso | **continua** | ticket manual |
-| Glob `**` / matching de paths protegidos pouco documentado na prática | **continua** (nova nuance) | `secrets/` ≠ `secrets/*` no guard |
+| problem | status this round | evidence |
+|---------|-------------------|----------|
+| MCP without mem/verify/review/guard/drift | **persists** | `tools/list` only version/echo/env/run + graph_*; `tb_mem_list` error |
+| Inconsistent positional flags on graph (`callers`/`deps`/`impact`) | **persists** (not exhaustively revalidated; API still flag-only in help) | callers help requires `--function` |
+| `graph callers` not very useful / incomplete search for some symbols | **persists** (partial) | `callers ValidateStruct` empty |
+| Config files mode `0600` | **persists** | `stat` → `600` on `config.yaml` and `AGENTS.md` |
+| `version` unknown without ldflags | **not retested** with a raw build; `make build` ok | — |
+| CLI docs still list unimplemented commands (`run`/`proc`/`ticket`/…) | **persists** (partial) | tree at top of `docs/cli.md` still shows planned items; Phase 2 sections improved |
+| No `tb ticket` / progress checklist | **persists** | manual ticket |
+| `**` glob / protected-path matching poorly documented in practice | **persists** (new nuance) | `secrets/` ≠ `secrets/*` in guard |
 
-Problemas da rodada 1 **corrigidos** nesta base: SkipDirs raiz; hidden sem dir; guard strict+json; guard.yaml; default_agent / compare --agent; build/lint no verify; review path match; Scope markdown (quando sem frontmatter); visual skipped; init toolchain + `--write-agents`.
+Round 1 problems **fixed** on this base: root SkipDirs; hidden without dir; guard strict+json; guard.yaml; default_agent / compare --agent; build/lint in verify; review path match; Markdown Scope (when no frontmatter); visual skipped; init toolchain + `--write-agents`.
 
-## Problemas novos
+## New problems
 
-1. **P1 — `LoadTicket` com frontmatter YAML ignora `## Scope`/`## Escopo` no body**  
-   - Repro: `rd.md` com `---` frontmatter (title/base/forbidden) + seção `## Escopo` com listas → `tb review` emite `scope-missing`. Ticket só Markdown com a mesma seção funciona.  
-   - Esperado: mesclar scope do body quando o YAML não declara `scope`.  
-   - Atual: `parseTicketFrontmatter` retorna cedo sem chamar `parseMarkdownScope`.
+1. **P1 — `LoadTicket` with YAML frontmatter ignores `## Scope`/`## Escopo` in the body**  
+   - Repro: `rd.md` with `---` frontmatter (title/base/forbidden) + `## Escopo` section with lists → `tb review` emits `scope-missing`. Markdown-only ticket with the same section works.  
+   - Expected: merge body scope when YAML does not declare `scope`.  
+   - Actual: `parseTicketFrontmatter` returns early without calling `parseMarkdownScope`.
 
-2. **P2 — `protected_paths: secrets/` (diretório) não protege filhos**  
-   - Repro: guard.yaml com só `secrets/`; commit `secrets/token` → `violations: null`. Com `secrets/*` ou `secrets/token` → violação.  
-   - Esperado: convenção de diretório documentada ou prefix match.  
-   - Atual: só `filepath.Match` literal.
+2. **P2 — `protected_paths: secrets/` (directory) does not protect children**  
+   - Repro: guard.yaml with only `secrets/`; commit `secrets/token` → `violations: null`. With `secrets/*` or `secrets/token` → violation.  
+   - Expected: documented directory convention or prefix match.  
+   - Actual: only literal `filepath.Match`.
 
-3. **P2 — `bench.tasks_dir` absoluto no YAML pode ser sombreado pelo default da flag `-t`**  
-   - Repro: config com `tasks_dir: /agent/repos/toolbelt/bench/tasks` mas `tb bench run` ainda loga `tasks_dir=bench/tasks` até passar `-t` explícito.  
-   - Esperado: YAML local prevalecer quando a flag está no default.  
-   - Atual: operador precisa repetir `-t`/`-f`.
+3. **P2 — absolute `bench.tasks_dir` in YAML can be shadowed by the `-t` flag default**  
+   - Repro: config with `tasks_dir: /agent/repos/toolbelt/bench/tasks` but `tb bench run` still logs `tasks_dir=bench/tasks` until `-t` is passed explicitly.  
+   - Expected: local YAML wins when the flag is at its default.  
+   - Actual: operator must repeat `-t`/`-f`.
 
-4. **P3 — `tb guard check` UX `base..head` vs flags `--base` de review/drift**  
+4. **P3 — `tb guard check` UX `base..head` vs review/drift `--base` flags**  
    - Repro: `tb guard check --base A --head B` → `unknown flag: --base`.  
-   - Esperado: paridade de flags entre subcomandos de diff.  
+   - Expected: flag parity across diff subcommands.
 
-5. **P3 — impact de arquivo Go pouco informativo**  
-   - Repro: `impact --file binding/default_validator.go` lista só `binding.Error`.  
-   - Esperado: callers de `ValidateStruct` / usos via `validate()`.  
+5. **P3 — Go file impact not very informative**  
+   - Repro: `impact --file binding/default_validator.go` lists only `binding.Error`.  
+   - Expected: callers of `ValidateStruct` / uses via `validate()`.
 
-## O que o tb pegou e o que deixou passar
+## What tb caught and what it let slip
 
-**Pegou**
+**Caught**
 
-- Drift de escopo ok no pacote `binding/` (incluindo glob `**` no ticket MD).
-- Guard em `.toolbelt/thresholds.yaml` (default) e em `secrets/*` (yaml).
-- Abort do verify quando o próprio arquivo da tarefa estava em `protected_paths`.
-- Build + lint + testes + hidden_cmd no verify (PASS na fix).
-- Review sem FP por menção textual a `tests/hidden`.
-- Visual agregando `skipped: true` quando todas as telas skippam.
-- Onboarding com `AGENTS.md` via `--write-agents` num repo sem instrumentação.
+- Scope drift ok on package `binding/` (including `**` glob in the MD ticket).
+- Guard on `.toolbelt/thresholds.yaml` (default) and `secrets/*` (yaml).
+- Verify abort when the task file itself was in `protected_paths`.
+- Build + lint + tests + hidden_cmd in verify (PASS on the fix).
+- Review without FP from a textual mention of `tests/hidden`.
+- Visual aggregating `skipped: true` when every screen skips.
+- Onboarding with `AGENTS.md` via `--write-agents` in a repo without instrumentation.
 
-**Deixou passar / falhou**
+**Let slip / failed**
 
-- Scope Markdown escondido atrás de frontmatter YAML (falso warning / risco de aceitar drift).
-- `protected_paths` com padrão de diretório “ingênuo” (`secrets/`).
-- Call graph incompleto para o símbolo central da tarefa (`ValidateStruct`).
-- MCP ainda não substitui o CLI para mem/verify/review/guard.
-- Lint “de verdade” do gin (`golangci-lint`) — verify usou só `go vet` configurado manualmente; golangci ausente no VM.
+- Markdown scope hidden behind YAML frontmatter (false warning / risk of accepting drift).
+- `protected_paths` with a naïve directory pattern (`secrets/`).
+- Incomplete call graph for the task’s central symbol (`ValidateStruct`).
+- MCP still does not replace the CLI for mem/verify/review/guard.
+- Real gin lint (`golangci-lint`) — verify used only manually configured `go vet`; golangci absent on the VM.
 
-Comparativo nativo: `go test ./...` e `go build ./...` validaram a fix; o tb verify alinhado com build/lint deixou de mascarar falha de compilação (melhoria clara vs rodada 1).
+Native comparison: `go test ./...` and `go build ./...` validated the fix; tb verify aligned with build/lint stopped masking compile failures (clear improvement vs round 1).
 
-## Interação com instrumentação existente / onboarding
+## Interaction with existing instrumentation / onboarding
 
-Gin **não tem** instrumentação de agente upstream. Avaliação do bootstrap `tb` nesta rodada:
+Gin **has no** upstream agent instrumentation. Assessment of `tb` bootstrap this round:
 
-| Artefato | Gerado / lido? | Qualidade |
-|----------|----------------|-----------|
-| `.toolbelt/config.yaml` | sim (`tb init`) | detecção Go ok (`test_cmd`); build/lint ainda manuais |
-| `AGENTS.md` | sim com `--write-agents` | mínimo útil apontando verify/guard/mem; mode 600 |
-| `.toolbelt/agent_docs.yaml` | sim | registra sources; `hints: []` (nada para extrair no gin) |
-| `CLAUDE.md` | n/a (ausente) | init avisa para semear se quiser |
-| invariantes `mem` | sim | defaults anti-cheat genéricos ainda pouco alinhados a lib HTTP sem suite oculta |
-| Grafo | sob demanda | rápido; SkipDirs raiz corrigido |
-| MCP | disponível | subset; graph com `TB_GRAPH=on` |
+| Artifact | Generated / read? | Quality |
+|----------|-------------------|---------|
+| `.toolbelt/config.yaml` | yes (`tb init`) | Go detection ok (`test_cmd`); build/lint still manual |
+| `AGENTS.md` | yes with `--write-agents` | useful minimum pointing at verify/guard/mem; mode 600 |
+| `.toolbelt/agent_docs.yaml` | yes | records sources; `hints: []` (nothing to extract in gin) |
+| `CLAUDE.md` | n/a (absent) | init advises seeding if desired |
+| `mem` invariants | yes | generic anti-cheat defaults still poorly aligned to an HTTP lib without a hidden suite |
+| Graph | on demand | fast; root SkipDirs fixed |
+| MCP | available | subset; graph with `TB_GRAPH=on` |
 
-Conclusão: onboarding **melhorou** vs rodada 1 (toolchain + AGENTS), mas ainda não importa CI real do gin (workflow `.github/workflows/`) nem sugere `golangci-lint` automaticamente.
+Conclusion: onboarding **improved** vs round 1 (toolchain + AGENTS), but still does not import gin’s real CI (`.github/workflows/`) nor suggest `golangci-lint` automatically.
 
-## Comparação com a rodada 1
+## Comparison with round 1
 
-| dimensão | rodada 1 | rodada 2 | veredito |
-|----------|----------|----------|----------|
-| Binário | `c8aae04` | `a46c295` | base com as 12 correções |
-| Tarefa | #4296 BindUnmarshaler field name | #4928 índice de validação de slice | diferente (ok) |
-| verify build/lint | ignorados | executados e PASS | **melhor** |
-| hidden_test_cmd | bloqueado sem `tests/hidden/` | roda sem o dir | **melhor** |
-| guard.yaml / strict+json | quebrados | funcionam | **melhor** |
-| default_agent / compare --agent | quebrados | funcionam | **melhor** |
-| review FP `tests/hidden` | confirmado | não reproduziu | **melhor** |
-| visual skipped top-level | `skipped: false` enganoso | `skipped: true` | **melhor** |
-| init AGENTS / toolchain | ausente / genérico | detecta Go + `--write-agents` | **melhor** |
-| SkipDirs `/tmp/target` | 0 nós | 729 nós | **melhor** |
-| MCP parity | incompleto | incompleto | **igual** |
-| Scope + frontmatter | N/A (bug antigo outro) | gap novo de merge YAML+MD | **pior** neste canto |
-| Wall time evidências CLI | ~5,2 min | ~3,8 min (`12:37:23Z`→`12:41:12Z`) | semelhante/ligeiramente **melhor** |
-| Conclusão local da tarefa | sim | sim | **igual** |
+| dimension | round 1 | round 2 | verdict |
+|-----------|---------|---------|---------|
+| Binary | `c8aae04` | `a46c295` | base with the 12 fixes |
+| Task | #4296 BindUnmarshaler field name | #4928 slice validation index | different (ok) |
+| verify build/lint | ignored | executed and PASS | **better** |
+| hidden_test_cmd | blocked without `tests/hidden/` | runs without the dir | **better** |
+| guard.yaml / strict+json | broken | work | **better** |
+| default_agent / compare --agent | broken | work | **better** |
+| review FP `tests/hidden` | confirmed | did not reproduce | **better** |
+| visual skipped top-level | misleading `skipped: false` | `skipped: true` | **better** |
+| init AGENTS / toolchain | absent / generic | detects Go + `--write-agents` | **better** |
+| SkipDirs `/tmp/target` | 0 nodes | 729 nodes | **better** |
+| MCP parity | incomplete | incomplete | **same** |
+| Scope + frontmatter | N/A (older different bug) | new YAML+MD merge gap | **worse** in this corner |
+| Evidence CLI wall time | ~5.2 min | ~3.8 min (`12:37:23Z`→`12:41:12Z`) | similar / slightly **better** |
+| Local task conclusion | yes | yes | **same** |
 
-No geral: **melhor** que a rodada 1 para o fluxo verify/guard/bench/init/visual/graph-raiz; restam MCP, ergonomia de ticket com frontmatter, e riqueza do grafo.
+Overall: **better** than round 1 for the verify/guard/bench/init/visual/root-graph flow; MCP, ticket ergonomics with frontmatter, and graph richness remain.
 
-## Sugestões de melhoria
+## Improvement suggestions
 
-1. **[review] P0** — Ao carregar ticket com frontmatter, se `scope` YAML vazio, fazer merge com `parseMarkdownScope` do body (`## Scope`/`## Escopo`).
-2. **[guard] P1** — Tratar padrões com `/` final (ou sem `*`) como prefixo de diretório; documentar exemplos `secrets/*` vs `secrets/`.
-3. **[bench] P1** — Fazer `tasks_dir`/`fixtures_dir` do config local prevalecerem sobre defaults das flags cobra.
-4. **[mcp] P1** — Expor mem/verify/review/guard/drift (parity CLI).
-5. **[graph] P2** — Melhorar arestas `calls` para funções exportadas usadas via helpers (`validate` → `ValidateStruct`); enriquecer `impact --file`.
-6. **[init] P2** — Sugerir `build_cmd`/`lint_cmd` a partir de CI/Makefile/`golangci` quando detectáveis.
-7. **[cli] P2** — Unificar flags de intervalo de commits (`--base`/`--head` vs `A..B`) entre guard/review/drift.
-8. **[config] P3** — Revisar mode 0600 em `AGENTS.md`/configs não secretas.
+1. **[review] P0** — When loading a ticket with frontmatter, if YAML `scope` is empty, merge with `parseMarkdownScope` from the body (`## Scope`/`## Escopo`).
+2. **[guard] P1** — Treat patterns with a trailing `/` (or without `*`) as a directory prefix; document `secrets/*` vs `secrets/` examples.
+3. **[bench] P1** — Make local config `tasks_dir`/`fixtures_dir` override cobra flag defaults.
+4. **[mcp] P1** — Expose mem/verify/review/guard/drift (CLI parity).
+5. **[graph] P2** — Improve `calls` edges for exported functions used via helpers (`validate` → `ValidateStruct`); enrich `impact --file`.
+6. **[init] P2** — Suggest `build_cmd`/`lint_cmd` from CI/Makefile/`golangci` when detectable.
+7. **[cli] P2** — Unify commit-range flags (`--base`/`--head` vs `A..B`) across guard/review/drift.
+8. **[config] P3** — Revisit mode 0600 on `AGENTS.md`/non-secret configs.
 
-## Métricas
+## Metrics
 
-| métrica | rodada 2 | rodada 1 (ref.) |
-|---------|----------|-----------------|
-| Wall time (evidências CLI estruturadas) | **~3,8 min** (`2026-11-16T12:37:23Z` → `12:41:12Z`); sessão total do agente maior (docs+clone+implementação+probes) | ~5,2 min evidências |
-| Invocações `tb` com `CMD:` no log | **48** (+ corridas auxiliares fora do prefixo) | ~50 |
-| Falhas `tb` (EXIT ≠ 0) registradas | **7** (probes intencionais: guard strict, review drift/FP setup, flags guard erradas, etc.) | 11 |
-| Crashes do binário | **0** | 0 |
-| Build `tb` usado | `make build` → `toolbelt a46c295` | `c8aae04` |
+| metric | round 2 | round 1 (ref.) |
+|--------|---------|----------------|
+| Wall time (structured CLI evidence) | **~3.8 min** (`2026-11-16T12:37:23Z` → `12:41:12Z`); total agent session larger (docs+clone+implementation+probes) | ~5.2 min evidence |
+| `tb` invocations with `CMD:` in the log | **48** (+ auxiliary runs outside the prefix) | ~50 |
+| Recorded `tb` failures (EXIT ≠ 0) | **7** (intentional probes: guard strict, review drift/FP setup, bad guard flags, etc.) | 11 |
+| Binary crashes | **0** | 0 |
+| `tb` build used | `make build` → `toolbelt a46c295` | `c8aae04` |
 
-Arquivos de evidência bruta neste VM (não commitados): `/tmp/campo-gin-r2-evidence.log`, `/tmp/verify-gin-r2*.json`, `/tmp/review-*.json`, `/tmp/verify-visual*.json`, clone em `/tmp/target/gin` (commits locais apenas).
+Raw evidence files on this VM (not committed): `/tmp/campo-gin-r2-evidence.log`, `/tmp/verify-gin-r2*.json`, `/tmp/review-*.json`, `/tmp/verify-visual*.json`, clone at `/tmp/target/gin` (local commits only).

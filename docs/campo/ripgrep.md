@@ -1,176 +1,176 @@
-🇧🇷 Português | [🇺🇸 English](../en/campo/ripgrep.md)
+🇺🇸 English | [🇧🇷 Português](../pt-BR/campo/ripgrep.md)
 
-# Campo: BurntSushi/ripgrep
+# Field: BurntSushi/ripgrep
 
-Estudo de campo do `tb` (grupo: sem instrumentação de agente de IA), clone local apenas — sem push/issue/PR/comentário no upstream.
+Field study of `tb` (group: without AI-agent instrumentation), local clone only — no push/issue/PR/comment upstream.
 
 - **tb build**: `make build` → `toolbelt c8aae04` (commit `c8aae04`, built `2026-11-15T20:44:23Z`)
-- **Alvo**: clone shallow em `/tmp/target/ripgrep` (HEAD inicial `178cc02`)
-- **Janela**: ~2026-11-15T20:44Z → 20:52Z UTC
+- **Target**: shallow clone at `/tmp/target/ripgrep` (initial HEAD `178cc02`)
+- **Window**: ~2026-11-15T20:44Z → 20:52Z UTC
 
 ---
 
-## Repositório
+## Repository
 
-| Campo | Valor |
+| Field | Value |
 |-------|--------|
-| Nome | [BurntSushi/ripgrep](https://github.com/BurntSushi/ripgrep) |
-| Linguagem | Rust (edition 2024, `rust-version` 1.96; workspace de crates `grep-*`) |
-| Tamanho | ~104 `.rs` / ~55–56k LOC; clone shallow ~4.8 MiB tree; working tree com `target/` ~699 MiB após build |
-| Instrumentação AI existente | **Só** `AI_POLICY.md` (+ menção em `CONTRIBUTING.md`). Sem `AGENTS.md`, `CLAUDE.md`, `.cursorrules`, `.cursor/`. A política **proíbe agentes autônomos** em contribuições ao projeto; este estudo ficou 100% local. |
-| Toolchain | Rustup `stable` atualizado para **1.100.0** (PATH inicial tinha 1.83 e não compilava). `cargo test --tests` e `cargo build` ok. `rustfmt`/`clippy` disponíveis. **Não** rodei a suíte CI completa multi-target/`cross`/PCRE2 matrix; `cargo clippy -D warnings` no grafo de deps falhou por lints pré-existentes em crates (ex. `grep-matcher`), não por causa da mudança. |
+| Name | [BurntSushi/ripgrep](https://github.com/BurntSushi/ripgrep) |
+| Language | Rust (edition 2024, `rust-version` 1.96; `grep-*` crate workspace) |
+| Size | ~104 `.rs` / ~55–56k LOC; shallow clone ~4.8 MiB tree; working tree with `target/` ~699 MiB after build |
+| Existing AI instrumentation | **Only** `AI_POLICY.md` (+ mention in `CONTRIBUTING.md`). No `AGENTS.md`, `CLAUDE.md`, `.cursorrules`, `.cursor/`. The policy **forbids autonomous agents** contributing to the project; this study stayed 100% local. |
+| Toolchain | Rustup `stable` updated to **1.100.0** (initial PATH had 1.83 and would not compile). `cargo test --tests` and `cargo build` ok. `rustfmt`/`clippy` available. **Did not** run the full multi-target CI/`cross`/PCRE2 matrix; workspace `cargo clippy -D warnings` failed on pre-existing lints in crates (e.g. `grep-matcher`), not because of the change. |
 
 ---
 
-## Tarefa escolhida
+## Chosen task
 
-| Campo | Valor |
+| Field | Value |
 |-------|--------|
-| O quê | Corrigir números de linha (e offsets) no printer padrão quando `-U` + `-r` batem em matches multilinha **adjacentes** (#2779) |
-| Por quê | Bug aberto confirmado no master (`15.2.0`/HEAD); maintainer apontou `grep-printer`; escopo pequeno-médio com teste de regressão claro |
+| What | Fix line numbers (and offsets) in the standard printer when `-U` + `-r` hit **adjacent** multiline matches (#2779) |
+| Why | Confirmed open bug on master (`15.2.0`/HEAD); maintainer pointed at `grep-printer`; small–medium scope with a clear regression test |
 | Issue | https://github.com/BurntSushi/ripgrep/issues/2779 |
-| Completou? | **Sim, só local** (commit `f2df235` em `/tmp/target/ripgrep`; **não** enviado ao GitHub) |
-| Resultado nativo | Antes: `1:fnord / 2:boccob / …`. Depois: `1 / 4 / 7 / 10` e `-b` `0 / 30 / 61 / 98`. `cargo test -q -p grep-printer --lib` → 110 ok; `cargo test -q --tests` → 114 + **333** ok (inclui `replace_adjacent_line_numbers` e `r2095`). `cargo fmt --check` ok após `cargo fmt`. |
+| Completed? | **Yes, locally only** (commit `f2df235` under `/tmp/target/ripgrep`; **not** sent to GitHub) |
+| Native result | Before: `1:fnord / 2:boccob / …`. After: `1 / 4 / 7 / 10` and `-b` `0 / 30 / 61 / 98`. `cargo test -q -p grep-printer --lib` → 110 ok; `cargo test -q --tests` → 114 + **333** ok (includes `replace_adjacent_line_numbers` and `r2095`). `cargo fmt --check` ok after `cargo fmt`. |
 
-Arquivos tocados: `crates/printer/src/util.rs`, `crates/printer/src/standard.rs`, `tests/multiline.rs`.
-
----
-
-## Uso do tb por comando
-
-| comando | resultado | ajudou/atrapalhou/neutro | evidência |
-|---------|-----------|--------------------------|-----------|
-| `tb init` | Criou `.toolbelt/` + `config.yaml` (mode **600**); defaults de verify = `go test ./...` | atrapalhou | Repo Rust; agente precisa reescrever verify à mão. Sem `AGENTS.md`, sem detecção Cargo. |
-| `tb mem init` / `add` / `list` / `check` | `invariants.yaml` mode **600**; `add` aceita regra posicional; `mem check` OK (retencao 1.00) | neutro | `add --type/--title` (docs) → `unknown flag: --type`. Invariantes genéricas (`tests/hidden/`) pouco alinhadas ao ripgrep. |
-| `tb graph index --enable` | 2546 nós, 3225 arestas → `.toolbelt/graph.json` (~1.2 MiB) | ajudou | Indexação Rust funcionou; ~0.2 s. |
-| `tb graph stats --enable` | Contagens por tipo (functions 1661, etc.) | neutro | Útil para sanidade; pouco para a tarefa. |
-| `tb graph search --enable replace` | Achou `Replacer`, `replace_all`, testes, GUIDE | ajudou | Acelerou achar o printer vs grep cego. |
-| `tb graph impact --enable --file …` | Sem `--file` → erro; **com** `--file` → `(vazio)` / JSON `null` | atrapalhou | Não apontou callers/dependentes do `standard.rs` apesar do índice. |
-| `tb graph deps` / `callers` | Exigem `--file`/`--module` e `--function`; invocação posicional falha | atrapalhou | UX diferente da intuição/`docs` implícita. |
-| Ticket + Scope (`rd.md`) | Markdown `## Scope` **não** parseia; precisa `scope: a, b` e `base_commit: …` | atrapalhou | Com formato errado: review → `sem scope declarado`; drift → `out_of_scope: null` mesmo com paths errados. |
-| `tb verify run` (cargo) | `PASS` (iter 1); `hidden_available: false` | ajudou (parcial) | Com `--test-cmd 'cargo test -q --tests'` refletiu a suíte real da mudança. |
-| `tb verify` default/Go | `ESCALATE` (3 iters) com `go test ./...` | atrapalhou | Default pós-`init` inviável; esconde o problema até configurar. |
-| `tb verify --ruler visual` | `verdict: PASS`, **`skipped: true`**, `skip_reason: manifesto de telas ausente` | neutro | Skip gracioso; verdict PASS pode confundir. |
-| `tb review` | Com scope correto: `findings: []`. `-o` inválido (só `--output`) | neutro→atrapalhou | FP crítico se o diff só **menciona** a string `tests/hidden` (ver Problemas conhecidos). |
-| `tb drift` | Detecta fora de scope com `scope:` correto; globs `*` e `/**` **funcionam** | ajudou | Exit ≠0 + lista `out_of_scope` no caso `crates/core/main.rs` vs diff real. |
-| `tb guard check` | Sem violações no fix; viola `protected_path` em `.toolbelt/thresholds.yaml` | ajudou (parcial) | Paths **hardcoded**; `.toolbelt/guard.yaml` criado → **ignorado**. |
-| `tb bench run/compare` | `--fake` ok em `bugfix-go`; `compare --agent` inexistente; `default_agent` do config **ignorado** | neutro | Bench usa fixtures do próprio toolbelt, não do ripgrep. |
-| `tb mcp` | `tools/list` via stdio: `tb_env`, `tb_run`, `tb_graph_*`, `tb_version`, `tb_echo` | neutro | Subiu; não cobre review/verify/drift/guard/mem. |
-| `tb version` | Com `make`: `c8aae04`. `go build` sem ldflags: `0.1.0-dev`, commit/built **`unknown`** | neutro | Confirma gap de build sem Makefile. |
-| `tb ticket` | `unknown command` | atrapalhou | Documentado em `docs/cli.md`, ausente no binário. |
+Files touched: `crates/printer/src/util.rs`, `crates/printer/src/standard.rs`, `tests/multiline.rs`.
 
 ---
 
-## Problemas conhecidos
+## tb usage by command
 
-| problema | confirmado/refutado/não testado | evidência |
-|----------|--------------------------------|-----------|
-| `bench compare` lacks `--agent` | **confirmado** | `tb bench compare --agent …` → `unknown flag: --agent` |
-| `guard.yaml` ignored | **confirmado** | Arquivo com `protected_paths: crates/printer/**`; `guard check` no diff do printer → `violations: null`. Código em `internal/guard` usa slice hardcoded. |
-| Outdated CLI docs | **confirmado** | Docs: `tb mem add --type`, `tb ticket`, `guard.yaml` como manifesto; CLI real diverge. |
-| version shows `unknown` | **confirmado (parcial)** | Sem ldflags: versão `0.1.0-dev`, `commit: unknown`, `built: unknown`. Com `make build`, ok. |
-| config files created 0600 | **confirmado** | `.toolbelt/config.yaml`, `invariants.yaml`, outputs JSON de verify → mode `600`. |
-| visual ruler `skipped=false` when skipping | **refutado (neste run)** | JSON: `"skipped": true`, `"skip_reason": "manifesto de telas ausente"`. |
-| `default_agent` ignored | **confirmado** | `bench.default_agent: "echo AGENT_SHOULD_RUN {prompt}"` no config; `tb bench run` sem flags → `--agent ou --fake é obrigatório`. |
-| guard aborts verify when diff touches hardcoded config path | **confirmado** | Diff em `.toolbelt/thresholds.yaml` → guard `protected_path`; verify `verdict: FAIL`, `iterations: 0`, exit 1. |
-| default fake agent needs `--fake-config` | **refutado (uso básico)** | `tb bench run --fake --task bugfix-go` → 100% sucesso sem `--fake-config`. Flag só customiza o comando. |
-| `mem add` positional | **confirmado** | Usage: `tb mem add <regra>`; `--type` rejeitado. |
-| Drift/Scope need literal paths (no globs) | **refutado (parcial)** | `scope: crates/printer/src/*.rs, tests/**` casou os arquivos. O que **quebra** é formato markdown `## Scope` / listas `- path` (não parseados). |
-| `graph impact` needs `--file` | **confirmado** | Sem flag: `--file é obrigatório`. |
-| review false positives on tests/hidden invariant | **confirmado** | Commit só com comentário `// … tests/hidden …` → finding `critical` “possível violação… NUNCA modifique arquivos em tests/hidden/”. |
-| verify runs only partial checks / misses build errors | **confirmado** | Com `--test-cmd 'cargo test -q -p grep-printer --lib'`, verify `PASS` enquanto `crates/core/main.rs` inválido → `cargo build` exit 101. |
-| tb does not push agent to complete whole task | **confirmado (observacional)** | Init não gerou checklist/AGENTS; não detectou Cargo; Scope/docs errados; verify default Go; impact vazio. A tarefa só fechou por iniciativa fora do “happy path” do tb. |
+| command | result | helped / hindered / neutral | evidence |
+|---------|--------|-----------------------------|----------|
+| `tb init` | Created `.toolbelt/` + `config.yaml` (mode **600**); verify defaults = `go test ./...` | hindered | Rust repo; agent must rewrite verify by hand. No `AGENTS.md`, no Cargo detection. |
+| `tb mem init` / `add` / `list` / `check` | `invariants.yaml` mode **600**; `add` accepts positional rule; `mem check` OK (retention 1.00) | neutral | `add --type/--title` (docs) → `unknown flag: --type`. Generic invariants (`tests/hidden/`) poorly aligned with ripgrep. |
+| `tb graph index --enable` | 2546 nodes, 3225 edges → `.toolbelt/graph.json` (~1.2 MiB) | helped | Rust indexing worked; ~0.2 s. |
+| `tb graph stats --enable` | Counts by type (functions 1661, etc.) | neutral | Useful for sanity; little for the task. |
+| `tb graph search --enable replace` | Found `Replacer`, `replace_all`, tests, GUIDE | helped | Speeds finding the printer vs blind grep. |
+| `tb graph impact --enable --file …` | Without `--file` → error; **with** `--file` → `(vazio)` / JSON `null` | hindered | Did not point at callers/dependents of `standard.rs` despite the index. |
+| `tb graph deps` / `callers` | Require `--file`/`--module` and `--function`; positional invocation fails | hindered | UX differs from intuition/implicit docs. |
+| Ticket + Scope (`rd.md`) | Markdown `## Scope` **does not** parse; needs `scope: a, b` and `base_commit: …` | hindered | With wrong format: review → `sem scope declarado`; drift → `out_of_scope: null` even with wrong paths. |
+| `tb verify run` (cargo) | `PASS` (iter 1); `hidden_available: false` | helped (partial) | With `--test-cmd 'cargo test -q --tests'` mirrored the real change suite. |
+| `tb verify` default/Go | `ESCALATE` (3 iters) with `go test ./...` | hindered | Post-`init` default unusable; hides the problem until configured. |
+| `tb verify --ruler visual` | `verdict: PASS`, **`skipped: true`**, `skip_reason: manifesto de telas ausente` | neutral | Graceful skip; PASS verdict can confuse. |
+| `tb review` | With correct scope: `findings: []`. Invalid `-o` (only `--output`) | neutral→hindered | Critical FP if the diff only **mentions** the string `tests/hidden` (see Known problems). |
+| `tb drift` | Detects out of scope with correct `scope:`; globs `*` and `/**` **work** | helped | Exit ≠0 + `out_of_scope` list when `crates/core/main.rs` vs real diff. |
+| `tb guard check` | No violations on the fix; violates `protected_path` on `.toolbelt/thresholds.yaml` | helped (partial) | Paths **hardcoded**; created `.toolbelt/guard.yaml` → **ignored**. |
+| `tb bench run/compare` | `--fake` ok on `bugfix-go`; `compare --agent` nonexistent; config `default_agent` **ignored** | neutral | Bench uses toolbelt’s own fixtures, not ripgrep’s. |
+| `tb mcp` | `tools/list` via stdio: `tb_env`, `tb_run`, `tb_graph_*`, `tb_version`, `tb_echo` | neutral | Started; does not cover review/verify/drift/guard/mem. |
+| `tb version` | With `make`: `c8aae04`. `go build` without ldflags: `0.1.0-dev`, commit/built **`unknown`** | neutral | Confirms build gap without Makefile. |
+| `tb ticket` | `unknown command` | hindered | Documented in `docs/cli.md`, absent from the binary. |
 
 ---
 
-## Problemas novos
+## Known problems
 
-1. **P1 — `tb init` assume Go em repo Rust**  
-   - Repro: `tb init` em ripgrep → `verify.test_cmd: go test ./...`.  
-   - Esperado: detectar `Cargo.toml` / perguntar / deixar explícito “não detectado”.  
-   - Atual: defaults Go; verify Go → `ESCALATE`.
+| problem | confirmed / refuted / not tested | evidence |
+|---------|----------------------------------|----------|
+| `bench compare` lacks `--agent` | **confirmed** | `tb bench compare --agent …` → `unknown flag: --agent` |
+| `guard.yaml` ignored | **confirmed** | File with `protected_paths: crates/printer/**`; `guard check` on the printer diff → `violations: null`. Code in `internal/guard` uses a hardcoded slice. |
+| Outdated CLI docs | **confirmed** | Docs: `tb mem add --type`, `tb ticket`, `guard.yaml` as manifesto; real CLI diverges. |
+| version shows `unknown` | **confirmed (partial)** | Without ldflags: version `0.1.0-dev`, `commit: unknown`, `built: unknown`. With `make build`, ok. |
+| config files created 0600 | **confirmed** | `.toolbelt/config.yaml`, `invariants.yaml`, verify JSON outputs → mode `600`. |
+| visual ruler `skipped=false` when skipping | **refuted (in this run)** | JSON: `"skipped": true`, `"skip_reason": "manifesto de telas ausente"`. |
+| `default_agent` ignored | **confirmed** | `bench.default_agent: "echo AGENT_SHOULD_RUN {prompt}"` in config; `tb bench run` without flags → `--agent ou --fake é obrigatório`. |
+| guard aborts verify when diff touches hardcoded config path | **confirmed** | Diff on `.toolbelt/thresholds.yaml` → guard `protected_path`; verify `verdict: FAIL`, `iterations: 0`, exit 1. |
+| default fake agent needs `--fake-config` | **refuted (basic use)** | `tb bench run --fake --task bugfix-go` → 100% success without `--fake-config`. Flag only customizes the command. |
+| `mem add` positional | **confirmed** | Usage: `tb mem add <regra>`; `--type` rejected. |
+| Drift/Scope need literal paths (no globs) | **refuted (partial)** | `scope: crates/printer/src/*.rs, tests/**` matched the files. What **breaks** is markdown `## Scope` / `- path` lists (not parsed). |
+| `graph impact` needs `--file` | **confirmed** | Without flag: `--file é obrigatório`. |
+| review false positives on tests/hidden invariant | **confirmed** | Commit with only comment `// … tests/hidden …` → `critical` finding “possível violação… NUNCA modifique arquivos em tests/hidden/”. |
+| verify runs only partial checks / misses build errors | **confirmed** | With `--test-cmd 'cargo test -q -p grep-printer --lib'`, verify `PASS` while invalid `crates/core/main.rs` → `cargo build` exit 101. |
+| tb does not push agent to complete whole task | **confirmed (observational)** | Init did not generate checklist/AGENTS; did not detect Cargo; wrong Scope/docs; Go verify default; empty impact. The task only closed by initiative outside tb’s “happy path”. |
 
-2. **P1 — formato de ticket/Scope não documentado de forma operacional**  
-   - Repro: `## Scope` + lista `- path` → review “sem scope”; drift não marca nada.  
-   - Esperado: aceitar heading markdown **ou** docs/CLI mostrarem `scope: a, b` + frontmatter YAML.  
-   - Atual: só `scope:` / `escopo:` em linha (regex em `parseTicketMarkdown`).
+---
 
-3. **P2 — `graph impact` retorna vazio em crate Rust indexada**  
-   - Repro: após `graph index`, `tb graph impact --enable --file crates/printer/src/standard.rs` → vazio/`null`.  
-   - Esperado: edges defines/imports ou mensagem “sem impacto indexado”.  
-   - Atual: silêncio; search encontra símbolos no mesmo arquivo.
+## New problems
 
-4. **P2 — `verify` visual: `PASS` + `skipped: true`**  
-   - Repro: `--ruler visual --skip-unavailable` sem `screens.yaml`.  
-   - Esperado: verdict `SKIP`/`N/A`, não `PASS`.  
-   - Atual: fácil interpretar como verificação visual ok.
+1. **P1 — `tb init` assumes Go in a Rust repo**  
+   - Repro: `tb init` on ripgrep → `verify.test_cmd: go test ./...`.  
+   - Expected: detect `Cargo.toml` / ask / make “not detected” explicit.  
+   - Actual: Go defaults; Go verify → `ESCALATE`.
 
-5. **P2 — flags curtas inconsistentes**  
-   - Repro: `tb review -o file` / `tb drift -o file` → `unknown shorthand flag: 'o'`; verify aceita `-o`.  
-   - Esperado: `-o` alias de `--output` em todos.  
+2. **P1 — ticket/Scope format not documented operationally**  
+   - Repro: `## Scope` + `- path` list → review “sem scope”; drift marks nothing.  
+   - Expected: accept markdown heading **or** docs/CLI show `scope: a, b` + YAML frontmatter.  
+   - Actual: only same-line `scope:` / `escopo:` (regex in `parseTicketMarkdown`).
+
+3. **P2 — `graph impact` returns empty on an indexed Rust crate**  
+   - Repro: after `graph index`, `tb graph impact --enable --file crates/printer/src/standard.rs` → empty/`null`.  
+   - Expected: defines/imports edges or a “no indexed impact” message.  
+   - Actual: silence; search finds symbols in the same file.
+
+4. **P2 — visual `verify`: `PASS` + `skipped: true`**  
+   - Repro: `--ruler visual --skip-unavailable` without `screens.yaml`.  
+   - Expected: verdict `SKIP`/`N/A`, not `PASS`.  
+   - Actual: easy to read as visual verification ok.
+
+5. **P2 — inconsistent short flags**  
+   - Repro: `tb review -o file` / `tb drift -o file` → `unknown shorthand flag: 'o'`; verify accepts `-o`.  
+   - Expected: `-o` alias of `--output` everywhere.
 
 6. **P3 — MCP tool surface << CLI**  
-   - Repro: `tools/list` sem mem/verify/review/drift/guard/bench.  
-   - Esperado: paridade ou discover documentado das lacunas.
+   - Repro: `tools/list` without mem/verify/review/drift/guard/bench.  
+   - Expected: parity or documented discovery of gaps.
 
-7. **P3 — JSON de verify criado 0600**  
-   - Mesmo padrão dos configs; atrapalha leitura por outros uids no CI compartilhado.
-
----
-
-## O que o tb pegou e o que deixou passar
-
-**Pegou**
-- Index/`graph search` localizou printer/replacer.
-- `verify` com `cargo test -q --tests` passou no fix final (e falharia com `go test`).
-- `drift`/`review` com `scope:` correto validaram o perímetro.
-- `guard` bloqueou alteração de `.toolbelt/thresholds.yaml` (path hardcoded).
-- `mem check` intacto; MCP respondeu.
-
-**Deixou passar / não ajudou**
-- Não sugeriu a causa raiz nem o formato de ticket.
-- `graph impact` não guiou o blast radius.
-- Não rodaria build completo se `test_cmd` for só `-p grep-printer` (demo: main quebrado + verify PASS).
-- `hidden_available: false` sempre aqui — sem suíte oculta gerada/descoberta.
-- Review FP por menção textual a `tests/hidden`.
-- Não leu `AI_POLICY.md` / não avisou conflito com contribuição autônoma (só relevante se alguém fosse abrir PR — não abrimos).
-
-**Nativo vs tb**: a regressão `r2095` foi vista por `cargo test --tests`, não por um ruler específico do tb; o tb só espelha o `test_cmd` configurado.
+7. **P3 — verify JSON created 0600**  
+   - Same pattern as configs; hinders reading by other uids on shared CI.
 
 ---
 
-## Interação com instrumentação existente / onboarding
+## What tb caught and what it let slip
 
-- **Existente**: apenas `AI_POLICY.md` (política humana; proíbe agentes autônomos no upstream). Nada do tipo AGENTS/Cursor skills.
-- **`tb init` gerou**: `.toolbelt/{config.yaml,bench,logs,vault}`; depois `mem init` → `invariants.yaml`; graph → `graph.json`. **Não** gerou `AGENTS.md`, scripts de verify Rust, nem importou CONTRIBUTING/AI_POLICY.
-- **Qualidade**: estrutura ok; conteúdo desconectado (Go, `tests/hidden`, thresholds).
-- **Faltou**: detecção de `Cargo.toml` → `cargo test`/`cargo fmt`/`clippy`; scaffold de ticket com `scope:`/`base_commit:` exemplos; opcional `AGENTS.md` mínimo; leitura de políticas do repo; `graph impact` útil em Rust; MCP alinhado ao workflow.
+**Caught**
+- Index/`graph search` located printer/replacer.
+- `verify` with `cargo test -q --tests` passed on the final fix (and would fail with `go test`).
+- `drift`/`review` with correct `scope:` validated the perimeter.
+- `guard` blocked changing `.toolbelt/thresholds.yaml` (hardcoded path).
+- Intact `mem check`; MCP responded.
 
----
+**Let slip / did not help**
+- Did not suggest the root cause or ticket format.
+- `graph impact` did not guide blast radius.
+- Would not run a full build if `test_cmd` is only `-p grep-printer` (demo: broken main + verify PASS).
+- `hidden_available: false` always here — no hidden suite generated/discovered.
+- Review FP from a textual mention of `tests/hidden`.
+- Did not read `AI_POLICY.md` / did not warn about conflict with autonomous contribution (only relevant if someone were to open a PR — we did not).
 
-## Sugestões de melhoria
-
-Ordenadas; tag por área.
-
-1. **[init/onboarding] P0** — Detectar ecossistema (Cargo/Go/npm) e preencher `verify.test_cmd` / sugerir lint/build; gerar `AGENTS.md` stub + exemplo de `rd.md` com `scope:`/`base_commit:`.
-2. **[docs/cli] P0** — Sincronizar `docs/cli.md` com a árvore real (`mem add`, sem `ticket`, flags `compare`, `guard` hardcoded vs `guard.yaml`).
-3. **[drift/review] P1** — Aceitar `## Scope` markdown lists; documentar globs; reduzir FP de invariantes (match em paths do diff, não substring no texto).
-4. **[guard] P1** — Honrar `.toolbelt/guard.yaml` ou remover das docs; não abortar verify em paths de config do próprio toolbelt sem mandate.
-5. **[graph] P1** — Fazer `impact` retornar algo útil em Rust (defines/imports) ou erro explícito.
-6. **[verify] P1** — Separar `SKIP` de `PASS`; opção de `build_cmd` além de `test_cmd`; avisar quando `hidden` indisponível.
-7. **[bench] P2** — Respeitar `default_agent`; alinhar `compare` com `--agent` ou documentar só configs/`--fake`.
-8. **[mcp] P2** — Expor verify/review/drift/mem ou documentar subset.
-9. **[ux] P3** — `-o` consistente; permissões 0644 para configs não-secretas.
+**Native vs tb**: the `r2095` regression was seen by `cargo test --tests`, not by a tb-specific ruler; tb only mirrors the configured `test_cmd`.
 
 ---
 
-## Métricas
+## Interaction with existing instrumentation / onboarding
 
-| métrica | valor |
-|---------|--------|
-| Wall time (estudo ativo) | ~8–10 min de execução cronometrada de comandos (~12.6 s somados só nos `time` do log de tb/curtos) + ~15–20 min wall total da sessão incluindo leitura/implementação |
-| Invocações tb (aprox.) | **~49** (init/mem/graph/verify/review/drift/guard/bench/mcp/version + retentativas) |
-| Falhas/erros tb observados | **~11–16** exits/erros de UX (flags, defaults, drift intencional, guard/verify em thresholds, compare `--agent`, `ticket`, etc.) — vários foram probes de problemas conhecidos |
-| Artefatos | evidências em `/tmp/tb-campo-ripgrep/`; mudança ripgrep só em `/tmp/target/ripgrep` (não no remoto) |
+- **Existing**: only `AI_POLICY.md` (human policy; forbids autonomous agents upstream). Nothing like AGENTS/Cursor skills.
+- **`tb init` generated**: `.toolbelt/{config.yaml,bench,logs,vault}`; then `mem init` → `invariants.yaml`; graph → `graph.json`. **Did not** generate `AGENTS.md`, Rust verify scripts, or import CONTRIBUTING/AI_POLICY.
+- **Quality**: structure ok; content disconnected (Go, `tests/hidden`, thresholds).
+- **Missing**: detect `Cargo.toml` → `cargo test`/`cargo fmt`/`clippy`; ticket scaffold with `scope:`/`base_commit:` examples; optional minimal `AGENTS.md`; read repo policies; useful Rust `graph impact`; MCP aligned with the workflow.
 
-**Não executado / por quê**: CI multi-OS do ripgrep; matrix PCRE2/`cross`; clippy `-D warnings` workspace-wide (lints pré-existentes); bench A/B com agente real (só `--fake`); interação qualquer com o GitHub do ripgrep (proibido pelas regras do campo).
+---
+
+## Improvement suggestions
+
+Ordered; tagged by area.
+
+1. **[init/onboarding] P0** — Detect ecosystem (Cargo/Go/npm) and fill `verify.test_cmd` / suggest lint/build; generate stub `AGENTS.md` + `rd.md` example with `scope:`/`base_commit:`.
+2. **[docs/cli] P0** — Sync `docs/cli.md` with the real tree (`mem add`, no `ticket`, `compare` flags, hardcoded `guard` vs `guard.yaml`).
+3. **[drift/review] P1** — Accept markdown `## Scope` lists; document globs; reduce invariant FPs (match paths in the diff, not substring in text).
+4. **[guard] P1** — Honor `.toolbelt/guard.yaml` or remove from docs; do not abort verify on toolbelt’s own config paths without a mandate.
+5. **[graph] P1** — Make `impact` return something useful in Rust (defines/imports) or an explicit error.
+6. **[verify] P1** — Separate `SKIP` from `PASS`; optional `build_cmd` beyond `test_cmd`; warn when `hidden` is unavailable.
+7. **[bench] P2** — Honor `default_agent`; align `compare` with `--agent` or document only configs/`--fake`.
+8. **[mcp] P2** — Expose verify/review/drift/mem or document the subset.
+9. **[ux] P3** — Consistent `-o`; 0644 permissions for non-secret configs.
+
+---
+
+## Metrics
+
+| metric | value |
+|--------|--------|
+| Wall time (active study) | ~8–10 min of timed command execution (~12.6 s summed only from short tb `time` log entries) + ~15–20 min total session wall including reading/implementation |
+| Approx. tb invocations | **~49** (init/mem/graph/verify/review/drift/guard/bench/mcp/version + retries) |
+| Observed tb failures/errors | **~11–16** UX exits/errors (flags, defaults, intentional drift, guard/verify on thresholds, compare `--agent`, `ticket`, etc.) — several were probes of known problems |
+| Artifacts | evidence under `/tmp/tb-campo-ripgrep/`; ripgrep change only under `/tmp/target/ripgrep` (not on the remote) |
+
+**Not run / why**: ripgrep multi-OS CI; PCRE2/`cross` matrix; workspace-wide clippy `-D warnings` (pre-existing lints); A/B bench with a real agent (only `--fake`); any interaction with ripgrep’s GitHub (forbidden by field rules).

@@ -1,43 +1,43 @@
-🇧🇷 Português | [🇺🇸 English](en/arquitetura.md)
+🇺🇸 English | [🇧🇷 Português](pt-BR/arquitetura.md)
 
-# Arquitetura do toolbelt (`tb`)
+# toolbelt Architecture (`tb`)
 
-## Visão Geral
+## Overview
 
-O `toolbelt` é um conjunto de ferramentas para agentes de código com IA, unificadas sob um único binário (`tb`) e protocolo. O objetivo é fornecer um ambiente seguro, eficiente e auditável para que agentes autônomos executem tarefas de desenvolvimento.
+`toolbelt` is a set of tools for AI coding agents, unified under a single binary (`tb`) and protocol. The goal is to provide a safe, efficient, and auditable environment for autonomous agents to run development tasks.
 
 ```mermaid
 graph TB
-    subgraph "Interface Humana"
+    subgraph "Human Interface"
         CLI[tb CLI]
         TUI[tb md - TUI Markdown]
         OBS[Obsidian]
     end
 
-    subgraph "Camada de Protocolos"
+    subgraph "Protocol Layer"
         MCP[MCP Server]
         A2A[A2A - Agent to Agent]
         RPC[JSON-RPC 2.0]
     end
 
-    subgraph "Núcleo"
-        ORCH[Orquestrador]
-        MEM[Gerenciador de Memória]
-        CTX[Montador de Contexto]
-        GRAPH[Motor de Grafo]
+    subgraph "Core"
+        ORCH[Orchestrator]
+        MEM[Memory Manager]
+        CTX[Context Assembler]
+        GRAPH[Graph Engine]
         SANDBOX[Sandbox Manager]
     end
 
-    subgraph "Armazenamento"
-        VAULT[Vault Markdown<br/>fonte de verdade]
-        SQLITE[(SQLite + FTS5<br/>índice derivado)]
-        AUDIT[Log de Auditoria<br/>append-only]
+    subgraph "Storage"
+        VAULT[Markdown Vault<br/>source of truth]
+        SQLITE[(SQLite + FTS5<br/>derived index)]
+        AUDIT[Audit Log<br/>append-only]
     end
 
-    subgraph "Execução"
-        PROC[Gerenciador de Processos]
-        WORK[Worktrees Git]
-        ISO[Isolamento<br/>bubblewrap+Landlock]
+    subgraph "Execution"
+        PROC[Process Manager]
+        WORK[Git Worktrees]
+        ISO[Isolation<br/>bubblewrap+Landlock]
     end
 
     CLI --> ORCH
@@ -64,19 +64,19 @@ graph TB
 
 ---
 
-## 1. Workspace e Sandbox
+## 1. Workspace and Sandbox
 
-### 1.1 Isolamento por Worktree
+### 1.1 Isolation by Worktree
 
-Cada agente opera em um **git worktree** dedicado, permitindo:
+Each agent operates in a dedicated **git worktree**, enabling:
 
-- Trabalho paralelo sem conflitos de branch
-- Snapshot e rollback instantâneos via git
-- Limpeza simples ao finalizar a tarefa
+- Parallel work without branch conflicts
+- Instant snapshot and rollback via git
+- Simple cleanup when the task finishes
 
 ```mermaid
 graph LR
-    REPO[Repositório Principal] --> WT1[worktree/agent-001]
+    REPO[Main Repository] --> WT1[worktree/agent-001]
     REPO --> WT2[worktree/agent-002]
     REPO --> WT3[worktree/agent-003]
     
@@ -85,56 +85,56 @@ graph LR
     WT3 --> SB3[Sandbox 3]
 ```
 
-### 1.2 Camadas de Isolamento
+### 1.2 Isolation Layers
 
-| Camada | Tecnologia | Responsabilidade |
-|--------|------------|------------------|
-| Filesystem | bubblewrap | Monta apenas diretórios permitidos; bind-mount read-only para testes |
-| Syscalls | seccomp | Lista de syscalls permitidos por perfil de tarefa |
-| Filesystem (runtime) | Landlock | Restrições de acesso mesmo para processos filhos |
-| Recursos | cgroups v2 | Limites de CPU, RAM, tempo de execução |
-| Rede | netns/bubblewrap | Negada por padrão; whitelist explícita |
+| Layer | Technology | Responsibility |
+|-------|------------|----------------|
+| Filesystem | bubblewrap | Mounts only allowed directories; read-only bind-mount for tests |
+| Syscalls | seccomp | Allowed syscall list per task profile |
+| Filesystem (runtime) | Landlock | Access restrictions even for child processes |
+| Resources | cgroups v2 | CPU, RAM, and execution-time limits |
+| Network | netns/bubblewrap | Denied by default; explicit whitelist |
 
-### 1.3 Snapshot e Rollback
+### 1.3 Snapshot and Rollback
 
-Antes de cada tarefa:
-1. `git stash --include-untracked` ou commit temporário
-2. Hash do estado salvo no log de auditoria
-3. Execução da tarefa no sandbox
-4. Em caso de falha ou violação: `git reset --hard` + `git clean -fdx`
+Before each task:
+1. `git stash --include-untracked` or a temporary commit
+2. State hash saved in the audit log
+3. Task execution in the sandbox
+4. On failure or violation: `git reset --hard` + `git clean -fdx`
 
 ---
 
-## 2. Memória vs Contexto
+## 2. Memory vs Context
 
-**Memória** e **contexto** são conceitos distintos:
+**Memory** and **context** are distinct concepts:
 
-| Aspecto | Memória | Contexto |
-|---------|---------|----------|
-| **Definição** | Armazenamento persistente de fatos, decisões, sumários e grafo | O que é montado na janela do modelo para uma tarefa específica |
-| **Persistência** | Permanente (vault Markdown + SQLite) | Efêmera (dura uma requisição) |
-| **Tamanho** | Ilimitado (cresce com o projeto) | Limitado pelo orçamento de tokens |
-| **Formato** | Markdown + frontmatter + grafo | Texto serializado para o prompt |
+| Aspect | Memory | Context |
+|--------|--------|---------|
+| **Definition** | Persistent storage of facts, decisions, summaries, and the graph | What is assembled into the model window for a specific task |
+| **Persistence** | Permanent (Markdown vault + SQLite) | Ephemeral (lasts one request) |
+| **Size** | Unlimited (grows with the project) | Limited by the token budget |
+| **Format** | Markdown + frontmatter + graph | Text serialized for the prompt |
 
-### 2.1 Tipos de Contexto
+### 2.1 Context Types
 
 ```mermaid
 graph TB
-    subgraph "Contexto Global"
-        RULES[Regras e Perfis]
-        CAPS[Capacidades do Agente]
-        TOOLS[Ferramentas Disponíveis]
+    subgraph "Global Context"
+        RULES[Rules and Profiles]
+        CAPS[Agent Capabilities]
+        TOOLS[Available Tools]
     end
 
-    subgraph "Contexto Local"
-        REPO_CTX[Contexto do Repositório]
-        TASK_CTX[Contexto da Tarefa]
-        AGENT_CTX[Estado do Agente]
+    subgraph "Local Context"
+        REPO_CTX[Repository Context]
+        TASK_CTX[Task Context]
+        AGENT_CTX[Agent State]
     end
 
-    subgraph "Montagem"
-        BUDGET[Orçamento de Tokens]
-        ASSEMBLER[Montador de Contexto]
+    subgraph "Assembly"
+        BUDGET[Token Budget]
+        ASSEMBLER[Context Assembler]
     end
 
     RULES --> ASSEMBLER
@@ -145,25 +145,25 @@ graph TB
     AGENT_CTX --> ASSEMBLER
 
     BUDGET --> ASSEMBLER
-    ASSEMBLER --> PROMPT[Prompt Final]
+    ASSEMBLER --> PROMPT[Final Prompt]
 ```
 
-### 2.2 Hierarquia de Contexto
+### 2.2 Context Hierarchy
 
-1. **Global**: regras do sistema, perfil do usuário, ferramentas MCP disponíveis
-2. **Repositório**: estrutura do projeto, convenções, dependências principais
-3. **Agente**: role/persona, histórico recente, capacidades específicas
-4. **Tarefa**: objetivo, arquivos relevantes, resultados de queries no grafo
+1. **Global**: system rules, user profile, available MCP tools
+2. **Repository**: project structure, conventions, main dependencies
+3. **Agent**: role/persona, recent history, specific capabilities
+4. **Task**: objective, relevant files, graph query results
 
-O **Montador de Contexto** recebe um orçamento de tokens e prioriza informações mais relevantes, truncando ou sumarizando quando necessário.
+The **Context Assembler** receives a token budget and prioritizes the most relevant information, truncating or summarizing when needed.
 
 ---
 
-## 3. Armazenamento: Vault Markdown + SQLite/FTS5
+## 3. Storage: Markdown Vault + SQLite/FTS5
 
-### 3.1 Vault Markdown (Fonte de Verdade)
+### 3.1 Markdown Vault (Source of Truth)
 
-Inspirado no Obsidian, a memória é um vault de arquivos Markdown:
+Inspired by Obsidian, memory is a vault of Markdown files:
 
 ```
 .tb/
@@ -185,13 +185,13 @@ Inspirado no Obsidian, a memória é um vault de arquivos Markdown:
 └── audit.log         # Log append-only
 ```
 
-Cada arquivo usa:
-- **Frontmatter YAML**: metadados estruturados (tipo, tags, data, proveniência)
-- **Wikilinks**: `[[outro-arquivo]]` para relacionamentos
+Each file uses:
+- **YAML frontmatter**: structured metadata (type, tags, date, provenance)
+- **Wikilinks**: `[[outro-arquivo]]` for relationships
 - **Tags**: `#decision`, `#fact`, `#inferred`
-- **Backlinks**: calculados automaticamente
+- **Backlinks**: calculated automatically
 
-Exemplo de arquivo:
+Example file:
 
 ```markdown
 ---
@@ -217,9 +217,9 @@ O projeto usa SQLite como banco de dados principal.
 - Afeta: [[config-schema]], [[migration-system]]
 ```
 
-### 3.2 SQLite + FTS5 (Índice Derivado)
+### 3.2 SQLite + FTS5 (Derived Index)
 
-O SQLite é um **índice derivado**, reconstruído a partir do vault e do código:
+SQLite is a **derived index**, rebuilt from the vault and the code:
 
 ```sql
 -- Nós do grafo
@@ -273,9 +273,9 @@ SELECT e.source_id as dependent, e.target_id as dependency, e.confidence
 FROM edges e WHERE e.type = 'imports';
 ```
 
-### 3.3 Sincronização Vault → SQLite
+### 3.3 Vault → SQLite Sync
 
-A direção de sync é **unidirecional**: vault → SQLite.
+The sync direction is **unidirectional**: vault → SQLite.
 
 ```mermaid
 sequenceDiagram
@@ -292,15 +292,15 @@ sequenceDiagram
     S->>S: Atualiza FTS5
 ```
 
-**Resolução de conflitos**: o vault sempre vence. Se o SQLite divergir (corrupção, edição manual), o comando `tb graph rebuild` reconstrói tudo.
+**Conflict resolution**: the vault always wins. If SQLite diverges (corruption, manual edit), the `tb graph rebuild` command rebuilds everything.
 
-### 3.4 Indexação de Código com Proveniência
+### 3.4 Code Indexing with Provenance
 
-Inspirado no Graphify, o `tb graph` indexa código via tree-sitter:
+Inspired by Graphify and reimplemented in toolbelt ([ADR-014](adr/014-graphify-reimplementacao.md)), `tb graph` indexes code with `go/ast` (Go) and conservative regex extractors (TS/JS, Python, Rust, frameworks). tree-sitter remains a future option, not implemented:
 
 ```mermaid
 graph LR
-    CODE[Código Fonte] --> TS[tree-sitter Parser]
+    CODE[Código Fonte] --> TS[go/ast + extratores regex]
     TS --> AST[AST]
     AST --> EXT[Extrator]
     EXT --> NODES[Nós: funções, classes, módulos]
@@ -316,14 +316,14 @@ graph LR
     end
 ```
 
-**Proveniência de arestas**:
-- `extracted`: derivado diretamente do AST (alta confiança)
-- `inferred`: deduzido por LLM ou heurísticas (confiança variável)
-- `manual`: inserido por humano via vault
+**Edge provenance**:
+- `extracted`: derived directly from the AST (high confidence)
+- `inferred`: deduced by LLM or heuristics (variable confidence)
+- `manual`: inserted by a human via the vault
 
-### 3.5 Queries para Agentes
+### 3.5 Queries for Agents
 
-O grafo expõe queries que economizam tokens:
+The graph exposes queries that save tokens:
 
 ```bash
 # Quem chama esta função?
@@ -339,7 +339,7 @@ tb graph impact --file "src/config/parser.go"
 tb graph search "autenticação JWT"
 ```
 
-**Hooks para agentes**: antes de ler arquivos brutos, o agente deve consultar o grafo:
+**Hooks for agents**: before reading raw files, the agent should query the graph:
 
 ```
 1. Recebe tarefa: "Corrigir bug no parser de config"
@@ -349,26 +349,26 @@ tb graph search "autenticação JWT"
 5. Só então lê os arquivos específicos necessários
 ```
 
-Isso reduz drasticamente o número de tokens consumidos em leitura de arquivos.
+This drastically reduces the number of tokens consumed reading files.
 
 ---
 
-## 4. Segurança
+## 4. Security
 
-### 4.1 Modelo de Ameaças
+### 4.1 Threat Model
 
-| Ameaça | Mitigação |
-|--------|-----------|
-| Escape do sandbox | Múltiplas camadas (bubblewrap + Landlock + seccomp) |
-| Acesso a secrets | Variáveis injetadas apenas para ferramentas autorizadas; nunca no prompt |
-| Modificação de testes | Arquivos de teste read-only + hash verificado |
-| Exfiltração de dados | Rede negada por padrão; whitelist explícita |
-| Escalação de privilégios | Capacidades mínimas; tokens de capability por ação |
-| Reward hacking | Implementador ≠ avaliador; detecção de padrões suspeitos |
+| Threat | Mitigation |
+|--------|------------|
+| Sandbox escape | Multiple layers (bubblewrap + Landlock + seccomp) |
+| Secret access | Variables injected only for authorized tools; never in the prompt |
+| Test modification | Read-only test files + verified hash |
+| Data exfiltration | Network denied by default; explicit whitelist |
+| Privilege escalation | Minimal capabilities; capability tokens per action |
+| Reward hacking | Implementer ≠ evaluator; suspicious-pattern detection |
 
-### 4.2 Permissões por Capacidade
+### 4.2 Permissions by Capability
 
-Cada role tem um conjunto de capacidades:
+Each role has a set of capabilities:
 
 ```yaml
 roles:
@@ -402,9 +402,9 @@ roles:
       - network:internal
 ```
 
-### 4.3 Tokens de Capacidade para Ações Destrutivas
+### 4.3 Capability Tokens for Destructive Actions
 
-Ações perigosas requerem tokens de capacidade explícitos:
+Dangerous actions require explicit capability tokens:
 
 ```go
 type CapabilityToken struct {
@@ -416,14 +416,14 @@ type CapabilityToken struct {
 }
 ```
 
-O fluxo:
-1. Agente solicita ação destrutiva
-2. Sistema gera token pendente
-3. Humano (ou supervisor autorizado) aprova
-4. Token é assinado e tem validade curta
-5. Ação executa apresentando o token
+The flow:
+1. Agent requests a destructive action
+2. System generates a pending token
+3. Human (or authorized supervisor) approves
+4. Token is signed and has a short validity
+5. Action executes presenting the token
 
-### 4.4 Handling de Secrets
+### 4.4 Secret Handling
 
 ```mermaid
 sequenceDiagram
@@ -442,17 +442,17 @@ sequenceDiagram
     O->>A: Resultado sanitizado
 ```
 
-Secrets nunca aparecem:
-- No prompt do modelo
-- Nos logs
-- Na memória do vault
-- Nas respostas ao agente
+Secrets never appear:
+- In the model prompt
+- In logs
+- In vault memory
+- In responses to the agent
 
 ---
 
-## 5. Scripts e Processos
+## 5. Scripts and Processes
 
-### 5.1 Comandos `tb run` e `tb proc`
+### 5.1 `tb run` and `tb proc` Commands
 
 ```bash
 # Execução única com timeout
@@ -468,7 +468,7 @@ tb proc stop dev-server
 tb run --sandbox --allow-net "localhost:8080" "curl localhost:8080/health"
 ```
 
-### 5.2 Gerenciamento de Processos
+### 5.2 Process Management
 
 ```mermaid
 stateDiagram-v2
@@ -484,17 +484,17 @@ stateDiagram-v2
     Killed --> [*]
 ```
 
-Características:
-- **Logs estruturados**: stdout/stderr com timestamps
-- **Cascading kill**: processo pai morto mata filhos (via cgroups)
-- **Timeout hierárquico**: warn → SIGTERM → grace period → SIGKILL
-- **Resource limits**: CPU/RAM por processo via cgroups
+Characteristics:
+- **Structured logs**: stdout/stderr with timestamps
+- **Cascading kill**: killing the parent kills children (via cgroups)
+- **Hierarchical timeout**: warn → SIGTERM → grace period → SIGKILL
+- **Resource limits**: CPU/RAM per process via cgroups
 
 ---
 
-## 6. Roles e Personas
+## 6. Roles and Personas
 
-### 6.1 Definição em YAML + Markdown
+### 6.1 Definition in YAML + Markdown
 
 ```yaml
 # .tb/roles/worker-backend.yaml
@@ -530,10 +530,10 @@ persona: |
   Escreva testes para código novo.
 ```
 
-### 6.2 Ferramentas por Role
+### 6.2 Tools by Role
 
-| Role | Ferramentas Permitidas |
-|------|----------------------|
+| Role | Allowed Tools |
+|------|---------------|
 | `planner` | `tb:graph:*`, `tb:mem:*`, `tb:agent:spawn` |
 | `supervisor` | `tb:graph:*`, `tb:mem:*`, `tb:proc:*`, `tb:agent:review` |
 | `worker` | `tb:run`, `tb:graph:search,callers,deps`, `git:diff,commit` |
@@ -543,29 +543,29 @@ persona: |
 
 ## 7. TUI Markdown (`tb md`)
 
-### 7.1 Funcionalidades
+### 7.1 Features
 
-Interface TUI (Terminal User Interface) usando Bubble Tea para:
+Terminal User Interface (TUI) using Bubble Tea to:
 
-- **Navegar** o vault de memória
-- **Visualizar** grafo de relacionamentos
-- **Editar** arquivos Markdown in-place
-- **Revisar** planos e logs de agentes
-- **Aprovar** ações pendentes
+- **Navigate** the memory vault
+- **Visualize** the relationship graph
+- **Edit** Markdown files in-place
+- **Review** agent plans and logs
+- **Approve** pending actions
 
-### 7.2 Tema Visual
+### 7.2 Visual Theme
 
-A TUI segue o tema **Synthwave** definido em [docs/identidade-visual.md](identidade-visual.md). Os tokens de design em `assets/theme/theme.css` devem ser usados para manter consistência visual:
+The TUI follows the **Synthwave** theme defined in [docs/identidade-visual.md](identidade-visual.md). Design tokens in `assets/theme/theme.css` should be used to keep visual consistency:
 
-- Fundo: violeta (`--tb-bg`) ou superfície escura (`--tb-surface`)
-- Headers: roxo primário (`--tb-primary`)
-- Links e interativos: ciano (`--tb-accent`)
-- Código: fonte mono sobre superfície com cor accent
-- Status: success/error/warning conforme tokens semânticos
+- Background: violet (`--tb-bg`) or dark surface (`--tb-surface`)
+- Headers: primary purple (`--tb-primary`)
+- Links and interactive elements: cyan (`--tb-accent`)
+- Code: mono font on surface with accent color
+- Status: success/error/warning per semantic tokens
 
-### 7.3 Interoperabilidade com Obsidian
+### 7.3 Interoperability with Obsidian
 
-O vault em `.tb/vault/` é um vault Obsidian válido:
+The vault at `.tb/vault/` is a valid Obsidian vault:
 
 ```bash
 # Abrir no Obsidian
@@ -575,17 +575,17 @@ obsidian .tb/vault
 tb md --obsidian  # abre Obsidian se instalado
 ```
 
-A sincronização é bidirecional para edições humanas:
-1. Humano edita no Obsidian
-2. Watcher detecta mudança
-3. Índice SQLite atualizado
-4. Agentes veem dados atualizados
+Sync is bidirectional for human edits:
+1. Human edits in Obsidian
+2. Watcher detects the change
+3. SQLite index is updated
+4. Agents see updated data
 
 ---
 
-## 8. Rede de Agentes
+## 8. Agent Network
 
-### 8.1 Hierarquia
+### 8.1 Hierarchy
 
 ```mermaid
 graph TB
@@ -608,9 +608,9 @@ graph TB
     EVAL -.->|avalia| W2
 ```
 
-### 8.2 Fluxo de Contexto
+### 8.2 Context Flow
 
-Cada nível recebe apenas o contexto necessário:
+Each level receives only the necessary context:
 
 ```mermaid
 sequenceDiagram
@@ -631,7 +631,7 @@ sequenceDiagram
     P->>H: Tarefa concluída
 ```
 
-### 8.3 Ciclo de Vida do Agente
+### 8.3 Agent Lifecycle
 
 ```mermaid
 stateDiagram-v2
@@ -648,9 +648,9 @@ stateDiagram-v2
     Terminated --> [*]
 ```
 
-### 8.4 Orçamentos
+### 8.4 Budgets
 
-Cada agente tem limites:
+Each agent has limits:
 
 ```yaml
 budgets:
@@ -670,9 +670,9 @@ budgets:
     timeout: 5m
 ```
 
-### 8.5 Padrão Elephant-Goldfish
+### 8.5 Elephant-Goldfish Pattern
 
-Inspirado no [Elephant-Goldfish Model (EGM)](https://github.com/google/elephant-goldfish-model) do Google, o toolbelt implementa um workflow de revisão com isolamento de contexto:
+Inspired by Google's [Elephant-Goldfish Model (EGM)](https://github.com/google/elephant-goldfish-model), toolbelt implements a review workflow with context isolation:
 
 ```mermaid
 graph TB
@@ -702,21 +702,21 @@ graph TB
     AGG --> HUMAN[Humano<br/>resolve trade-offs]
 ```
 
-**Papéis**:
+**Roles**:
 
-| Papel | Contexto | Responsabilidade |
-|-------|----------|------------------|
-| Elephant (Planner) | Completo | Redige specs, faz brainstorm, conhece o projeto todo |
-| Goldfish (Reviewers) | Fresco | Revisa sem contexto prévio, encontra lacunas e suposições |
-| Human | N/A | Resolve trade-offs, aprova mudanças |
+| Role | Context | Responsibility |
+|------|---------|----------------|
+| Elephant (Planner) | Full | Drafts specs, brainstorms, knows the whole project |
+| Goldfish (Reviewers) | Fresh | Reviews without prior context, finds gaps and assumptions |
+| Human | N/A | Resolves trade-offs, approves changes |
 
-**Por que contexto fresco?**
+**Why fresh context?**
 
-1. **Guarda de qualidade**: revisor sem contexto encontra problemas que o autor, cego pelo conhecimento acumulado, não vê
-2. **Economia de tokens**: revisores recebem apenas documento + fontes, não o projeto inteiro
-3. **Anti-trapaça**: reforça separação autor ≠ revisor
+1. **Quality guard**: a reviewer without context finds problems the author, blinded by accumulated knowledge, does not see
+2. **Token savings**: reviewers receive only the document + sources, not the whole project
+3. **Anti-cheating**: reinforces author ≠ reviewer separation
 
-**Implementação via `tb review`**:
+**Implementation via `tb review`**:
 
 ```bash
 # Revisar documento com 3 goldfish
@@ -726,11 +726,11 @@ tb review docs/design-auth.md --reviewers 3 --standards security,clarity
 tb review pr:42 --roles "security-reviewer,api-reviewer,test-reviewer"
 ```
 
-O isolamento de contexto é **obrigatório**: se o sistema não conseguir criar contextos frescos, a revisão falha ao invés de prosseguir com contexto contaminado.
+Context isolation is **mandatory**: if the system cannot create fresh contexts, the review fails instead of proceeding with contaminated context.
 
-### 8.6 Padrão Router/Workers
+### 8.6 Router/Workers Pattern
 
-Para tarefas complexas que requerem alta paralelização e economia de contexto, o toolbelt suporta o padrão Router/Workers:
+For complex tasks that require high parallelization and context savings, toolbelt supports the Router/Workers pattern:
 
 ```mermaid
 graph TB
@@ -760,17 +760,17 @@ graph TB
     MERGE --> ROUTER
 ```
 
-**Conceitos principais**:
+**Main concepts**:
 
-| Conceito | Descrição |
-|----------|-----------|
-| **Ticket** | Unidade atômica de trabalho com scope, permissões e critérios de aceite |
-| **Mandate** | Define quais arquivos o worker pode ler/escrever e quais são proibidos |
-| **Board** | Fila de coordenação com suporte a priorização e dependências |
-| **Watchdog** | Monitor que detecta workers lentos/travados e emite alertas (`worker_slow`, `worker_stuck`, `queue_growing`…); roda dentro do loop do router e não escala workers automaticamente |
-| **Merge** | Agregador que resolve conflitos entre workers e aplica mudanças atomicamente |
+| Concept | Description |
+|---------|-------------|
+| **Ticket** | Atomic unit of work with scope, permissions, and acceptance criteria |
+| **Mandate** | Defines which files the worker may read/write and which are forbidden |
+| **Board** | Coordination queue with support for prioritization and dependencies |
+| **Watchdog** | Monitor that detects slow/stuck workers and emits alerts (`worker_slow`, `worker_stuck`, `queue_growing`…); runs inside the router loop and does not scale workers automatically |
+| **Merge** | Aggregator that resolves conflicts between workers and applies changes atomically |
 
-**Fluxo de execução**:
+**Execution flow**:
 
 ```mermaid
 sequenceDiagram
@@ -790,7 +790,7 @@ sequenceDiagram
     M->>R: Resultado consolidado
 ```
 
-**Exemplo de Ticket**:
+**Ticket example**:
 
 ```yaml
 ticket:
@@ -809,17 +809,17 @@ ticket:
   dependencies: []
 ```
 
-**Benefícios**:
+**Benefits**:
 
-- **Contexto mínimo**: cada worker recebe ~80% menos contexto que abordagem monolítica
-- **Paralelização**: tickets independentes executam simultaneamente
-- **Isolamento de falha**: erro em um worker não polui contexto dos outros
-- **Cache-read**: workers aproveitam cache de tokens via contextos repetidos
-- **Auditoria**: cada ticket tem histórico isolado e rastreável
+- **Minimal context**: each worker receives ~80% less context than a monolithic approach
+- **Parallelization**: independent tickets run simultaneously
+- **Failure isolation**: an error in one worker does not pollute others' context
+- **Cache-read**: workers reuse token cache via repeated contexts
+- **Audit**: each ticket has an isolated, traceable history
 
-**Entrega Direta (Direct Delivery)**:
+**Direct Delivery**:
 
-Quando um worker completa um ticket com dependentes, ele pode se inscrever para receber os tickets dependentes **diretamente**, sem passar pelo Board:
+When a worker completes a ticket with dependents, it can subscribe to receive dependent tickets **directly**, without going through the Board:
 
 ```mermaid
 sequenceDiagram
@@ -835,50 +835,51 @@ sequenceDiagram
     Note over W1: Contexto de TKT-001<br/>já em cache
 ```
 
-Benefícios da entrega direta:
-- **Menor latência**: ticket não espera na fila
-- **Afinidade de contexto**: worker já tem contexto relevante
-- **Cache-read maximizado**: tokens do ticket anterior em cache
-- **Menos conflitos**: mesmo worker edita arquivos relacionados
+Benefits of direct delivery:
+- **Lower latency**: ticket does not wait in the queue
+- **Context affinity**: worker already has relevant context
+- **Maximized cache-read**: previous ticket tokens in cache
+- **Fewer conflicts**: the same worker edits related files
 
-**Implementação via `tb router` e `tb ticket`**:
+**Implementation via `tb router` and `tb ticket`**:
 
 ```bash
-# Criar tickets (--title ou --from rd.md; dependências via --dep)
+# Create tickets (--title or --from rd.md; dependencies via --dep)
 tb ticket create --title "Criar modelo User" --scope "src/models/**"
 tb ticket create --title "JWT signing" --dep TKT-001
 
-# Executar o router (primeiro plano; Ctrl-C devolve running -> pending)
+# Run the router (foreground; Ctrl-C returns running -> pending)
 tb router run --agent-cmd "meu-agente --task-file $TB_TICKET_FILE"
 
-# Ver board de tickets
+# View the ticket board
 tb board list --status pending,running
 
-# Monitorar workers (subscriptions ativas, contagem de alertas)
+# Monitor workers (active subscriptions, alert counts)
 tb watchdog status
 
-# Integrar resultados (estratégias: fail | last_wins)
+# Merge results (strategies: fail | last_wins)
 tb merge TKT-001 TKT-002
 ```
 
-O router é um scheduler **em primeiro plano** (`tb router run`, não há daemon
-`start`/`stop`); o watchdog roda dentro do mesmo loop e persiste estado e
-alertas em `.toolbelt/router/`. Detalhes em [cli.md](cli.md).
+The router is a **foreground** scheduler (`tb router run`; there is no
+`start`/`stop` daemon); the watchdog runs inside the same loop and persists
+state and alerts under `.toolbelt/router/`. Details in [cli.md](cli.md).
 
-Veja [ADR-009](adr/009-router-e-workers.md) para detalhes de design.
+See [ADR-009](adr/009-router-e-workers.md) for design details.
+
 
 ---
 
-## 9. Proteções Contra Trapaça
+## 9. Anti-Cheating Protections
 
-### 9.1 Princípios
+### 9.1 Principles
 
-1. **Separação implementador/avaliador**: quem implementa nunca avalia seu próprio código
-2. **Imutabilidade de testes**: arquivos de benchmark são read-only e hash-verificados
-3. **Auditoria completa**: todas as ações são logadas
-4. **Detecção de anomalias**: padrões suspeitos disparam alertas
+1. **Implementer/evaluator separation**: whoever implements never evaluates their own code
+2. **Test immutability**: benchmark files are read-only and hash-verified
+3. **Full audit**: all actions are logged
+4. **Anomaly detection**: suspicious patterns trigger alerts
 
-### 9.2 Proteção de Arquivos de Teste
+### 9.2 Test File Protection
 
 ```bash
 # Antes da tarefa
@@ -893,7 +894,7 @@ tb guard verify --snapshot-id <id>
 # Verifica hashes; se diferir → falha + alerta
 ```
 
-### 9.3 Log de Auditoria
+### 9.3 Audit Log
 
 ```json
 {
@@ -908,28 +909,28 @@ tb guard verify --snapshot-id <id>
 }
 ```
 
-Características:
-- Append-only (mesmo root não pode editar entradas antigas)
-- Assinado com hash encadeado (tamper-evident)
-- Rotacionado por tamanho/tempo
+Characteristics:
+- Append-only (even root cannot edit old entries)
+- Signed with a chained hash (tamper-evident)
+- Rotated by size/time
 
-### 9.4 Detecção de Reward Hacking
+### 9.4 Reward Hacking Detection
 
-Padrões monitorados:
+Monitored patterns:
 
-| Padrão | Indicador | Ação |
-|--------|-----------|------|
-| Testes deletados | Arquivo de teste removido ou vazio | Bloqueia + alerta |
-| Skip de testes | `t.Skip()` adicionado | Requer justificativa |
-| Outputs hardcoded | Strings literais que correspondem a expected values | Flag para review |
-| Cobertura artificial | Testes que não exercitam código | Análise de mutação |
-| Retry excessivo | Muitas tentativas até passar | Log + limite |
+| Pattern | Indicator | Action |
+|---------|-----------|--------|
+| Deleted tests | Test file removed or emptied | Block + alert |
+| Test skips | `t.Skip()` added | Requires justification |
+| Hardcoded outputs | Literal strings matching expected values | Flag for review |
+| Artificial coverage | Tests that do not exercise code | Mutation analysis |
+| Excessive retry | Many attempts until pass | Log + limit |
 
 ---
 
-## 10. Protocolos
+## 10. Protocols
 
-### 10.1 Visão Geral
+### 10.1 Overview
 
 ```mermaid
 graph LR
@@ -954,7 +955,7 @@ graph LR
 
 ### 10.2 MCP (Model Context Protocol)
 
-O `tb` funciona como **servidor MCP**, expondo ferramentas:
+`tb` acts as an **MCP server**, exposing tools. The JSON below is illustrative (`tb_run` does not exist); the real list (36 tools with `TB_GRAPH=on` in v0.0.5) is in [cli.md](cli.md).
 
 ```json
 {
@@ -999,7 +1000,9 @@ O `tb` funciona como **servidor MCP**, expondo ferramentas:
 
 ### 10.3 A2A (Agent-to-Agent)
 
-Para comunicação entre agentes na hierarquia:
+For communication between agents in the hierarchy:
+
+> **Implemented (v0.0.5):** local agent ↔ agent transport is the `tb bus` bus ([ADR-013](adr/013-barramento-multi-vendor.md)), with the `bus/0.1` JSON-RPC envelope specified in [bus-protocolo.md](bus-protocolo.md) over a SQLite store (`.toolbelt/bus/bus.db`), not a Unix socket. The example below is illustrative.
 
 ```json
 {
@@ -1026,42 +1029,42 @@ Para comunicação entre agentes na hierarquia:
 }
 ```
 
-### 10.4 Transporte
+### 10.4 Transport
 
-| Cenário | Transporte |
-|---------|------------|
-| IDE ↔ tb | stdio (MCP padrão) |
-| tb ↔ processo filho | stdio + JSON-RPC |
-| agente ↔ agente (local) | Unix socket |
-| agente ↔ agente (remoto) | HTTP/2 + mTLS |
-
----
-
-## 11. Benchmark e KPIs
-
-Veja [docs/benchmark.md](benchmark.md) para detalhes completos.
-
-### Resumo de KPIs
-
-| KPI | Descrição | Meta |
-|-----|-----------|------|
-| `pass@1` | Taxa de sucesso na primeira tentativa | > 70% |
-| `tokens_per_task` | Tokens consumidos por tarefa | < baseline |
-| `wall_time` | Tempo total de execução | < baseline |
-| `tool_calls` | Número de chamadas de ferramentas | < baseline |
-| `rework_rate` | Taxa de retrabalho | < 20% |
-| `guard_violations` | Violações de segurança bloqueadas | 0 não-bloqueadas |
+| Scenario | Transport |
+|----------|-----------|
+| IDE ↔ tb | stdio (MCP standard) |
+| tb ↔ child process | stdio + JSON-RPC |
+| agent ↔ agent (local) | Unix socket |
+| agent ↔ agent (remote) | HTTP/2 + mTLS |
 
 ---
 
-## 12. Verificação Adversarial (`tb verify`)
+## 11. Benchmark and KPIs
 
-### 12.1 Conceito: Loop Gerador vs Discriminador
+See [docs/benchmark.md](benchmark.md) for full details.
 
-Inspirado em GANs (Generative Adversarial Networks), o toolbelt implementa um **loop adversarial** onde:
+### KPI Summary
 
-- **Gerador** (implementador): executa a tarefa e submete para verificação
-- **Discriminador** (verificador): agente independente que tenta FALHAR o trabalho
+| KPI | Description | Goal |
+|-----|-------------|------|
+| `pass@1` | First-attempt success rate | > 70% |
+| `tokens_per_task` | Tokens consumed per task | < baseline |
+| `wall_time` | Total execution time | < baseline |
+| `tool_calls` | Number of tool calls | < baseline |
+| `rework_rate` | Rework rate | < 20% |
+| `guard_violations` | Blocked security violations | 0 unblocked |
+
+---
+
+## 12. Adversarial Verification (`tb verify`)
+
+### 12.1 Concept: Generator vs Discriminator Loop
+
+Inspired by GANs (Generative Adversarial Networks), toolbelt implements an **adversarial loop** where:
+
+- **Generator** (implementer): runs the task and submits for verification
+- **Discriminator** (verifier): an independent agent that tries to FAIL the work
 
 ```mermaid
 sequenceDiagram
@@ -1090,26 +1093,26 @@ sequenceDiagram
     D->>H: Escalação (3 falhas)
 ```
 
-**Princípio fundamental**: Só a medição do discriminador conta como prova. Medições do gerador são informativas, nunca probatórias.
+**Fundamental principle**: Only the discriminator's measurement counts as proof. Generator measurements are informative, never evidentiary.
 
-### 12.2 Rulers Plugáveis
+### 12.2 Pluggable Rulers
 
-O sistema `tb verify` é genérico, com **rulers** específicos por domínio:
+The `tb verify` system is generic, with domain-specific **rulers**:
 
-| Ruler | Domínio | Métrica | Threshold |
-|-------|---------|---------|-----------|
-| `visual` | UI/telas | Similaridade pixel + WCAG | ≥ 95% por tela |
-| `tests` | Código | Passagem em testes ocultos | 100% |
-| `review` | Documentos | Cobertura de revisão fresh-context | Configurable |
+| Ruler | Domain | Metric | Threshold |
+|-------|--------|--------|-----------|
+| `visual` | UI/screens | Pixel similarity + WCAG | ≥ 95% per screen |
+| `tests` | Code | Pass on hidden tests | 100% |
+| `review` | Documents | Fresh-context review coverage | Configurable |
 
-Cada ruler define:
-- Métrica principal e threshold de passagem
-- Regras específicas de trapaça
-- Formato de relatório
+Each ruler defines:
+- Primary metric and pass threshold
+- Specific cheating rules
+- Report format
 
-### 12.3 Sandbox do Discriminador
+### 12.3 Discriminator Sandbox
 
-O discriminador opera em isolamento total:
+The discriminator operates in total isolation:
 
 ```yaml
 discriminator:
@@ -1127,9 +1130,9 @@ discriminator:
   cleanup: required      # limpa após execução
 ```
 
-### 12.4 Guard Check e Paths Protegidos
+### 12.4 Guard Check and Protected Paths
 
-Antes da medição, o discriminador executa um **guard check** sobre `base..head`:
+Before measurement, the discriminator runs a **guard check** over `base..head`:
 
 ```mermaid
 graph LR
@@ -1141,9 +1144,9 @@ graph LR
     DEC -->|Não| FLAG[Flag: justificativa necessária]
 ```
 
-**Paths protegidos** (defaults embutidos + opcional `.toolbelt/guard.yaml`):
+**Protected paths** (built-in defaults + optional `.toolbelt/guard.yaml`):
 
-Defaults: `tests/hidden/*`, `benchmarks/*`, `.toolbelt/thresholds.yaml`, `.toolbelt/guard.yaml`. Entradas em `protected_paths` do YAML na **base** (string ou `pattern`) são unidas a esses defaults; arquivo ausente não remove os defaults. Matching case-insensitive com globs (`**`); YAML malformado falha fechado. Padrão com barra final (`secrets/`) é tratado como prefixo de diretório (protege filhos).
+Defaults: `tests/hidden/*`, `benchmarks/*`, `.toolbelt/thresholds.yaml`, `.toolbelt/guard.yaml`. Entries in `protected_paths` in the YAML on the **base** (string or `pattern`) are merged with these defaults; a missing file does not remove the defaults. Case-insensitive matching with globs (`**`); malformed YAML fails closed. A pattern with a trailing slash (`secrets/`) is treated as a directory prefix (protects children).
 
 ```yaml
 protected_paths:
@@ -1163,22 +1166,22 @@ protected_paths:
     reason: "Seeds determinísticos são fixos"
 ```
 
-Mudanças em paths protegidos **não são automaticamente trapaça**, mas requerem uma decisão registrada no vault ou aprovação explícita.
+Changes to protected paths are **not automatically cheating**, but require a decision recorded in the vault or explicit approval.
 
-### 12.5 Definição de Trapaça
+### 12.5 Definition of Cheating
 
-Trapaça causa **FAIL imediato**, mesmo se a métrica principal passar:
+Cheating causes an **immediate FAIL**, even if the primary metric passes:
 
-| Tipo | Descrição | Detecção |
-|------|-----------|----------|
-| Edição de referência | Modificar/deletar refs existentes | Guard check |
-| Mask inválida | Mask sem região dinâmica real | Análise de justificativa |
-| Alteração de comparador | Mudar threshold, padding, contagem | Guard check |
-| Mudança de seed | Alterar seed para esconder diferenças | Guard check |
-| Estado incorreto | Capturar estado diferente do projetado | Comparação com spec |
-| Design invertido | Mover design em direção ao código | Diff no design |
+| Type | Description | Detection |
+|------|-------------|-----------|
+| Reference edit | Modify/delete existing refs | Guard check |
+| Invalid mask | Mask without a real dynamic region | Justification analysis |
+| Comparator change | Change threshold, padding, counting | Guard check |
+| Seed change | Alter seed to hide differences | Guard check |
+| Wrong state | Capture a state different from the designed one | Comparison with spec |
+| Inverted design | Move the design toward the code | Diff on the design |
 
-### 12.6 Política de Iteração e Escalação
+### 12.6 Iteration and Escalation Policy
 
 ```yaml
 verification:
@@ -1203,7 +1206,7 @@ verification:
       - block_merge
 ```
 
-### 12.7 Relatório do Discriminador
+### 12.7 Discriminator Report
 
 ```yaml
 report:
@@ -1240,84 +1243,84 @@ report:
 
 ---
 
-## 13. Questões em Aberto
+## 13. Open Questions
 
-### 13.1 Integração vs Reimplementação
+### 13.1 Integration vs Reimplementation
 
-- **Graphify**: integrar via MCP ou reimplementar a indexação? 
-  - Integração: menos trabalho, depende de manutenção externa
-  - Reimplementação: controle total, pode otimizar para o caso de uso
-  - **Decisão pendente**: experimentar integração primeiro, medir latência e completude
+- **Graphify**: integrate via MCP or reimplement indexing?
+  - Integration: less work, depends on external maintenance
+  - Reimplementation: full control, can optimize for the use case
+  - **Decided ([ADR-014](adr/014-graphify-reimplementacao.md))**: reimplement; `tb graph explain`/`path` delivered, roadmap in the ADR
 
-### 13.2 Modelo de Inferência para Proveniência
+### 13.2 Inference Model for Provenance
 
-- Qual modelo usar para inferir relações semânticas?
-- Deve rodar localmente ou via API?
-- Trade-off custo vs qualidade das inferências
+- Which model to use to infer semantic relationships?
+- Should it run locally or via API?
+- Cost vs inference quality trade-off
 
-### 13.3 Persistência do Estado do Agente
+### 13.3 Agent State Persistence
 
-- Onde persistir o estado de agentes entre sessões?
-- Formato: JSON, SQLite, ou no próprio vault?
-- Como lidar com agentes órfãos?
+- Where to persist agent state between sessions?
+- Format: JSON, SQLite, or in the vault itself?
+- How to handle orphan agents?
 
-### 13.4 Escalabilidade da Hierarquia
+### 13.4 Hierarchy Scalability
 
-- Quantos workers por supervisor?
-- Quantos supervisors por planner?
-- Como balancear carga?
+- How many workers per supervisor?
+- How many supervisors per planner?
+- How to balance load?
 
-### 13.5 Versionamento do Vault
+### 13.5 Vault Versioning
 
-- O vault deve ser versionado junto com o código?
-- Como fazer merge de mudanças de memória?
-- Como lidar com memória específica de branch?
+- Should the vault be versioned together with the code?
+- How to merge memory changes?
+- How to handle branch-specific memory?
 
 ---
 
-## 14. Achados da Pesquisa (2026-11)
+## 14. Research Findings (2026-11)
 
-Em novembro de 2026, uma revisão de ~100 fontes primárias (papers, specs, blogs oficiais, repos e benchmarks) identificou achados que podem mudar o desenho do toolbelt.
+In November 2026, a review of ~100 primary sources (papers, specs, official blogs, repos, and benchmarks) identified findings that may change toolbelt's design.
 
-Veja a documentação completa em [docs/pesquisa/](pesquisa/):
-- [Fontes primárias](pesquisa/fontes-primarias.md) — tabelas por área com todas as fontes
-- [Top 10 leituras](pesquisa/top-10.md) — as 10 fontes mais importantes para começar
-- [Achados e ideias novas](pesquisa/achados.md) — propostas concretas por módulo
+See the full documentation in [docs/pesquisa/](pesquisa/):
+- [Primary sources](pesquisa/fontes-primarias.md) — tables by area with all sources
+- [Top 10 readings](pesquisa/top-10.md) — the 10 most important sources to start with
+- [Findings and new ideas](pesquisa/achados.md) — concrete proposals by module
 
-### Propostas Pendentes por Módulo
+### Pending Proposals by Module
 
-| Módulo | Proposta | ADR/Status |
+| Module | Proposal | ADR/Status |
 |--------|----------|------------|
-| **mem/ctx** | Arquivo de invariantes fixado fora da compactação; compactação híbrida (extração mecânica + resumo LLM) | [ADR-010](adr/010-invariantes-fora-compactacao.md) (proposed) |
-| **mem/ctx** | AGENTS.md como contexto local padrão; memória bitemporal com invalidação de fatos | parcial: `tb init` lê/`--write-agents` semeia `AGENTS.md`/`CLAUDE.md` (nunca sobrescreve); `tb ctx` ainda pendente |
-| **grafo** | `tb graph` sob demanda com A/B por tipo de tarefa; priorizar skills humanas | [ADR-011](adr/011-grafo-sob-demanda.md) (proposed) |
-| **verify** | Suíte held-out composta que o gerador nunca vê; gap visível/oculto como KPI | pendente |
-| **guard** | Monitor de trajetória (nota de suspeita); padrões de trapaça além de apagar testes | pendente |
-| **benchmark** | `tb bench --impossible` para detectar trapaça; pass^k além de pass@1; fronteira custo×acurácia | pendente |
-| **protocolo** | `tb mcp` nasce stateless (MCP 2026-07-28); ferramentas como arquivos + busca adiada | pendente |
-| **router** | Mandate com commit base e arquivos; escopos disjuntos para paralelismo; watchdog de desperdício | parcialmente em [ADR-009](adr/009-router-e-workers.md) |
+| **mem/ctx** | Invariants file pinned outside compaction; hybrid compaction (mechanical extraction + LLM summary) | [ADR-010](adr/010-invariantes-fora-compactacao.md) (proposed; invariants in `tb mem` implemented, hybrid compaction pending) |
+| **mem/ctx** | AGENTS.md as default local context; bitemporal memory with fact invalidation | partial: `tb init` reads/`--write-agents` seeds `AGENTS.md`/`CLAUDE.md` (never overwrites); `tb ctx` still pending |
+| **graph** | On-demand `tb graph` with A/B by task type; prioritize human skills | [ADR-011](adr/011-grafo-sob-demanda.md) (accepted) |
+| **verify** | Held-out suite the generator never sees; visible/hidden gap as KPI | pending |
+| **guard** | Trajectory monitor (suspicion score); cheating patterns beyond deleting tests | pending |
+| **benchmark** | `tb bench --impossible` to detect cheating; pass^k beyond pass@1; cost×accuracy frontier | pending |
+| **protocol** | Stateless `tb mcp` (MCP 2026-07-28); tools as files + deferred search | pending |
+| **router** | Mandate with base commit and files; disjoint scopes for parallelism; waste watchdog | partially in [ADR-009](adr/009-router-e-workers.md) |
 
-**Nota**: propostas marcadas como "pendente" estão documentadas em [achados.md](pesquisa/achados.md) mas ainda não têm ADR.
+**Note**: proposals marked "pending" are documented in [achados.md](pesquisa/achados.md) but do not yet have an ADR.
 
 ---
 
-## 15. Inspirações
+## 15. Inspirations
 
-O toolbelt incorpora padrões de três projetos de referência:
+Toolbelt incorporates patterns from three reference projects:
 
-| Projeto | O Que Adotamos |
-|---------|----------------|
-| **[Graphify](https://github.com/Graphify-Labs/graphify)** | Grafo queryável, indexação via AST, proveniência (extracted vs inferred), hooks graph-first |
-| **[Obsidian](https://obsidian.md/)** | Vault Markdown como fonte de verdade, wikilinks, backlinks, frontmatter YAML, local-first |
-| **[Elephant-Goldfish Model](https://github.com/google/elephant-goldfish-model)** | Revisão com contexto fresco, separação autor/revisor, workflow draft→review→resolve, drift detection |
+| Project | What We Adopted |
+|---------|-----------------|
+| **[Graphify](https://github.com/Graphify-Labs/graphify)** | Queryable graph, AST indexing, provenance (extracted vs inferred), graph-first hooks |
+| **[Obsidian](https://obsidian.md/)** | Markdown vault as source of truth, wikilinks, backlinks, YAML frontmatter, local-first |
+| **[Elephant-Goldfish Model](https://github.com/google/elephant-goldfish-model)** | Fresh-context review, author/reviewer separation, draft→review→resolve workflow, drift detection |
 
-Veja os ADRs para detalhes:
-- [ADR-006: Graphify e Obsidian](adr/006-inspiracoes-graphify-obsidian.md)
+See the ADRs for details:
+- [ADR-006: Graphify and Obsidian](adr/006-inspiracoes-graphify-obsidian.md)
 - [ADR-007: Elephant-Goldfish Model](adr/007-inspiracao-elephant-goldfish.md)
 
 ---
 
-## Referências
+## References
 
 - [MCP Specification](https://spec.modelcontextprotocol.io/)
 - [Google A2A Protocol](https://github.com/google/A2A)

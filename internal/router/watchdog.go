@@ -16,7 +16,6 @@ import (
 	"github.com/leonardo-moraes360/toolbelt/internal/ticket"
 )
 
-// Tipos de alerta do watchdog.
 const (
 	AlertWorkerSlow    = "worker_slow"
 	AlertWorkerStuck   = "worker_stuck"
@@ -24,23 +23,22 @@ const (
 	AlertWorkerKilled  = "worker_killed"
 	AlertQueueGrowing  = "queue_growing"
 	AlertGlobalTimeout = "global_timeout"
-	// AlertTicketCanceled: o ticket em execução foi cancelado (tb ticket cancel);
-	// o router mata o agente e descarta o resultado.
+	// AlertTicketCanceled: the running ticket was canceled (tb ticket cancel);
+	// the router kills the agent and drops the result.
 	AlertTicketCanceled = "ticket_canceled"
-	// AlertMultiDepBase: ticket com >=2 dependências sem merge foi baseado em HEAD.
+	// AlertMultiDepBase: a ticket with >=2 unmerged dependencies was based on HEAD.
 	AlertMultiDepBase = "multi_dep_base"
-	// AlertAgentEscaped: descendente do agente escapou do grupo de processos
-	// (setsid/setpgid); foi morto e o ticket falha sem retry (Linux).
+	// AlertAgentEscaped: an agent descendant escaped the process group
+	// (setsid/setpgid); it was killed and the ticket fails without retry (Linux).
 	AlertAgentEscaped = "agent_escaped"
-	// AlertOrphanKilled: processo órfão não-agente (ex.: daemon de hook/fsmonitor do
-	// usuário durante a criação do worktree, ou escape não atribuível sem agente
-	// rodando) foi encerrado; nenhum ticket é falhado.
+	// AlertOrphanKilled: a non-agent orphan (e.g. a user hook/fsmonitor daemon
+	// during worktree creation, or an unattributable escape with no agent running)
+	// was terminated; no ticket is failed.
 	AlertOrphanKilled = "orphan_killed"
-	// AlertBoardUnreadable: um ticket YAML está inválido; workers seguem rodando.
+	// AlertBoardUnreadable: a ticket YAML is invalid; workers keep running.
 	AlertBoardUnreadable = "board_unreadable"
 )
 
-// Severidades.
 const (
 	SevInfo     = "info"
 	SevWarn     = "warn"
@@ -48,7 +46,6 @@ const (
 	SevCritical = "critical"
 )
 
-// Ações sugeridas/aplicadas.
 const (
 	ActionNone     = "none"
 	ActionRetry    = "retry"
@@ -56,7 +53,6 @@ const (
 	ActionStop     = "stop"
 )
 
-// Alert é uma linha de alerts.jsonl.
 type Alert struct {
 	Time     time.Time `json:"time"`
 	Kind     string    `json:"kind"`
@@ -67,7 +63,7 @@ type Alert struct {
 	Action   string    `json:"action"`
 }
 
-// alertLog grava alertas em alerts.jsonl (append-only, seguro entre goroutines).
+// alertLog writes to alerts.jsonl (append-only, goroutine-safe).
 type alertLog struct {
 	mu    sync.Mutex
 	path  string
@@ -84,7 +80,7 @@ func (l *alertLog) append(a *Alert) error {
 	if err != nil {
 		return err
 	}
-	f, err := os.OpenFile(l.path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600) //nolint:gosec // caminho interno .toolbelt/router
+	f, err := os.OpenFile(l.path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600) //nolint:gosec // internal .toolbelt/router path
 	if err != nil {
 		return err
 	}
@@ -96,14 +92,13 @@ func (l *alertLog) append(a *Alert) error {
 	return nil
 }
 
-// AlertFilter filtra ReadAlerts.
 type AlertFilter struct {
-	Since time.Time // zero = sem limite
-	Kind  string    // vazio = todos
-	Limit int       // >0 = só os N mais recentes
+	Since time.Time // zero = no limit
+	Kind  string    // empty = all
+	Limit int       // >0 = only the N most recent
 }
 
-// ReadAlerts lê alerts.jsonl (ausente = lista vazia), em ordem cronológica.
+// ReadAlerts returns alerts in chronological order (missing file = empty list).
 func ReadAlerts(root string, f AlertFilter) ([]Alert, error) {
 	file, err := os.Open(AlertsPath(root))
 	if errors.Is(err, os.ErrNotExist) {
@@ -123,7 +118,7 @@ func ReadAlerts(root string, f AlertFilter) ([]Alert, error) {
 		}
 		var a Alert
 		if err := json.Unmarshal([]byte(line), &a); err != nil {
-			continue // linha corrompida não derruba a leitura
+			continue // a corrupt line does not abort the read
 		}
 		if !f.Since.IsZero() && a.Time.Before(f.Since) {
 			continue
@@ -144,17 +139,16 @@ func ReadAlerts(root string, f AlertFilter) ([]Alert, error) {
 
 var workerRe = regexp.MustCompile(`^w\d+$`)
 
-// ValidWorkerID informa se id tem o formato w1, w2, ...
+// ValidWorkerID accepts the form w1, w2, ...
 func ValidWorkerID(id string) bool { return workerRe.MatchString(id) }
 
-// KillRequest é o conteúdo de control/kill-<worker>.json.
 type KillRequest struct {
 	Worker      string    `json:"worker"`
 	Reason      string    `json:"reason"`
 	RequestedAt time.Time `json:"requested_at"`
 }
 
-// RequestKill grava um pedido de kill que o router consome no próximo tick.
+// RequestKill writes a kill request that the router consumes on its next tick.
 func RequestKill(root, worker, reason string, now time.Time) (string, error) {
 	if !ValidWorkerID(worker) {
 		return "", fmt.Errorf("worker inválido %q (esperado w1, w2, ...)", worker)
@@ -170,7 +164,7 @@ func RequestKill(root, worker, reason string, now time.Time) (string, error) {
 	return path, ticket.WriteFileAtomic(path, append(data, '\n'))
 }
 
-// alert registra um alerta (e o repassa ao progresso).
+// alert also forwards the alert to progress output.
 func (r *Router) alert(kind, severity, worker, tkt, msg, action string) {
 	a := Alert{Time: r.now().UTC(), Kind: kind, Severity: severity, Worker: worker, Ticket: tkt, Message: msg, Action: action}
 	if err := r.alerts.append(&a); err != nil {
@@ -186,8 +180,8 @@ func (r *Router) failureAction(attempts int) string {
 	return ActionEscalate
 }
 
-// watchdogTick roda a cada Options.Tick: controle, slow/stuck, fila e timeout
-// global. Devolve true quando o loop deve parar (timeout global).
+// watchdogTick runs every Options.Tick: control, slow/stuck, queue and global
+// timeout. Returns true when the loop should stop (global timeout).
 func (r *Router) watchdogTick() (stop bool) {
 	now := r.now()
 	r.processControl()
@@ -228,7 +222,7 @@ func (r *Router) watchdogTick() (stop bool) {
 	return false
 }
 
-// checkQueue emite queue_growing quando ready > 2*workers (uma vez por transição).
+// checkQueue emits queue_growing when ready > 2*workers (once per transition).
 func (r *Router) checkQueue(ready int) {
 	growing := ready > 2*r.workers
 	if growing && !r.queueGrowing {
@@ -238,14 +232,12 @@ func (r *Router) checkQueue(ready int) {
 	r.queueGrowing = growing
 }
 
-// processControl consome control/kill-<worker>.json.
 func (r *Router) processControl() {
 	for _, name := range r.killRequestNames() {
 		r.handleKillRequest(name)
 	}
 }
 
-// killRequestNames lista, ordenados, os arquivos kill-*.json do diretório de controle.
 func (r *Router) killRequestNames() []string {
 	entries, err := os.ReadDir(ControlDir(r.opts.Root))
 	if err != nil {
@@ -261,10 +253,10 @@ func (r *Router) killRequestNames() []string {
 	return names
 }
 
-// handleKillRequest lê (e apaga) um pedido de kill e, se válido, cancela o worker.
+// handleKillRequest reads (and deletes) a kill request and, if valid, cancels the worker.
 func (r *Router) handleKillRequest(name string) {
 	path := filepath.Join(ControlDir(r.opts.Root), name)
-	data, err := os.ReadFile(path) //nolint:gosec // dentro de .toolbelt/router/control
+	data, err := os.ReadFile(path) //nolint:gosec // inside .toolbelt/router/control
 	fi, _ := os.Stat(path)
 	_ = os.Remove(path)
 	if err != nil {
@@ -275,8 +267,8 @@ func (r *Router) handleKillRequest(name string) {
 	if !parsed || req.Worker == "" {
 		req.Worker = strings.TrimSuffix(strings.TrimPrefix(name, "kill-"), ".json")
 	}
-	// Pedido anterior ao início desta execução é obsoleto (sem horário
-	// legível, vale o mtime do arquivo).
+	// A request older than the start of this run is stale (without a readable
+	// timestamp, the file's mtime is used).
 	stamp := req.RequestedAt
 	if (!parsed || stamp.IsZero()) && fi != nil {
 		stamp = fi.ModTime()
@@ -300,7 +292,7 @@ func (r *Router) handleKillRequest(name string) {
 	s.cancel()
 }
 
-// ParseSince converte "10m"/"2h" (relativo a now) ou RFC3339 em horário; vazio = zero.
+// ParseSince accepts "10m"/"2h" (relative to now) or RFC3339; empty = zero.
 func ParseSince(s string, now time.Time) (time.Time, error) {
 	s = strings.TrimSpace(s)
 	if s == "" {
@@ -319,7 +311,7 @@ func ParseSince(s string, now time.Time) (time.Time, error) {
 	return t, nil
 }
 
-// clearControl apaga pedidos de kill pendentes (obsoletos no início de Run).
+// clearControl removes pending kill requests (stale at the start of Run).
 func clearControl(root string) {
 	entries, err := os.ReadDir(ControlDir(root))
 	if err != nil {

@@ -7,7 +7,6 @@ import (
 	"strings"
 )
 
-// WriteMarkdownReport gera um relatório Markdown dos resultados.
 func WriteMarkdownReport(w io.Writer, summary *Summary, results []Result) error {
 	writeReportHeader(w, summary, results)
 	writeReportSummaryTable(w, summary)
@@ -108,7 +107,6 @@ func writeReportTaskTable(w io.Writer, results []Result) error {
 	return nil
 }
 
-// WriteComparisonReport gera um relatório comparando dois benchmarks (A/B).
 func WriteComparisonReport(w io.Writer, before, after *Summary) error {
 	labelA := before.AgentID
 	labelB := after.AgentID

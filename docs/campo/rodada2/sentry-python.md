@@ -1,179 +1,179 @@
-🇧🇷 Português | [🇺🇸 English](../../en/campo/rodada2/sentry-python.md)
+🇺🇸 English | [🇧🇷 Português](../../pt-BR/campo/rodada2/sentry-python.md)
 
-# Campo rodada 2: getsentry/sentry-python
+# Field round 2: getsentry/sentry-python
 
-Estudo de campo ROUND 2 do `tb` (build local `make build`, ldflags `a46c295`) num clone local de `https://github.com/getsentry/sentry-python`. Grupo: **com instrumentação AI existente**. Sem push, issues, PRs ou comentários no upstream. Evidências em `/tmp/tb-campo2-evidence/` nesta VM.
+ROUND 2 field study of `tb` (local `make build`, ldflags `a46c295`) on a local clone of `https://github.com/getsentry/sentry-python`. Group: **with existing AI instrumentation**. No push, issues, PRs, or comments upstream. Evidence under `/tmp/tb-campo2-evidence/` on this VM.
 
-## Repositório
+## Repository
 
-| Campo | Valor |
+| Field | Value |
 |-------|-------|
-| Nome | getsentry/sentry-python |
-| Linguagem | Python (SDK) |
-| Tamanho | ~19 MiB clone shallow; ~472 MiB com `.venv`/`.tox`; ~523 `.py` fora de venv/tox; GitHub `size` ≈ 123 MiB; ~2220 stars |
-| Instrumentação AI existente | `AGENTS.md` (fonte), `CLAUDE.md` → symlink para `AGENTS.md`, `agents.toml` (skills getsentry) |
-| Toolchain | **Parcialmente configurada**: `uv` 0.13.8; `uv sync` (dev: tox, tox-uv, ruff, pre-commit); `uv pip install -e .`; tox env `py3.12-google_genai-v1.29.0` funcional; `uv run ruff` ok; `uv run --group typing mypy` ok no arquivo tocado |
-| Não configurado | matriz tox completa (Django/Flask/AWS/MCP/agents etc.), Python 3.6–3.11/3.13+/free-threaded, gevent/eventlet, pre-commit hooks no git do alvo, docs Sphinx |
+| Name | getsentry/sentry-python |
+| Language | Python (SDK) |
+| Size | ~19 MiB shallow clone; ~472 MiB with `.venv`/`.tox`; ~523 `.py` outside venv/tox; GitHub `size` ≈ 123 MiB; ~2220 stars |
+| Existing AI instrumentation | `AGENTS.md` (source), `CLAUDE.md` → symlink to `AGENTS.md`, `agents.toml` (getsentry skills) |
+| Toolchain | **Partially configured**: `uv` 0.13.8; `uv sync` (dev: tox, tox-uv, ruff, pre-commit); `uv pip install -e .`; tox env `py3.12-google_genai-v1.29.0` functional; `uv run ruff` ok; `uv run --group typing mypy` ok on the touched file |
+| Not configured | full tox matrix (Django/Flask/AWS/MCP/agents etc.), Python 3.6–3.11/3.13+/free-threaded, gevent/eventlet, pre-commit hooks on the target git, Sphinx docs |
 
-## Tarefa escolhida
+## Chosen task
 
-| Campo | Valor |
+| Field | Value |
 |-------|-------|
-| O quê | Em `accumulate_streaming_response` (google_genai), popular `response_id` / `model` a partir de `chunk.response_id` e `chunk.model_version`; asserções em `test_streaming_generate_content` para `GEN_AI_RESPONSE_ID` / `GEN_AI_RESPONSE_MODEL`. |
-| Por quê | Bug real, escopo pequeno, caminho de teste claro; distinto da rodada 1. |
-| Issue | https://github.com/getsentry/sentry-python/issues/5812 (somente leitura; sem interação) |
-| Completa? | **Sim no clone local** (commit `e8b58b5` na branch `local/campo2-google-genai-5812`; **não** enviado ao upstream) |
-| Resultado nativo | `TESTPATH=…/test_google_genai.py uv run tox -e py3.12-google_genai-v1.29.0 -- -k 'test_streaming_generate_content and not data_collection and not tools and not message'`: **4 passed**. `ruff check` / `ruff format --check` nos tocados: ok. `mypy` no `streaming.py`: ok. |
-| Rodada 1 (comparação) | Rodada 1: `EventScrubber` hífen/underscore + denylist (`issues/8272`). Esta rodada: streaming google_genai `response_id`/`model_version` (`issues/5812`). |
+| What | In `accumulate_streaming_response` (google_genai), populate `response_id` / `model` from `chunk.response_id` and `chunk.model_version`; assertions in `test_streaming_generate_content` for `GEN_AI_RESPONSE_ID` / `GEN_AI_RESPONSE_MODEL`. |
+| Why | Real bug, small scope, clear test path; distinct from round 1. |
+| Issue | https://github.com/getsentry/sentry-python/issues/5812 (read-only; no interaction) |
+| Completed? | **Yes on the local clone** (commit `e8b58b5` on branch `local/campo2-google-genai-5812`; **not** sent upstream) |
+| Native result | `TESTPATH=…/test_google_genai.py uv run tox -e py3.12-google_genai-v1.29.0 -- -k 'test_streaming_generate_content and not data_collection and not tools and not message'`: **4 passed**. `ruff check` / `ruff format --check` on touched files: ok. `mypy` on `streaming.py`: ok. |
+| Round 1 (comparison) | Round 1: `EventScrubber` hyphen/underscore + denylist (`issues/8272`). This round: google_genai streaming `response_id`/`model_version` (`issues/5812`). |
 
-Arquivos locais alterados: `sentry_sdk/integrations/google_genai/streaming.py`, `tests/integrations/google_genai/test_google_genai.py`.
+Local files changed: `sentry_sdk/integrations/google_genai/streaming.py`, `tests/integrations/google_genai/test_google_genai.py`.
 
-## Verificação das 12 correções
+## Verification of the 12 fixes
 
-| # | correção | status | evidência |
-|---|----------|--------|-----------|
-| 1 | graph SkipDirs na raiz do walk | **funcionou** | `tb graph --enable rebuild .` em `/tmp/target` → `8053 nós, 25307 arestas` (antes: 0 nós). Full rebuild no clone de trabalho → 8072 nós / 26373 arestas. |
-| 2 | verify `hidden_test_cmd` sem `tests/hidden/` | **funcionou** | Sem dir `tests/hidden/`; `tb verify run` com `hidden_test_cmd=uv run ruff check …` → `hidden_available: true`, `hidden_passed: true`. |
-| 3 | guard `--strict --json` exit ≠ 0 | **funcionou** | Diff tocando `tox.ini`: `tb guard check --json --strict BASE..HEAD` → exit **1** + JSON com `violations`. Sem `--strict`: exit 0 com as mesmas violations. |
-| 4 | guard lê `protected_paths` de `guard.yaml` | **funcionou** | `.toolbelt/guard.yaml` com `tox.ini`; violação `protected_path` em `tox.ini` reportada. Defaults (`thresholds.yaml`) continuam ativos. |
-| 5 | init detecção de toolchain | **funcionou** (parcial) | `tb init` → `verify.test_cmd: uv run pytest` (não mais `go test`). Ainda **não** escolhe `uv run tox` preferido pelo `AGENTS.md`. |
-| 6 | review `tests/hidden` por path | **funcionou** | Ticket citando `tests/hidden/` sem tocar o dir → `findings: []` (sem FP de substring). |
-| 7 | bench `default_agent` e `compare --agent` | **funcionou** | Sem `--agent`/`--fake`, com `bench.default_agent: "true"` em `.toolbelt/config.yaml` → run OK (`agent=external`). Sem default → erro pedindo `--agent`/`--fake`/`default_agent`. `tb bench compare` aceita `-a/--agent` + `--config-a/--config-b`. |
-| 8 | review/drift `## Scope`/`## Escopo`, listas, `**` | **funcionou** | Ticket com `## Escopo` + bullets + `tests/integrations/google_genai/**/*.py` → drift OK. Scope só com `streaming.py` → flagrou o teste (`out_of_scope`). |
-| 9 | verify `build_cmd` e `lint_cmd` | **funcionou** | JSON: `build_ran: true`, `build_passed: true`, `lint_ran: true`, `lint_passed: true` + visible/hidden. Build falho (import google-genai ausente no `.venv` raiz) abortou antes dos testes (`step: build_or_lint`) — comportamento desejado. |
-| 10 | init lê `AGENTS.md`/`CLAUDE.md` e `--write-agents` | **funcionou** | Criou `.toolbelt/agent_docs.yaml` (`sources: AGENTS.md, CLAUDE.md` + hints tox/ruff/mypy). `tb init --write-agents` em dir vazio gera esqueleto; no repo existente **não** sobrescreve `AGENTS.md` (diff vazio). |
-| 11 | graph Python arestas `calls` | **funcionou** | Stats: `edges_calls: 12793` (full) / `4882` (só `sentry_sdk`). `tb graph callers --function accumulate_streaming_response` → `new_iterator` / `new_async_iterator`. `impact --file …/streaming.py` lista wrappers. |
-| 12 | verify visual skipped agregado + docs CLI | **funcionou** | Visual sem manifesto: `skipped: true`. Com screens e refs ausentes: top-level `skipped: true`, `skip_reason: "todas as telas foram skipped"`. `docs/cli.md` marca `tb ticket`/`tb run`/etc. como planejados e documenta Scope/hidden/guard.yaml/default_agent. |
+| # | fix | status | evidence |
+|---|-----|--------|----------|
+| 1 | graph SkipDirs at walk root | **worked** | `tb graph --enable rebuild .` under `/tmp/target` → `8053 nodes, 25307 edges` (before: 0 nodes). Full rebuild on the working clone → 8072 nodes / 26373 edges. |
+| 2 | verify `hidden_test_cmd` without `tests/hidden/` | **worked** | No `tests/hidden/` dir; `tb verify run` with `hidden_test_cmd=uv run ruff check …` → `hidden_available: true`, `hidden_passed: true`. |
+| 3 | guard `--strict --json` exit ≠ 0 | **worked** | Diff touching `tox.ini`: `tb guard check --json --strict BASE..HEAD` → exit **1** + JSON with `violations`. Without `--strict`: exit 0 with the same violations. |
+| 4 | guard reads `protected_paths` from `guard.yaml` | **worked** | `.toolbelt/guard.yaml` with `tox.ini`; `protected_path` violation on `tox.ini` reported. Defaults (`thresholds.yaml`) remain active. |
+| 5 | init toolchain detection | **worked** (partial) | `tb init` → `verify.test_cmd: uv run pytest` (no longer `go test`). Still **does not** choose `uv run tox` preferred by `AGENTS.md`. |
+| 6 | review `tests/hidden` by path | **worked** | Ticket citing `tests/hidden/` without touching the dir → `findings: []` (no substring FP). |
+| 7 | bench `default_agent` and `compare --agent` | **worked** | Without `--agent`/`--fake`, with `bench.default_agent: "true"` in `.toolbelt/config.yaml` → run OK (`agent=external`). Without default → error asking for `--agent`/`--fake`/`default_agent`. `tb bench compare` accepts `-a/--agent` + `--config-a/--config-b`. |
+| 8 | review/drift `## Scope`/`## Escopo`, lists, `**` | **worked** | Ticket with `## Escopo` + bullets + `tests/integrations/google_genai/**/*.py` → drift OK. Scope with only `streaming.py` → flagged the test (`out_of_scope`). |
+| 9 | verify `build_cmd` and `lint_cmd` | **worked** | JSON: `build_ran: true`, `build_passed: true`, `lint_ran: true`, `lint_passed: true` + visible/hidden. Failed build (missing google-genai import in root `.venv`) aborted before tests (`step: build_or_lint`) — desired behavior. |
+| 10 | init reads `AGENTS.md`/`CLAUDE.md` and `--write-agents` | **worked** | Created `.toolbelt/agent_docs.yaml` (`sources: AGENTS.md, CLAUDE.md` + tox/ruff/mypy hints). `tb init --write-agents` in an empty dir generates a skeleton; on the existing repo **does not** overwrite `AGENTS.md` (empty diff). |
+| 11 | graph Python `calls` edges | **worked** | Stats: `edges_calls: 12793` (full) / `4882` (`sentry_sdk` only). `tb graph callers --function accumulate_streaming_response` → `new_iterator` / `new_async_iterator`. `impact --file …/streaming.py` lists wrappers. |
+| 12 | aggregated visual skipped + CLI docs | **worked** | Visual without manifesto: `skipped: true`. With screens and missing refs: top-level `skipped: true`, `skip_reason: "todas as telas foram skipped"`. `docs/cli.md` marks `tb ticket`/`tb run`/etc. as planned and documents Scope/hidden/guard.yaml/default_agent. |
 
-## Uso do tb por comando
+## tb usage by command
 
-| comando | resultado | ajudou/atrapalhou/neutro | evidência |
-|---------|-----------|--------------------------|-----------|
-| `tb init` | OK; `.toolbelt/` + `config.yaml` + `agent_docs.yaml` | ajudou | Detectou Python/`uv`; leu AGENTS/CLAUDE; `test_cmd=uv run pytest` (melhor que Go; ainda subótimo vs tox) |
-| `tb init --write-agents` | OK | ajudou | Semear AGENTS em repo vazio; no sentry-python não sobrescreve |
-| `tb mem init/list/add/check` | OK | neutro | 3 invariantes padrão + 1 (`tox.ini`); ainda pouco ligadas ao fluxo nativo além do add manual |
-| Ticket / `## Escopo` (`rd.md`) | Manual | ajudou | Parser Markdown+globs funcionou no drift/review |
-| `tb graph --enable rebuild .` em `/tmp/target` | 8k+ nós | ajudou | SkipDirs na raiz corrigido |
-| `tb graph search accumulate_streaming_response` | Achou símbolo | ajudou | Localização rápida |
-| `tb graph callers --function …` | 2 callers | ajudou | `calls` Python úteis (antes vazio) |
-| `tb graph impact --file …` | Lista impacto | ajudou (parcial) | Vazio se o índice foi feito com cwd/`path` cujo prefixo de arquivo não bate com `--file` (ex.: rebuild `sentry_sdk` + path com `sentry_sdk/…`) |
-| `tb graph deps --file …` | 9 pacotes | ajudou | Após rebuild alinhado ao path |
-| `tb drift` | exit 0 no scope completo; exit 1 no estreito | ajudou | Pegou teste fora do mandate |
-| `tb review` | `findings: []` no patch limpo | neutro | Sem review semântica de Python; heuristics de scope/invariantes OK |
-| `tb guard check … --json --strict` | exit 1 com `tox.ini` / thresholds | ajudou | `guard.yaml` + defaults |
-| `tb verify run` | PASS com build/lint/test/hidden | ajudou | Rodou tox streaming + ruff; falhou cedo com build_cmd inválido |
-| `tb verify run --ruler visual` | PASS skipped | neutro | Agregação `skipped` correta; sem sinal de produto neste SDK |
-| `tb bench run` (default_agent) | OK com tasks do toolbelt | neutro | Não há `bench/tasks` no alvo; precisa `-t` externo ou copiar fixtures |
-| `tb bench compare --agent` | OK A/B graph-off/on | neutro | Flag `--agent` presente e usável |
-| `tb mcp` | `tools/list` OK | neutro | version/echo/env/run/graph_*; sem mem/verify/review/drift/guard |
-| Checks nativos vs tb | tox 4 passed; ruff/mypy ok | ajudou | tb verify espelhou o resultado nativo quando `test_cmd` apontou para tox |
+| command | result | helped / hindered / neutral | evidence |
+|---------|--------|-----------------------------|----------|
+| `tb init` | OK; `.toolbelt/` + `config.yaml` + `agent_docs.yaml` | helped | Detected Python/`uv`; read AGENTS/CLAUDE; `test_cmd=uv run pytest` (better than Go; still suboptimal vs tox) |
+| `tb init --write-agents` | OK | helped | Seeds AGENTS in an empty repo; does not overwrite on sentry-python |
+| `tb mem init/list/add/check` | OK | neutral | 3 default invariants + 1 (`tox.ini`); still weakly tied to the native flow beyond manual add |
+| Ticket / `## Escopo` (`rd.md`) | Manual | helped | Markdown+globs parser worked in drift/review |
+| `tb graph --enable rebuild .` under `/tmp/target` | 8k+ nodes | helped | Root SkipDirs fixed |
+| `tb graph search accumulate_streaming_response` | Found symbol | helped | Fast location |
+| `tb graph callers --function …` | 2 callers | helped | Useful Python `calls` (previously empty) |
+| `tb graph impact --file …` | Impact list | helped (partial) | Empty if the index was built with a cwd/`path` whose file prefix does not match `--file` (e.g. rebuild `sentry_sdk` + path with `sentry_sdk/…`) |
+| `tb graph deps --file …` | 9 packages | helped | After rebuild aligned to the path |
+| `tb drift` | exit 0 on full scope; exit 1 on narrow | helped | Caught test outside the mandate |
+| `tb review` | `findings: []` on clean patch | neutral | No semantic Python review; scope/invariant heuristics OK |
+| `tb guard check … --json --strict` | exit 1 with `tox.ini` / thresholds | helped | `guard.yaml` + defaults |
+| `tb verify run` | PASS with build/lint/test/hidden | helped | Ran streaming tox + ruff; failed early with invalid build_cmd |
+| `tb verify run --ruler visual` | PASS skipped | neutral | Correct `skipped` aggregation; no product signal in this SDK |
+| `tb bench run` (default_agent) | OK with toolbelt tasks | neutral | No `bench/tasks` on the target; needs external `-t` or copied fixtures |
+| `tb bench compare --agent` | OK A/B graph-off/on | neutral | `--agent` flag present and usable |
+| `tb mcp` | `tools/list` OK | neutral | version/echo/env/run/graph_*; no mem/verify/review/drift/guard |
+| Native checks vs tb | tox 4 passed; ruff/mypy ok | helped | tb verify mirrored the native result when `test_cmd` pointed at tox |
 
-## Problemas que continuam
+## Problems that persist
 
-Da rodada 1 (`docs/campo/sentry-python.md`) que **ainda** se observam:
+From round 1 (`docs/campo/sentry-python.md`) that **still** appear:
 
-| problema rodada 1 | status rodada 2 |
-|-------------------|-----------------|
-| Init/defaults pouco alinhados ao `AGENTS.md` (tox via uv) | **continua** (melhorou: não é mais `go test`; ainda `uv run pytest` em vez de tox) |
-| `agents.toml` ignorado | **continua** |
-| MCP sem mem/verify/review/drift/guard | **continua** |
-| Review sem análise semântica do patch Python | **continua** (só scope/invariantes) |
-| Config files mode `0600` | **continua** (`config.yaml`/`agent_docs.yaml`/`graph.json` 600) |
-| Version `unknown` sem ldflags | **não retestado** com `go build` cru; com `make build` ok (`a46c295`) |
-| Fake/`bench` sem tasks no repo alvo | **continua** (precisa apontar para fixtures externas) |
-| tb não “empurra” completude da tarefa sozinho | **parcialmente mitigado** por drift de scope; ainda sem harness de acceptance checklist |
+| round 1 problem | round 2 status |
+|-----------------|----------------|
+| Init/defaults poorly aligned with `AGENTS.md` (tox via uv) | **persists** (improved: no longer `go test`; still `uv run pytest` instead of tox) |
+| `agents.toml` ignored | **persists** |
+| MCP without mem/verify/review/drift/guard | **persists** |
+| Review without semantic analysis of the Python patch | **persists** (scope/invariants only) |
+| Config files mode `0600` | **persists** (`config.yaml`/`agent_docs.yaml`/`graph.json` 600) |
+| Version `unknown` without ldflags | **not retested** with raw `go build`; with `make build` ok (`a46c295`) |
+| Fake/`bench` without tasks on the target repo | **persists** (must point at external fixtures) |
+| tb does not “push” task completeness alone | **partly mitigated** by scope drift; still no acceptance-checklist harness |
 
-Problemas da rodada 1 **corrigidos** neste repo: SkipDirs/`/tmp/target`, `calls` Python, `hidden_test_cmd` gated, `guard.yaml` ignorado, `--strict --json` exit 0, `default_agent` morto, parser `## Scope`, FP `tests/hidden` por substring, verify sem build/lint, visual `skipped=false`, docs CLI desatualizados (planejados marcados), init sem ler AGENTS.
+Round 1 problems **fixed** in this repo: SkipDirs/`/tmp/target`, Python `calls`, gated `hidden_test_cmd`, ignored `guard.yaml`, `--strict --json` exit 0, dead `default_agent`, `## Scope` parser, substring FP `tests/hidden`, verify without build/lint, visual `skipped=false`, outdated CLI docs (planned marked), init not reading AGENTS.
 
-## Problemas novos
+## New problems
 
-### P2 — `graph impact`/`deps` dependem do path exatamente como indexado
+### P2 — `graph impact`/`deps` depend on the path exactly as indexed
 
-- **Repro**: `tb graph --enable rebuild sentry_sdk` depois `impact --file sentry_sdk/integrations/google_genai/streaming.py` → `(vazio)`. Com `--file integrations/google_genai/streaming.py` (ou rebuild `.` + path completo) → resultado útil.
-- **Esperado**: resolução tolerante a prefixo de pacote / cwd.
-- **Atual**: matching literal do path no índice → falsa sensação de “sem impacto”.
+- **Repro**: `tb graph --enable rebuild sentry_sdk` then `impact --file sentry_sdk/integrations/google_genai/streaming.py` → `(vazio)`. With `--file integrations/google_genai/streaming.py` (or rebuild `.` + full path) → useful result.
+- **Expected**: tolerant resolution of package prefix / cwd.
+- **Actual**: literal path match in the index → false sense of “no impact”.
 
-### P2 — `verify.test_cmd` detectado não segue o harness documentado em AGENTS.md
+### P2 — Detected `verify.test_cmd` does not follow the harness documented in AGENTS.md
 
-- **Repro**: `tb init` em sentry-python → `uv run pytest`; AGENTS.md manda `uv run tox -e …`.
-- **Esperado**: preferir tox quando `tox.ini` + texto AGENTS mencionam tox.
-- **Atual**: heurística pyproject/uv → pytest; hints vão para `agent_docs.yaml` mas não viram `test_cmd`.
+- **Repro**: `tb init` on sentry-python → `uv run pytest`; AGENTS.md says `uv run tox -e …`.
+- **Expected**: prefer tox when `tox.ini` + AGENTS text mention tox.
+- **Actual**: pyproject/uv heuristic → pytest; hints go to `agent_docs.yaml` but do not become `test_cmd`.
 
-### P3 — `bench.tasks_dir` no YAML absoluto pode ser ignorado / defaults relativos
+### P3 — Absolute `bench.tasks_dir` in YAML can be ignored / relative defaults
 
-- **Repro**: gravar `bench.tasks_dir: /agent/repos/toolbelt/bench/tasks` no config do alvo; `tb bench run -r 1` ainda tentou `bench/tasks` relativo até passar `-t` na CLI.
-- **Esperado**: honrar paths absolutos do YAML.
-- **Atual**: agente precisa descobrir a flag `-t` (docs ajudam, mas o YAML sozinho falhou neste setup).
+- **Repro**: write `bench.tasks_dir: /agent/repos/toolbelt/bench/tasks` in the target config; `tb bench run -r 1` still tried relative `bench/tasks` until `-t` was passed on the CLI.
+- **Expected**: honor absolute YAML paths.
+- **Actual**: agent must discover the `-t` flag (docs help, but YAML alone failed in this setup).
 
-### P3 — MCP ainda sem paridade com o fluxo de campo
+### P3 — MCP still without parity with the field flow
 
-- **Repro**: `tools/list` após init — sem tools de mem/verify/review/drift/guard.
-- **Esperado**: pelo menos verify/drift/guard para repos já instrumentados.
-- **Atual**: só utilitários + graph_*.
+- **Repro**: `tools/list` after init — no mem/verify/review/drift/guard tools.
+- **Expected**: at least verify/drift/guard for already-instrumented repos.
+- **Actual**: only utilities + graph_*.
 
-Nenhuma regressão P0 observada nas 12 correções neste exercício.
+No P0 regression observed on the 12 fixes in this exercise.
 
-## O que o tb pegou e o que deixou passar
+## What tb caught and what it let slip
 
-**Pegou**
-- Drift: teste fora do `## Escopo` estreito.
-- Guard: alteração a `tox.ini` via `guard.yaml` e a `.toolbelt/thresholds.yaml`.
-- Graph: search + callers de `accumulate_streaming_response`; impact após path alinhado.
-- Verify: build/lint/hidden/test; falha precoce quando `build_cmd` importava integração sem `google-genai` no venv raiz.
-- Review: sem FP ao mencionar `tests/hidden` no ticket.
+**Caught**
+- Drift: test outside the narrow `## Escopo`.
+- Guard: change to `tox.ini` via `guard.yaml` and to `.toolbelt/thresholds.yaml`.
+- Graph: search + callers of `accumulate_streaming_response`; impact after aligned path.
+- Verify: build/lint/hidden/test; early failure when `build_cmd` imported the integration without `google-genai` in the root venv.
+- Review: no FP when mentioning `tests/hidden` in the ticket.
 
-**Deixou passar / não ajudou**
-- Não sugeriu o `test_cmd` tox “certo” a partir do AGENTS.md (agente teve de configurar).
-- Review não criticou design/completude do patch além do scope.
-- Sem tasks de bench no alvo, benchmark só funciona com fixtures externas.
-- `agents.toml` skills não entraram no fluxo.
+**Let slip / did not help**
+- Did not suggest the “right” tox `test_cmd` from AGENTS.md (agent had to configure).
+- Review did not critique patch design/completeness beyond scope.
+- Without bench tasks on the target, benchmark only works with external fixtures.
+- `agents.toml` skills did not enter the flow.
 
-## Interação com instrumentação existente / onboarding
+## Interaction with existing instrumentation / onboarding
 
-| Artefato do repo | O que o tb fez |
-|------------------|----------------|
-| `AGENTS.md` / `CLAUDE.md` | **Leu** → `.toolbelt/agent_docs.yaml` com sources + hints (tox, ruff, mypy, exemplos). **Não** promoveu hints a `verify.test_cmd` automaticamente. `--write-agents` não sobrescreve. |
-| `agents.toml` | **Ignorou**. |
-| Onboarding `tb init` | Criou vault/logs/bench + config com toolchain Python/`uv`. Melhor que rodada 1; ainda há gap tox vs pytest. |
-| Conflito | Invariantes padrão ainda falam de `tests/hidden`/thresholds; AGENTS fala de tox/ruff/mypy — agora convivem com dicas registradas, mas sem fusão automática em `verify.*`. |
+| Repo artifact | What tb did |
+|---------------|-------------|
+| `AGENTS.md` / `CLAUDE.md` | **Read** → `.toolbelt/agent_docs.yaml` with sources + hints (tox, ruff, mypy, examples). **Did not** promote hints to `verify.test_cmd` automatically. `--write-agents` does not overwrite. |
+| `agents.toml` | **Ignored**. |
+| `tb init` onboarding | Created vault/logs/bench + config with Python/`uv` toolchain. Better than round 1; tox vs pytest gap remains. |
+| Conflict | Default invariants still talk about `tests/hidden`/thresholds; AGENTS talks about tox/ruff/mypy — they now coexist with recorded hints, but without automatic merge into `verify.*`. |
 
-## Comparação com a rodada 1
+## Comparison with round 1
 
-**Melhor**, de forma concreta:
+**Better**, in concrete ways:
 
-| Área | Rodada 1 | Rodada 2 |
-|------|----------|----------|
-| Grafo em `/tmp/target` | 0 nós | milhares de nós |
-| `calls` Python / callers | vazio | callers e impact úteis |
-| `hidden_test_cmd` | no-op sem `tests/hidden/` | executa (ruff rodou) |
-| `guard.yaml` | ignorado | `tox.ini` flagado |
-| `--strict --json` | exit 0 com violação | exit 1 |
-| Init | `go test` + AGENTS ignorado | `uv run pytest` + `agent_docs.yaml` |
-| Scope Markdown | frágil / paths literais | `## Escopo` + `**` OK |
-| Verify build/lint | inexistente na prática | `build_ran`/`lint_ran` |
-| Visual skipped | top-level `skipped=false` | `skipped=true` agregado |
-| Docs CLI | comandos fantasmas | marcados como planejados |
+| Area | Round 1 | Round 2 |
+|------|---------|---------|
+| Graph under `/tmp/target` | 0 nodes | thousands of nodes |
+| Python `calls` / callers | empty | useful callers and impact |
+| `hidden_test_cmd` | no-op without `tests/hidden/` | runs (ruff ran) |
+| `guard.yaml` | ignored | `tox.ini` flagged |
+| `--strict --json` | exit 0 with violation | exit 1 |
+| Init | `go test` + AGENTS ignored | `uv run pytest` + `agent_docs.yaml` |
+| Markdown Scope | fragile / literal paths | `## Escopo` + `**` OK |
+| Verify build/lint | effectively absent | `build_ran`/`lint_ran` |
+| Visual skipped | top-level `skipped=false` | aggregated `skipped=true` |
+| CLI docs | phantom commands | marked as planned |
 
-Mesmo nível: MCP incompleto; review pouco semântico; bench depende de fixtures externas; `agents.toml` fora do radar.
+Same level: incomplete MCP; weakly semantic review; bench depends on external fixtures; `agents.toml` off the radar.
 
-## Sugestões de melhoria
+## Improvement suggestions
 
-1. **[P1][init/verify]** Mapear hints de `AGENTS.md`/`tox.ini` → `verify.test_cmd`/`lint_cmd` (ex.: se tox.ini existe e AGENTS cita `uv run tox`, preferir isso a `uv run pytest`) — áreas `init`, `verify`.
-2. **[P2][graph]** Resolver `--file` com sufixo/prefixo flexível (aceitar `sentry_sdk/…` e `…` relativo ao subdir indexado) — área `graph`.
-3. **[P2][bench]** Honrar `tasks_dir`/`fixtures_dir` absolutos do YAML; erro claro se dir ausente — área `bench`.
-4. **[P2][init/mem]** Opcional: importar bullets de AGENTS para invariantes (além de `agent_docs.yaml`) — áreas `init`, `mem`.
-5. **[P3][mcp]** Expor drift/review/verify/guard/mem no MCP — área `mcp`.
-6. **[P3][init]** Ler `agents.toml` (nomes de skills) como hooks opcionais de review — área `init`/`review`.
+1. **[P1][init/verify]** Map `AGENTS.md`/`tox.ini` hints → `verify.test_cmd`/`lint_cmd` (e.g. if tox.ini exists and AGENTS cites `uv run tox`, prefer that over `uv run pytest`) — areas `init`, `verify`.
+2. **[P2][graph]** Resolve `--file` with flexible suffix/prefix (accept `sentry_sdk/…` and `…` relative to the indexed subdir) — area `graph`.
+3. **[P2][bench]** Honor absolute YAML `tasks_dir`/`fixtures_dir`; clear error if dir missing — area `bench`.
+4. **[P2][init/mem]** Optional: import AGENTS bullets into invariants (beyond `agent_docs.yaml`) — areas `init`, `mem`.
+5. **[P3][mcp]** Expose drift/review/verify/guard/mem on MCP — area `mcp`.
+6. **[P3][init]** Read `agents.toml` (skill names) as optional review hooks — area `init`/`review`.
 
-## Métricas
+## Metrics
 
-| Métrica | Rodada 2 | Rodada 1 (referência) |
-|---------|----------|------------------------|
-| Wall time (soma comandos timed em `summary.tsv`) | ~28 s de `tb`/probes registrados; sessão total maior (~inclui tox ~6 s/run + mypy ~10 s + setup uv/tox) | ~10–12 min sessão; span evidências ≈ 577 s |
-| Invocações registradas | **60** linhas em `summary.tsv` (+ mcp/version fora) | **38** |
-| Falhas exit≠0 | **17** (probes esperados: drift narrow, guard strict, flags erradas, bench sem tasks/agent, ruff format antes do fix) | **13** |
+| Metric | Round 2 | Round 1 (reference) |
+|--------|---------|---------------------|
+| Wall time (sum of timed commands in `summary.tsv`) | ~28 s of recorded `tb`/probes; larger total session (~includes tox ~6 s/run + mypy ~10 s + uv/tox setup) | ~10–12 min session; evidence span ≈ 577 s |
+| Recorded invocations | **60** lines in `summary.tsv` (+ mcp/version outside) | **38** |
+| exit≠0 failures | **17** (expected probes: narrow drift, guard strict, bad flags, bench without tasks/agent, ruff format before fix) | **13** |
 | Crashes (panic/segfault) | **0** | **0** |
-| Build `tb` | `make build` OK (`a46c295`) | `make build` OK (`c8aae04`) |
+| `tb` build | `make build` OK (`a46c295`) | `make build` OK (`c8aae04`) |
 | MCP tools | 8 (version/echo/env/run/graph_*) | 8 |
-| Commits locais no alvo | 1 de produto (+ probes em branch descartável); **0** push | 2; **0** push |
-| Branch deste relatório | `campo2/sentry-python` (somente `docs/campo/rodada2/sentry-python.md`) | `campo/sentry-python` |
+| Local commits on target | 1 product (+ probes on disposable branch); **0** push | 2; **0** push |
+| This report’s branch | `campo2/sentry-python` (only `docs/campo/rodada2/sentry-python.md`) | `campo/sentry-python` |

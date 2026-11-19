@@ -18,10 +18,10 @@ var (
 	subreaperCount int
 )
 
-// AcquireSubreaper torna este processo "subreaper": descendentes órfãos (cujo
-// pai morreu) são reparentados a ele em vez de ao init, o que permite ao
-// Registry encontrá-los mesmo após setsid/setpgid. Contado por referência; a
-// função devolvida libera. ok=false se o kernel recusar.
+// AcquireSubreaper makes this process a "subreaper": orphaned descendants
+// (whose parent died) are reparented to it instead of init, which lets the
+// Registry find them even after setsid/setpgid. Reference-counted; the returned
+// function releases it. ok=false if the kernel refuses.
 func AcquireSubreaper() (release func(), ok bool) {
 	subreaperMu.Lock()
 	defer subreaperMu.Unlock()
@@ -47,10 +47,10 @@ func AcquireSubreaper() (release func(), ok bool) {
 type childProc struct {
 	pid, pgid int
 	zombie    bool
-	start     uint64 // starttime (campo 22 de /proc/<pid>/stat, em ticks desde o boot)
+	start     uint64 // starttime (field 22 of /proc/<pid>/stat, in ticks since boot)
 }
 
-// listChildren varre /proc procurando filhos diretos deste processo.
+// listChildren scans /proc for direct children of this process.
 func listChildren() []childProc {
 	entries, err := os.ReadDir("/proc")
 	if err != nil {
@@ -90,7 +90,7 @@ func listChildren() []childProc {
 	return out
 }
 
-// readStartTime devolve o starttime (ticks desde o boot) do pid, 0 se ilegível.
+// readStartTime returns pid's starttime (ticks since boot), 0 if unreadable.
 func readStartTime(pid int) uint64 {
 	data, err := os.ReadFile("/proc/" + strconv.Itoa(pid) + "/stat") //nolint:gosec // procfs
 	if err != nil {
@@ -109,8 +109,8 @@ func readStartTime(pid int) uint64 {
 	return v
 }
 
-// nowTicks devolve o "agora" na mesma base de starttime (ticks de 10 ms desde o
-// boot, via /proc/uptime; USER_HZ é 100 no Linux). 0 se ilegível.
+// nowTicks returns "now" in the same base as starttime (10 ms ticks since
+// boot, via /proc/uptime; USER_HZ is 100 on Linux). 0 if unreadable.
 func nowTicks() uint64 {
 	data, err := os.ReadFile("/proc/uptime")
 	if err != nil {
@@ -127,8 +127,8 @@ func nowTicks() uint64 {
 	return uint64(sec * 100)
 }
 
-// readEnvVars lê só as variáveis pedidas de /proc/<pid>/environ. ok=false
-// quando o arquivo é ilegível (processo já morto, ou não-dumpable).
+// readEnvVars reads only the requested variables from /proc/<pid>/environ.
+// ok=false when the file is unreadable (process already dead, or non-dumpable).
 func readEnvVars(pid int, keys []string) (vars map[string]string, ok bool) {
 	data, err := os.ReadFile("/proc/" + strconv.Itoa(pid) + "/environ") //nolint:gosec // procfs
 	if err != nil {
@@ -149,7 +149,7 @@ func readEnvVars(pid int, keys []string) (vars map[string]string, ok bool) {
 	return out, true
 }
 
-// procLive informa se o pid existe e não é zumbi.
+// procLive reports whether pid exists and is not a zombie.
 func procLive(pid int) bool {
 	data, err := os.ReadFile("/proc/" + strconv.Itoa(pid) + "/stat") //nolint:gosec // procfs
 	if err != nil {
@@ -163,9 +163,9 @@ func procLive(pid int) bool {
 	return s[i+2] != 'Z' && s[i+2] != 'X'
 }
 
-// killAndReap mata o órfão (e seu grupo, se ele o lidera e não é o do router) e
-// colhe só esse pid com wait4. Chamado com o mutex do Registry mantido, logo o
-// pid nunca é um filho rastreado pelo os/exec.
+// killAndReap kills the orphan (and its group, if it leads one that is not the
+// router's) and reaps only that pid with wait4. Called with the Registry mutex
+// held, so the pid is never a child tracked by os/exec.
 func killAndReap(c childProc) {
 	if !c.zombie {
 		if c.pgid == c.pid && c.pgid != syscall.Getpgrp() {
@@ -181,7 +181,7 @@ func killAndReap(c childProc) {
 			return
 		}
 		if time.Now().After(deadline) {
-			return // processo em estado D; a próxima varredura tenta de novo
+			return // process in D state; the next sweep retries
 		}
 		time.Sleep(2 * time.Millisecond)
 	}

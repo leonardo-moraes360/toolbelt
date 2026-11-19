@@ -12,38 +12,33 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// ErrNotFound indica ticket inexistente.
 var ErrNotFound = errors.New("ticket não encontrado")
 
-// Store persiste tickets em <root>/.toolbelt/tickets/TKT-NNN.yaml.
+// Store persists tickets in <root>/.toolbelt/tickets/TKT-NNN.yaml.
 type Store struct {
 	root string
 	dir  string
 	now  func() time.Time
 }
 
-// Open abre o store do repositório em root (diretório que contém .toolbelt).
+// Open expects root to be the directory containing .toolbelt.
 func Open(root string) *Store {
 	return &Store{root: root, dir: filepath.Join(root, ".toolbelt", "tickets"), now: time.Now}
 }
 
-// SetClock troca o relógio (testes).
+// SetClock overrides the clock (tests).
 func (s *Store) SetClock(now func() time.Time) { s.now = now }
 
-// Root devolve a raiz do repositório.
 func (s *Store) Root() string { return s.root }
 
-// Dir devolve o diretório de tickets.
 func (s *Store) Dir() string { return s.dir }
 
-// Path devolve o caminho do arquivo do ticket id.
 func (s *Store) Path(id string) string { return filepath.Join(s.dir, id+".yaml") }
 
-// Filter restringe List.
 type Filter struct {
 	Statuses  []Status
 	Worker    string
-	DependsOn string // tickets que dependem deste ID
+	DependsOn string // tickets that depend on this ID
 }
 
 func (s *Store) lock() (func(), error) {
@@ -53,9 +48,8 @@ func (s *Store) lock() (func(), error) {
 	return acquireLock(filepath.Join(s.dir, ".lock"))
 }
 
-// Create valida, aloca o próximo ID e grava o ticket.
 func (s *Store) Create(in *Ticket) (Ticket, error) {
-	t := *in // cópia: o chamador não vê ID/Status alocados aqui
+	t := *in // copy: the caller does not see the ID/Status allocated here
 	if err := t.Validate(); err != nil {
 		return Ticket{}, err
 	}
@@ -100,7 +94,6 @@ func (s *Store) Create(in *Ticket) (Ticket, error) {
 	return t, nil
 }
 
-// Get lê um ticket.
 func (s *Store) Get(id string) (Ticket, error) {
 	nid, err := NormalizeID(id)
 	if err != nil {
@@ -109,7 +102,7 @@ func (s *Store) Get(id string) (Ticket, error) {
 	return s.read(nid)
 }
 
-// List devolve tickets ordenados por ID, aplicando o filtro.
+// List returns tickets sorted by ID.
 func (s *Store) List(f Filter) ([]Ticket, error) {
 	all, err := s.loadAll()
 	if err != nil {
@@ -138,8 +131,8 @@ func (s *Store) List(f Filter) ([]Ticket, error) {
 	return out, nil
 }
 
-// Update faz read-modify-write sob lock. Mudanças de status são validadas
-// contra a máquina de estados; dependências são revalidadas.
+// Update does read-modify-write under the lock. Status changes are validated
+// against the state machine; dependencies are revalidated.
 func (s *Store) Update(id string, fn func(*Ticket) error) (Ticket, error) {
 	nid, err := NormalizeID(id)
 	if err != nil {
@@ -194,7 +187,6 @@ func (s *Store) Update(id string, fn func(*Ticket) error) (Ticket, error) {
 	return next, nil
 }
 
-// Transition muda o status validando a transição.
 func (s *Store) Transition(id string, to Status) (Ticket, error) {
 	return s.Update(id, func(t *Ticket) error {
 		t.Status = to
@@ -202,7 +194,7 @@ func (s *Store) Transition(id string, to Status) (Ticket, error) {
 	})
 }
 
-// Cancel cancela um ticket pending/running.
+// Cancel only applies to pending/running tickets.
 func (s *Store) Cancel(id string) (Ticket, error) {
 	return s.Update(id, func(t *Ticket) error {
 		if t.Status != StatusPending && t.Status != StatusRunning {
@@ -214,8 +206,8 @@ func (s *Store) Cancel(id string) (Ticket, error) {
 	})
 }
 
-// Retry recoloca um ticket failed/canceled em pending, limpando worker e
-// assinatura (Attempts é preservado).
+// Retry returns a failed/canceled ticket to pending, clearing worker and
+// subscription (Attempts is preserved).
 func (s *Store) Retry(id string) (Ticket, error) {
 	return s.Update(id, func(t *Ticket) error {
 		if t.Status != StatusFailed && t.Status != StatusCanceled {
@@ -282,7 +274,7 @@ func (s *Store) write(t *Ticket) error {
 	return WriteFileAtomic(s.Path(t.ID), data)
 }
 
-// WriteFileAtomic grava via arquivo temporário + rename, com modo 0600.
+// WriteFileAtomic writes via a temp file + rename, with mode 0600.
 func WriteFileAtomic(path string, data []byte) error {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -335,8 +327,8 @@ func normalizeDeps(deps []string) ([]string, error) {
 	return out, nil
 }
 
-// checkDeps rejeita dependência desconhecida, auto-dependência e ciclos que
-// passem por t.
+// checkDeps rejects unknown dependencies, self-dependencies and cycles
+// through t.
 func checkDeps(t *Ticket, byID map[string]Ticket) error {
 	for _, d := range t.Dependencies {
 		if d == t.ID {
@@ -388,7 +380,7 @@ func equalStrings(a, b []string) bool {
 	return true
 }
 
-// CheckNew valida t como se fosse criado agora (dependências e ciclos), sem gravar.
+// CheckNew validates t as if it were created now (dependencies and cycles), without writing.
 func (s *Store) CheckNew(in *Ticket) error {
 	t := *in
 	if err := t.Validate(); err != nil {
@@ -415,8 +407,8 @@ func (s *Store) CheckNew(in *Ticket) error {
 	return checkDeps(&t, byID)
 }
 
-// clone devolve cópia profunda de t (slices e ponteiros), para que callbacks
-// de Update não alterem o estado "atual" por aliasing.
+// clone deep-copies t (slices and pointers) so Update callbacks cannot alter
+// the "current" state through aliasing.
 func (t *Ticket) clone() Ticket {
 	c := *t
 	c.Mandate.Scope = append([]string(nil), t.Mandate.Scope...)

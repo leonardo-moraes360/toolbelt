@@ -63,7 +63,7 @@ func TestTicketToolsFlow(t *testing.T) {
 	checkTicketReads(t, dir)
 }
 
-// checkTicketReads confere list/show/board e o controle do board.
+// checkTicketReads checks list/show/board and the board control.
 func checkTicketReads(t *testing.T, dir string) {
 	t.Helper()
 	cwd := map[string]any{"cwd": dir}

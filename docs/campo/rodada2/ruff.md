@@ -1,168 +1,168 @@
-🇧🇷 Português | [🇺🇸 English](../../en/campo/rodada2/ruff.md)
+🇺🇸 English | [🇧🇷 Português](../../pt-BR/campo/rodada2/ruff.md)
 
-# Estudo de campo rodada 2: `tb` em astral-sh/ruff
+# Field study round 2: `tb` on astral-sh/ruff
 
-Data: 2026-11-16. Clone local em `/tmp/target/ruff` (shallow). Nenhuma interação com o remoto do alvo. Alterações de código ficaram só no clone local; neste repositório toolbelt só este arquivo.
+Date: 2026-11-16. Local clone at `/tmp/target/ruff` (shallow). No interaction with the target remote. Code changes stayed only on the local clone; in this toolbelt repository only this file.
 
-`tb` usado: build local `make build` → `./bin/tb` (versão embutida `a46c295`, main com as 12 correções).
+`tb` used: local `make build` → `./bin/tb` (embedded version `a46c295`, main with the 12 fixes).
 
-Grupo: **with existing AI-agent instrumentation**.
+Group: **with existing AI-agent instrumentation**.
 
-## Repositório
+## Repository
 
-| Campo | Valor |
+| Field | Value |
 |-------|-------|
-| Nome | [astral-sh/ruff](https://github.com/astral-sh/ruff) |
-| Linguagem | Rust (monorepo Ruff + ty); Python em fixtures/scripts/resources |
-| Tamanho | Checkout shallow ~145–187 MiB (sem `target` completo no uso); ~2057 arquivos `.rs` |
-| Instrumentação AI existente | `AGENTS.md` (~20 KiB), `CLAUDE.md` (`@AGENTS.md`), `.agents/` (skills + threat models), hooks/settings Claude |
-| Toolchain | **Parcial.** Rust 1.99.0 (`rust-toolchain.toml`), `cargo`, `cargo-nextest` 0.9.152, `uv` 0.13.8. Compilou/testou `ruff_linter` (pep8_naming) e `cargo run -p ruff -- check` no probe. **Não** rodou: suíte workspace completa, `cargo clippy --workspace`, hooks `prek`, playground, file-watcher |
+| Name | [astral-sh/ruff](https://github.com/astral-sh/ruff) |
+| Language | Rust (Ruff + ty monorepo); Python in fixtures/scripts/resources |
+| Size | Shallow checkout ~145–187 MiB (without full `target` in use); ~2057 `.rs` files |
+| Existing AI instrumentation | `AGENTS.md` (~20 KiB), `CLAUDE.md` (`@AGENTS.md`), `.agents/` (skills + threat models), Claude hooks/settings |
+| Toolchain | **Partial.** Rust 1.99.0 (`rust-toolchain.toml`), `cargo`, `cargo-nextest` 0.9.152, `uv` 0.13.8. Built/tested `ruff_linter` (pep8_naming) and `cargo run -p ruff -- check` on the probe. **Did not** run: full workspace suite, `cargo clippy --workspace`, `prek` hooks, playground, file-watcher |
 
-## Tarefa escolhida
+## Chosen task
 
-| Campo | Valor |
+| Field | Value |
 |-------|-------|
-| O quê | `N801` não deve flagrar nomes CapWords com underscore **trailing** (`class Fine_`, `class _Fine_`), alinhado ao skip de leading underscores e ao pep8-naming/PEP 8. Continua flagrando underscore no meio (`Bad_Class_`). Fixture + snapshot atualizados. |
-| Por quê | Bug real pequeno (#30230), distinto da rodada 1, com harness de snapshots já existente. |
+| What | `N801` must not flag CapWords names with a **trailing** underscore (`class Fine_`, `class _Fine_`), aligned with the leading-underscore skip and pep8-naming/PEP 8. Still flags mid-name underscores (`Bad_Class_`). Fixture + snapshot updated. |
+| Why | Small real bug (#30230), distinct from round 1, with an existing snapshot harness. |
 | Issue | https://github.com/astral-sh/ruff/issues/30230 |
-| Completa? | **Sim no clone local** (`trim_matches('_')` em `invalid_class_name.rs`; testes pep8_naming 49 ok; `ruff check --select N801` no probe: só `Bad_Class_` e `bad`). Não enviada ao upstream. |
-| Checks nativos | `cargo test -p ruff_linter --lib rules::pep8_naming::tests` PASS (~84 s frio / ~0,04 s quente). `cargo check -p ruff_linter` PASS. Clippy/nextest workspace **não** concluídos. |
-| Rodada 1 (comparação) | FURB101/103: não emitir fix “safe” para `open(b"...")` → `Path(...).read_*/write_*` |
+| Complete? | **Yes on the local clone** (`trim_matches('_')` in `invalid_class_name.rs`; pep8_naming tests 49 ok; `ruff check --select N801` on the probe: only `Bad_Class_` and `bad`). Not sent upstream. |
+| Native checks | `cargo test -p ruff_linter --lib rules::pep8_naming::tests` PASS (~84 s cold / ~0.04 s warm). `cargo check -p ruff_linter` PASS. Workspace clippy/nextest **not** completed. |
+| Round 1 (comparison) | FURB101/103: do not emit a “safe” fix for `open(b"...")` → `Path(...).read_*/write_*` |
 
-## Verificação das 12 correções
+## Verification of the 12 fixes
 
-| # | correção | resultado | evidência |
-|---|----------|-----------|-----------|
-| 1 | graph SkipDirs na raiz do walk | **funcionou** | Clone útil em `/tmp/target/ruff` → 58926 nós / 96890 arestas. Probe dedicado `/tmp/skipdirs-probe/target` (basename=`target`) → 6+ nós após rebuild (não zera mais). |
-| 2 | verify `hidden_test_cmd` sem `tests/hidden/` | **funcionou** | Sem dir `tests/hidden/`; com `hidden_test_cmd: cargo check -p ruff_linter` → `hidden_available: true`, `hidden_passed: true` no JSON do verify. |
-| 3 | guard `--strict --json` exit ≠ 0 | **funcionou** | Com violação: `--json` só → EXIT 0; `--strict --json` → EXIT 1 (mesmo payload JSON com `violations`). |
-| 4 | guard lê `protected_paths` de `guard.yaml` | **funcionou** | Path custom `custom_protected_marker.txt` em `.toolbelt/guard.yaml` → violação `protected_path` no commit que o tocava; união com defaults documentada em `docs/cli.md`. |
-| 5 | init detecção de toolchain | **funcionou** | `tb init` em ruff → `verify.test_cmd: cargo test` (não mais `go test ./...`). |
-| 6 | review `tests/hidden` por path | **funcionou** | Ticket menciona `tests/hidden/` no texto; `tb review --ticket rd.md --json` → `findings: []` (sem FP critical). |
-| 7 | bench `default_agent` e `compare --agent` | **funcionou** | `bench.default_agent: "echo-agent {prompt}"`; `tb bench run -r 1` sem `--agent` → `agent=external` e concluiu. `tb bench compare --help` lista `-a/--agent`; A/B com `--config-a/b --agent "echo-agent {prompt}" --task bugfix-go` gerou tabela Markdown. |
-| 8 | review parseia `## Scope`/`## Escopo`, listas MD e `**` globs | **funcionou** | Ticket com `## Escopo` + bullets + `pep8_naming/**` / `snapshots/**`: drift/review sem `out_of_scope` no fix; commit de ruído `lib_noise_campo.txt` → `out_of_scope` detectado. |
-| 9 | verify `build_cmd` e `lint_cmd` | **funcionou** | Config com `build_cmd: cargo check -p ruff_linter`, `lint_cmd: true` → JSON `build_ran/passed` e `lint_ran/passed` true; verify PASS ~19,5 s. |
-| 10 | init lê AGENTS.md/CLAUDE.md e `--write-agents` | **funcionou** (parcial UX) | Em ruff: log `documentação de agentes encontrada` + `.toolbelt/agent_docs.yaml` com hints `cargo`/`uv`/`nextest`. `--write-agents` em repo vazio semeou só `AGENTS.md` (não criou `CLAUDE.md`); hints **não** viram `test_cmd` automaticamente além da detecção Cargo. |
-| 11 | graph arestas `calls` em Python | **funcionou** | Stats: `edges_calls: 4526` (rodada 1: 232). Heurística no `graph.json`: ~4294 calls ligadas a `.py` / fixtures; probe `mod.py` → 1 call e `tb graph callers --function helper` retornou `mod.main`. |
-| 12 | verify visual skipped agregado + docs CLI alinhados | **funcionou** | Sem manifesto: top-level `skipped: true`. Com manifesto e ref ausente: `skipped: true`, `skip_reason: todas as telas foram skipped`. `docs/cli.md` documenta build/lint, visual skipped, `protected_paths`, `default_agent`, e marca `tb ticket` como não implementado. |
+| # | fix | result | evidence |
+|---|-----|--------|----------|
+| 1 | graph SkipDirs at walk root | **worked** | Useful clone under `/tmp/target/ruff` → 58926 nodes / 96890 edges. Dedicated probe `/tmp/skipdirs-probe/target` (basename=`target`) → 6+ nodes after rebuild (no longer zeros). |
+| 2 | verify `hidden_test_cmd` without `tests/hidden/` | **worked** | No `tests/hidden/` dir; with `hidden_test_cmd: cargo check -p ruff_linter` → `hidden_available: true`, `hidden_passed: true` in verify JSON. |
+| 3 | guard `--strict --json` exit ≠ 0 | **worked** | With a violation: `--json` alone → EXIT 0; `--strict --json` → EXIT 1 (same JSON payload with `violations`). |
+| 4 | guard reads `protected_paths` from `guard.yaml` | **worked** | Custom path `custom_protected_marker.txt` in `.toolbelt/guard.yaml` → `protected_path` violation on the commit that touched it; union with defaults documented in `docs/cli.md`. |
+| 5 | init toolchain detection | **worked** | `tb init` on ruff → `verify.test_cmd: cargo test` (no longer `go test ./...`). |
+| 6 | review `tests/hidden` by path | **worked** | Ticket mentions `tests/hidden/` in the text; `tb review --ticket rd.md --json` → `findings: []` (no critical FP). |
+| 7 | bench `default_agent` and `compare --agent` | **worked** | `bench.default_agent: "echo-agent {prompt}"`; `tb bench run -r 1` without `--agent` → `agent=external` and finished. `tb bench compare --help` lists `-a/--agent`; A/B with `--config-a/b --agent "echo-agent {prompt}" --task bugfix-go` produced a Markdown table. |
+| 8 | review parses `## Scope`/`## Escopo`, MD lists and `**` globs | **worked** | Ticket with `## Escopo` + bullets + `pep8_naming/**` / `snapshots/**`: drift/review without `out_of_scope` on the fix; noise commit `lib_noise_campo.txt` → `out_of_scope` detected. |
+| 9 | verify `build_cmd` and `lint_cmd` | **worked** | Config with `build_cmd: cargo check -p ruff_linter`, `lint_cmd: true` → JSON `build_ran/passed` and `lint_ran/passed` true; verify PASS ~19.5 s. |
+| 10 | init reads AGENTS.md/CLAUDE.md and `--write-agents` | **worked** (partial UX) | On ruff: log `documentação de agentes encontrada` + `.toolbelt/agent_docs.yaml` with `cargo`/`uv`/`nextest` hints. `--write-agents` in an empty repo seeded only `AGENTS.md` (did not create `CLAUDE.md`); hints **do not** become `test_cmd` automatically beyond Cargo detection. |
+| 11 | graph Python `calls` edges | **worked** | Stats: `edges_calls: 4526` (round 1: 232). Heuristic on `graph.json`: ~4294 calls linked to `.py` / fixtures; probe `mod.py` → 1 call and `tb graph callers --function helper` returned `mod.main`. |
+| 12 | aggregated visual skipped + CLI docs aligned | **worked** | Without manifest: top-level `skipped: true`. With manifest and missing ref: `skipped: true`, `skip_reason: todas as telas foram skipped`. `docs/cli.md` documents build/lint, visual skipped, `protected_paths`, `default_agent`, and marks `tb ticket` as not implemented. |
 
-## Uso do tb por comando
+## tb usage by command
 
-| comando | resultado | ajudou/atrapalhou/neutro | evidência |
-|---------|-----------|--------------------------|-----------|
-| `tb init` | OK; `.toolbelt/` + `config.yaml` + `agent_docs.yaml` | **ajudou** | Detectou Cargo; leu AGENTS/CLAUDE; ainda mode `600` nos YAMLs |
-| `tb init --write-agents` | OK em ruff (já existia docs); em probe vazio semeou AGENTS.md | misto | Não semeia CLAUDE.md; não importa skills `.agents/` |
-| `tb mem init/list/add/check` | OK; 3 default + 1 regra insta | ajudou | `compactacao_segura: true` |
-| `tb graph rebuild --enable` | 58926 nós / 96890 arestas / 4526 calls ~4,57 s | ajudou | Indexação rápida; SkipDirs raiz OK |
-| `tb graph search --enable invalid_class_name` | Achou função/arquivo/class | ajudou | ~0,38 s |
-| `tb graph impact --enable --file …/invalid_class_name.rs` | `null` | atrapalhou | Call graph Rust ainda fraco (~232 calls “other”) |
-| `tb graph callers --enable --function invalid_class_name` | `null` | atrapalhou | Idem |
-| `tb graph deps --enable --file …` | pkgs `crate::…` / `ruff_python_ast` | neutro | Imports superficiais |
-| ticket (`rd.md` manual) | `tb ticket` inexistente (docs dizem planejado) | neutro | Scope via `## Escopo` funcionou com drift/review |
-| `tb drift --ticket rd.md` | Limpo no fix; flagrou ruído fora do glob | **ajudou** | Globs `**` + heading Markdown OK |
-| `tb verify run` | PASS com build+lint+test+hidden | **ajudou** | Defaults Cargo; hidden sem dir; ~19,5 s |
-| `tb verify run --ruler visual` | PASS skipped (manifesto/ref) | neutro | Agregação top-level correta |
-| `tb review --ticket rd.md` | `findings: []`, drift limpo | **ajudou** | Sem FP `tests/hidden` |
-| `tb guard check` + `guard.yaml` | Lê YAML; `--strict --json` EXIT 1 | **ajudou** | Custom path e path do fix detectados |
-| `tb bench run` (default_agent) | Rodou sem `--agent`/`--fake` | ajudou | 9 tasks / 11,1% sucesso com echo-agent |
-| `tb bench compare --agent` | A/B graph-off vs graph-on OK | ajudou | Flag `--agent` presente e funcional |
-| `tb mcp` | `tools/list` + `tb_version` + `tb_graph_search` OK | ajudou | Com `TB_GRAPH=on`, search achou `invalid_class_name` |
-| Checks nativos (fora tb) | pep8_naming + ruff check N801 OK | ajudou | Confirmou comportamento Fine_/Bad_Class_ |
+| command | result | helped / hindered / neutral | evidence |
+|---------|--------|-----------------------------|----------|
+| `tb init` | OK; `.toolbelt/` + `config.yaml` + `agent_docs.yaml` | **helped** | Detected Cargo; read AGENTS/CLAUDE; still mode `600` on YAMLs |
+| `tb init --write-agents` | OK on ruff (docs already existed); empty probe seeded AGENTS.md | mixed | Does not seed CLAUDE.md; does not import `.agents/` skills |
+| `tb mem init/list/add/check` | OK; 3 default + 1 insta rule | helped | `compactacao_segura: true` |
+| `tb graph rebuild --enable` | 58926 nodes / 96890 edges / 4526 calls ~4.57 s | helped | Fast indexing; root SkipDirs OK |
+| `tb graph search --enable invalid_class_name` | Found function/file/class | helped | ~0.38 s |
+| `tb graph impact --enable --file …/invalid_class_name.rs` | `null` | hindered | Rust call graph still weak (~232 “other” calls) |
+| `tb graph callers --enable --function invalid_class_name` | `null` | hindered | Same |
+| `tb graph deps --enable --file …` | pkgs `crate::…` / `ruff_python_ast` | neutral | Shallow imports |
+| ticket (manual `rd.md`) | `tb ticket` nonexistent (docs say planned) | neutral | Scope via `## Escopo` worked with drift/review |
+| `tb drift --ticket rd.md` | Clean on the fix; flagged noise outside the glob | **helped** | `**` globs + Markdown heading OK |
+| `tb verify run` | PASS with build+lint+test+hidden | **helped** | Cargo defaults; hidden without dir; ~19.5 s |
+| `tb verify run --ruler visual` | PASS skipped (manifest/ref) | neutral | Correct top-level aggregation |
+| `tb review --ticket rd.md` | `findings: []`, clean drift | **helped** | No `tests/hidden` FP |
+| `tb guard check` + `guard.yaml` | Reads YAML; `--strict --json` EXIT 1 | **helped** | Custom path and fix path detected |
+| `tb bench run` (default_agent) | Ran without `--agent`/`--fake` | helped | 9 tasks / 11.1% success with echo-agent |
+| `tb bench compare --agent` | A/B graph-off vs graph-on OK | helped | `--agent` flag present and working |
+| `tb mcp` | `tools/list` + `tb_version` + `tb_graph_search` OK | helped | With `TB_GRAPH=on`, search found `invalid_class_name` |
+| Native checks (outside tb) | pep8_naming + ruff check N801 OK | helped | Confirmed Fine_/Bad_Class_ behavior |
 
-## Problemas que continuam
+## Problems that persist
 
-Problemas da rodada 1 (`docs/campo/ruff.md`) que **ainda** aparecem neste run:
+Round 1 problems (`docs/campo/ruff.md`) that **still** appear in this run:
 
-| problema rodada 1 | status rodada 2 |
-|-------------------|-----------------|
-| Call graph / impact inúteis em monorepo **Rust** | **continua** — `impact`/`callers` em `invalid_class_name` → `null`; ~232 calls não-Python |
-| Config files mode `0600` | **continua** — `stat` → `600` em `config.yaml` / `invariants.yaml` |
-| `tb ticket` / board ausentes (só rd.md manual) | **continua** — `unknown command "ticket"`; docs agora marcam planejado |
-| Completeness/review não valida aceite comportamental de verdade | **continua** (parcial) — review passou sem ligar a `verify`/teste N801 |
-| Init não importa skills `.agents/` / política de snapshots como invariantes | **continua** — só hints em `agent_docs.yaml`; `mem` ainda genérico |
-| Defaults de verify ainda genéricos demais sem refinar crate/pacote | **parcialmente mitigado** — `cargo test` em vez de `go test`, mas não o filtro `-p ruff_linter …` do AGENTS.md |
-| Guard UX `base..head` vs `--base` | **não revalidado a fundo** — fluxo `HEAD~1..HEAD` usado com sucesso |
+| round 1 problem | round 2 status |
+|-----------------|----------------|
+| Useless call graph / impact in a **Rust** monorepo | **persists** — `impact`/`callers` on `invalid_class_name` → `null`; ~232 non-Python calls |
+| Config files mode `0600` | **persists** — `stat` → `600` on `config.yaml` / `invariants.yaml` |
+| Missing `tb ticket` / board (only manual rd.md) | **persists** — `unknown command "ticket"`; docs now mark planned |
+| Completeness/review does not truly validate behavioral acceptance | **persists** (partial) — review passed without linking to `verify`/N801 test |
+| Init does not import `.agents/` skills / snapshot policy as invariants | **persists** — only hints in `agent_docs.yaml`; `mem` still generic |
+| Verify defaults still too generic without refining crate/package | **partially mitigated** — `cargo test` instead of `go test`, but not the AGENTS.md filter `-p ruff_linter …` |
+| Guard UX `base..head` vs `--base` | **not deeply revalidated** — `HEAD~1..HEAD` flow used successfully |
 
-## Problemas novos
+## New problems
 
-1. **P2 — `--write-agents` semeia só `AGENTS.md`, não `CLAUDE.md`**  
-   - Repro: `tb init --write-agents` em repo vazio → cria `AGENTS.md`; `CLAUDE.md` ausente.  
-   - Esperado (pelo enunciado da correção 10): seed de AGENTS/CLAUDE.  
-   - Atual: `SeedAgentsMD` só escreve AGENTS.md.
+1. **P2 — `--write-agents` seeds only `AGENTS.md`, not `CLAUDE.md`**  
+   - Repro: `tb init --write-agents` in an empty repo → creates `AGENTS.md`; `CLAUDE.md` absent.  
+   - Expected (per fix 10 wording): AGENTS/CLAUDE seed.  
+   - Actual: `SeedAgentsMD` only writes AGENTS.md.
 
-2. **P2 — Hints de AGENTS.md não viram `verify.*_cmd` estruturados**  
-   - Repro: init em ruff extrai `cargo nextest …`, `uv run … prek`, etc., mas `test_cmd` fica só `cargo test`.  
-   - Esperado: mapear lint/test/build sugeridos do AGENTS.md.  
-   - Atual: registro informativo em `agent_docs.yaml` sem aplicar ao verify.
+2. **P2 — AGENTS.md hints do not become structured `verify.*_cmd`**  
+   - Repro: init on ruff extracts `cargo nextest …`, `uv run … prek`, etc., but `test_cmd` stays only `cargo test`.  
+   - Expected: map suggested lint/test/build from AGENTS.md.  
+   - Actual: informative record in `agent_docs.yaml` without applying to verify.
 
-3. **P3 — `lint_cmd: true` / agentes echo mascaram qualidade**  
-   - Repro: verify PASS com `lint_cmd: true`; bench default_agent echo “passa” tasks sem editar código (11,1%).  
-   - Esperado: falhar ou avisar quando lint/test são no-ops.  
-   - Atual: harness aceita e reporta PASS/sucesso baixo sem alerta de configuração fraca.
+3. **P3 — `lint_cmd: true` / echo agents mask quality**  
+   - Repro: verify PASS with `lint_cmd: true`; bench default_agent echo “passes” tasks without editing code (11.1%).  
+   - Expected: fail or warn when lint/test are no-ops.  
+   - Actual: harness accepts and reports PASS/low success without a weak-config alert.
 
-4. **P3 — Skills `.agents/skills/*` ainda fora do tb**  
-   - Repro: diretório com skills ty/review presente; nenhum comando tb lista/importa.  
-   - Esperado (grupo “com instrumentação”): pelo menos descoberta.  
-   - Atual: paralela à instrumentação humana.
+4. **P3 — Skills `.agents/skills/*` still outside tb**  
+   - Repro: directory with ty/review skills present; no tb command lists/imports them.  
+   - Expected (“with instrumentation” group): at least discovery.  
+   - Actual: parallel to human instrumentation.
 
-## O que o tb pegou e o que deixou passar
+## What tb caught and what it let slip
 
-**Pegou**
-- Drift fora do `## Escopo` / globs `**`.
-- Review sem FP de `tests/hidden` apesar da menção no ticket.
-- Guard com `protected_paths` custom + exit strict+json.
-- Verify com build + hidden configurado sem pasta `tests/hidden/`.
-- Graph search do símbolo N801; calls Python no índice; SkipDirs em dir chamado `target`.
-- Init Cargo + leitura de AGENTS/CLAUDE.
+**Caught**
+- Drift outside `## Escopo` / `**` globs.
+- Review without `tests/hidden` FP despite the ticket mention.
+- Guard with custom `protected_paths` + strict+json exit.
+- Verify with configured build + hidden without a `tests/hidden/` folder.
+- Graph search of the N801 symbol; Python calls in the index; SkipDirs on a dir named `target`.
+- Cargo init + AGENTS/CLAUDE read.
 
-**Deixou passar / atrapalhou**
-- Impact/callers Rust não ajudaram a achar quem chama `invalid_class_name`.
-- Não sugeriu o comando exato do AGENTS.md (`nextest -p …`, política INSTA_*).
-- Não empurrou clippy/workspace; agente teve que escolher o subset.
-- Bench com echo-agent não valida a tarefa N801 (só o harness fake/external do toolbelt).
-- Sem `tb ticket`, o fluxo de aceite continua manual.
+**Let slip / hindered**
+- Rust impact/callers did not help find who calls `invalid_class_name`.
+- Did not suggest the exact AGENTS.md command (`nextest -p …`, `INSTA_*` policy).
+- Did not push clippy/workspace; agent had to choose the subset.
+- Bench with echo-agent does not validate the N801 task (only toolbelt fake/external harness).
+- Without `tb ticket`, the acceptance flow stays manual.
 
-## Interação com instrumentação existente / onboarding
+## Interaction with existing instrumentation / onboarding
 
-- **Melhoria vs rodada 1:** `tb init` **lê** `AGENTS.md`/`CLAUDE.md`, grava `agent_docs.yaml` e lista hints de comandos; `--write-agents` documentado e funcional para seed mínimo.
-- **Ainda paralelo:** invariantes default (`tests/hidden/`, `thresholds.yaml`) não refletem o harness Ruff (insta/mdtest/nextest). Skills em `.agents/skills/` e threat models **não** entram no vault/`mem`.
-- **Conflito residual:** `test_cmd: cargo test` é melhor que Go, mas o AGENTS.md manda `cargo nextest` + vars `INSTA_*` / exclusão `file_watching` — o agente ainda precisa ler o AGENTS.md por fora para o workflow correto.
-- Onboarding: segundos para init/mem; onboarding *real* ao Ruff ainda depende do humano/AI abrir AGENTS.md.
+- **Improvement vs round 1:** `tb init` **reads** `AGENTS.md`/`CLAUDE.md`, writes `agent_docs.yaml`, and lists command hints; `--write-agents` documented and functional for a minimal seed.
+- **Still parallel:** default invariants (`tests/hidden/`, `thresholds.yaml`) do not reflect the Ruff harness (insta/mdtest/nextest). Skills under `.agents/skills/` and threat models **do not** enter vault/`mem`.
+- **Residual conflict:** `test_cmd: cargo test` is better than Go, but AGENTS.md mandates `cargo nextest` + `INSTA_*` vars / `file_watching` exclusion — the agent still must read AGENTS.md outside tb for the correct workflow.
+- Onboarding: seconds for init/mem; *real* Ruff onboarding still depends on a human/AI opening AGENTS.md.
 
-## Comparação com a rodada 1
+## Comparison with round 1
 
-| aspecto | rodada 1 (`c8aae04`) | rodada 2 (`a46c295`) |
-|---------|----------------------|----------------------|
-| Init / verify defaults | `go test ./...` | `cargo test` + build/lint/hidden opcionais |
-| AGENTS.md | ignorado | lido + hints; skills ainda fora |
-| Review FP `tests/hidden` | critical FP | ausente |
-| Scope Markdown / `**` | frágil / parcial | `## Escopo` + globs OK neste run |
-| guard.yaml / strict+json | ignorado / exit 0 | honrado / EXIT 1 |
-| Graph em `/tmp/target…` | risco SkipDirs | raiz OK; calls Python ↑; Rust impact igual de fraco |
-| Bench default_agent / compare --agent | quebrado | funciona |
-| Visual skipped top-level | falhava com refs ausentes | `skipped: true` agregado |
-| Conclusão | tb atrapalhava bootstrap Rust | **melhor** no harness; **igual** no call-graph Rust e na profundidade de onboarding das skills |
+| aspect | round 1 (`c8aae04`) | round 2 (`a46c295`) |
+|--------|---------------------|---------------------|
+| Init / verify defaults | `go test ./...` | `cargo test` + optional build/lint/hidden |
+| AGENTS.md | ignored | read + hints; skills still out |
+| Review FP `tests/hidden` | critical FP | absent |
+| Markdown Scope / `**` | fragile / partial | `## Escopo` + globs OK in this run |
+| guard.yaml / strict+json | ignored / exit 0 | honored / EXIT 1 |
+| Graph under `/tmp/target…` | SkipDirs risk | root OK; Python calls ↑; Rust impact equally weak |
+| Bench default_agent / compare --agent | broken | works |
+| Visual skipped top-level | failed with missing refs | aggregated `skipped: true` |
+| Conclusion | tb hindered Rust bootstrap | **better** harness; **same** on Rust call-graph and skill-onboarding depth |
 
-No geral: **melhor** de forma concreta nas 12 correções testáveis; a dor estrutural do monorepo Rust (impact/callers) e o aproveitamento fino da instrumentação AI **permanecem**.
+Overall: **better** in concrete ways on the 12 testable fixes; the structural Rust monorepo pain (impact/callers) and fine use of AI instrumentation **remain**.
 
-## Sugestões de melhoria
+## Improvement suggestions
 
-1. **[graph/P1]** Emitir `calls`/`impact` úteis para Rust (ou documentar limitação e degradar UX de impact vazio).  
-2. **[init/P1]** Aplicar hints do AGENTS.md a `verify.test_cmd` / `lint_cmd` / `build_cmd` (ex.: preferir `cargo nextest` quando citado).  
-3. **[init/P2]** `--write-agents` também semear ou linkar `CLAUDE.md`; opcional `--import-skills` de `.agents/skills`.  
-4. **[mem/P2]** Importar proibições do AGENTS.md (“não editar snapshots à mão”) como invariantes.  
-5. **[verify/P2]** Avisar quando `lint_cmd`/`test_cmd` forem no-ops (`true`, `echo`).  
-6. **[bench/P3]** No alvo sem `bench/tasks`, falhar com mensagem clara em vez de depender de path absoluto do toolbelt.  
-7. **[cli/P3]** Manter docs de `ticket`/`board` claramente “planejado” (já melhorou) e apontar template `rd.md` com `## Escopo`.
+1. **[graph/P1]** Emit useful Rust `calls`/`impact` (or document the limitation and degrade empty-impact UX).  
+2. **[init/P1]** Apply AGENTS.md hints to `verify.test_cmd` / `lint_cmd` / `build_cmd` (e.g. prefer `cargo nextest` when cited).  
+3. **[init/P2]** `--write-agents` also seed or link `CLAUDE.md`; optional `--import-skills` from `.agents/skills`.  
+4. **[mem/P2]** Import AGENTS.md prohibitions (“do not edit snapshots by hand”) as invariants.  
+5. **[verify/P2]** Warn when `lint_cmd`/`test_cmd` are no-ops (`true`, `echo`).  
+6. **[bench/P3]** On a target without `bench/tasks`, fail with a clear message instead of depending on an absolute toolbelt path.  
+7. **[cli/P3]** Keep `ticket`/`board` docs clearly “planned” (already improved) and point at an `rd.md` template with `## Escopo`.
 
-## Métricas
+## Metrics
 
-| métrica | rodada 2 | rodada 1 (referência) |
-|---------|----------|------------------------|
-| Wall time (aprox., após build tb) | ~15–25 min tb+cargo no alvo (incl. ~84 s teste frio pep8_naming; graph ~4,6 s; verify ~19,5 s; build ruff binário para probe N801 ~1–2 min) | ~6–15 min; graph 4,96 s; cargo test frio refurb ~87 s |
-| Invocações tb (marcas `===` / famílias) | ~25 seções no log `/tmp/tb-campo-ruff-r2.log` + probes extras (guard/bench/MCP/write-agents) | ~25 famílias / ~36 seções |
-| Falhas / erros tb observados | `graph impact`/`callers` vazios em Rust; `tb ticket` unknown; drift EXIT≠0 no probe de ruído (esperado); guard EXIT 1 com `--strict` (esperado) | similares + vários bugs agora corrigidos |
-| Crashes tb | Nenhum | Nenhum |
+| metric | round 2 | round 1 (reference) |
+|--------|---------|---------------------|
+| Wall time (approx., after tb build) | ~15–25 min tb+cargo on the target (incl. ~84 s cold pep8_naming test; graph ~4.6 s; verify ~19.5 s; ruff binary build for N801 probe ~1–2 min) | ~6–15 min; graph 4.96 s; cold cargo test refurb ~87 s |
+| tb invocations (`===` / family marks) | ~25 sections in log `/tmp/tb-campo-ruff-r2.log` + extra probes (guard/bench/MCP/write-agents) | ~25 families / ~36 sections |
+| Observed tb failures / errors | empty Rust `graph impact`/`callers`; `tb ticket` unknown; drift EXIT≠0 on noise probe (expected); guard EXIT 1 with `--strict` (expected) | similar + several bugs now fixed |
+| tb crashes | None | None |
 | MCP | `tools/list` + `tb_version` + `tb_graph_search` OK | OK |
 
-Log bruto local (VM): `/tmp/tb-campo-ruff-r2.log`. Clone e commits de estudo **não** foram enviados a `astral-sh/ruff`.
+Local raw log (VM): `/tmp/tb-campo-ruff-r2.log`. Study clone and commits were **not** sent to `astral-sh/ruff`.

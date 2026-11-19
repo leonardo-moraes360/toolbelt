@@ -1,43 +1,43 @@
-🇧🇷 Português | [🇺🇸 English](en/release.md)
+🇺🇸 English | [🇧🇷 Português](pt-BR/release.md)
 
-# Como publicar um release
+# How to publish a release
 
-O workflow [`.github/workflows/release.yml`](../.github/workflows/release.yml) publica um GitHub Release com binários `tb` quando uma tag `v*` é enviada ao remoto. A configuração está em [`.goreleaser.yaml`](../.goreleaser.yaml).
+The workflow [`.github/workflows/release.yml`](../.github/workflows/release.yml) publishes a GitHub Release with `tb` binaries when a `v*` tag is pushed to the remote. Configuration lives in [`.goreleaser.yaml`](../.goreleaser.yaml).
 
-## Pré-requisitos
+## Prerequisites
 
-- `main` estável (CI verde)
-- Entrada correspondente no [`CHANGELOG.md`](../CHANGELOG.md)
-- Antes de criar a tag, mova a seção "Não Lançado" do [`CHANGELOG.md`](../CHANGELOG.md) para a versão que está sendo publicada
-- Sem tag local/remota conflitante
-- Sem secrets extras: assinatura cosign é keyless via OIDC do GitHub (`id-token: write`); atestação SLSA usa `attestations: write` + `GITHUB_TOKEN`
+- Stable `main` (green CI)
+- Matching entry in [`CHANGELOG.md`](../CHANGELOG.md)
+- Before creating the tag, move the "Unreleased" section in [`CHANGELOG.md`](../CHANGELOG.md) to the version being published
+- No conflicting local/remote tag
+- No extra secrets: cosign signing is keyless via GitHub OIDC (`id-token: write`); SLSA attestation uses `attestations: write` + `GITHUB_TOKEN`
 
-## Cortar o release
+## Cut the release
 
 ```bash
 git checkout main
 git pull origin main
 
-# Exemplo: primeiro release
+# Example: first release
 git tag v0.0.1
 git push origin v0.0.1
 ```
 
-O push da tag dispara o workflow: `go test ./...` e em seguida GoReleaser (com syft + cosign), que gera:
+Pushing the tag triggers the workflow: `go test ./...` and then GoReleaser (with syft + cosign), which produces:
 
-- arquivos `tar.gz` (e `zip` no Windows) para linux/darwin/windows × amd64/arm64
-- SBOM por archive (syft, `*.sbom.json`)
-- `checksums.txt` (inclui archives e SBOMs)
-- assinatura keyless do checksum: `checksums.txt.sigstore.json` (cosign + OIDC)
-- atestação de proveniência SLSA (`actions/attest-build-provenance` sobre `dist/checksums.txt`)
-- changelog a partir dos commits
-- GitHub Release `v0.0.1` com a versão injetada via ldflags (`tb version` / MCP `tb_version`)
+- `tar.gz` archives (and `zip` on Windows) for linux/darwin/windows × amd64/arm64
+- SBOM per archive (syft, `*.sbom.json`)
+- `checksums.txt` (includes archives and SBOMs)
+- keyless checksum signature: `checksums.txt.sigstore.json` (cosign + OIDC)
+- SLSA provenance attestation (`actions/attest-build-provenance` over `dist/checksums.txt`)
+- a changelog from the commits
+- GitHub Release `v0.0.1` with the version injected via ldflags (`tb version` / MCP `tb_version`)
 
-## Verificar um artefato baixado
+## Verify a downloaded artifact
 
 ```bash
-VERSION=v0.0.2
-ASSET=toolbelt_0.0.2_linux_amd64.tar.gz
+VERSION=v0.0.5
+ASSET=toolbelt_0.0.5_linux_amd64.tar.gz
 BASE="https://github.com/leonardo-moraes360/toolbelt/releases/download/${VERSION}"
 
 curl -sLO "${BASE}/${ASSET}"
@@ -54,12 +54,12 @@ sha256sum -c --ignore-missing checksums.txt
 gh attestation verify "${ASSET}" --repo leonardo-moraes360/toolbelt
 ```
 
-## Validar localmente (sem publicar)
+## Validate locally (without publishing)
 
 ```bash
 goreleaser check
-# Snapshot local: sem OIDC do GitHub, pule a assinatura cosign
+# Local snapshot: no GitHub OIDC, skip cosign signing
 goreleaser release --snapshot --clean --skip=sign
 ```
 
-Não rode `git push --tags` em massa nem reutilize uma tag já publicada. Para um patch seguinte: `v0.0.2`, e assim por diante.
+Do not run a bulk `git push --tags` or reuse a tag that was already published. For a follow-up patch: `v0.0.6`, and so on.

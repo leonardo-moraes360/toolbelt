@@ -25,7 +25,7 @@ var graphEnable bool
 
 func init() {
 	graphCmd.PersistentFlags().BoolVar(&graphEnable, "enable", false, "habilita o grafo nesta invocação")
-	graphCmd.AddCommand(graphIndexCmd, graphRebuildCmd, graphSearchCmd, graphCallersCmd, graphDepsCmd, graphImpactCmd, graphStatsCmd)
+	graphCmd.AddCommand(graphIndexCmd, graphRebuildCmd, graphSearchCmd, graphCallersCmd, graphDepsCmd, graphImpactCmd, graphExplainCmd, graphPathCmd, graphStatsCmd)
 }
 
 func graphStore() (*graph.Store, error) {
@@ -183,6 +183,89 @@ var graphImpactCmd = &cobra.Command{
 	},
 }
 
+var graphExplainCmd = &cobra.Command{
+	Use:   "explain <node>",
+	Short: "Explica um nó: arestas de entrada/saída com proveniência",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		limit, _ := cmd.Flags().GetInt("limit")
+		s, err := graphStoreFresh()
+		if err != nil {
+			return err
+		}
+		exps, err := s.Explain(args[0], limit)
+		if err != nil {
+			return err
+		}
+		if jsonOutput {
+			return json.NewEncoder(os.Stdout).Encode(map[string]any{
+				"stale": s.Stale(),
+				"nodes": exps,
+			})
+		}
+		for i, ex := range exps {
+			if i > 0 {
+				fmt.Println()
+			}
+			fmt.Printf("%s  %s  %s\n", ex.Node.ID, ex.Node.Type, ex.Node.Path)
+			fmt.Printf("  saída (%d):\n", ex.OutDegree)
+			printNeighbors(ex.Outgoing, ex.TruncatedOut, "→")
+			if ex.UnresolvedOut > 0 {
+				fmt.Printf("    (+%d chamadas sem nó no índice: stdlib/receptor não resolvido)\n", ex.UnresolvedOut)
+			}
+			fmt.Printf("  entrada (%d):\n", ex.InDegree)
+			printNeighbors(ex.Incoming, ex.TruncatedIn, "←")
+		}
+		return nil
+	},
+}
+
+func printNeighbors(ns []graph.Neighbor, truncated int, arrow string) {
+	for i := range ns {
+		n := &ns[i]
+		fmt.Printf("    %s %-9s %-40s %s %.2f\n", arrow, n.Edge, n.Node.ID, n.Source, n.Confidence)
+	}
+	if truncated > 0 {
+		fmt.Printf("    … +%d omitidas\n", truncated)
+	}
+}
+
+var graphPathCmd = &cobra.Command{
+	Use:   "path <from> <to>",
+	Short: "Menor caminho entre dois nós (arestas em ambos os sentidos)",
+	Args:  cobra.ExactArgs(2),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		maxDepth, _ := cmd.Flags().GetInt("max-depth")
+		s, err := graphStoreFresh()
+		if err != nil {
+			return err
+		}
+		steps, err := s.ShortestPath(args[0], args[1], maxDepth)
+		if err != nil {
+			return err
+		}
+		if jsonOutput {
+			return json.NewEncoder(os.Stdout).Encode(map[string]any{
+				"stale": s.Stale(),
+				"hops":  len(steps) - 1,
+				"steps": steps,
+			})
+		}
+		for i, st := range steps {
+			if i == 0 {
+				fmt.Printf("%s\n", st.Node.ID)
+				continue
+			}
+			arrow := "→"
+			if st.Direction == graph.DirBackward {
+				arrow = "←"
+			}
+			fmt.Printf("  %s %-9s %s  (%s %.2f)\n", arrow, st.Edge, st.Node.ID, st.Source, st.Confidence)
+		}
+		return nil
+	},
+}
+
 var graphStatsCmd = &cobra.Command{
 	Use:   "stats",
 	Short: "Estatísticas do grafo",
@@ -213,6 +296,8 @@ func init() {
 	graphDepsCmd.Flags().Bool("transitive", false, "inclui transitivas")
 	graphImpactCmd.Flags().String("file", "", "arquivo modificado")
 	graphImpactCmd.Flags().Int("depth", 2, "profundidade")
+	graphExplainCmd.Flags().Int("limit", graph.DefaultExplainLimit, "máximo de nós explicados")
+	graphPathCmd.Flags().Int("max-depth", graph.DefaultPathMaxDepth, "máximo de saltos")
 }
 
 func graphBuildOptions() graph.BuildOptions {

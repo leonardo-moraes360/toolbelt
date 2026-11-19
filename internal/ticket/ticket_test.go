@@ -379,7 +379,7 @@ func TestUpdateInPlaceDependencyMutationRevalidated(t *testing.T) {
 	a := mk(t, s, "a", nil)
 	b := mk(t, s, "b", func(x *Ticket) { x.Dependencies = []string{a.ID} })
 	c := mk(t, s, "c", func(x *Ticket) { x.Dependencies = []string{b.ID} })
-	// muta o slice no lugar: b -> c fecha ciclo b -> c -> b
+	// mutate the slice in place: b -> c closes the cycle b -> c -> b
 	_, err := s.Update(b.ID, func(x *Ticket) error { x.Dependencies[0] = c.ID; return nil })
 	if err == nil || !strings.Contains(err.Error(), "ciclo") {
 		t.Fatalf("want ciclo, got %v", err)
@@ -398,7 +398,7 @@ func TestReadRejectsIDMismatch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// conteúdo de TKT-002 dentro de TKT-001.yaml
+	// TKT-002 content inside TKT-001.yaml
 	if err := os.WriteFile(s.Path(a.ID), data, 0o644); err != nil {
 		t.Fatal(err)
 	}

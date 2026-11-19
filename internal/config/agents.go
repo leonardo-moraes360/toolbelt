@@ -26,6 +26,15 @@ var (
 	hintCommandRe = regexp.MustCompile("(?i)`((?:" + toolAlternation + ")[^`]*)`")
 	fencedCmdRe   = regexp.MustCompile("(?im)^(?: {0,3})(?:\\$ )?((?:" + toolAlternation + ")\\b[^\\n`]*)$")
 	proseHintRe   = regexp.MustCompile("(?i)\\b(?:use|run|prefer|try|execute)\\s+((?:" + toolAlternation + ")\\b[^\\n]*)")
+	toolPrefixRe  = regexp.MustCompile("(?i)^(?:" + toolAlternation + ")(?:\\s|$)")
+
+	// Tools that only print help without a subcommand: the bare name
+	// (e.g. `golangci-lint` quoted in prose) is not a command hint.
+	subcommandTools = map[string]bool{
+		"go": true, "npm": true, "pnpm": true, "bun": true, "cargo": true,
+		"golangci-lint": true, "ruff": true, "uv": true, "poetry": true,
+		"dotnet": true, "python": true, "python3": true, "cmake": true,
+	}
 
 	shellFenceLangs = map[string]bool{
 		"": true, "sh": true, "bash": true, "shell": true, "zsh": true,
@@ -146,6 +155,12 @@ func extractShellFenceHints(content string) (stripped string, hints []string) {
 		if shellFenceLangs[lang] {
 			for _, line := range strings.Split(body, "\n") {
 				line = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(line), "$ "))
+				if strings.HasPrefix(line, "#") {
+					continue // comentário de shell, não comando
+				}
+				if idx := strings.Index(line, " #"); idx >= 0 {
+					line = line[:idx]
+				}
 				norm := normalizeHint(line)
 				if isCommandHint(norm) {
 					hints = append(hints, norm)
@@ -158,8 +173,14 @@ func extractShellFenceHints(content string) (stripped string, hints []string) {
 	return b.String(), hints
 }
 
+// The whole line must start with a known tool: a command quoted in the
+// middle of prose or a comment does not count.
 func looksLikeToolCommand(line string) bool {
-	return hintCommandRe.MatchString("`"+line+"`") || fencedCmdRe.MatchString(line)
+	if !toolPrefixRe.MatchString(line) {
+		return false
+	}
+	fields := strings.Fields(line)
+	return len(fields) > 1 || !subcommandTools[strings.ToLower(fields[0])]
 }
 
 func normalizeHint(raw string) string {
@@ -242,7 +263,7 @@ func SeedAgentsMD(repoRoot string, verify VerifyConfig) (bool, error) {
 	} else if !os.IsNotExist(err) {
 		return false, fmt.Errorf("stat %s: %w", AgentsMDName, err)
 	}
-	if err := os.WriteFile(path, []byte(MinimalAgentsMD(verify)), 0o600); err != nil {
+	if err := os.WriteFile(path, []byte(MinimalAgentsMD(verify)), VersionedFileMode); err != nil { //nolint:gosec // AGENTS.md é versionável
 		return false, fmt.Errorf("writing %s: %w", AgentsMDName, err)
 	}
 	return true, nil
@@ -305,7 +326,7 @@ func HandleAgentDocs(repoRoot, toolbeltDir string, writeAgents bool) (*AgentDocs
 		if err := os.MkdirAll(toolbeltDir, 0o755); err != nil {
 			return nil, fmt.Errorf("creating config dir: %w", err)
 		}
-		if err := os.WriteFile(recordPath, data, 0o600); err != nil {
+		if err := os.WriteFile(recordPath, data, VersionedFileMode); err != nil { //nolint:gosec // agent_docs.yaml é versionável
 			return nil, fmt.Errorf("writing %s: %w", AgentDocsFile, err)
 		}
 		result.Record = recordPath

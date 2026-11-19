@@ -1,78 +1,79 @@
-🇧🇷 Português | [🇺🇸 English](en/verificacao-visual.md)
+🇺🇸 English | [🇧🇷 Português](pt-BR/verificacao-visual.md)
 
-# Verificação Visual (Ruler `visual`)
+# Visual Verification (Ruler `visual`)
 
-Este documento especifica o ruler de verificação visual para o sistema `tb verify`. É uma instância do padrão de verificação adversarial aplicado a interfaces de usuário.
+This document specifies the visual verification ruler for the `tb verify` system. It is an instance of the adversarial verification pattern applied to user interfaces.
 
-**Status Fase 2**: implementado em `tb verify run --ruler visual`. Captura via Chromium/Chrome headless; comparação PNG pixel-a-pixel com padding magenta para tamanhos diferentes; skip gracioso quando browser ou referências estão indisponíveis (`--skip-unavailable`, default true). Quando o manifesto está ausente, `screens: []`, ou há telas e **todas** resultam `skipped` (ex.: referências ausentes), o relatório JSON agrega `skipped: true` no top-level e o veredicto é `SKIPPED` (não `PASS`).
+**Phase 2 Status**: implemented in `tb verify run --ruler visual`. Capture via Chromium/Chrome headless; pixel-by-pixel PNG comparison with magenta padding for different sizes; graceful skip when browser or references are unavailable (`--skip-unavailable`, default true). When the manifest is missing, `screens: []`, or there are screens and **all** result in `skipped` (e.g. missing references), the JSON report aggregates `skipped: true` at the top level and the verdict is `SKIPPED` (not `PASS`).
 
-## Visão Geral
+## Overview
 
-O ruler visual compara capturas de tela contra referências de design aprovadas, medindo similaridade pixel-a-pixel e conformidade com padrões de acessibilidade.
+The visual ruler compares screenshots against approved design references, measuring pixel-by-pixel similarity and compliance with accessibility standards.
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                    PIPELINE DE VERIFICAÇÃO                      │
+│                    VERIFICATION PIPELINE                        │
 └─────────────────────────────────────────────────────────────────┘
                               │
     ┌─────────────────────────┼─────────────────────────┐
     │                         │                         │
     ▼                         ▼                         ▼
 ┌─────────┐            ┌─────────────┐           ┌──────────┐
-│ Geração │            │  Captura    │           │ Medição  │
-│ de Refs │            │  Fresh      │           │          │
+│ Ref     │            │  Fresh      │           │ Measure  │
+│ Genera- │            │  Capture    │           │          │
+│ tion    │            │             │           │          │
 └─────────┘            └─────────────┘           └──────────┘
     │                         │                         │
     ▼                         ▼                         ▼
 ┌─────────┐            ┌─────────────┐           ┌──────────┐
-│ Design  │            │ Screenshot  │           │ Pixel    │
-│ Source  │            │ do App      │           │ Diff     │
+│ Design  │            │ App         │           │ Pixel    │
+│ Source  │            │ Screenshot  │           │ Diff     │
 └─────────┘            └─────────────┘           └──────────┘
                               │
                               ▼
                        ┌─────────────┐
-                       │ Similaridade│
+                       │ Similarity  │
                        │ + WCAG      │
                        └─────────────┘
 ```
 
 ---
 
-## Regras de Medição
+## Measurement Rules
 
-### Tabela de Regras
+### Rules Table
 
-| Regra | Valor | Descrição |
-|-------|-------|-----------|
-| **Threshold de passagem** | ≥ 95% | Por tela, por modo (light/dark) |
-| **Margem de tolerância** | ~5% | Cobre anti-aliasing de fontes |
-| **Anti-aliasing** | Excluído | Pixels de borda de texto não contam como diff |
-| **Tamanhos diferentes** | Pad com cor única | Diferença de altura custa score |
-| **Máscaras** | Permitidas | Apenas para regiões dinâmicas documentadas |
-| **Contraste texto** | ≥ 4.5:1 | Texto normal (WCAG AA) |
-| **Contraste texto grande** | ≥ 3:1 | Texto ≥ 18pt ou 14pt bold |
-| **Contraste controles** | ≥ 3:1 | Botões, inputs, etc |
-| **Tamanho mínimo texto** | ≥ 12px | Legibilidade básica |
+| Rule | Value | Description |
+|------|-------|-------------|
+| **Pass threshold** | ≥ 95% | Per screen, per mode (light/dark) |
+| **Tolerance margin** | ~5% | Covers font anti-aliasing |
+| **Anti-aliasing** | Excluded | Text edge pixels do not count as diff |
+| **Different sizes** | Pad with a solid color | Height difference costs score |
+| **Masks** | Allowed | Only for documented dynamic regions |
+| **Text contrast** | ≥ 4.5:1 | Normal text (WCAG AA) |
+| **Large text contrast** | ≥ 3:1 | Text ≥ 18pt or 14pt bold |
+| **Control contrast** | ≥ 3:1 | Buttons, inputs, etc. |
+| **Minimum text size** | ≥ 12px | Basic readability |
 
-### Fórmula de Similaridade
+### Similarity Formula
 
 ```
 similarity = 1 - (diff_pixels / (total_pixels - masked_pixels))
 ```
 
-Onde:
-- `diff_pixels`: pixels que diferem além do threshold de cor
-- `total_pixels`: área total da imagem
-- `masked_pixels`: área coberta por máscaras válidas
+Where:
+- `diff_pixels`: pixels that differ beyond the color threshold
+- `total_pixels`: total image area
+- `masked_pixels`: area covered by valid masks
 
-### Tratamento de Tamanhos Diferentes
+### Handling Different Sizes
 
-Quando a captura e a referência têm tamanhos diferentes:
+When the capture and the reference have different sizes:
 
-1. Identificar qual dimensão difere (largura, altura, ou ambas)
-2. Pad a imagem menor com uma cor que **nunca** aparece no design (ex: `#FF00FF`)
-3. A área de padding conta como diferença, reduzindo o score
-4. Reportar como `SIZE≠` no relatório
+1. Identify which dimension differs (width, height, or both)
+2. Pad the smaller image with a color that **never** appears in the design (e.g. `#FF00FF`)
+3. The padding area counts as difference, reducing the score
+4. Report as `SIZE≠` in the report
 
 ```
 Referência: 1920×1080
@@ -84,40 +85,40 @@ Diff: 30 × 1920 = 57,600 pixels = ~2.8% de diferença só por altura
 
 ---
 
-## Modos de Captura
+## Capture Modes
 
-Cada tela deve ser verificada em **ambos os modos**:
+Each screen must be verified in **both modes**:
 
-| Modo | Descrição | Referência |
-|------|-----------|------------|
-| `light` | Tema claro | `{tela}-light.png` |
-| `dark` | Tema escuro | `{tela}-dark.png` |
+| Mode | Description | Reference |
+|------|-------------|-----------|
+| `light` | Light theme | `{tela}-light.png` |
+| `dark` | Dark theme | `{tela}-dark.png` |
 
-O threshold de 95% deve ser atingido **independentemente** em cada modo.
+The 95% threshold must be met **independently** in each mode.
 
 ---
 
-## Máscaras
+## Masks
 
-### Quando Usar
+### When to Use
 
-Máscaras são permitidas **apenas** para:
+Masks are allowed **only** for:
 
-- **Dados dinâmicos**: timestamps, contadores, IDs únicos
-- **Conteúdo de usuário**: avatares, nomes, dados pessoais
-- **Elementos com estado imprevisível**: spinners em mid-animation
-- **Desvios aprovados**: diferenças aceitas por decisão registrada
+- **Dynamic data**: timestamps, counters, unique IDs
+- **User content**: avatars, names, personal data
+- **Elements with unpredictable state**: spinners mid-animation
+- **Approved deviations**: differences accepted by a recorded decision
 
-### Quando NÃO Usar
+### When NOT to Use
 
-Máscaras são **trapaça** se usadas para:
+Masks are **cheating** if used to:
 
-- Esconder diferenças de layout
-- Cobrir cores ou fontes erradas
-- Ocultar elementos faltantes
-- Compensar implementação incorreta
+- Hide layout differences
+- Cover wrong colors or fonts
+- Conceal missing elements
+- Compensate for incorrect implementation
 
-### Formato de Máscara
+### Mask Format
 
 ```yaml
 # no manifesto de tela
@@ -138,26 +139,26 @@ masks:
 
 ---
 
-## Auditoria de Contraste (WCAG)
+## Contrast Audit (WCAG)
 
-### Requisitos
+### Requirements
 
-| Elemento | Contraste Mínimo | Referência WCAG |
-|----------|------------------|-----------------|
-| Texto normal (< 18pt) | 4.5:1 | AA 1.4.3 |
-| Texto grande (≥ 18pt ou ≥ 14pt bold) | 3:1 | AA 1.4.3 |
-| Controles de UI | 3:1 | AA 1.4.11 |
-| Elementos gráficos | 3:1 | AA 1.4.11 |
+| Element | Minimum Contrast | WCAG Reference |
+|---------|------------------|----------------|
+| Normal text (< 18pt) | 4.5:1 | AA 1.4.3 |
+| Large text (≥ 18pt or ≥ 14pt bold) | 3:1 | AA 1.4.3 |
+| UI controls | 3:1 | AA 1.4.11 |
+| Graphic elements | 3:1 | AA 1.4.11 |
 
-### Detecção
+### Detection
 
-O discriminador:
-1. Identifica elementos de texto e controles na captura
-2. Extrai cor de foreground e background
-3. Calcula razão de contraste
-4. Reporta violações com elemento, contraste atual e requerido
+The discriminator:
+1. Identifies text elements and controls in the capture
+2. Extracts foreground and background color
+3. Calculates the contrast ratio
+4. Reports violations with element, current contrast, and required contrast
 
-### Relatório de Violação
+### Violation Report
 
 ```yaml
 wcag_violations:
@@ -180,21 +181,21 @@ wcag_violations:
 
 ---
 
-## Determinismo
+## Determinism
 
-### Armadilhas Comuns
+### Common Pitfalls
 
-| Problema | Causa | Solução |
-|----------|-------|---------|
-| **Fontes diferentes** | Font fallback entre sistemas | Declarar font-family com fallbacks conhecidos, ou usar web fonts |
-| **Relógio do servidor** | Timestamps mudam entre execuções | Congelar relógio do servidor para valor fixo |
-| **Porta/DB compartilhados** | Dados de outros testes vazam | Porta e DB dedicados por agente |
-| **Referências instáveis** | Board muda entre renderizações | Rodar referência 2x, comparar, rejeitar se diferir |
-| **Animações** | Estado mid-animation capturado | Aguardar animações completarem, ou desabilitar |
-| **Dados dinâmicos** | IDs, counters mudam | Usar máscaras ou seeds fixos |
-| **Altura declarada incorreta** | Componente cresce além do esperado | Declarar altura no manifesto, detectar overflow |
+| Problem | Cause | Solution |
+|---------|-------|----------|
+| **Different fonts** | Font fallback across systems | Declare font-family with known fallbacks, or use web fonts |
+| **Server clock** | Timestamps change between runs | Freeze the server clock to a fixed value |
+| **Shared port/DB** | Data from other tests leaks | Dedicated port and DB per agent |
+| **Unstable references** | Board changes between renders | Run the reference twice, compare, reject if they differ |
+| **Animations** | Mid-animation state captured | Wait for animations to complete, or disable them |
+| **Dynamic data** | IDs, counters change | Use masks or fixed seeds |
+| **Incorrect declared height** | Component grows beyond expectation | Declare height in the manifest, detect overflow |
 
-### Configuração de Determinismo
+### Determinism Configuration
 
 ```yaml
 # .toolbelt/determinism.yaml
@@ -221,28 +222,28 @@ reference_stability:
   max_diff: 0.1%  # referências devem ser idênticas entre runs
 ```
 
-### Pipeline de Referência
+### Reference Pipeline
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                   GERAÇÃO DE REFERÊNCIA                         │
+│                   REFERENCE GENERATION                          │
 └─────────────────────────────────────────────────────────────────┘
                               │
                               ▼
                     ┌───────────────────┐
-                    │ Renderizar design │
-                    │ (1ª vez)          │
+                    │ Render design     │
+                    │ (1st time)        │
                     └─────────┬─────────┘
                               │
                               ▼
                     ┌───────────────────┐
-                    │ Renderizar design │
-                    │ (2ª vez)          │
+                    │ Render design     │
+                    │ (2nd time)        │
                     └─────────┬─────────┘
                               │
                               ▼
                     ┌───────────────────┐
-                    │ Comparar runs     │
+                    │ Compare runs      │
                     └─────────┬─────────┘
                               │
               ┌───────────────┴───────────────┐
@@ -251,16 +252,16 @@ reference_stability:
               │                               │
               ▼                               ▼
     ┌───────────────────┐           ┌───────────────────┐
-    │ Referência estável│           │ REJEITAR          │
-    │ Salvar            │           │ Board instável    │
+    │ Stable reference  │           │ REJECT            │
+    │ Save              │           │ Unstable board    │
     └───────────────────┘           └───────────────────┘
 ```
 
 ---
 
-## Manifesto de Telas
+## Screen Manifest
 
-### Formato
+### Format
 
 ```yaml
 # .toolbelt/screens.yaml
@@ -323,66 +324,66 @@ determinism:
   frozen_clock: "2026-01-15T10:00:00Z"
 ```
 
-### Campos Obrigatórios
+### Required Fields
 
-| Campo | Descrição |
-|-------|-----------|
-| `name` | Identificador único da tela |
-| `route` | URL/rota para navegar |
-| `modes` | Lista de modos a testar |
-| `references` | Caminhos para imagens de referência |
+| Field | Description |
+|-------|-------------|
+| `name` | Unique screen identifier |
+| `route` | URL/route to navigate to |
+| `modes` | List of modes to test |
+| `references` | Paths to reference images |
 
-### Campos Opcionais
+### Optional Fields
 
-| Campo | Descrição | Default |
-|-------|-----------|---------|
-| `viewport` | Dimensões da viewport | [1920, 1080] |
-| `masks` | Regiões a ignorar | [] |
-| `setup` | Ações antes da captura | [] |
-| `expected_height` | Altura esperada | altura da referência |
-| `allow_overflow` | Permitir conteúdo além da viewport | false |
-| `wcag.level` | Nível de conformidade | AA |
-
----
-
-## Regras de Trapaça (Visual)
-
-### FAIL Imediato
-
-| Tipo | Descrição | Detecção |
-|------|-----------|----------|
-| **Edição de referência** | Modificar PNG de referência existente | Hash check + guard |
-| **Deleção de referência** | Remover referência sem decisão | Guard check |
-| **Mask inválida** | Mask cobrindo erro de implementação | Análise de justificativa |
-| **Alteração de threshold** | Reduzir min_similarity | Guard check |
-| **Alteração de padding** | Mudar cor ou lógica de padding | Guard check |
-| **Mudança de seed** | Alterar seed para resultado diferente | Guard check |
-| **Estado incorreto** | Capturar tela em estado não especificado | Comparação com spec |
-| **Design invertido** | Alterar design para corresponder ao código | Diff no arquivo de design |
-| **Crop de referência** | Cortar referência para esconder diferença | Comparação de dimensões |
-
-### Detecção de Mask Inválida
-
-Uma mask é considerada inválida se:
-
-1. Cobre área que deveria ser estática (texto fixo, cores, layout)
-2. Não tem `reason` documentada
-3. Reason não corresponde a uma das categorias permitidas
-4. Área mascarada é grande demais (> 10% da tela sem justificativa)
+| Field | Description | Default |
+|-------|-------------|---------|
+| `viewport` | Viewport dimensions | [1920, 1080] |
+| `masks` | Regions to ignore | [] |
+| `setup` | Actions before capture | [] |
+| `expected_height` | Expected height | reference height |
+| `allow_overflow` | Allow content beyond the viewport | false |
+| `wcag.level` | Compliance level | AA |
 
 ---
 
-## Fonte de Verdade para Texto
+## Cheating Rules (Visual)
 
-### Hierarquia
+### Immediate FAIL
 
-1. **Spec/design**: texto exato conforme especificado
-2. **i18n/l10n**: arquivos de tradução do projeto
-3. **Código**: texto hardcoded (menos preferido)
+| Type | Description | Detection |
+|------|-------------|-----------|
+| **Reference edit** | Modify an existing reference PNG | Hash check + guard |
+| **Reference deletion** | Remove a reference without a decision | Guard check |
+| **Invalid mask** | Mask covering an implementation error | Justification analysis |
+| **Threshold change** | Lower min_similarity | Guard check |
+| **Padding change** | Change padding color or logic | Guard check |
+| **Seed change** | Alter seed for a different result | Guard check |
+| **Wrong state** | Capture a screen in an unspecified state | Comparison with spec |
+| **Inverted design** | Change the design to match the code | Diff on the design file |
+| **Reference crop** | Crop the reference to hide a difference | Dimension comparison |
 
-### Tratamento de Diferenças
+### Invalid Mask Detection
 
-Diferenças de texto são **reportadas**, não forçadas:
+A mask is considered invalid if:
+
+1. It covers an area that should be static (fixed text, colors, layout)
+2. It has no documented `reason`
+3. The reason does not match one of the allowed categories
+4. The masked area is too large (> 10% of the screen without justification)
+
+---
+
+## Source of Truth for Text
+
+### Hierarchy
+
+1. **Spec/design**: exact text as specified
+2. **i18n/l10n**: project translation files
+3. **Code**: hardcoded text (least preferred)
+
+### Handling Differences
+
+Text differences are **reported**, not forced:
 
 ```yaml
 text_differences:
@@ -399,32 +400,32 @@ text_differences:
     action: report
 ```
 
-O discriminador reporta, mas não modifica. O gerador decide se é erro ou evolução intencional.
+The discriminator reports, but does not modify. The generator decides whether it is an error or intentional evolution.
 
 ---
 
-## Questões em Aberto
+## Open Questions
 
-### Fontes e Renderização
+### Fonts and Rendering
 
-- Como lidar com diferenças de renderização de fonte entre sistemas?
-- Tolerância de anti-aliasing é suficiente?
-- Devemos normalizar fontes antes de comparar?
+- How to handle font rendering differences across systems?
+- Is anti-aliasing tolerance enough?
+- Should we normalize fonts before comparing?
 
-### Responsividade
+### Responsiveness
 
-- Como testar múltiplos viewports eficientemente?
-- Cada viewport é uma "tela" separada?
-- Breakpoints críticos vs testes exaustivos?
+- How to test multiple viewports efficiently?
+- Is each viewport a separate "screen"?
+- Critical breakpoints vs exhaustive tests?
 
-### Componentes Interativos
+### Interactive Components
 
-- Como verificar estados de hover, focus, active?
-- Sequência de capturas para cada estado?
-- Estados de erro e validação?
+- How to verify hover, focus, and active states?
+- Capture sequence for each state?
+- Error and validation states?
 
 ### Performance
 
-- Tempo de captura para muitas telas?
-- Paralelização de capturas?
-- Caching de referências entre runs?
+- Capture time for many screens?
+- Capture parallelization?
+- Reference caching between runs?

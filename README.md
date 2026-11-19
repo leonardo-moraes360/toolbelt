@@ -1,7 +1,7 @@
-🇧🇷 Português | [🇺🇸 English](README.en.md)
+🇺🇸 English | [🇧🇷 Português](docs/pt-BR/README.md)
 
 <p align="center">
-  <img src="assets/logo/toolbelt-logo-256.png" alt="Logo do Toolbelt" width="200">
+  <img src="assets/logo/toolbelt-logo-256.png" alt="Toolbelt Logo" width="200">
 </p>
 
 <h1 align="center">toolbelt (<code>tb</code>)</h1>
@@ -9,37 +9,38 @@
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg" alt="License"></a>
   <a href="https://go.dev/"><img src="https://img.shields.io/badge/Go-1.22+-00ADD8?logo=go&logoColor=white" alt="Go Version"></a>
-  <a href="docs/arquitetura.md"><img src="https://img.shields.io/badge/Status-Fase%203%20em%20andamento-yellow" alt="Status"></a>
+  <a href="docs/arquitetura.md"><img src="https://img.shields.io/badge/Status-Phase%203%20in%20progress-yellow" alt="Status"></a>
   <a href="https://github.com/leonardo-moraes360/toolbelt/actions"><img src="https://github.com/leonardo-moraes360/toolbelt/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="https://modelcontextprotocol.io/"><img src="https://img.shields.io/badge/Protocol-MCP-purple" alt="MCP"></a>
+  <a href="https://m8ven.ai/mcp/leonardo-moraes360-toolbelt-fa03ue?s=readme"><img src="https://m8ven.ai/badge/mcp/leonardo-moraes360-toolbelt-fa03ue?v=ac65034c346c6c7522ef08b6df2496ef" alt="M8ven Score"></a>
   <a href="docs/identidade-visual.md"><img src="https://img.shields.io/badge/Theme-Synthwave-ff278c" alt="Theme"></a>
 </p>
 
 <p align="center">
-  Cinto de ferramentas para agentes de código com IA, unificadas sob um único comando e protocolo.
+  A toolbelt for AI coding agents, unified under a single command and protocol.
 </p>
 
-## 🎯 Objetivos
+## 🎯 Goals
 
-| Objetivo | Como o toolbelt ajuda |
-|----------|----------------------|
-| **Economizar tokens** | Grafo de conhecimento queryável evita grep em arquivos; contexto montado sob orçamento de tokens; memória compacta com sumários e fatos extraídos |
-| **Melhorar a acurácia** | Sandbox isolado com bubblewrap+Landlock; permissões por capacidade; proteções contra trapaça; separador entre implementador e avaliador |
-| **Aumentar a velocidade** | Execução paralela com goroutines; hierarquia de agentes (planner→supervisor→worker); busca rápida em grafo com FTS5 |
+| Goal | How toolbelt helps |
+|------|-------------------|
+| **Save tokens** | Queryable knowledge graph avoids grepping files; context assembled under a token budget; compact memory with summaries and extracted facts |
+| **Improve accuracy** | Isolated sandbox with bubblewrap+Landlock; capability-based permissions; anti-cheat protections; separation between implementer and evaluator |
+| **Increase speed** | Parallel execution with goroutines; agent hierarchy (planner→supervisor→worker); fast graph search with FTS5 |
 
-## 🏗️ Arquitetura
+## 🏗️ Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                        Interface Humana                         │
+│                        Human Interface                          │
 │  ┌─────────┐    ┌─────────────┐    ┌─────────────────────────┐  │
-│  │ tb CLI  │    │ tb md (TUI) │    │ Obsidian (vault externo)│  │
+│  │ tb CLI  │    │ tb md (TUI) │    │ Obsidian (external vault)│  │
 │  └────┬────┘    └──────┬──────┘    └────────────┬────────────┘  │
 └───────┼────────────────┼───────────────────────┼────────────────┘
         │                │                       │
         ▼                ▼                       ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                         Protocolos                              │
+│                         Protocols                               │
 │  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────────┐  │
 │  │ MCP Server  │  │ A2A Protocol│  │ JSON-RPC 2.0 (stdio/UDS)│  │
 │  └─────────────┘  └─────────────┘  └─────────────────────────┘  │
@@ -47,60 +48,61 @@
         │
         ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                           Núcleo                                │
+│                           Core                                  │
 │  ┌────────────┐  ┌────────────┐  ┌────────────┐  ┌───────────┐  │
-│  │ Orquestrador│  │  Memória   │  │  Contexto  │  │   Grafo   │  │
+│  │Orchestrator│  │  Memory    │  │  Context   │  │   Graph   │  │
 │  └────────────┘  └────────────┘  └────────────┘  └───────────┘  │
 └─────────────────────────────────────────────────────────────────┘
         │
         ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                      Armazenamento                              │
+│                      Storage                                    │
 │  ┌─────────────────────┐    ┌─────────────────────────────────┐ │
-│  │ Vault Markdown      │───▶│ SQLite + FTS5 (índice derivado) │ │
-│  │ (fonte de verdade)  │    │ + tabelas de arestas            │ │
+│  │ Markdown Vault      │───▶│ SQLite + FTS5 (derived index)   │ │
+│  │ (source of truth)   │    │ + edge tables                   │ │
 │  └─────────────────────┘    └─────────────────────────────────┘ │
 └─────────────────────────────────────────────────────────────────┘
         │
         ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                        Execução                                 │
+│                        Execution                                │
 │  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────────┐  │
-│  │ Worktrees   │  │ bubblewrap  │  │ cgroups (CPU/RAM/tempo) │  │
+│  │ Worktrees   │  │ bubblewrap  │  │ cgroups (CPU/RAM/time)  │  │
 │  │ Git         │  │ +Landlock   │  │                         │  │
 │  └─────────────┘  └─────────────┘  └─────────────────────────┘  │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-Veja a documentação completa em [docs/arquitetura.md](docs/arquitetura.md).
+See the full documentation in [docs/arquitetura.md](docs/arquitetura.md).
 
 ## 🌐 Site
 
-Landing pública: [https://leonardo-moraes360.github.io/toolbelt/](https://leonardo-moraes360.github.io/toolbelt/) (fonte em [`site/`](site/); guia em [`docs/site.md`](docs/site.md)).
+Public landing: [https://leonardo-moraes360.github.io/toolbelt/](https://leonardo-moraes360.github.io/toolbelt/) (source in [`site/`](site/); guide in [`docs/site.md`](docs/site.md)).
 
-## 📚 Documentação
+## 📚 Documentation
 
-| Documento | Descrição |
-|-----------|-----------|
-| [docs/arquitetura.md](docs/arquitetura.md) | Arquitetura detalhada com diagramas Mermaid |
-| [docs/cli.md](docs/cli.md) | Árvore de comandos do `tb` (implementado + planejado) |
-| [docs/benchmark.md](docs/benchmark.md) | KPIs e metodologia de avaliação |
-| [docs/site.md](docs/site.md) | Landing page e deploy no GitHub Pages |
-| [docs/adr/](docs/adr/) | Registros de Decisão Arquitetural (ADRs) |
-| [docs/pesquisa/](docs/pesquisa/) | Fontes primárias, top 10 e achados da pesquisa (2026-11) |
-| [docs/campo/SINTESE.md](docs/campo/SINTESE.md) | Estudo de campo em 20 repos + ranking de melhorias |
-| [docs/identidade-visual.md](docs/identidade-visual.md) | Logo, paleta Synthwave e tokens de tema |
+| Document | Description |
+|----------|-------------|
+| [docs/arquitetura.md](docs/arquitetura.md) | Detailed architecture with Mermaid diagrams |
+| [docs/cli.md](docs/cli.md) | `tb` command tree (implemented + planned) |
+| [docs/bus-protocolo.md](docs/bus-protocolo.md) · [docs/bus-harness.md](docs/bus-harness.md) | Local `tb bus` (`bus/0.1` protocol and `tb bus run` harness) |
+| [docs/benchmark.md](docs/benchmark.md) | KPIs and evaluation methodology |
+| [docs/site.md](docs/site.md) | Landing page and GitHub Pages deploy |
+| [docs/adr/](docs/adr/) | Architecture Decision Records (ADRs) |
+| [docs/pesquisa/](docs/pesquisa/) | Primary sources, top 10, and research findings (2026-11) |
+| [docs/campo/SINTESE.md](docs/campo/SINTESE.md) | Field study across 20 repos + improvement ranking |
+| [docs/identidade-visual.md](docs/identidade-visual.md) | Logo, Synthwave palette, and theme tokens |
 
-## 🚀 Instalação
+## 🚀 Installation
 
-### Binários (GitHub Releases)
+### Binaries (GitHub Releases)
 
-Baixe o arquivo da [página de Releases](https://github.com/leonardo-moraes360/toolbelt/releases) para o seu SO/arch (`linux`, `darwin` ou `windows` × `amd64`/`arm64`), verifique checksum e assinatura, extraia e coloque `tb` no `PATH`. Requer [`cosign`](https://docs.sigstore.dev/cosign/system_config/installation/).
+Download the archive from the [Releases page](https://github.com/leonardo-moraes360/toolbelt/releases) for your OS/arch (`linux`, `darwin`, or `windows` × `amd64`/`arm64`), verify checksum and signature, extract it, and put `tb` on your `PATH`. Requires [`cosign`](https://docs.sigstore.dev/cosign/system_config/installation/).
 
 ```bash
-# Exemplo (Linux amd64) — ajuste VERSION/ASSET ao release desejado
-VERSION=v0.0.2
-ASSET=toolbelt_0.0.2_linux_amd64.tar.gz
+# Example (Linux amd64) — adjust VERSION/ASSET to the desired release
+VERSION=v0.0.5
+ASSET=toolbelt_0.0.5_linux_amd64.tar.gz
 BASE="https://github.com/leonardo-moraes360/toolbelt/releases/download/${VERSION}"
 
 curl -sLO "${BASE}/${ASSET}"
@@ -119,7 +121,7 @@ sudo mv tb /usr/local/bin/
 tb version
 ```
 
-Cada archive também publica um SBOM (`.sbom.json`) e o workflow anexa atestação de proveniência SLSA (verifique com `gh attestation verify`).
+Each archive also publishes an SBOM (`.sbom.json`) and the workflow attaches an SLSA provenance attestation (verify with `gh attestation verify`).
 
 ### Via Go
 
@@ -127,9 +129,9 @@ Cada archive também publica um SBOM (`.sbom.json`) e o workflow anexa atestaç�
 go install github.com/leonardo-moraes360/toolbelt/cmd/tb@latest
 ```
 
-> `go install` usa a versão embutida padrão (`dev`) a menos que a tag/módulo injete ldflags. Prefira o binário do Release se precisar da versão da tag.
+> `go install` uses the default embedded version (`dev`) unless the tag/module injects ldflags. Prefer the Release binary if you need the tag version.
 
-### Build local
+### Local build
 
 ```bash
 git clone https://github.com/leonardo-moraes360/toolbelt.git
@@ -138,55 +140,55 @@ make build
 ./bin/tb version
 ```
 
-## 📖 Uso Rápido
+## 📖 Quick Start
 
-O `tb` é **100% local**: **não fala com o GitHub**. `review` / `drift` /
-`verify --ticket` / `stack` leem um `rd.md` (ou `--ticket`) no disco. Para
-partir de uma issue/PR, exporte o texto com `gh issue view` / `gh pr view` e
-monte o arquivo (scope, forbidden, acceptance) — detalhes em
-[docs/cli.md](docs/cli.md#local-first-sem-github).
+`tb` is **100% local**: it **does not talk to GitHub**. `review` / `drift` /
+`verify --ticket` / `stack` read an `rd.md` (or `--ticket`) from disk. To
+start from an issue/PR, export the text with `gh issue view` / `gh pr view` and
+build the file (scope, forbidden, acceptance) — details in
+[docs/cli.md](docs/cli.md#local-first-no-github).
 
 ```bash
-# Inicializa configuração local (detecta toolchain → test/build/lint_cmd)
+# Initializes local config (detects toolchain → test/build/lint_cmd)
 tb init
 
-# Se existir AGENTS.md/CLAUDE.md, o init lê e registra hints curtos de comandos
-# (filtra fences longos; nunca sobrescreve). Semear AGENTS.md citando test_cmd
-# (e build/lint se houver):
+# If AGENTS.md/CLAUDE.md exists, init reads and registers short command hints
+# (filters long fences; never overwrites). Seed AGENTS.md citing test_cmd
+# (and build/lint if present):
 tb init --write-agents
 
-# Mostra versão
+# Shows version
 tb version
 
-# Lista tarefas de benchmark disponíveis
+# Lists available benchmark tasks
 tb bench list
 
-# Executa benchmark com agente fake embutido (funciona em qualquer repo)
+# Runs benchmark with built-in fake agent (works in any repo)
 tb bench run --fake
 
-# Executa benchmark com agente externo ({prompt} com quoting seguro)
+# Runs benchmark with external agent ({prompt} with safe quoting)
 tb bench run --agent "cursor-agent {prompt} --workdir {workdir}" -r 3
 
-# Sem --agent: usa bench.default_agent de .toolbelt/config.yaml
-# Sem -t/-f: usa bench.tasks_dir / fixtures_dir (flag CLI > YAML > default)
+# Without --agent: uses bench.default_agent from .toolbelt/config.yaml
+# Without -t/-f: uses bench.tasks_dir / fixtures_dir (CLI flag > YAML > default)
 tb bench run -r 1
 
-# Gera relatório de resultados existentes
+# Generates report from existing results
 tb bench report --input bench/results/2026-01-01-120000.jsonl
 
-# Compara dois benchmarks (sucesso, tempo, tokens)
+# Compares two benchmarks (success, time, tokens)
 tb bench compare --before results-v1.jsonl --after results-v2.jsonl
 
-# Comparação A/B entre configs/feature flags
+# A/B comparison between configs/feature flags
 tb bench compare --config-a bench/ab/graph-off.yaml \
                  --config-b bench/ab/graph-on.yaml --fake
 
-# Drift/review contra ticket local (não há fetch de issue/PR)
+# Drift/review against local ticket (no issue/PR fetch)
 tb drift --ticket rd.md
 tb review --ticket rd.md
 tb guard check HEAD~1..HEAD
 
-# Fase 3: tickets -> router/workers -> merge (tudo local)
+# Phase 3: tickets -> router/workers -> merge (all local)
 tb ticket create --title "Criar modelo User" --scope "src/models/**"
 tb ticket create --title "JWT signing" --dep TKT-001
 tb router run --agent-cmd "meu-agente --task-file $TB_TICKET_FILE"
@@ -194,106 +196,123 @@ tb board list
 tb watchdog alerts
 tb merge --dry-run TKT-001 TKT-002
 tb merge TKT-001 TKT-002
+
+# Local bus between agents (ADR-013); only the human creates channels/invites
+tb bus channel create feature-x --owner claude-main --ttl 2h
+tb bus invite feature-x --role worker
+tb bus join feature-x --invite K7Q2-9XMD --name grok-1 --vendor xai
+tb bus recv --channel feature-x --as grok-1 --wait 20s
 ```
 
 ## 🗺️ Roadmap / Status
 
-### Fase 0 (concluída) ✅
-- [x] CLI skeleton com Cobra (`tb version`, `tb init`, `tb help`)
-- [x] Configuração hierárquica (global + local)
-- [x] Logging estruturado com slog e tema Synthwave
-- [x] `tb bench` harness para medir baseline
-- [x] Fixtures de benchmark
-- [x] Agente fake determinístico para CI
+### Phase 0 (completed) ✅
+- [x] CLI skeleton with Cobra (`tb version`, `tb init`, `tb help`)
+- [x] Hierarchical configuration (global + local)
+- [x] Structured logging with slog and Synthwave theme
+- [x] `tb bench` harness to measure baseline
+- [x] Benchmark fixtures
+- [x] Deterministic fake agent for CI
 - [x] GitHub Actions CI
 - [x] Makefile, golangci-lint, goreleaser
-- [x] GitHub Releases via GoReleaser (tags `v*`)
+- [x] GitHub Releases via GoReleaser (`v*` tags)
 
-### Fase 1 (concluída) ✅
-- [x] `tb mcp` — servidor MCP stateless
-- [x] Worktrees + sandbox Landlock
-- [x] `tb guard` / `tb verify` (ruler de testes)
-- [x] `tb mem` — invariantes fora da compactação (`show`/`edit`/`retire`/`search` + `--ref`)
+### Phase 1 (completed) ✅
+- [x] `tb mcp` — stateless MCP server
+- [x] Worktrees + Landlock sandbox
+- [x] `tb guard` / `tb verify` (tests ruler)
+- [x] `tb mem` — invariants outside compaction (`show`/`edit`/`retire`/`search` + `--ref`)
 
-### Fase 2 (em andamento)
-- [x] `tb bench compare` A/B (configs/feature flags, métricas token/tempo/sucesso)
-- [x] `tb graph` sob demanda (CLI + MCP) com A/B graph-on vs graph-off
-- [x] `tb review` — revisão fresh-context contra ticket/rd.md + invariantes (+ `--approved-sha` / patch-id)
-- [x] `tb drift` — detecção de drift (escopo / commit base / patch pinado)
-- [x] Parser Markdown de Scope (`## Scope` / listas) e globs com `**` no meio
-- [x] Ruler visual: screenshot + browser headless (skip gracioso; `skipped` agregado no relatório)
-- [x] Docs CLI alinhados aos comandos/flags reais (`docs/cli.md` / README)
-- [x] MCP com paridade do loop de campo (`mem` / `verify` / `review` / `drift` / `guard`)
-- [x] `tb stack` — empilha verify/review/drift/guard com diff/índice/memória compartilhados (+ MCP `tb_stack`)
-- [x] Landing page em [`site/`](site/) + GitHub Pages ([docs/site.md](docs/site.md) · [site ao vivo](https://leonardo-moraes360.github.io/toolbelt/))
-- [ ] Hierarquia de agentes / A2A / `tb md` (posterior)
+### Phase 2 (in progress)
+- [x] `tb bench compare` A/B (configs/feature flags, token/time/success metrics)
+- [x] On-demand `tb graph` (CLI + MCP) with A/B graph-on vs graph-off
+- [x] `tb review` — fresh-context review against ticket/rd.md + invariants (+ `--approved-sha` / patch-id)
+- [x] `tb drift` — drift detection (scope / base commit / pinned patch)
+- [x] Markdown Scope parser (`## Scope` / lists) and globs with mid-path `**`
+- [x] Visual ruler: screenshot + headless browser (graceful skip; `skipped` aggregated in report)
+- [x] CLI docs aligned with real commands/flags (`docs/cli.md` / README)
+- [x] MCP with field-loop parity (`mem` / `verify` / `review` / `drift` / `guard`)
+- [x] `tb stack` — stacks verify/review/drift/guard with shared diff/index/memory (+ MCP `tb_stack`)
+- [x] Landing page in [`site/`](site/) + GitHub Pages ([docs/site.md](docs/site.md) · [live site](https://leonardo-moraes360.github.io/toolbelt/))
+- [ ] Agent hierarchy / A2A / `tb md` (later)
 
-### Entrada para a próxima fase (estudo de campo)
-- Estudo de campo do `tb` em 20 repositórios públicos (relatórios em [`docs/campo/`](docs/campo/) + síntese de melhorias em [`docs/campo/SINTESE.md`](docs/campo/SINTESE.md)), como input priorizado para os próximos PRs de produto.
+### Input for the next phase (field study)
+- Field study of `tb` across 20 public repositories (reports in [`docs/campo/`](docs/campo/) + improvement synthesis in [`docs/campo/SINTESE.md`](docs/campo/SINTESE.md)), as prioritized input for upcoming product PRs.
 
-### Fase 3 (em andamento)
-- [x] Router/Workers para delegação escalável de tarefas (`tb router run`, em primeiro plano, workers em worktrees isoladas e sandbox fail-closed)
-- [x] Entrega direta (direct delivery) — follow-ups vão direto ao worker dono
-- [x] `tb ticket` / `tb board` — gerenciamento de tickets de trabalho
-- [x] `tb router` / `tb watchdog` — controle de delegação e saúde
-- [x] `tb merge` — agregação de resultados de workers (`fail` | `last_wins`)
-- [ ] Índice vetorial opcional
-- [ ] Integração com Graphify (ou reimplementação)
-- [ ] Integração com Elephant-Goldfish Model (ou reimplementação)
-- [ ] Componentes opcionais em Rust para inferência local
-- [ ] Rulers adicionais para `tb verify`
+### Phase 3 (in progress)
+- [x] Router/Workers for scalable task delegation (`tb router run`, foreground, workers in isolated worktrees, fail-closed sandbox)
+- [x] Direct delivery — follow-ups go straight to the owning worker
+- [x] `tb ticket` / `tb board` — work ticket management
+- [x] `tb router` / `tb watchdog` — delegation control and health
+- [x] `tb merge` — aggregation of worker results (`fail` | `last_wins`)
+- [ ] Optional vector index
+- [x] Graphify: in-house reimplementation ([ADR-014](docs/adr/014-graphify-reimplementacao.md)) — `tb graph explain`/`path`
+- [x] `tb graph search` with BM25 ranking (title/path/package, camelCase/`snake_case` splitting, multi-term)
+- [ ] Obsidian-compatible Markdown vault (`tb vault`, Phase A) — draft spec ([docs/specs/vault.md](docs/specs/vault.md)), no code yet
+- [ ] Elephant-Goldfish Model integration (or reimplementation)
+- [ ] Optional Rust components for local inference
+- [ ] Additional rulers for `tb verify`
+- [ ] `tb merge` `prompt` / `semantic` strategies
 
-## 🤝 Contribuindo
+### Multi-vendor bus (`tb bus`, [ADR-013](docs/adr/013-barramento-multi-vendor.md))
+- [x] B0 — `bus/0.1` spec: envelope, Agent Card and invite ([docs/bus-protocolo.md](docs/bus-protocolo.md))
+- [x] B1 — SQLite store, CLI + MCP, single-use invite, `join`/`send`/`recv`/`claim`/`complete`/`log`
+- [ ] B2 — lease, heartbeat and watchdog on the bus
+- [ ] B3 (partial) — `tb bus run` with `exec` and `harness` adapters done ([docs/bus-harness.md](docs/bus-harness.md)); `notify` adapter and `tb bus discover` pending
+- [ ] B4 — Phase 3 router/board on top of the bus
 
-Veja [CONTRIBUTING.md](CONTRIBUTING.md) para detalhes sobre:
-- Fluxo de branches e PRs
+## 🤝 Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for details on:
+- Branch and PR workflow
 - Conventional Commits
-- Como propor ADRs
-- Setup de desenvolvimento
+- How to propose ADRs
+- Development setup
 
-## 📖 Inspirações
+## 📖 Inspirations
 
-Este projeto foi inspirado por:
-- **[Graphify](https://github.com/Graphify-Labs/graphify)**: mapeamento de projetos em grafos de conhecimento queryáveis
-- **[Obsidian](https://obsidian.md/)**: vault de Markdown com wikilinks, backlinks e grafo local-first
-- **[Elephant-Goldfish Model](https://github.com/google/elephant-goldfish-model)**: revisão com contextos frescos, separação autor/revisor, drift detection
+This project was inspired by:
+- **[Graphify](https://github.com/Graphify-Labs/graphify)**: mapping projects into queryable knowledge graphs
+- **[Obsidian](https://obsidian.md/)**: Markdown vault with wikilinks, backlinks, and a local-first graph
+- **[Elephant-Goldfish Model](https://github.com/google/elephant-goldfish-model)**: review with fresh contexts, author/reviewer separation, drift detection
 
-Veja os ADRs para detalhes:
-- [ADR-006: Graphify e Obsidian](docs/adr/006-inspiracoes-graphify-obsidian.md)
+See the ADRs for details:
+- [ADR-006: Graphify and Obsidian](docs/adr/006-inspiracoes-graphify-obsidian.md)
 - [ADR-007: Elephant-Goldfish Model](docs/adr/007-inspiracao-elephant-goldfish.md)
-- [ADR-008: Verificação Adversarial](docs/adr/008-verificacao-adversarial.md)
-- [ADR-009: Router e Workers](docs/adr/009-router-e-workers.md)
+- [ADR-008: Adversarial Verification](docs/adr/008-verificacao-adversarial.md)
+- [ADR-009: Router and Workers](docs/adr/009-router-e-workers.md)
 
-## 📄 Licença
+## 📄 License
 
 [Apache License 2.0](LICENSE) — Copyright 2026 Leonardo Moraes
 
-## 📊 Status do Projeto
+## 📊 Project Status
 
-Este projeto está na **Fase 3 (em andamento)**: além de verify/guard/mem/graph/review/drift/MCP e harness de benchmark, já há tickets, board, router/workers, watchdog e merge (ganho de escala ainda não medido — ver [ADR-009](docs/adr/009-router-e-workers.md)). A arquitetura completa está documentada em [docs/arquitetura.md](docs/arquitetura.md).
+This project is in **Phase 3 (in progress)**: besides verify/guard/mem/graph/review/drift/MCP and a benchmark harness, it now has tickets, board, router/workers, watchdog, merge and the local `tb bus` (B0/B1 and part of B3 of [ADR-013](docs/adr/013-barramento-multi-vendor.md)) (scaling gains not yet measured — see [ADR-009](docs/adr/009-router-e-workers.md)). The full architecture is documented in [docs/arquitetura.md](docs/arquitetura.md).
 
-### Comandos Implementados
+### Implemented Commands
 
-| Comando | Status | Descrição |
-|---------|--------|-----------|
-| `tb version` | ✅ | Mostra versão, commit e build time |
-| `tb init` | ✅ | Inicializa configuração local; detecta toolchain (`verify.test_cmd` com checagem de `PATH`/fallback; Node/TS via lockfiles + scripts `test`/`build`|`typecheck`/`lint`; sem marcador → `test_cmd` vazio com aviso, nunca `go test` sem `go.mod`; `build_cmd` / `lint_cmd`), lê `AGENTS.md`/`CLAUDE.md` (hints filtrados) e opcionalmente semeia com `--write-agents` (seed cita test/build/lint detectados) |
-| `tb bench run` | ✅ | Executa benchmark |
-| `tb bench list` | ✅ | Lista tarefas disponíveis |
-| `tb bench report` | ✅ | Gera relatório Markdown |
-| `tb bench compare` | ✅ | Compara dois benchmarks |
-| `tb sandbox` | ✅ | Worktrees + Landlock (Linux) |
-| `tb guard` | ✅ | Check anti-trapaça em diff (default estrito / exit ≠ 0 em `SeverityError`; `--warn-only` opt-out; `--strict` deprecated) |
-| `tb verify` | ✅ | Rulers `tests` + `visual` (`tb verify run`; `--build-cmd`/`--lint-cmd`/`--no-build`/`--no-lint`/`--dry-run`; suíte oculta via `--hidden-test-cmd` ou detecção de toolchain em `tests/hidden/` — N/A se inaplicável; cache de build/lint na execução; `reason`/`error` no JSON; `--base`/`--head` rodam no worktree do head; fail-fast se o comando não existe/não é executável; `protected_paths` custom do `guard.yaml` não abortam o loop — exceção de Scope via `--ticket`) |
-| `tb mem` | ✅ | Invariantes (`add`/`list`/`show`/`edit`/`retire`/`search`/`check`/`init`; `--ref` ADR; soft-retire + `--all`) |
-| `tb graph` | ✅ | Grafo sob demanda multi-linguagem + frameworks + docs (ADR-011); `javascript` cobre TypeScript (`ts`/`tsx`) |
-| `tb review` | ✅ | Revisão fresh-context contra ticket/`rd.md` local (sem GitHub); `--approved-sha` |
-| `tb drift` | ✅ | Drift de escopo / commit base / patch pinado contra `rd.md` (não é vault vs código) |
-| `tb stack` | ✅ | Empilha verify/review/drift/guard com contexto compartilhado (JSON agregado; MCP `tb_stack`) |
-| `tb workspace` | ✅ | Workspaces isolados via git worktree |
-| `tb ticket` | ✅ | Tickets de trabalho em `.toolbelt/tickets/` (`create`/`list`/`show`/`cancel`/`retry`; MCP `tb_ticket_*`) |
-| `tb board` | ✅ | Board RUNNING/READY/BLOCKED/DONE/FAILED; `pause`/`resume`/`drain`/`watch` (MCP `tb_board`) |
-| `tb router` | ✅ | Scheduler em primeiro plano (`run`/`status`/`config`) com entrega direta; sandbox fail-closed (`--allow-unsandboxed`) |
-| `tb watchdog` | ✅ | Alertas e controle dos workers (`status`/`alerts`/`kill`); roda dentro do loop do router |
-| `tb merge` | ✅ | Integra tickets `done` de forma atômica; `fail` (padrão) ou `last_wins` (MCP `tb_merge`) |
-| `tb mcp` | ✅ | Servidor MCP stateless (stdio); tools de mem/verify/review/drift/guard/stack + graph (incl. `tb_graph_impact`; schemas tipados) |
+| Command | Status | Description |
+|---------|--------|-------------|
+| `tb version` | ✅ | Shows version, commit, and build time |
+| `tb init` | ✅ | Initializes local config; detects toolchain (`verify.test_cmd` with `PATH` check/fallback; Node/TS via lockfiles + `test`/`build`|`typecheck`/`lint` scripts; no marker → empty `test_cmd` with warning, never `go test` without `go.mod`; `build_cmd` / `lint_cmd`), reads `AGENTS.md`/`CLAUDE.md` (filtered hints) and optionally seeds with `--write-agents` (seed cites detected test/build/lint) |
+| `tb bench run` | ✅ | Runs benchmark |
+| `tb bench list` | ✅ | Lists available tasks |
+| `tb bench report` | ✅ | Generates Markdown report |
+| `tb bench compare` | ✅ | Compares two benchmarks |
+| `tb sandbox` | ✅ | Worktrees + Landlock (Linux) (`check`/`run`) |
+| `tb guard` | ✅ | Anti-cheat check on diff (strict by default / exit ≠ 0 on `SeverityError`; `--warn-only` opt-out; `--strict` deprecated) |
+| `tb verify` | ✅ | `tests` + `visual` rulers (`tb verify run`; `--build-cmd`/`--lint-cmd`/`--no-build`/`--no-lint`/`--dry-run`; hidden suite via `--hidden-test-cmd` or toolchain detection in `tests/hidden/` — N/A if not applicable; build/lint cache within the run; `reason`/`error` in JSON; `--base`/`--head` run in the head worktree; fail-fast if command missing/not executable; custom `protected_paths` from `guard.yaml` do not abort the loop — Scope exception via `--ticket`) |
+| `tb mem` | ✅ | Invariants (`add`/`list`/`show`/`edit`/`retire`/`search`/`check`/`init`; `--ref` ADR; soft-retire + `--all`) |
+| `tb graph` | ✅ | On-demand multi-language graph + frameworks + docs (ADR-011); `javascript` covers TypeScript (`ts`/`tsx`); BM25-ranked `search`, `callers`/`deps`/`impact`, `explain`/`path` (ADR-014) |
+| `tb review` | ✅ | Fresh-context review against local ticket/`rd.md` (no GitHub); `--approved-sha` |
+| `tb drift` | ✅ | Scope / base commit / pinned patch drift against `rd.md` (not vault vs code) |
+| `tb stack` | ✅ | Stacks verify/review/drift/guard with shared context (aggregated JSON; MCP `tb_stack`) |
+| `tb workspace` | ✅ | Isolated workspaces via git worktree |
+| `tb ticket` | ✅ | Work tickets in `.toolbelt/tickets/` (`create`/`list`/`show`/`cancel`/`retry`; MCP `tb_ticket_*`) |
+| `tb board` | ✅ | RUNNING/READY/BLOCKED/DONE/FAILED board; `pause`/`resume`/`drain`/`watch` (MCP `tb_board`) |
+| `tb router` | ✅ | Foreground scheduler (`run`/`status`/`config`) with direct delivery; fail-closed sandbox (`--allow-unsandboxed`) |
+| `tb watchdog` | ✅ | Worker alerts and control (`status`/`alerts`/`kill`); runs inside the router loop |
+| `tb merge` | ✅ | Atomically merges `done` tickets; `fail` (default) or `last_wins` (MCP `tb_merge`); `prompt`/`semantic` not implemented |
+| `tb bus` | 🟡 | Local bus between agents (ADR-013): `channel`/`invite`/`join`/`send`/`recv`/`claim`/`complete`/`log` over `.toolbelt/bus/bus.db`; `tb bus run` wakes the agent (`exec`/`harness` adapters); lease/heartbeat (B2), `notify` and `discover` pending |
+| `tb mcp` | ✅ | Stateless MCP server (stdio); 36 tools in v0.0.5: mem/verify/review/drift/guard/stack, graph (`search`/`callers`/`deps`/`impact`/`explain`/`path`/`index`; requires `TB_GRAPH=on`), ticket/board/router/watchdog/merge and bus (`tb_bus_join`/`send`/`recv`/`claim`/`complete`); `--bus-as` binds the connection to a bus session |

@@ -1,32 +1,32 @@
-🇧🇷 Português | [🇺🇸 English](../en/campo/excalidraw.md)
+🇺🇸 English | [🇧🇷 Português](../pt-BR/campo/excalidraw.md)
 
-# Estudo de campo: excalidraw/excalidraw
+# Field study: excalidraw/excalidraw
 
-Estudo realizado em 2026-11-15 com `tb` compilado de `toolbelt@c8aae04` (`make build` → `./bin/tb`). Clone local em `/tmp/target/excalidraw` (shallow). **Nenhuma** interação com o remoto do Excalidraw (sem push, issue, PR ou comentário). Evidências brutas em `/tmp/campo-evidence/` na VM do agente.
+Study conducted on 2026-11-15 with `tb` compiled from `toolbelt@c8aae04` (`make build` → `./bin/tb`). Local clone at `/tmp/target/excalidraw` (shallow). **No** interaction with the Excalidraw remote (no push, issue, PR, or comment). Raw evidence in `/tmp/campo-evidence/` on the agent VM.
 
-## Repositório
+## Repository
 
-| Campo | Valor |
+| Field | Value |
 |-------|-------|
-| Nome | [excalidraw/excalidraw](https://github.com/excalidraw/excalidraw) |
-| Linguagem | TypeScript / React (monorepo Yarn workspaces) |
-| Tamanho | ~925 arquivos fonte relevantes; ~293k LOC aproximadas; checkout shallow ~93 MiB (com `node_modules` ~1.1 GiB) |
-| Commit base do estudo | `82190fb` (`master` shallow) |
-| Instrumentação AI existente | `AGENTS.md` (4 linhas: DOM/`ownerDocument`, preferir `Merge<>`); `CLAUDE.md` (estrutura do monorepo, comandos `yarn test:typecheck` / `yarn test:update` / `yarn fix`) |
-| Toolchain | **Configurada**: Node 22, Yarn 1.22.22, `yarn install --frozen-lockfile` OK, Vitest 3.0.6, `tsc`, ESLint. Chrome headless presente (`/usr/local/bin/google-chrome`). |
-| Não configurado / não rodado | App completa no browser (`yarn start` / Playwright E2E de UI); build de produção da app (`yarn build`) — fora do escopo da tarefa de math; suíte `yarn test:all` completa (typecheck+eslint+prettier+app) — typecheck e eslint nos arquivos tocados foram rodados; Playwright browsers não instalados além do Chrome do sistema. |
+| Name | [excalidraw/excalidraw](https://github.com/excalidraw/excalidraw) |
+| Language | TypeScript / React (Yarn workspaces monorepo) |
+| Size | ~925 relevant source files; ~293k approximate LOC; shallow checkout ~93 MiB (with `node_modules` ~1.1 GiB) |
+| Study base commit | `82190fb` (shallow `master`) |
+| Existing AI instrumentation | `AGENTS.md` (4 lines: DOM/`ownerDocument`, prefer `Merge<>`); `CLAUDE.md` (monorepo structure, commands `yarn test:typecheck` / `yarn test:update` / `yarn fix`) |
+| Toolchain | **Configured**: Node 22, Yarn 1.22.22, `yarn install --frozen-lockfile` OK, Vitest 3.0.6, `tsc`, ESLint. Headless Chrome present (`/usr/local/bin/google-chrome`). |
+| Not configured / not run | Full app in browser (`yarn start` / Playwright UI E2E); production app build (`yarn build`) — outside math task scope; full `yarn test:all` suite (typecheck+eslint+prettier+app) — typecheck and eslint on touched files were run; Playwright browsers not installed beyond system Chrome. |
 
-## Tarefa escolhida
+## Chosen task
 
-| Campo | Valor |
+| Field | Value |
 |-------|-------|
-| O quê | Corrigir `normalizeRadians` para retornar `0` (não `2π`) em múltiplos negativos de `2π` e ângulos negativos minúsculos; testes em `packages/math/tests/angle.test.ts`; impacto em `cartesian2Polar` / `radiansBetweenAngles`. |
-| Por quê | Bug pequeno, isolado em `@excalidraw/math`, com repro claro e testes unitários — tamanho adequado a um campo study E2E. |
+| What | Fix `normalizeRadians` to return `0` (not `2π`) on negative multiples of `2π` and tiny negative angles; tests in `packages/math/tests/angle.test.ts`; impact on `cartesian2Polar` / `radiansBetweenAngles`. |
+| Why | Small bug, isolated in `@excalidraw/math`, with clear repro and unit tests — suitable size for an E2E field study. |
 | Issue | https://github.com/excalidraw/excalidraw/issues/12599 |
-| Completada? | **Sim, localmente** (commit local `16115e1` no clone; **não** enviado ao upstream). Correção + 6 testes passando. |
-| Checks nativos | `yarn vitest run packages/math/tests` → 10 files / 64 tests PASS (~2.8 s). `yarn test:typecheck` no commit da tarefa → PASS (~13.6 s). ESLint nos arquivos tocados: 1 warning Prettier no primeiro draft do teste (`(-1e-17)`); após ajuste local → PASS. |
+| Completed? | **Yes, locally** (local commit `16115e1` on the clone; **not** sent upstream). Fix + 6 tests passing. |
+| Native checks | `yarn vitest run packages/math/tests` → 10 files / 64 tests PASS (~2.8 s). `yarn test:typecheck` on the task commit → PASS (~13.6 s). ESLint on touched files: 1 Prettier warning on the first test draft (`(-1e-17)`); after local adjustment → PASS. |
 
-Trecho da correção aplicada em `packages/math/src/angle.ts`:
+Fix applied in `packages/math/src/angle.ts`:
 
 ```ts
 export const normalizeRadians = (angle: Radians): Radians => {
@@ -39,144 +39,144 @@ export const normalizeRadians = (angle: Radians): Radians => {
 };
 ```
 
-## Uso do tb por comando
+## tb usage by command
 
-| comando | resultado | ajudou/atrapalhou/neutro | evidência |
-|---------|-----------|--------------------------|-----------|
-| `tb version` (binário `make build`) | `toolbelt c8aae04`, commit/build preenchidos | neutro | build com ldflags |
-| `go run ./cmd/tb version` | `0.1.0-dev`, `commit: unknown`, `built: unknown` | atrapalhou (versão inútil sem ldflags) | `23-version-norflags.txt` |
-| `tb init` | criou `.toolbelt/` + `config.yaml` mode `600`; defaults Go (`verify.test_cmd: go test ./...`) | atrapalhou no onboarding JS (defaults errados para o repo) | wall 0.007 s; `stat` → `600 .toolbelt/config.yaml` |
-| `tb mem init` / `add` / `list` / `check` | OK; `mem add <regra> --category`; `check` sha256 + retenção 1.00 | ajudou (invariantes rápidas) | `02`–`05`; `mem add --type/--title` (docs) → `unknown flag: --type` |
-| Ticket / Scope (`rd.md` manual) | `tb ticket` **não existe**; Scope via frontmatter YAML em `rd.md` | atrapalhou (docs prometem `tb ticket`; fluxo real é arquivo manual) | `33-ticket-missing.txt`; `06-ticket.txt` |
-| `TB_GRAPH=on tb graph rebuild --enable` | 4452 nós, 18465 arestas, ~1.05 s | ajudou | `07-graph-rebuild.txt` |
-| `tb graph search "normalizeRadians"` | achou `func:...normalizeRadians` + seção do `rd.md` | ajudou | `08-graph-search.txt` |
-| `tb graph impact --file packages/math/src/angle.ts` | listou `angle.ts` e `point.ts` | ajudou parcialmente (não listou consumidores em `packages/element`) | `09-graph-impact.txt` |
-| `tb graph impact` sem `--file` | erro `--file é obrigatório` | atrapalhou | `09b-graph-impact-nofile.txt` |
-| `tb graph callers --function normalizeRadians` | só devolveu o próprio arquivo | atrapalhou (falso negativo de callers cross-package) | `11-graph-callers.txt` |
-| `tb graph deps --file ...` | imports `./types`, `./utils` | neutro | `10-graph-deps.txt` |
-| `tb graph stats` | contagens OK | neutro | `12-graph-stats.txt` |
-| `tb verify run` (vitest math) | `PASS` com `hidden_available: false` / `hidden_passed: false` | atrapalhou (PASS sem suíte oculta real; defaults Go) | `17-verify.txt` wall 2.9 s |
-| `tb verify` + type error puro | `PASS` (vitest ignora erro de tipo); `tsc` falha | atrapalhou | `29g` PASS vs `29h` TS2322 |
-| `tb verify --ruler visual` | sem manifesto: `skipped:true` PASS; com manifesto sem refs: **top-level `skipped:false`** e screen `skipped:true` | atrapalhou (flag top-level mentiroso) | `22`, `22c` |
-| `tb review` | findings de scope + **falsos positivos** de invariantes `tests/hidden` e `thresholds.yaml` | atrapalhou | `19-review.txt` |
-| `tb drift` | detectou `.toolbelt/*` e `rd.md` fora do scope; exit 1 | ajudou | `18-drift.txt` |
-| `tb guard check` | sem violações no diff da tarefa; com paths hardcoded → violações; **exit 0** mesmo com violações (sem `--strict`) | neutro/atrapalhou | `20`, `21b` |
-| `tb guard` + `.toolbelt/guard.yaml` | manifesto ignorado (path `angle.ts` “protegido” no yaml não gerou violação) | atrapalhou | `20b-guard-yaml.txt` |
-| `tb bench run` sem `--agent`/`--fake` | erro obrigatório; **ignora** `bench.default_agent` do config | atrapalhou | `24-bench-default-agent.txt` |
-| `tb bench run --fake` | no Excalidraw falha (sem `bench/tasks`); no toolbelt roda sem `--fake-config` | neutro | `25`, `25b` |
-| `tb bench compare --agent ...` | `unknown flag: --agent` | atrapalhou | `26b` |
-| `tb mcp` + `tools/list` | servidor stdio OK; tools graph/version/echo/env/run | ajudou (smoke) | `28-mcp-list.txt` |
-| Checks nativos paralelos | vitest/tsc/eslint conforme acima | ajudou (baseline real) | `14`–`15`, `30`–`32` |
+| command | result | helped/hindered/neutral | evidence |
+|---------|--------|-------------------------|----------|
+| `tb version` (`make build` binary) | `toolbelt c8aae04`, commit/build filled | neutral | build with ldflags |
+| `go run ./cmd/tb version` | `0.1.0-dev`, `commit: unknown`, `built: unknown` | hindered (useless version without ldflags) | `23-version-norflags.txt` |
+| `tb init` | created `.toolbelt/` + `config.yaml` mode `600`; Go defaults (`verify.test_cmd: go test ./...`) | hindered on JS onboarding (wrong defaults for the repo) | wall 0.007 s; `stat` → `600 .toolbelt/config.yaml` |
+| `tb mem init` / `add` / `list` / `check` | OK; `mem add <regra> --category`; `check` sha256 + retention 1.00 | helped (fast invariants) | `02`–`05`; `mem add --type/--title` (docs) → `unknown flag: --type` |
+| Ticket / Scope (manual `rd.md`) | `tb ticket` **does not exist**; Scope via YAML frontmatter in `rd.md` | hindered (docs promise `tb ticket`; real flow is manual file) | `33-ticket-missing.txt`; `06-ticket.txt` |
+| `TB_GRAPH=on tb graph rebuild --enable` | 4452 nodes, 18465 edges, ~1.05 s | helped | `07-graph-rebuild.txt` |
+| `tb graph search "normalizeRadians"` | found `func:...normalizeRadians` + `rd.md` section | helped | `08-graph-search.txt` |
+| `tb graph impact --file packages/math/src/angle.ts` | listed `angle.ts` and `point.ts` | helped partially (did not list consumers in `packages/element`) | `09-graph-impact.txt` |
+| `tb graph impact` without `--file` | error `--file é obrigatório` | hindered | `09b-graph-impact-nofile.txt` |
+| `tb graph callers --function normalizeRadians` | only returned the file itself | hindered (false negative for cross-package callers) | `11-graph-callers.txt` |
+| `tb graph deps --file ...` | imports `./types`, `./utils` | neutral | `10-graph-deps.txt` |
+| `tb graph stats` | counts OK | neutral | `12-graph-stats.txt` |
+| `tb verify run` (vitest math) | `PASS` with `hidden_available: false` / `hidden_passed: false` | hindered (PASS without real hidden suite; Go defaults) | `17-verify.txt` wall 2.9 s |
+| `tb verify` + pure type error | `PASS` (vitest ignores type error); `tsc` fails | hindered | `29g` PASS vs `29h` TS2322 |
+| `tb verify --ruler visual` | without manifesto: `skipped:true` PASS; with manifesto without refs: **top-level `skipped:false`** and screen `skipped:true` | hindered (lying top-level flag) | `22`, `22c` |
+| `tb review` | scope findings + **false positives** on `tests/hidden` and `thresholds.yaml` invariants | hindered | `19-review.txt` |
+| `tb drift` | detected `.toolbelt/*` and `rd.md` out of scope; exit 1 | helped | `18-drift.txt` |
+| `tb guard check` | no violations on task diff; with hardcoded paths → violations; **exit 0** even with violations (without `--strict`) | neutral/hindered | `20`, `21b` |
+| `tb guard` + `.toolbelt/guard.yaml` | manifesto ignored (`angle.ts` path “protected” in yaml did not yield violation) | hindered | `20b-guard-yaml.txt` |
+| `tb bench run` without `--agent`/`--fake` | required error; **ignores** config `bench.default_agent` | hindered | `24-bench-default-agent.txt` |
+| `tb bench run --fake` | on Excalidraw fails (no `bench/tasks`); on toolbelt runs without `--fake-config` | neutral | `25`, `25b` |
+| `tb bench compare --agent ...` | `unknown flag: --agent` | hindered | `26b` |
+| `tb mcp` + `tools/list` | stdio server OK; tools graph/version/echo/env/run | helped (smoke) | `28-mcp-list.txt` |
+| Parallel native checks | vitest/tsc/eslint as above | helped (real baseline) | `14`–`15`, `30`–`32` |
 
-## Problemas conhecidos
+## Known problems
 
-| problema | confirmado/refutado/não testado | evidência |
-|----------|----------------------------------|-----------|
-| `bench compare` lacks `--agent` | **confirmado** | `tb bench compare --agent "echo hi"` → `unknown flag: --agent` (`26b`) |
-| `guard.yaml` ignored | **confirmado** | `.toolbelt/guard.yaml` com `protected_paths: [packages/math/src/angle.ts]`; guard sem violação nesse path (`20b`) |
-| outdated CLI docs | **confirmado** | `docs/cli.md` documenta `tb mem add --type/--title` e `tb ticket`/`tb board`; CLI real: `mem add <regra>` e sem `ticket`/`board` |
-| version shows `unknown` | **confirmado** (sem ldflags) | `go run ./cmd/tb version` → commit/built `unknown`; `make build` preenche |
-| config files created 0600 | **confirmado** | `config.yaml` e `invariants.yaml` mode `600` |
-| visual ruler reports `skipped=false` when skipping | **confirmado** | com `screens.yaml` e ref ausente: top-level `"skipped": false`, screen `"skipped": true` (`22c`) |
-| `default_agent` ignored | **confirmado** | config com `default_agent: echo default-agent-used`; `tb bench run -r 1` → `--agent ou --fake é obrigatório` |
-| guard aborts verify when diff touches hardcoded config path | **confirmado** | diff com `.toolbelt/thresholds.yaml` / `tests/hidden/*` → verify `FAIL` iterations 0 (`21c`) |
-| default fake agent needs `--fake-config` | **refutado** | `tb bench run --fake` no repo toolbelt completou 9 tasks sem `--fake-config` (`25b`) |
-| `mem add` positional | **confirmado** | usage `tb mem add <regra>`; flags docs `--type` inexistentes |
-| Drift/Scope need literal paths (no globs) | **parcialmente refutado** | `packages/math/**` e `packages/math/tests/*` funcionam em `inScope` (`18b`, `18c`); implementação aceita `/**` e `filepath.Match` |
-| `graph impact` needs `--file` | **confirmado** | sem flag → erro obrigatório |
-| review false positives on the tests/hidden invariant | **confirmado** | review critical em invariante `tests/hidden` / `thresholds.yaml` só porque o texto aparece no diff de `invariants.yaml` (`19`) |
-| verify runs only partial checks and misses build errors | **confirmado** | type error `number = "not-a-number"`: vitest PASS + verify PASS; `tsc` falha (`29g`/`29h`). Defaults ainda são `go test`. |
-| tb does not push the agent toward completing the whole task | **confirmado** (observacional) | init não sugeriu typecheck/eslint/prettier do CLAUDE.md; verify PASS sem hidden e sem `tsc`; commit local incluiu `.toolbelt/*` e `rd.md` fora do Scope sem o tb bloquear o “done”; agente precisou descobrir sozinho os checks nativos |
+| problem | confirmed/refuted/not tested | evidence |
+|---------|------------------------------|----------|
+| `bench compare` lacks `--agent` | **confirmed** | `tb bench compare --agent "echo hi"` → `unknown flag: --agent` (`26b`) |
+| `guard.yaml` ignored | **confirmed** | `.toolbelt/guard.yaml` with `protected_paths: [packages/math/src/angle.ts]`; guard without violation on that path (`20b`) |
+| outdated CLI docs | **confirmed** | `docs/cli.md` documents `tb mem add --type/--title` and `tb ticket`/`tb board`; real CLI: `mem add <regra>` and no `ticket`/`board` |
+| version shows `unknown` | **confirmed** (without ldflags) | `go run ./cmd/tb version` → commit/built `unknown`; `make build` fills |
+| config files created 0600 | **confirmed** | `config.yaml` and `invariants.yaml` mode `600` |
+| visual ruler reports `skipped=false` when skipping | **confirmed** | with `screens.yaml` and missing ref: top-level `"skipped": false`, screen `"skipped": true` (`22c`) |
+| `default_agent` ignored | **confirmed** | config with `default_agent: echo default-agent-used`; `tb bench run -r 1` → `--agent ou --fake é obrigatório` |
+| guard aborts verify when diff touches hardcoded config path | **confirmed** | diff with `.toolbelt/thresholds.yaml` / `tests/hidden/*` → verify `FAIL` iterations 0 (`21c`) |
+| default fake agent needs `--fake-config` | **refuted** | `tb bench run --fake` on toolbelt repo completed 9 tasks without `--fake-config` (`25b`) |
+| `mem add` positional | **confirmed** | usage `tb mem add <regra>`; docs flags `--type` nonexistent |
+| Drift/Scope need literal paths (no globs) | **partially refuted** | `packages/math/**` and `packages/math/tests/*` work in `inScope` (`18b`, `18c`); implementation accepts `/**` and `filepath.Match` |
+| `graph impact` needs `--file` | **confirmed** | without flag → required error |
+| review false positives on the tests/hidden invariant | **confirmed** | review critical on `tests/hidden` / `thresholds.yaml` invariant only because the text appears in the `invariants.yaml` diff (`19`) |
+| verify runs only partial checks and misses build errors | **confirmed** | type error `number = "not-a-number"`: vitest PASS + verify PASS; `tsc` fails (`29g`/`29h`). Defaults are still `go test`. |
+| tb does not push the agent toward completing the whole task | **confirmed** (observational) | init did not suggest typecheck/eslint/prettier from CLAUDE.md; verify PASS without hidden and without `tsc`; local commit included `.toolbelt/*` and `rd.md` outside Scope without tb blocking “done”; agent had to discover native checks alone |
 
-## Problemas novos
+## New problems
 
-### P1 — `verify` dá `PASS` com `hidden_available: false`
+### P1 — `verify` gives `PASS` with `hidden_available: false`
 
-- **Repro**: `tb verify run --test-cmd "yarn vitest run packages/math/tests" --hidden-test-cmd "yarn vitest run packages/math/src/angle.ts"` (ou default hidden Go em repo JS).
-- **Esperado**: falhar ou marcar incompleto se a suíte oculta não rodar.
-- **Atual**: `"verdict":"PASS","hidden_passed":false,"hidden_available":false` (`17-verify.txt`).
+- **Repro**: `tb verify run --test-cmd "yarn vitest run packages/math/tests" --hidden-test-cmd "yarn vitest run packages/math/src/angle.ts"` (or default Go hidden in JS repo).
+- **Expected**: fail or mark incomplete if the hidden suite does not run.
+- **Actual**: `"verdict":"PASS","hidden_passed":false,"hidden_available":false` (`17-verify.txt`).
 
-### P1 — `guard check` exit 0 com violações
+### P1 — `guard check` exit 0 with violations
 
-- **Repro**: alterar `tests/hidden/*` ou `.toolbelt/thresholds.yaml`; `tb guard check base..head --json`.
-- **Esperado**: exit ≠ 0 em `SeverityError` (ou exigir `--strict` documentado como default seguro).
-- **Atual**: JSON com violações + exit 0 sem `--strict` (`21b`).
+- **Repro**: alter `tests/hidden/*` or `.toolbelt/thresholds.yaml`; `tb guard check base..head --json`.
+- **Expected**: exit ≠ 0 on `SeverityError` (or require `--strict` documented as the safe default).
+- **Actual**: JSON with violations + exit 0 without `--strict` (`21b`).
 
-### P2 — `graph callers` / `impact` fracos em monorepo TS
+### P2 — Weak `graph callers` / `impact` in TS monorepo
 
-- **Repro**: indexar Excalidraw; `tb graph callers --function normalizeRadians` / `impact --file packages/math/src/angle.ts`.
-- **Esperado**: callers em `packages/element/src/resizeElements.ts` e `sizeHelpers.ts` (imports reais).
-- **Atual**: callers só o arquivo da definição; impact só `point.ts` (`11`, `09`).
+- **Repro**: index Excalidraw; `tb graph callers --function normalizeRadians` / `impact --file packages/math/src/angle.ts`.
+- **Expected**: callers in `packages/element/src/resizeElements.ts` and `sizeHelpers.ts` (real imports).
+- **Actual**: callers only the definition file; impact only `point.ts` (`11`, `09`).
 
-### P2 — `tb init` não adapta verify/bench ao ecossistema do repo
+### P2 — `tb init` does not adapt verify/bench to the repo ecosystem
 
-- **Repro**: `tb init` em monorepo Yarn/TS.
-- **Esperado**: detectar package manager / scripts (`test`, `typecheck`) ou perguntar; ler `AGENTS.md`/`CLAUDE.md`.
-- **Atual**: `verify.test_cmd: go test ./...`; zero menção a instrumentação existente.
+- **Repro**: `tb init` in Yarn/TS monorepo.
+- **Expected**: detect package manager / scripts (`test`, `typecheck`) or ask; read `AGENTS.md`/`CLAUDE.md`.
+- **Actual**: `verify.test_cmd: go test ./...`; zero mention of existing instrumentation.
 
-### P3 — UX de erro do Cobra imprime Usage após JSON
+### P3 — Cobra error UX prints Usage after JSON
 
-- **Repro**: `tb drift --json` / `tb review --json` com drift.
-- **Esperado**: só JSON + exit code em `--json`.
-- **Atual**: JSON válido seguido de `Error:` + Usage (`18`, `19`).
+- **Repro**: `tb drift --json` / `tb review --json` with drift.
+- **Expected**: only JSON + exit code under `--json`.
+- **Actual**: valid JSON followed by `Error:` + Usage (`18`, `19`).
 
-### P3 — `tb help` lista `router` como comando apesar de “não implementado”
+### P3 — `tb help` lists `router` as a command despite “not implemented”
 
-- Neutro para o estudo; gera expectativa falsa no onboarding.
+- Neutral for the study; creates false expectation on onboarding.
 
-## O que o tb pegou e o que deixou passar
+## What tb caught and what it let slip
 
-**Pegou**
+**Caught**
 
-- Drift de escopo (`.toolbelt/config.yaml`, `.toolbelt/invariants.yaml`, `rd.md` fora do Scope).
-- Paths hardcoded protegidos (`tests/hidden/*`, `.toolbelt/thresholds.yaml`) e abort do verify nesse caso.
-- Localização da função via `graph search` / indexação rápida do monorepo.
-- Smoke MCP (`tools/list`).
-- Review reportou arquivos fora do scope (além dos FPs de invariante).
+- Scope drift (`.toolbelt/config.yaml`, `.toolbelt/invariants.yaml`, `rd.md` outside Scope).
+- Hardcoded protected paths (`tests/hidden/*`, `.toolbelt/thresholds.yaml`) and verify abort in that case.
+- Function location via `graph search` / fast monorepo indexing.
+- MCP smoke (`tools/list`).
+- Review reported files out of scope (besides invariant FPs).
 
-**Deixou passar**
+**Let slip**
 
-- Erro de TypeScript puro quando `test_cmd` é só Vitest (verify PASS).
-- Ausência de suíte oculta (`hidden_available: false` + PASS).
-- Warning Prettier/ESLint no teste novo (verify não rodava eslint).
-- Consumers reais de `normalizeRadians` fora de `packages/math`.
-- Conteúdo de `AGENTS.md` / `CLAUDE.md` (não lidos no init/onboarding).
-- Manifesto `.toolbelt/guard.yaml` customizado.
-- Completude da tarefa além do `test_cmd` configurado (typecheck/lint/build da app).
+- Pure TypeScript error when `test_cmd` is only Vitest (verify PASS).
+- Absence of hidden suite (`hidden_available: false` + PASS).
+- Prettier/ESLint warning on the new test (verify did not run eslint).
+- Real consumers of `normalizeRadians` outside `packages/math`.
+- Content of `AGENTS.md` / `CLAUDE.md` (not read on init/onboarding).
+- Custom `.toolbelt/guard.yaml` manifesto.
+- Task completeness beyond the configured `test_cmd` (app typecheck/lint/build).
 
-## Interação com instrumentação existente / onboarding
+## Interaction with existing instrumentation / onboarding
 
-- **`tb init`**: cria só `.toolbelt/`; **não lê** `AGENTS.md` nem `CLAUDE.md`. Docs internas (`achados.md` / arquitetura) listam “AGENTS.md como contexto local” como **pendente** (`tb ctx` ainda não existe na CLI).
-- **Grafo**: indexa `AGENTS.md` como `file`/`section` (busca `"AGENTS"` encontra o arquivo), mas isso **não** injeta as regras no mandate/contexto do agente.
-- **Duplicação / conflito**: invariantes default do `tb mem init` (`tests/hidden`, `thresholds.yaml`) são genéricas Go/tb e **não** espelham as regras do Excalidraw (`ownerDocument`, `Merge<>`, `yarn test:update`). Risco de ruído (já visto nos FPs do review) sem ganho local.
-- **O que o tb deveria importar**: (1) comandos de verificação de `CLAUDE.md` / `package.json` scripts → `verify.test_cmd` + checklist (typecheck, eslint, prettier); (2) bullets de `AGENTS.md` → invariantes `mandate` imutáveis; (3) estrutura monorepo (workspaces) para defaults de graph/impact; (4) não sobrescrever nem ignorar silenciosamente instrumentação pré-existente.
+- **`tb init`**: creates only `.toolbelt/`; **does not read** `AGENTS.md` or `CLAUDE.md`. Internal docs (`achados.md` / architecture) list “AGENTS.md as local context” as **pending** (`tb ctx` still does not exist in the CLI).
+- **Graph**: indexes `AGENTS.md` as `file`/`section` (search `"AGENTS"` finds the file), but that **does not** inject the rules into the agent’s mandate/context.
+- **Duplication / conflict**: default `tb mem init` invariants (`tests/hidden`, `thresholds.yaml`) are generic Go/tb and **do not** mirror Excalidraw rules (`ownerDocument`, `Merge<>`, `yarn test:update`). Noise risk (already seen in review FPs) without local gain.
+- **What tb should import**: (1) verification commands from `CLAUDE.md` / `package.json` scripts → `verify.test_cmd` + checklist (typecheck, eslint, prettier); (2) `AGENTS.md` bullets → immutable `mandate` invariants; (3) monorepo structure (workspaces) for graph/impact defaults; (4) neither overwrite nor silently ignore pre-existing instrumentation.
 
-## Sugestões de melhoria
+## Improvement suggestions
 
-1. **[P0 · verify]** Não emitir `PASS` se `hidden_available=false` (ou exigir `--allow-no-hidden`). Incluir profile `js/ts` com `test`+`typecheck`+`lint` a partir de `package.json`/`CLAUDE.md`. *(área: verify)*
-2. **[P0 · init / mem]** Onboarding que importa `AGENTS.md`/`CLAUDE.md`/`CONTRIBUTING.md` para invariantes e `verify.*`. *(área: init, mem/ctx)*
-3. **[P1 · guard]** Respeitar `.toolbelt/guard.yaml`; falhar por default em violações error; documentar `--strict`. *(área: guard)*
-4. **[P1 · review]** Matching de invariantes por path tocado / AST, não substring no diff (elimina FP `tests/hidden`). *(área: review)*
-5. **[P1 · docs/cli]** Sincronizar `docs/cli.md` e README com a CLI real (`mem add` posicional; ticket/board como não implementados; flags de bench compare). *(área: docs)*
-6. **[P1 · visual]** Top-level `skipped=true` se todas as screens skipparem; não reportar PASS “limpo” com `skipped:false`. *(área: verify/visual)*
-7. **[P2 · bench]** Honrar `bench.default_agent`; aceitar `--agent` em `bench compare` (ou documentar só `--fake`/JSONL). *(área: bench)*
-8. **[P2 · graph]** Melhorar resolução de imports TS path-aliases / workspaces para callers/impact cross-package. *(área: graph)*
-9. **[P2 · workflow]** Checklist de “done” (Scope limpo + verify + typecheck/lint nativos + drift clean) para empurrar completude da tarefa. *(área: router/verify — alinhado ao achado A/B de completude)*
-10. **[P3 · ux]** Em `--json`, não imprimir Usage do Cobra; permissões de config menos agressivas que `0600` quando o vault não tem secrets. *(área: cli/config)*
+1. **[P0 · verify]** Do not emit `PASS` if `hidden_available=false` (or require `--allow-no-hidden`). Include `js/ts` profile with `test`+`typecheck`+`lint` from `package.json`/`CLAUDE.md`. *(area: verify)*
+2. **[P0 · init / mem]** Onboarding that imports `AGENTS.md`/`CLAUDE.md`/`CONTRIBUTING.md` into invariants and `verify.*`. *(area: init, mem/ctx)*
+3. **[P1 · guard]** Respect `.toolbelt/guard.yaml`; fail by default on error violations; document `--strict`. *(area: guard)*
+4. **[P1 · review]** Match invariants by touched path / AST, not substring in the diff (eliminates `tests/hidden` FP). *(area: review)*
+5. **[P1 · docs/cli]** Sync `docs/cli.md` and README with the real CLI (positional `mem add`; ticket/board as not implemented; bench compare flags). *(area: docs)*
+6. **[P1 · visual]** Top-level `skipped=true` if all screens skip; do not report “clean” PASS with `skipped:false`. *(area: verify/visual)*
+7. **[P2 · bench]** Honor `bench.default_agent`; accept `--agent` on `bench compare` (or document only `--fake`/JSONL). *(area: bench)*
+8. **[P2 · graph]** Improve TS path-alias / workspace import resolution for cross-package callers/impact. *(area: graph)*
+9. **[P2 · workflow]** “Done” checklist (clean Scope + verify + native typecheck/lint + clean drift) to push task completeness. *(area: router/verify — aligned with A/B completeness finding)*
+10. **[P3 · ux]** Under `--json`, do not print Cobra Usage; less aggressive config permissions than `0600` when the vault has no secrets. *(area: cli/config)*
 
-## Métricas
+## Metrics
 
-| métrica | valor |
-|---------|-------|
-| Wall time somado dos comandos cronometrados (tb + checks nativos no log) | ~49 s |
-| Invocações tb (aprox., incluindo probes de issues conhecidas) | ~45–55 |
-| Falhas / exits ≠ 0 do tb observados | drift/review com drift; guard+verify em paths protegidos; bench sem agent; compare `--agent`; impact/deps/callers mal invocados; visual sem skip; `mem add` flags docs; `ticket` inexistente |
-| Falhas “de produto” vs uso | maioria esperada pelos bugs conhecidos; graph callers incompleto e verify PASS sem hidden/typecheck são os mais graves para agente |
-| Graph rebuild | ~1.05 s / 4452 nós / 18465 arestas |
-| Verify (vitest math, tarefa OK) | ~2.9 s, PASS |
-| Vitest math nativo | ~2.8 s, 64 tests PASS |
-| `tsc` (tarefa OK) | ~13.6 s, PASS |
+| metric | value |
+|--------|-------|
+| Summed wall time of timed commands (tb + native checks in the log) | ~49 s |
+| tb invocations (approx., including known-issue probes) | ~45–55 |
+| Observed tb failures / exits ≠ 0 | drift/review with drift; guard+verify on protected paths; bench without agent; compare `--agent`; poorly invoked impact/deps/callers; visual without skip; docs `mem add` flags; nonexistent `ticket` |
+| “Product” vs usage failures | mostly expected from known bugs; incomplete graph callers and verify PASS without hidden/typecheck are the most serious for an agent |
+| Graph rebuild | ~1.05 s / 4452 nodes / 18465 edges |
+| Verify (vitest math, task OK) | ~2.9 s, PASS |
+| Native vitest math | ~2.8 s, 64 tests PASS |
+| `tsc` (task OK) | ~13.6 s, PASS |
 | MCP `tools/list` | ~0.007 s, OK |
-| Bench fake (no repo toolbelt, 9 tasks × 1) | ~4.0 s, sucesso 33.3% (baseline do fake, não do Excalidraw) |
+| Fake bench (on toolbelt repo, 9 tasks × 1) | ~4.0 s, 33.3% success (fake baseline, not Excalidraw) |
 
-**Nota metodológica:** a “completude” da tarefa foi atingida pelo agente consultando a instrumentação nativa do Excalidraw; o tb sozinho (init → verify com `test_cmd` Vitest) teria declarado PASS mesmo com typecheck quebrado e sem lint — alinhado ao problema conhecido de não empurrar o agente a fechar a tarefa inteira.
+**Methodological note:** task “completeness” was reached by the agent consulting Excalidraw’s native instrumentation; tb alone (init → verify with Vitest `test_cmd`) would have declared PASS even with broken typecheck and without lint — aligned with the known problem of not pushing the agent to close the whole task.

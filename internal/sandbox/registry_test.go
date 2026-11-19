@@ -108,8 +108,8 @@ func waitFile(t *testing.T, path string) int {
 	return 0
 }
 
-// Finding 3: agente A entra no pgid do agente B (setpgid) para se esconder da
-// varredura. Antes: o órfão em grupo de agente vivo era sempre ignorado.
+// Finding 3: agent A joins agent B's pgid (setpgid) to hide from the sweep.
+// Before: an orphan in a live agent group was always ignored.
 func TestRegistryOrphanJoinedForeignLiveGroupIsEscape(t *testing.T) {
 	release, ok := AcquireSubreaper()
 	if !ok {
@@ -149,8 +149,8 @@ i=0; while [ ! -s ` + escPid + ` ] && [ $i -lt 500 ]; do sleep 0.01; i=$((i+1));
 	}
 }
 
-// Descendente legítimo do próprio agente (mesmo dono) reparentado ao router com o
-// líder ainda vivo NÃO é escape; sem TB_TICKET_ID (env -u) é suspeito.
+// A legitimate descendant of the agent itself (same owner) reparented to the
+// router while the leader is alive is NOT an escape; without TB_TICKET_ID (env -u) it is suspect.
 func TestRegistryOwnGroupOrphanOwnerCheck(t *testing.T) {
 	release, ok := AcquireSubreaper()
 	if !ok {
@@ -158,7 +158,7 @@ func TestRegistryOwnGroupOrphanOwnerCheck(t *testing.T) {
 	}
 	defer release()
 	reg := ownedRegistry()
-	// varredura NO MEIO da execução (como o tick do watchdog): o líder segue vivo
+	// sweep in the MIDDLE of execution (like the watchdog tick): the leader is still alive
 	midRun := func(script string) []Orphan {
 		done := make(chan struct{})
 		go func() {
@@ -179,7 +179,7 @@ func TestRegistryOwnGroupOrphanOwnerCheck(t *testing.T) {
 	}
 }
 
-// Finding 4: órfão nascido dentro de uma janela de spawn vem marcado; fora dela não.
+// Finding 4: an orphan born inside a spawn window is flagged; outside it, not.
 func TestRegistrySpawnWindowMarksOrphan(t *testing.T) {
 	release, ok := AcquireSubreaper()
 	if !ok {
@@ -200,7 +200,7 @@ func TestRegistrySpawnWindowMarksOrphan(t *testing.T) {
 	end()
 	in := reg.Sweep()
 	time.Sleep(100 * time.Millisecond)
-	daemon() // fora da janela
+	daemon() // outside the window
 	out := reg.Sweep()
 	if len(in) != 1 || !in[0].InSpawnWindow || in[0].Start == 0 {
 		t.Fatalf("dentro da janela: %+v", in)
@@ -210,7 +210,7 @@ func TestRegistrySpawnWindowMarksOrphan(t *testing.T) {
 	}
 }
 
-// Finding 5: Sweep nunca espera por um filho rastreado e lento (sem lock global).
+// Finding 5: Sweep never waits for a slow tracked child (no global lock).
 func TestRegistrySweepDoesNotBlockOnSlowTrackedChild(t *testing.T) {
 	reg := NewRegistry()
 	done := make(chan error, 1)
@@ -228,7 +228,7 @@ func TestRegistrySweepDoesNotBlockOnSlowTrackedChild(t *testing.T) {
 	}
 }
 
-// Finding 6: o registro de grupos não acumula entradas.
+// Finding 6: the group registry does not accumulate entries.
 func TestRegistryGroupsArePruned(t *testing.T) {
 	release, ok := AcquireSubreaper()
 	if !ok {

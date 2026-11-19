@@ -1,170 +1,170 @@
-🇧🇷 Português | [🇺🇸 English](../../en/campo/rodada2/mcp-python-sdk.md)
+🇺🇸 English | [🇧🇷 Português](../../pt-BR/campo/rodada2/mcp-python-sdk.md)
 
-# Estudo de campo rodada 2: modelcontextprotocol/python-sdk
+# Field study round 2: modelcontextprotocol/python-sdk
 
-Estudo realizado em 2026-11-16 com `tb` buildado de `main` atual (`make build` → `toolbelt a46c295`). Alvo só em clone local (`/tmp/python-sdk` e cópia `/tmp/target`); sem push, issue, PR ou comentário no upstream.
+Study conducted on 2026-11-16 with `tb` built from current `main` (`make build` → `toolbelt a46c295`). Target only on a local clone (`/tmp/python-sdk` and a copy `/tmp/target`); no push, issue, PR, or comment upstream.
 
-## Repositório
+## Repository
 
-| Campo | Valor |
+| Field | Value |
 |-------|--------|
-| Nome | [modelcontextprotocol/python-sdk](https://github.com/modelcontextprotocol/python-sdk) |
-| Linguagem | Python 3.11+ (SDK MCP; pacote `mcp`) |
-| Tamanho | ~25 MiB shallow clone; ~303 MiB com `.venv`; ~420 `.py` em `src/`+`tests/` |
-| Commit base do clone | `77001c9` (`main` shallow) |
-| Grupo | Com instrumentação AI existente |
-| Instrumentação AI | `AGENTS.md` (166 linhas), `CLAUDE.md` (`@AGENTS.md`), `.claude/commands/`, `.claude/skills/test-quality/`, workflow Claude |
-| Toolchain | **Sim, parcial.** `uv 0.13.8` + `uv sync --frozen` (Python 3.12). Rodados: pytest alvo, `ruff check` nos arquivos tocados, `compileall` pontual. **Não rodados:** `./scripts/test` completo, `pyright` full, docs/`zensical`, matrix 3.11–3.15. |
+| Name | [modelcontextprotocol/python-sdk](https://github.com/modelcontextprotocol/python-sdk) |
+| Language | Python 3.11+ (MCP SDK; `mcp` package) |
+| Size | ~25 MiB shallow clone; ~303 MiB with `.venv`; ~420 `.py` under `src/`+`tests/` |
+| Clone base commit | `77001c9` (`main` shallow) |
+| Group | With existing AI instrumentation |
+| AI instrumentation | `AGENTS.md` (166 lines), `CLAUDE.md` (`@AGENTS.md`), `.claude/commands/`, `.claude/skills/test-quality/`, Claude workflow |
+| Toolchain | **Yes, partial.** `uv 0.13.8` + `uv sync --frozen` (Python 3.12). Run: targeted pytest, `ruff check` on touched files, spot `compileall`. **Not run:** full `./scripts/test`, full `pyright`, docs/`zensical`, matrix 3.11–3.15. |
 
-## Tarefa escolhida
+## Chosen task
 
-| Campo | Valor |
+| Field | Value |
 |-------|--------|
-| O quê | Em `get_display_name` (`src/mcp/shared/metadata_utils.py`), tratar `title` (e `annotations.title`) em branco como ausente, caindo para o próximo nível / `name`; testes em `tests/shared/test_metadata_utils.py` |
-| Por quê | Bug/UX de cliente pequeno, testável, fora do hot path de transporte; plausível para maintainer; exercício diferente da rodada 1 |
-| Issue | Nenhuma (mudança local; sem interação com upstream) |
-| Completada? | **Sim, localmente** (branch `campo2-local-display-name`, commit `036fec8`). Não enviada ao upstream. |
-| Native test/lint/build | `uv run --frozen pytest tests/shared/test_metadata_utils.py tests/server/mcpserver/test_title.py -q` → **10 passed**; `ruff check` nos tocados → OK; `compileall` do módulo → OK. Suite completa / pyright **não** executados. |
-| Rodada 1 (comparação) | Default `StdioServerParameters.encoding_error_handler`: `"strict"` → `"replace"` (issue #2454) |
+| What | In `get_display_name` (`src/mcp/shared/metadata_utils.py`), treat blank `title` (and `annotations.title`) as absent, falling through to the next level / `name`; tests in `tests/shared/test_metadata_utils.py` |
+| Why | Small client bug/UX, testable, off the transport hot path; maintainer-plausible; different exercise from round 1 |
+| Issue | None (local change; no upstream interaction) |
+| Completed? | **Yes, locally** (branch `campo2-local-display-name`, commit `036fec8`). Not sent upstream. |
+| Native test/lint/build | `uv run --frozen pytest tests/shared/test_metadata_utils.py tests/server/mcpserver/test_title.py -q` → **10 passed**; `ruff check` on touched files → OK; module `compileall` → OK. Full suite / pyright **not** run. |
+| Round 1 (comparison) | Default `StdioServerParameters.encoding_error_handler`: `"strict"` → `"replace"` (issue #2454) |
 
-## Verificação das 12 correções
+## Verification of the 12 fixes
 
-| # | Correção | Resultado | Evidência |
-|---|----------|-----------|-----------|
-| 1 | graph SkipDirs na raiz do walk | **funcionou** | `tb graph --enable rebuild` em `/tmp/target` → **16521 nós / 63000 arestas** (~2,1 s). Na rodada 1 o mesmo path dava 0 nós. |
-| 2 | verify `hidden_test_cmd` sem `tests/hidden/` | **funcionou** | Sem dir `tests/hidden/`, com `hidden_test_cmd: uv run --frozen ruff check …` → `"hidden_available": true`, `"hidden_passed": true`, verdict PASS. |
-| 3 | guard `--strict --json` exit ≠ 0 | **funcionou** | Toque em path protegido + `--strict --json` → JSON com violation e **EXIT 1**. |
-| 4 | guard lê `protected_paths` de `guard.yaml` | **funcionou** | `.toolbelt/guard.yaml` com `src/mcp/shared/metadata_utils.py` → `protected_path` + EXIT 1 sob `--strict --json`. |
-| 5 | init detecção de toolchain | **funcionou** | `tb init` → `verify.test_cmd: uv run pytest` (não mais `go test`). `hidden_test_cmd` veio vazio. |
-| 6 | review `tests/hidden` por path | **funcionou** | Ticket só citando `tests/hidden/**` → findings=[]; commit real em `tests/hidden/probe.py` → finding critical da invariante. |
-| 7 | bench `default_agent` e `compare --agent` | **funcionou** | `bench.default_agent: true {prompt}` → `tb bench run` sem `--agent/--fake` OK; sem default → erro obrigatório; `tb bench compare … --agent 'true {prompt}'` OK. |
-| 8 | review `## Scope`/`## Escopo`, listas MD e `**` | **funcionou** | Ticket `## Escopo` + bullets → drift/review limpos (sem “sem scope declarado”). Frontmatter `src/mcp/shared/**/*.py` também aceito. |
-| 9 | verify `build_cmd` e `lint_cmd` | **funcionou** | Verify final: `build_ran/passed` e `lint_ran/passed` true antes dos testes. |
-| 10 | init lê AGENTS.md/CLAUDE.md e `--write-agents` | **funcionou** | Init logou sources + hints (`uv run --frozen …`); gravou `.toolbelt/agent_docs.yaml`. Em dir vazio, `--write-agents` semeou `AGENTS.md` sem clobber. |
-| 11 | graph Python `calls` | **funcionou** | Stats: **19400** `edges_calls` (rodada 1: 100). `callers --function get_display_name` e `impact --file …/metadata_utils.py` listaram callers reais. |
-| 12 | verify visual skipped agregado + docs CLI | **funcionou (parcial)** | Manifesto ausente → `skipped: true`. Telas com ref ausente → top-level `skipped: true` + `skip_reason: todas as telas foram skipped`. **Ainda:** `screens: []` → `skipped: false`, `screens: null`. Docs: `hidden_test_cmd` alinhado; `tb ticket` marcado “Não implementado”, mas exemplos longos de `tb ticket`/`mem add --type` ainda aparecem. |
+| # | Fix | Result | Evidence |
+|---|-----|--------|----------|
+| 1 | graph SkipDirs at walk root | **worked** | `tb graph --enable rebuild` under `/tmp/target` → **16521 nodes / 63000 edges** (~2.1 s). In round 1 the same path gave 0 nodes. |
+| 2 | verify `hidden_test_cmd` without `tests/hidden/` | **worked** | No `tests/hidden/` dir, with `hidden_test_cmd: uv run --frozen ruff check …` → `"hidden_available": true`, `"hidden_passed": true`, verdict PASS. |
+| 3 | guard `--strict --json` exit ≠ 0 | **worked** | Touch of a protected path + `--strict --json` → JSON with violation and **EXIT 1**. |
+| 4 | guard reads `protected_paths` from `guard.yaml` | **worked** | `.toolbelt/guard.yaml` with `src/mcp/shared/metadata_utils.py` → `protected_path` + EXIT 1 under `--strict --json`. |
+| 5 | init toolchain detection | **worked** | `tb init` → `verify.test_cmd: uv run pytest` (no longer `go test`). `hidden_test_cmd` came empty. |
+| 6 | review `tests/hidden` by path | **worked** | Ticket only citing `tests/hidden/**` → findings=[]; real commit under `tests/hidden/probe.py` → critical invariant finding. |
+| 7 | bench `default_agent` and `compare --agent` | **worked** | `bench.default_agent: true {prompt}` → `tb bench run` without `--agent/--fake` OK; without default → required error; `tb bench compare … --agent 'true {prompt}'` OK. |
+| 8 | review `## Scope`/`## Escopo`, MD lists and `**` | **worked** | Ticket `## Escopo` + bullets → clean drift/review (no “no scope declared”). Frontmatter `src/mcp/shared/**/*.py` also accepted. |
+| 9 | verify `build_cmd` and `lint_cmd` | **worked** | Final verify: `build_ran/passed` and `lint_ran/passed` true before tests. |
+| 10 | init reads AGENTS.md/CLAUDE.md and `--write-agents` | **worked** | Init logged sources + hints (`uv run --frozen …`); wrote `.toolbelt/agent_docs.yaml`. In an empty dir, `--write-agents` seeded `AGENTS.md` without clobber. |
+| 11 | graph Python `calls` | **worked** | Stats: **19400** `edges_calls` (round 1: 100). `callers --function get_display_name` and `impact --file …/metadata_utils.py` listed real callers. |
+| 12 | aggregated visual skipped + CLI docs | **worked (partial)** | Missing manifest → `skipped: true`. Screens with missing refs → top-level `skipped: true` + `skip_reason: todas as telas foram skipped`. **Still:** `screens: []` → `skipped: false`, `screens: null`. Docs: `hidden_test_cmd` aligned; `tb ticket` marked “Não implementado”, but long `tb ticket`/`mem add --type` examples still appear. |
 
-## Uso do tb por comando
+## tb usage by command
 
-| comando | resultado | ajudou/atrapalhou/neutro | evidência |
-|---------|-----------|--------------------------|-----------|
-| `tb init` | OK; detectou uv/pytest; leu AGENTS/CLAUDE | ajudou | Wall ~0,006 s. `test_cmd=uv run pytest` (sem `--frozen` exigido pelo AGENTS). Config mode 0600. |
-| `tb init --write-agents` | OK em repo sem AGENTS | ajudou | Semear `/tmp/noagents/AGENTS.md`; no python-sdk não sobrescreveu. |
-| `tb version` | `a46c295` com `make build` | neutro | Sem ldflags ainda mostra `unknown` (não retestado neste ciclo). |
-| `tb mem init/list/add/check` | OK; 3 anti-cheat defaults | neutro | Não importa regras do AGENTS.md para o vault; só template genérico. |
-| `tb graph rebuild` `/tmp/target` | 16521 nós | ajudou | Confirma fix SkipDirs. |
-| `tb graph rebuild` `/tmp/python-sdk` | 16541 nós / 63030 arestas | ajudou | ~2,0 s. |
-| `tb graph search/callers/impact/deps` | search + callers + impact úteis; deps = `mcp_types` | ajudou | Calls Python viabilizam navegação da tarefa. |
-| Ticket `## Escopo` + `**` | drift/review OK | ajudou | Diferente da rodada 1 (parser quebrado). |
-| `tb verify run` (build+lint+test+hidden) | PASS; hidden rodou sem dir | ajudou | ~1,7 s no caminho feliz. |
-| `tb verify --ruler visual` | skip agregado OK; `screens: []` ainda `skipped:false` | neutro/atrapalhou | Caso vazio continua mentiroso. |
-| `tb review` / `tb drift` | PASS no fix com frontmatter ou `## Escopo` | ajudou | Fresh_context true; findings=[]. |
-| `tb guard check` | OK no fix; honra `guard.yaml` | ajudou | Strict+JSON exit 1 com violation. |
-| `tb bench run/compare` | default_agent + `--agent` no compare | ajudou | Fixtures do toolbelt; repo alvo sem `bench/tasks`. |
-| `tb mcp` | tools/list + `tb_version` + `tb_graph_search` OK | ajudou | Com `TB_GRAPH=on`, search achou `get_display_name`. |
+| command | result | helped / hindered / neutral | evidence |
+|---------|--------|-----------------------------|----------|
+| `tb init` | OK; detected uv/pytest; read AGENTS/CLAUDE | helped | Wall ~0.006 s. `test_cmd=uv run pytest` (without `--frozen` required by AGENTS). Config mode 0600. |
+| `tb init --write-agents` | OK in a repo without AGENTS | helped | Seeded `/tmp/noagents/AGENTS.md`; on python-sdk did not overwrite. |
+| `tb version` | `a46c295` with `make build` | neutral | Without ldflags still shows `unknown` (not retested this cycle). |
+| `tb mem init/list/add/check` | OK; 3 anti-cheat defaults | neutral | Does not import AGENTS.md rules into the vault; only a generic template. |
+| `tb graph rebuild` `/tmp/target` | 16521 nodes | helped | Confirms SkipDirs fix. |
+| `tb graph rebuild` `/tmp/python-sdk` | 16541 nodes / 63030 edges | helped | ~2.0 s. |
+| `tb graph search/callers/impact/deps` | useful search + callers + impact; deps = `mcp_types` | helped | Python calls enable navigating the task. |
+| Ticket `## Escopo` + `**` | drift/review OK | helped | Different from round 1 (broken parser). |
+| `tb verify run` (build+lint+test+hidden) | PASS; hidden ran without dir | helped | ~1.7 s on the happy path. |
+| `tb verify --ruler visual` | aggregated skip OK; `screens: []` still `skipped:false` | neutral/hindered | Empty case still lying. |
+| `tb review` / `tb drift` | PASS on the fix with frontmatter or `## Escopo` | helped | Fresh_context true; findings=[]. |
+| `tb guard check` | OK on the fix; honors `guard.yaml` | helped | Strict+JSON exit 1 with violation. |
+| `tb bench run/compare` | default_agent + `--agent` on compare | helped | Toolbelt fixtures; target repo without `bench/tasks`. |
+| `tb mcp` | tools/list + `tb_version` + `tb_graph_search` OK | helped | With `TB_GRAPH=on`, search found `get_display_name`. |
 
-## Problemas que continuam
+## Problems that persist
 
-| problema (rodada 1) | status nesta rodada | evidência |
-|---------------------|---------------------|-----------|
-| Init não usa `--frozen` / checks do AGENTS | **continua (parcial)** | Lê hints em `agent_docs.yaml`, mas `verify.test_cmd` fica `uv run pytest` sem `--frozen`; não preenche lint/build/pyright/`./scripts/test`. |
-| mem defaults genéricos vs AGENTS | **continua** | `mem init` só anti-cheat Go-ish; não materializa regras uv-only / encoding= / coverage. |
-| Verify checks parciais / miss fora do cmd | **continua** | Syntax error em `examples/_campo_broken.py` + test_cmd estreito → verify PASS. |
-| Config files mode 0600 | **continua** | `stat` → `config.yaml` e `agent_docs.yaml` mode 600. |
-| Docs CLI com superfícies inventadas | **continua (reduzido)** | `tb ticket` agora “Não implementado”, mas blocos de exemplo e `mem add --type/--title` ainda presentes. |
-| Visual PASS enganoso | **continua (caso residual)** | `screens: []` → top-level `skipped: false`. |
-| Grafo off sem `TB_GRAPH`/`--enable` | **continua (by design)** | ADR-011; MCP search precisa do env. |
+| problem (round 1) | status this round | evidence |
+|-------------------|-------------------|----------|
+| Init does not use AGENTS `--frozen` / checks | **persists (partial)** | Reads hints in `agent_docs.yaml`, but `verify.test_cmd` stays `uv run pytest` without `--frozen`; does not fill lint/build/pyright/`./scripts/test`. |
+| Generic mem defaults vs AGENTS | **persists** | `mem init` only Go-ish anti-cheat; does not materialize uv-only / encoding= / coverage rules. |
+| Partial verify checks / miss outside cmd | **persists** | Syntax error in `examples/_campo_broken.py` + narrow test_cmd → verify PASS. |
+| Config files mode 0600 | **persists** | `stat` → `config.yaml` and `agent_docs.yaml` mode 600. |
+| CLI docs with invented surfaces | **persists (reduced)** | `tb ticket` now “Não implementado”, but example blocks and `mem add --type/--title` still present. |
+| Misleading visual PASS | **persists (residual case)** | `screens: []` → top-level `skipped: false`. |
+| Graph off without `TB_GRAPH`/`--enable` | **persists (by design)** | ADR-011; MCP search needs the env. |
 
-Problemas da rodada 1 **resolvidos** neste binário: SkipDirs/`/tmp/target`, `guard.yaml`, `--strict --json`, hidden sem dir, Scope markdown, default_agent, callers Python, leitura de AGENTS.md, build/lint cmds, FP de `tests/hidden` por substring.
+Round 1 problems **resolved** in this binary: SkipDirs/`/tmp/target`, `guard.yaml`, `--strict --json`, hidden without dir, Markdown Scope, default_agent, Python callers, AGENTS.md read, build/lint cmds, substring FP on `tests/hidden`.
 
-## Problemas novos
+## New problems
 
-### P2 — `screens: []` ainda reporta `skipped: false`
+### P2 — `screens: []` still reports `skipped: false`
 
-- **Repro:** `.toolbelt/screens.yaml` com `screens: []` + `tb verify run --ruler visual --skip-unavailable --json`
-- **Expected:** `skipped: true` (nada a avaliar)
+- **Repro:** `.toolbelt/screens.yaml` with `screens: []` + `tb verify run --ruler visual --skip-unavailable --json`
+- **Expected:** `skipped: true` (nothing to evaluate)
 - **Actual:** `"skipped": false`, `"screens": null`, verdict PASS
 
-### P2 — Init lê AGENTS.md mas não aplica ao harness
+### P2 — Init reads AGENTS.md but does not apply it to the harness
 
-- **Repro:** `tb init` no python-sdk → `agent_docs.yaml` com `uv run --frozen pytest` / ruff / pyright; `config.yaml` com `test_cmd: uv run pytest` e lint/build vazios
-- **Expected:** mapear hints para `verify.test_cmd` / `lint_cmd` / checklist ou avisar mismatch
-- **Actual:** dicas só no log/YAML auxiliar; agente ainda precisa reescrever verify à mão
+- **Repro:** `tb init` on python-sdk → `agent_docs.yaml` with `uv run --frozen pytest` / ruff / pyright; `config.yaml` with `test_cmd: uv run pytest` and empty lint/build
+- **Expected:** map hints to `verify.test_cmd` / `lint_cmd` / checklist or warn on mismatch
+- **Actual:** tips only in the log/auxiliary YAML; agent still must rewrite verify by hand
 
-### P3 — `hidden_test_cmd` default vazio após init Python
+### P3 — Empty default `hidden_test_cmd` after Python init
 
-- **Repro:** init em repo com `uv.lock` → `hidden_test_cmd: ""`
-- **Expected:** default útil (ex. ruff) ou documentar que hidden é opt-in explícito
-- **Actual:** campo vazio; hidden só roda se o agente configurar
+- **Repro:** init in a repo with `uv.lock` → `hidden_test_cmd: ""`
+- **Expected:** useful default (e.g. ruff) or document that hidden is explicit opt-in
+- **Actual:** empty field; hidden only runs if the agent configures it
 
-### P3 — Impacto lista callers de símbolo, não “arquivos afetados” de forma óbvia
+### P3 — Impact lists symbol callers, not “affected files” in an obvious way
 
-- **Repro:** `tb graph impact --file src/mcp/shared/metadata_utils.py` → funções que chamam `get_display_name` (útil), sem ranking de risco/teste sugerido
-- **Expected:** (melhoria) apontar testes/exemplos prioritários a partir do impact
-- **Actual:** lista crua; o agente ainda decide cobertura
+- **Repro:** `tb graph impact --file src/mcp/shared/metadata_utils.py` → functions that call `get_display_name` (useful), without suggested risk/test ranking
+- **Expected:** (improvement) point at priority tests/examples from impact
+- **Actual:** raw list; the agent still decides coverage
 
-## O que o tb pegou e o que deixou passar
+## What tb caught and what it let slip
 
-**Pegou**
+**Caught**
 
-- Escopo via `## Escopo` / frontmatter e globs `**`
-- Guard via `guard.yaml` + hardcoded + exit code strict/JSON
-- Build + lint + test + hidden (sem pasta `tests/hidden/`)
-- Callers/impact Python para `get_display_name`
-- Onboarding: descoberta de AGENTS/CLAUDE e seed `--write-agents`
-- Bench com `default_agent` e `compare --agent`
-- MCP graph search com grafo habilitado
+- Scope via `## Escopo` / frontmatter and `**` globs
+- Guard via `guard.yaml` + hardcoded + strict/JSON exit code
+- Build + lint + test + hidden (without a `tests/hidden/` folder)
+- Python callers/impact for `get_display_name`
+- Onboarding: discovery of AGENTS/CLAUDE and `--write-agents` seed
+- Bench with `default_agent` and `compare --agent`
+- MCP graph search with graph enabled
 
-**Deixou passar / não cobriu**
+**Let slip / did not cover**
 
-- `uv run` sem `--frozen` no default de init vs mandato do AGENTS.md
-- pyright / `./scripts/test` / cobertura 100% — não enfileirados
-- Erro de sintaxe fora dos cmds configurados → PASS
-- Manifesto visual vazio (`screens: []`) aparenta execução
-- Regras densas do AGENTS.md não viram invariantes `mem`
+- `uv run` without `--frozen` in the init default vs the AGENTS.md mandate
+- pyright / `./scripts/test` / 100% coverage — not queued
+- Syntax error outside configured cmds → PASS
+- Empty visual manifest (`screens: []`) looks like execution
+- Dense AGENTS.md rules do not become `mem` invariants
 
-## Interação com instrumentação existente / onboarding
+## Interaction with existing instrumentation / onboarding
 
-| Comportamento | Detalhe |
-|---------------|---------|
-| tb **lê** AGENTS.md/CLAUDE.md | `agent_docs.yaml` + log de hints (`uv run --frozen …`, ruff, pyright, coverage). |
-| tb **não aplica** automaticamente | `verify.*` não herda `--frozen` nem lint/typecheck; vault `mem` ignora o conteúdo. |
-| `--write-agents` | Só semeia se ausente; no python-sdk preservou o AGENTS maduro. |
-| Sobreposição | Anti-cheat `tests/hidden` do `mem init` ainda é genérico; skill `.claude/skills/test-quality/` não é indexada no vault. |
-| O que ainda falta no onboarding | (1) promover hints → `verify.test_cmd`/`lint_cmd`/`build_cmd`; (2) invariantes a partir de AGENTS (uv-only, encoding=); (3) apontar `scripts/test` e skill de qualidade. |
+| Behavior | Detail |
+|----------|--------|
+| tb **reads** AGENTS.md/CLAUDE.md | `agent_docs.yaml` + hints log (`uv run --frozen …`, ruff, pyright, coverage). |
+| tb **does not apply** automatically | `verify.*` does not inherit `--frozen` or lint/typecheck; `mem` vault ignores the content. |
+| `--write-agents` | Only seeds if absent; on python-sdk preserved the mature AGENTS. |
+| Overlap | `mem init` anti-cheat `tests/hidden` is still generic; skill `.claude/skills/test-quality/` is not indexed in the vault. |
+| What onboarding still lacks | (1) promote hints → `verify.test_cmd`/`lint_cmd`/`build_cmd`; (2) invariants from AGENTS (uv-only, encoding=); (3) point at `scripts/test` and the quality skill. |
 
-## Comparação com a rodada 1
+## Comparison with round 1
 
-| Aspecto | Rodada 1 (`c8aae04`) | Rodada 2 (`a46c295`) |
-|---------|----------------------|----------------------|
-| Grafo em `/tmp/target` | 0 nós | ~16k nós |
-| Calls Python | ~100; callers vazios | ~19k; callers/impact úteis |
-| Init | `go test`; ignora AGENTS | `uv run pytest`; lê AGENTS + `--write-agents` |
-| Scope markdown | quebrado sem frontmatter | `## Escopo` + `**` OK |
-| Hidden / guard.yaml / strict JSON / default_agent | falhavam | funcionam |
-| Visual skipped | `skipped:false` com refs skipped | agregado OK; residual `screens: []` |
-| Conclusão | tb atrapalhava onboarding Python | **melhor de forma concreta** nas 12 correções; lacuna principal agora é **aplicar** AGENTS ao harness, não só lê-lo |
+| Aspect | Round 1 (`c8aae04`) | Round 2 (`a46c295`) |
+|--------|---------------------|---------------------|
+| Graph under `/tmp/target` | 0 nodes | ~16k nodes |
+| Python calls | ~100; empty callers | ~19k; useful callers/impact |
+| Init | `go test`; ignores AGENTS | `uv run pytest`; reads AGENTS + `--write-agents` |
+| Markdown Scope | broken without frontmatter | `## Escopo` + `**` OK |
+| Hidden / guard.yaml / strict JSON / default_agent | failed | work |
+| Visual skipped | `skipped:false` with skipped refs | aggregation OK; residual `screens: []` |
+| Conclusion | tb hindered Python onboarding | **better in concrete ways** on the 12 fixes; main gap now is **apply** AGENTS to the harness, not only read it |
 
-## Sugestões de melhoria
+## Improvement suggestions
 
-1. **[P1][init/verify]** Ao detectar hints `uv run --frozen …` / ruff / pyright, preencher `verify.test_cmd`/`lint_cmd` (ou falhar init com diff esperado vs AGENTS).
-2. **[P1][mem]** Opcional: extrair invariantes de seções “FORBIDDEN”/mandatos do AGENTS.md.
-3. **[P2][verify/visual]** `screens: []` ou zero screens avaliáveis → `skipped: true`.
-4. **[P2][docs]** Remover ou isolar exemplos de `tb ticket` / `mem add --type` atrás de “planejado”, sem parecer CLI atual.
-5. **[P2][init]** Default `hidden_test_cmd` para Python (ex. `uv run --frozen ruff check .`) ou omitir o campo com doc clara.
-6. **[P3][config]** Revisar 0600 em monorepos; 0644 para YAML não secretos.
-7. **[P3][graph]** `impact` sugerir testes tocados / exemplos callers como checklist de verify.
+1. **[P1][init/verify]** When detecting `uv run --frozen …` / ruff / pyright hints, fill `verify.test_cmd`/`lint_cmd` (or fail init with expected diff vs AGENTS).  
+2. **[P1][mem]** Optional: extract invariants from AGENTS.md “FORBIDDEN”/mandate sections.  
+3. **[P2][verify/visual]** `screens: []` or zero evaluable screens → `skipped: true`.  
+4. **[P2][docs]** Remove or isolate `tb ticket` / `mem add --type` examples behind “planned”, without looking like current CLI.  
+5. **[P2][init]** Default Python `hidden_test_cmd` (e.g. `uv run --frozen ruff check .`) or omit the field with clear docs.  
+6. **[P3][config]** Review 0600 in monorepos; 0644 for non-secret YAML.  
+7. **[P3][graph]** `impact` suggest touched tests / caller examples as a verify checklist.
 
-## Métricas
+## Metrics
 
-| métrica | rodada 2 | rodada 1 (referência) |
-|---------|----------|------------------------|
-| Binário | `toolbelt a46c295` | `toolbelt c8aae04` |
-| Wall somado (amostras cronometradas, logs 1+2) | **~24,7 s** / 72 amostras | ~35,4 s / 70 |
-| Wall do reteste canônico (log 2, main atual) | **~9,7 s** / 25 amostras | — |
-| Falhas EXIT≠0 (todos os logs) | **9** (probes: write-agents antigo, bench flags, guard intencional, drift `**/*.py` no binário intermediário, etc.) | 25/70 |
-| Falhas no caminho feliz do fix (a46c295) | **0** (verify/review/drift/guard finais PASS) | poucas após frontmatter |
-| Maior WALL individual | **3,37 s** (pytest nativo inicial) / graph rebuild ~2,1 s | 9,96 s |
-| Verify final | **~1,7 s**, PASS, hidden+build+lint | 3,52 s |
-| Grafo útil | 16541 nós, 19400 calls | 16550 nós, 100 calls |
-| MCP smoke | tools/list + search OK | tools/list OK; search nulo em `/tmp/target` |
+| metric | round 2 | round 1 (reference) |
+|--------|---------|---------------------|
+| Binary | `toolbelt a46c295` | `toolbelt c8aae04` |
+| Summed wall (timed samples, logs 1+2) | **~24.7 s** / 72 samples | ~35.4 s / 70 |
+| Canonical retest wall (log 2, current main) | **~9.7 s** / 25 samples | — |
+| EXIT≠0 failures (all logs) | **9** (probes: old write-agents, bench flags, intentional guard, intermediate-binary `**/*.py` drift, etc.) | 25/70 |
+| Failures on the fix happy path (a46c295) | **0** (final verify/review/drift/guard PASS) | few after frontmatter |
+| Largest individual WALL | **3.37 s** (initial native pytest) / graph rebuild ~2.1 s | 9.96 s |
+| Final verify | **~1.7 s**, PASS, hidden+build+lint | 3.52 s |
+| Useful graph | 16541 nodes, 19400 calls | 16550 nodes, 100 calls |
+| MCP smoke | tools/list + search OK | tools/list OK; null search under `/tmp/target` |

@@ -5,7 +5,6 @@ import (
 	"strings"
 )
 
-// cmdLexer é o estado do tokenizador de ParseCommand.
 type cmdLexer struct {
 	args    []string
 	cur     strings.Builder
@@ -22,7 +21,7 @@ func (l *cmdLexer) flush() {
 	}
 }
 
-// inSingleQuote trata um caractere dentro de aspas simples (tudo literal).
+// Inside single quotes every character is literal.
 func (l *cmdLexer) inSingleQuote(r rune) {
 	if r == '\'' {
 		l.quote = 0
@@ -31,7 +30,7 @@ func (l *cmdLexer) inSingleQuote(r rune) {
 	}
 }
 
-// inDoubleQuote trata um caractere dentro de aspas duplas (só \ escapa).
+// Inside double quotes only \ escapes.
 func (l *cmdLexer) inDoubleQuote(r rune) {
 	switch r {
 	case '"':
@@ -43,7 +42,6 @@ func (l *cmdLexer) inDoubleQuote(r rune) {
 	}
 }
 
-// bare trata um caractere fora de aspas e de escape.
 func (l *cmdLexer) bare(r rune) {
 	switch {
 	case r == '\\':
@@ -72,8 +70,8 @@ func (l *cmdLexer) step(r rune) {
 	}
 }
 
-// ParseCommand quebra uma linha de comando em argv (aspas simples/duplas e
-// barra invertida; sem expansão de shell).
+// ParseCommand handles single/double quotes and backslash escapes; there is
+// no shell expansion.
 func ParseCommand(s string) ([]string, error) {
 	var l cmdLexer
 	for _, r := range s {

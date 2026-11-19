@@ -1,139 +1,139 @@
-🇧🇷 Português | [🇺🇸 English](../en/campo/bat.md)
+🇺🇸 English | [🇧🇷 Português](../pt-BR/campo/bat.md)
 
-# Estudo de campo: sharkdp/bat
+# Field study: sharkdp/bat
 
-Grupo: **sem instrumentação de agente de IA**. Clone local em `/tmp/target/bat`. Nenhuma interação com o upstream (sem push/issue/PR/comentário). `tb` buildado deste repo (`make build` → `toolbelt c8aae04`).
+Group: **without AI agent instrumentation**. Local clone at `/tmp/target/bat`. No interaction with upstream (no push/issue/PR/comment). `tb` built from this repo (`make build` → `toolbelt c8aae04`).
 
-## Repositório
+## Repository
 
-| Campo | Valor |
+| Field | Value |
 |-------|-------|
-| Nome | [sharkdp/bat](https://github.com/sharkdp/bat) |
-| Linguagem | Rust (edition 2021, MSRV declarado `1.88`) |
-| Tamanho | shallow clone ~15–17 MiB código; ~77 arquivos `.rs` / ~21 515 LOC; `target/` local ~1,9 GiB após build |
-| HEAD estudado | `599c383` (merge #3837) + commit local de correção `af23f13` (somente no VM) |
-| Instrumentação AI existente | **Nenhuma** (`AGENTS.md`, `CLAUDE.md`, `.cursorrules`, instruções Copilot: ausentes) |
-| Toolchain | Rustup `stable` 1.100.0 (inicialmente 1.83.0 — insuficiente para MSRV); `cargo build --bins`, `cargo test` (integration), `cargo fmt`, `cargo clippy --bins` OK |
-| Não configurado | Submódulos de `assets/syntaxes/*` e temas **não** inicializados (checkout já traz assets pré-compilados `acknowledgements.bin` etc.; regeneração via `assets/create.sh` não foi necessária nem executada). Suite completa de syntax-tests / snapshots não foi rodada por tempo e dependências de assets. |
+| Name | [sharkdp/bat](https://github.com/sharkdp/bat) |
+| Language | Rust (edition 2021, declared MSRV `1.88`) |
+| Size | shallow clone ~15–17 MiB code; ~77 `.rs` files / ~21 515 LOC; local `target/` ~1.9 GiB after build |
+| HEAD studied | `599c383` (merge #3837) + local fix commit `af23f13` (VM only) |
+| Existing AI instrumentation | **None** (`AGENTS.md`, `CLAUDE.md`, `.cursorrules`, Copilot instructions: absent) |
+| Toolchain | Rustup `stable` 1.100.0 (initially 1.83.0 — insufficient for MSRV); `cargo build --bins`, `cargo test` (integration), `cargo fmt`, `cargo clippy --bins` OK |
+| Not configured | Submodules under `assets/syntaxes/*` and themes **not** initialized (checkout already brings precompiled assets `acknowledgements.bin` etc.; regeneration via `assets/create.sh` was neither needed nor run). Full syntax-tests / snapshots suite was not run due to time and asset dependencies. |
 
-## Tarefa escolhida
+## Chosen task
 
-| Campo | Valor |
+| Field | Value |
 |-------|-------|
-| O quê | Validar `--language` / `--map-syntax` mesmo com highlighting desligado (`--color=never` / pipe), falhando com `unknown syntax` e exit ≠ 0 |
-| Por quê | Bug real, escopo pequeno-médio, aceitável por maintainer, com caminho claro de teste de integração |
+| What | Validate `--language` / `--map-syntax` even with highlighting off (`--color=never` / pipe), failing with `unknown syntax` and exit ≠ 0 |
+| Why | Real bug, small-medium scope, maintainer-acceptable, with a clear integration test path |
 | Issue | https://github.com/sharkdp/bat/issues/4120 |
-| Completada? | **Sim** (localmente): `src/controller.rs` + validação espelhada em `src/printer.rs`, 2 testes em `tests/integration_tests.rs`, entrada no `CHANGELOG.md` |
-| Checks nativos | `cargo build --bins` OK; `cargo fmt -- --check` OK; `cargo clippy --bins -- -D warnings` OK; testes `unknown_language_errors_with_color_never` e `unknown_map_syntax_errors_with_color_never` OK; regressão `no_first_line_fallback_when_mapping_to_invalid_syntax` OK. Suite integration completa (~290 testes) **não** foi executada por completo. |
+| Completed? | **Yes** (locally): `src/controller.rs` + mirrored validation in `src/printer.rs`, 2 tests in `tests/integration_tests.rs`, entry in `CHANGELOG.md` |
+| Native checks | `cargo build --bins` OK; `cargo fmt -- --check` OK; `cargo clippy --bins -- -D warnings` OK; tests `unknown_language_errors_with_color_never` and `unknown_map_syntax_errors_with_color_never` OK; regression `no_first_line_fallback_when_mapping_to_invalid_syntax` OK. Full integration suite (~290 tests) was **not** fully executed. |
 
-Causa raiz: com `loop_through` (color never / pipe), `Controller` usa `SimplePrinter` e **pula** `get_syntax`, então nomes inválidos nunca são rejeitados.
+Root cause: with `loop_through` (color never / pipe), `Controller` uses `SimplePrinter` and **skips** `get_syntax`, so invalid names are never rejected.
 
-## Uso do tb por comando
+## tb usage by command
 
-| comando | resultado | ajudou/atrapalhou/neutro | evidência |
-|---------|-----------|--------------------------|-----------|
-| `tb version` | OK (`c8aae04` com `make build`) | neutro | 0,006 s; sem ldflags: `commit: unknown` / `built: unknown` |
-| `tb init` | OK; cria `.toolbelt/` | atrapalhou (parcial) | `verify.test_cmd: go test ./...` num repo Rust; sem `AGENTS.md`; dirs `vault/` e `bench/` vazios; `config.yaml` mode **600** |
-| `tb mem init/list/add/check` | OK | ajudou (parcial) | invariantes default Go-cêntricas (`tests/hidden/`, `thresholds.yaml`); `mem add` só aceita **posicional** (`--rule` → unknown flag); arquivos 600 |
-| `tb graph rebuild/stats/search` | OK com `--enable` / `TB_GRAPH=on` | ajudou | 2971 nós / 4323 arestas em 0,26 s; `search get_syntax` achou `src/assets.rs` |
-| `tb graph impact` | exige `--file`; com arquivo → saída vazia | atrapalhou | sem `--file`: exit 1; `--file src/printer.rs`: `(vazio)` — impacto inútil para guiar a mudança |
-| `tb graph callers/deps` | OK só com flags corretas | neutro | sem `--function`/`--file` falha; callers de `get_syntax` vazio; deps de `src/printer.rs` listou imports |
-| ticket + Scope (`rd.md`) | manual (não há `tb ticket`) | ajudou | frontmatter `base_commit`/`scope`/`forbidden`/`acceptance` consumido por drift/review |
-| `tb drift` | OK / detecta fora de escopo | ajudou | flagrou `rd.md` fora do scope; globs simples `src/*.rs` e `tests/**` funcionam; `src/**/*.rs` **não** |
-| `tb review` | OK / findings | misto | drift+aceite; FP de invariante `tests/hidden` quando o diff menciona a string; avisos de completeness mesmo com testes no diff |
-| `tb verify run` (tests) | PASS se `test_cmd` válido | misto | ignora `build_cmd`/`lint_cmd` do YAML; `hidden_test_cmd` só roda se existir dir `tests/hidden/`; com `test_cmd=true` PASS em commit que **não compila** |
-| `tb verify --ruler visual` | PASS com skip | atrapalhou | manifesto ausente: `skipped=true`; com telas sem referência: top-level **`skipped=false`** embora screen `skipped=true` |
-| `tb guard check` | OK | misto | não lê `.toolbelt/guard.yaml`; paths hardcoded (`thresholds.yaml` etc.); aborta `verify` ao tocar path protegido |
-| `tb bench run --fake` | OK | neutro | 9 tasks, 33,3 % sucesso, ~4 s; `default_agent` no YAML **ignorado** (exige `--agent`/`--fake`) |
-| `tb bench compare` | OK com `--fake` A/B | neutro | **não** tem `--agent` (`unknown flag`); A/B graph-off/on em mcp-smoke OK |
-| `tb mcp` | OK (stdio JSON-RPC) | ajudou | `tools/list` expôs version/echo/env/run/graph_*; stderr: `servidor MCP iniciado` |
+| command | result | helped/hindered/neutral | evidence |
+|---------|--------|-------------------------|----------|
+| `tb version` | OK (`c8aae04` with `make build`) | neutral | 0.006 s; without ldflags: `commit: unknown` / `built: unknown` |
+| `tb init` | OK; creates `.toolbelt/` | hindered (partial) | `verify.test_cmd: go test ./...` in a Rust repo; no `AGENTS.md`; empty `vault/` and `bench/` dirs; `config.yaml` mode **600** |
+| `tb mem init/list/add/check` | OK | helped (partial) | Go-centric default invariants (`tests/hidden/`, `thresholds.yaml`); `mem add` only accepts **positional** (`--rule` → unknown flag); files 600 |
+| `tb graph rebuild/stats/search` | OK with `--enable` / `TB_GRAPH=on` | helped | 2971 nodes / 4323 edges in 0.26 s; `search get_syntax` found `src/assets.rs` |
+| `tb graph impact` | requires `--file`; with file → empty output | hindered | without `--file`: exit 1; `--file src/printer.rs`: `(vazio)` — useless impact for guiding the change |
+| `tb graph callers/deps` | OK only with correct flags | neutral | without `--function`/`--file` fails; callers of `get_syntax` empty; deps of `src/printer.rs` listed imports |
+| ticket + Scope (`rd.md`) | manual (no `tb ticket`) | helped | frontmatter `base_commit`/`scope`/`forbidden`/`acceptance` consumed by drift/review |
+| `tb drift` | OK / detects out of scope | helped | flagged `rd.md` outside scope; simple globs `src/*.rs` and `tests/**` work; `src/**/*.rs` **does not** |
+| `tb review` | OK / findings | mixed | drift+acceptance; FP on `tests/hidden` invariant when the diff mentions the string; completeness warnings even with tests in the diff |
+| `tb verify run` (tests) | PASS if `test_cmd` valid | mixed | ignores YAML `build_cmd`/`lint_cmd`; `hidden_test_cmd` only runs if `tests/hidden/` dir exists; with `test_cmd=true` PASS on a commit that **does not compile** |
+| `tb verify --ruler visual` | PASS with skip | hindered | missing manifesto: `skipped=true`; with screens without reference: top-level **`skipped=false`** although screen `skipped=true` |
+| `tb guard check` | OK | mixed | does not read `.toolbelt/guard.yaml`; hardcoded paths (`thresholds.yaml` etc.); aborts `verify` when touching protected path |
+| `tb bench run --fake` | OK | neutral | 9 tasks, 33.3% success, ~4 s; YAML `default_agent` **ignored** (requires `--agent`/`--fake`) |
+| `tb bench compare` | OK with `--fake` A/B | neutral | **no** `--agent` (`unknown flag`); A/B graph-off/on on mcp-smoke OK |
+| `tb mcp` | OK (stdio JSON-RPC) | helped | `tools/list` exposed version/echo/env/run/graph_*; stderr: `servidor MCP iniciado` |
 
-## Problemas conhecidos
+## Known problems
 
-| problema | confirmado/refutado/não testado | evidência |
-|----------|----------------------------------|-----------|
-| `bench compare` lacks `--agent` | **confirmado** | `tb bench compare --agent x …` → `unknown flag: --agent` |
-| `guard.yaml` ignored | **confirmado** | `.toolbelt/guard.yaml` listando `CHANGELOG.md`/`src/controller.rs`; `guard check` → `violations: null` |
-| outdated CLI docs | **confirmado** | `docs/cli.md` documenta `tb run`, `tb proc`, `tb md`, `tb ticket`; `tb --help` real não os lista |
-| version shows `unknown` | **confirmado** (parcial) | `go build` sem ldflags: `commit: unknown`, `built: unknown` (versão `0.1.0-dev`); com `make build` mostra hash |
-| config files created 0600 | **confirmado** | `stat`: `.toolbelt/config.yaml` e `invariants.yaml` e `graph.json` → mode **600** |
-| visual ruler reports `skipped=false` when skipping | **confirmado** | com `screens.yaml` e ref ausente: JSON top-level `"skipped": false` enquanto screen tem `"skipped": true` |
-| `default_agent` ignored | **confirmado** | YAML `default_agent: echo-agent {prompt}`; `tb bench run` sem flags → `--agent ou --fake é obrigatório` |
-| guard aborts verify when diff touches hardcoded config path | **confirmado** | commit tocando `.toolbelt/thresholds.yaml` → verify `FAIL` iterações 0, violation `protected_path` |
-| default fake agent needs `--fake-config` | **refutado** | `tb bench run --fake … --task mcp-smoke` exit 0 **sem** `--fake-config`; path inválido em `--fake-config` também foi ignorado com sucesso |
-| `mem add` positional | **confirmado** | Usage: `tb mem add <regra>`; `--rule` → `unknown flag` |
-| Drift/Scope need literal paths (no globs) | **parcialmente refutado** | `src/*.rs`, `src/print*.rs`, `tests/**`, `CHANGELOG.*` OK; `src/**/*.rs` e `**/*.rs` **falham** (todos os `.rs` fora do scope) |
-| `graph impact` needs `--file` | **confirmado** | sem flag: `Error: --file é obrigatório` |
-| review false positives on the tests/hidden invariant | **confirmado** | com `rd.md` no diff contendo `tests/hidden/`: finding critical na invariante; sem essa string no diff: FP desaparece |
-| verify runs only partial checks and misses build errors | **confirmado** | `build_cmd`/`lint_cmd` no YAML não executados; commit com Rust inválido + `--test-cmd true` → **PASS**; `cargo build` nativo exit 101 |
-| tb does not push the agent toward completing the whole task | **confirmado** (qualitativo) | onboarding não gerou checklist/progress/`AGENTS.md` nem detectou `cargo test`/`clippy`; `review` só avisou completeness por substring no diff; CHANGELOG/testes vieram do CONTRIBUTING humano, não do tb |
+| problem | confirmed/refuted/not tested | evidence |
+|---------|------------------------------|----------|
+| `bench compare` lacks `--agent` | **confirmed** | `tb bench compare --agent x …` → `unknown flag: --agent` |
+| `guard.yaml` ignored | **confirmed** | `.toolbelt/guard.yaml` listing `CHANGELOG.md`/`src/controller.rs`; `guard check` → `violations: null` |
+| outdated CLI docs | **confirmed** | `docs/cli.md` documents `tb run`, `tb proc`, `tb md`, `tb ticket`; real `tb --help` does not list them |
+| version shows `unknown` | **confirmed** (partial) | `go build` without ldflags: `commit: unknown`, `built: unknown` (version `0.1.0-dev`); with `make build` shows hash |
+| config files created 0600 | **confirmed** | `stat`: `.toolbelt/config.yaml` and `invariants.yaml` and `graph.json` → mode **600** |
+| visual ruler reports `skipped=false` when skipping | **confirmed** | with `screens.yaml` and missing ref: JSON top-level `"skipped": false` while screen has `"skipped": true` |
+| `default_agent` ignored | **confirmed** | YAML `default_agent: echo-agent {prompt}`; `tb bench run` without flags → `--agent ou --fake é obrigatório` |
+| guard aborts verify when diff touches hardcoded config path | **confirmed** | commit touching `.toolbelt/thresholds.yaml` → verify `FAIL` iterations 0, violation `protected_path` |
+| default fake agent needs `--fake-config` | **refuted** | `tb bench run --fake … --task mcp-smoke` exit 0 **without** `--fake-config`; invalid path in `--fake-config` was also ignored successfully |
+| `mem add` positional | **confirmed** | Usage: `tb mem add <regra>`; `--rule` → `unknown flag` |
+| Drift/Scope need literal paths (no globs) | **partially refuted** | `src/*.rs`, `src/print*.rs`, `tests/**`, `CHANGELOG.*` OK; `src/**/*.rs` and `**/*.rs` **fail** (all `.rs` out of scope) |
+| `graph impact` needs `--file` | **confirmed** | without flag: `Error: --file é obrigatório` |
+| review false positives on the tests/hidden invariant | **confirmed** | with `rd.md` in the diff containing `tests/hidden/`: critical finding on the invariant; without that string in the diff: FP disappears |
+| verify runs only partial checks and misses build errors | **confirmed** | YAML `build_cmd`/`lint_cmd` not executed; commit with invalid Rust + `--test-cmd true` → **PASS**; native `cargo build` exit 101 |
+| tb does not push the agent toward completing the whole task | **confirmed** (qualitative) | onboarding did not generate checklist/progress/`AGENTS.md` nor detect `cargo test`/`clippy`; `review` only warned completeness by substring in the diff; CHANGELOG/tests came from human CONTRIBUTING, not from tb |
 
-## Problemas novos
+## New problems
 
-| sev | problema | repro | esperado | atual |
-|-----|----------|-------|----------|-------|
-| P1 | `tb init` assume Go em repo Rust | `tb init` em bat | detectar `Cargo.toml` → `cargo test` / `cargo clippy` | `verify.test_cmd: go test ./...` |
-| P1 | `hidden_test_cmd` CLI/config ignorado sem dir `tests/hidden/` | `tb verify run --hidden-test-cmd 'cargo test … basic'` | rodar comando oculto | `hidden_available: false`; nunca executa o cmd |
-| P2 | `graph impact` vazio em Rust | `tb graph impact --enable --file src/printer.rs` | callers/dependentes | `(vazio)` |
-| P2 | UX cobra flags sem hint no erro curto de deps/callers | `tb graph callers get_syntax` | aceitar posicional ou sugerir `--function` | exit 1 genérico |
-| P2 | Completeness do review é frágil (substring) | critérios de aceite com `--map-syntax` / “unchanged” | evidência via testes/changelog | warnings mesmo com testes adicionados |
-| P3 | `bench.default_agent` no schema sem efeito | setar no YAML e omitir CLI | usar default | erro obrigando `--agent`/`--fake` |
-| P3 | MCP `tools/list` inclui tools de graph mesmo com graph off (docs dizem sob demanda) | `tb mcp` sem `TB_GRAPH` | omitir ou anotar disabled | tools graph listadas; busca pode falhar depois |
+| sev | problem | repro | expected | actual |
+|-----|---------|-------|----------|--------|
+| P1 | `tb init` assumes Go in a Rust repo | `tb init` on bat | detect `Cargo.toml` → `cargo test` / `cargo clippy` | `verify.test_cmd: go test ./...` |
+| P1 | CLI/config `hidden_test_cmd` ignored without `tests/hidden/` dir | `tb verify run --hidden-test-cmd 'cargo test … basic'` | run hidden command | `hidden_available: false`; never executes the cmd |
+| P2 | empty `graph impact` in Rust | `tb graph impact --enable --file src/printer.rs` | callers/dependents | `(vazio)` |
+| P2 | cobra flags UX without hint in short deps/callers error | `tb graph callers get_syntax` | accept positional or suggest `--function` | generic exit 1 |
+| P2 | review completeness is fragile (substring) | acceptance criteria with `--map-syntax` / “unchanged” | evidence via tests/changelog | warnings even with tests added |
+| P3 | schema `bench.default_agent` has no effect | set in YAML and omit CLI | use default | error requiring `--agent`/`--fake` |
+| P3 | MCP `tools/list` includes graph tools even with graph off (docs say on demand) | `tb mcp` without `TB_GRAPH` | omit or annotate disabled | graph tools listed; search may fail later |
 
-## O que o tb pegou e o que deixou passar
+## What tb caught and what it let slip
 
-**Pegou**
-- Drift quando `rd.md` entrou no commit fora do Scope.
-- Guard em path hardcoded `.toolbelt/thresholds.yaml` (e abortou verify).
-- Review: avisos de critérios de aceite pouco evidentes no texto do diff.
-- Graph search localizou `get_syntax` / arquivos relacionados.
+**Caught**
+- Drift when `rd.md` entered the commit outside Scope.
+- Guard on hardcoded path `.toolbelt/thresholds.yaml` (and aborted verify).
+- Review: warnings about acceptance criteria poorly evidenced in the diff text.
+- Graph search located `get_syntax` / related files.
 
-**Deixou passar**
-- Erro de build Rust com `verify` configurado só com `test_cmd` (ou `true`).
-- `build_cmd` / `lint_cmd` declarados no config.
-- Path “protegido” via `guard.yaml` do usuário.
-- Impacto real de mudar `printer.rs`/`controller.rs` (impact vazio).
-- Não guiou CHANGELOG (exigência do CONTRIBUTING do bat) nem suite completa.
+**Let slip**
+- Rust build error with `verify` configured only with `test_cmd` (or `true`).
+- Declared `build_cmd` / `lint_cmd` in config.
+- User “protected” path via `guard.yaml`.
+- Real impact of changing `printer.rs`/`controller.rs` (empty impact).
+- Did not guide CHANGELOG (bat CONTRIBUTING requirement) nor full suite.
 
-**Nativo vs tb:** nativo (`build`/`fmt`/`clippy`/testes focados) validou a correção; tb verify só ecoou o `test_cmd` que eu configurei manualmente após corrigir o default Go.
+**Native vs tb:** native (`build`/`fmt`/`clippy`/focused tests) validated the fix; tb verify only echoed the `test_cmd` I configured manually after fixing the Go default.
 
-## Interação com instrumentação existente / onboarding
+## Interaction with existing instrumentation / onboarding
 
-Não havia instrumentação AI prévia. `tb init` + `tb mem init` a partir do zero geraram:
+There was no prior AI instrumentation. `tb init` + `tb mem init` from scratch generated:
 
-- `.toolbelt/config.yaml` (defaults sandbox/graph/bench/verify **Go**)
-- `.toolbelt/invariants.yaml` (anti-cheat genérico)
-- dirs vazios `vault/`, `bench/`, `logs/`
-- depois: `graph.json` (via rebuild), mais `guard.yaml`/`screens.yaml` criados manualmente no estudo
+- `.toolbelt/config.yaml` (sandbox/graph/bench/verify defaults **Go**)
+- `.toolbelt/invariants.yaml` (generic anti-cheat)
+- empty dirs `vault/`, `bench/`, `logs/`
+- later: `graph.json` (via rebuild), plus `guard.yaml`/`screens.yaml` created manually in the study
 
-**Ausente e sentido falta:** `AGENTS.md` / skills do repo; detecção automática de `cargo test`/`clippy`/`fmt`; progress log / feature list no estilo harness; ticket CLI (`tb ticket`); seed de `bench/tasks` locais; documentação curta “como operar neste repo”.
+**Absent and missed:** repo `AGENTS.md` / skills; automatic detection of `cargo test`/`clippy`/`fmt`; progress log / feature list in harness style; ticket CLI (`tb ticket`); seed of local `bench/tasks`; short “how to operate in this repo” documentation.
 
-Qualidade do bootstrap: **baixa para Rust sem AI files** — o agente precisa sobrescrever quase todo o verify e ignorar invariantes irrelevantes.
+Bootstrap quality: **low for Rust without AI files** — the agent needs to overwrite almost all of verify and ignore irrelevant invariants.
 
-## Sugestões de melhoria
+## Improvement suggestions
 
-1. **[P0 · init/verify]** Detectar toolchain (`Cargo.toml`, `go.mod`, `package.json`) e preencher `test_cmd`/`build_cmd`/`lint_cmd`; falhar alto se default Go em repo não-Go.  
-2. **[P0 · verify]** Executar `build_cmd` e `lint_cmd` no loop (ou pelo menos no veredicto final); não dar PASS só com `test_cmd`.  
-3. **[P1 · verify]** Honrar `--hidden-test-cmd` / config mesmo sem diretório `tests/hidden/`.  
-4. **[P1 · guard]** Carregar `.toolbelt/guard.yaml` (ou documentar que é morto e remover).  
-5. **[P1 · bench]** Usar `bench.default_agent` quando `--agent` omitido; adicionar `--agent` em `bench compare` A/B.  
-6. **[P1 · onboarding]** Gerar `AGENTS.md` mínimo + progress/checklist a partir do ticket; empurrar aceite (testes + changelog se o repo exigir).  
-7. **[P2 · review]** Matching de invariantes por path/glob, não substring no diff (evita FP com `tests/hidden` no texto do ticket).  
-8. **[P2 · visual]** Se qualquer screen for skip, `report.skipped=true` (ou `partial_skip`).  
-9. **[P2 · graph]** Impact/callers úteis em Rust; aceitar posicionais ou erros acionáveis.  
-10. **[P3 · config]** Permissões 0644 para YAML não-secretos; alinhar `docs/cli.md` ao Cobra real; ldflags/`version` consistentes no README.
+1. **[P0 · init/verify]** Detect toolchain (`Cargo.toml`, `go.mod`, `package.json`) and fill `test_cmd`/`build_cmd`/`lint_cmd`; fail loudly if Go default in a non-Go repo.  
+2. **[P0 · verify]** Run `build_cmd` and `lint_cmd` in the loop (or at least in the final verdict); do not PASS on `test_cmd` alone.  
+3. **[P1 · verify]** Honor `--hidden-test-cmd` / config even without a `tests/hidden/` directory.  
+4. **[P1 · guard]** Load `.toolbelt/guard.yaml` (or document that it is dead and remove it).  
+5. **[P1 · bench]** Use `bench.default_agent` when `--agent` is omitted; add `--agent` to `bench compare` A/B.  
+6. **[P1 · onboarding]** Generate minimal `AGENTS.md` + progress/checklist from the ticket; push acceptance (tests + changelog if the repo requires it).  
+7. **[P2 · review]** Match invariants by path/glob, not substring in the diff (avoids FP with `tests/hidden` in the ticket text).  
+8. **[P2 · visual]** If any screen is skipped, `report.skipped=true` (or `partial_skip`).  
+9. **[P2 · graph]** Useful impact/callers in Rust; accept positionals or actionable errors.  
+10. **[P3 · config]** 0644 permissions for non-secret YAML; align `docs/cli.md` with real Cobra; consistent ldflags/`version` in the README.
 
-## Métricas
+## Metrics
 
-| métrica | valor |
-|---------|-------|
-| Wall time aproximado do estudo | ~25–35 min (upgrade Rust + build bat + fluxo tb + testes focados); soma instrumentada de comandos ~22 s |
-| Invocações `tb-*` registradas | **52** |
-| Falhas `tb-*` (exit ≠ 0) | **13** (várias intencionais: flags ausentes, drift/review, guard abort, compare `--agent`) |
-| Soma tempos `tb-*` | **~7,0 s** |
-| Build inicial bat | ~30,6 s |
-| `tb graph rebuild` | 0,26 s (2971 nós) |
-| `tb bench run --fake` (9 tasks) | ~4,0 s |
-| MCP `tools/list` | ~0,006 s |
+| metric | value |
+|--------|-------|
+| Approximate study wall time | ~25–35 min (Rust upgrade + bat build + tb flow + focused tests); instrumented command sum ~22 s |
+| Recorded `tb-*` invocations | **52** |
+| `tb-*` failures (exit ≠ 0) | **13** (several intentional: missing flags, drift/review, guard abort, compare `--agent`) |
+| Sum of `tb-*` times | **~7.0 s** |
+| Initial bat build | ~30.6 s |
+| `tb graph rebuild` | 0.26 s (2971 nodes) |
+| `tb bench run --fake` (9 tasks) | ~4.0 s |
+| MCP `tools/list` | ~0.006 s |
 
-Artefatos locais do estudo (somente VM): `/tmp/campo-bat/metrics.tsv`, JSONs de verify/review/drift, clone `/tmp/target/bat` (não empurrado).
+Local study artifacts (VM only): `/tmp/campo-bat/metrics.tsv`, verify/review/drift JSONs, clone `/tmp/target/bat` (not pushed).

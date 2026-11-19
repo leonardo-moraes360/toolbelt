@@ -1,175 +1,175 @@
-🇧🇷 Português | [🇺🇸 English](../../en/campo/rodada2/click.md)
+🇺🇸 English | [🇧🇷 Português](../../pt-BR/campo/rodada2/click.md)
 
-# Estudo de campo (rodada 2): pallets/click
+# Field study (round 2): pallets/click
 
-Grupo: **without existing AI-agent instrumentation**.  
-Binário `tb`: `go build -o /tmp/tb ./cmd/tb` a partir de `main` (`a46c295` local após pull).  
-Clone alvo: `/tmp/click-campo2` (shallow de https://github.com/pallets/click).  
-Nenhuma interação com o remoto do Click (sem push/issue/PR/comentário).  
-Evidências: `/tmp/tb-campo2-click-evidence.log`.
+Group: **without existing AI-agent instrumentation**.  
+`tb` binary: `go build -o /tmp/tb ./cmd/tb` from `main` (`a46c295` local after pull).  
+Target clone: `/tmp/click-campo2` (shallow from https://github.com/pallets/click).  
+No interaction with the Click remote (no push/issue/PR/comment).  
+Evidence: `/tmp/tb-campo2-click-evidence.log`.
 
-## Repositório
+## Repository
 
-| Campo | Valor |
+| Field | Value |
 |-------|--------|
-| Nome | pallets/click |
-| Linguagem | Python (≥3.11), pacote `click` |
-| Tamanho | shallow ~12M sem `.venv`; ~208M com deps; 76 `.py` em `src/`+`tests/`; ~12.8k LOC em `src/` |
-| Instrumentação AI existente | Nenhuma (`AGENTS.md`/`CLAUDE.md`/`.cursorrules`/copilot/aider ausentes no clone) |
-| Toolchain | **Sim, parcial**: `uv` + venv, `uv sync` (groups `tests`/`typing`/`dev`), `pytest` 9.0.2, `ruff` 0.15.9, `mypy` 1.20.0; instalei `less` (faltava). **Não configurei**: Sphinx/docs, tox matrix completa, pre-commit hooks em CI local, pyright suite completa. Baseline: `2626 passed, 24 skipped, 1 xfailed`; após o patch: `2627 passed`. |
+| Name | pallets/click |
+| Language | Python (≥3.11), `click` package |
+| Size | shallow ~12M without `.venv`; ~208M with deps; 76 `.py` under `src/`+`tests/`; ~12.8k LOC in `src/` |
+| Existing AI instrumentation | None (`AGENTS.md`/`CLAUDE.md`/`.cursorrules`/copilot/aider absent in the clone) |
+| Toolchain | **Yes, partial**: `uv` + venv, `uv sync` (groups `tests`/`typing`/`dev`), `pytest` 9.0.2, `ruff` 0.15.9, `mypy` 1.20.0; installed `less` (was missing). **Not configured**: Sphinx/docs, full tox matrix, local CI pre-commit hooks, full pyright suite. Baseline: `2626 passed, 24 skipped, 1 xfailed`; after the patch: `2627 passed`. |
 
-## Tarefa escolhida
+## Chosen task
 
-| Campo | Valor |
+| Field | Value |
 |-------|--------|
-| O quê | Evitar open/close eager de `_LazyFile` em FIFOs (`stat.S_ISFIFO`) para não consumir o writer antes do open lazy |
-| Por quê | Bug pequeno, reprodutível em Linux, um arquivo de produção + um teste; diferente da rodada 1 |
+| What | Avoid eager open/close of `_LazyFile` on FIFOs (`stat.S_ISFIFO`) so the writer is not consumed before the lazy open |
+| Why | Small bug, reproducible on Linux, one production file + one test; different from round 1 |
 | Issue | https://github.com/pallets/click/issues/2645 |
-| Completou? | **Sim, localmente** (commit só em `/tmp/click-campo2`; não enviado ao upstream) |
-| Checks nativos | `pytest tests/test_utils/test_LazyFile.py`: 2 passed; suite: **2627 passed**; `ruff check` nos tocados: OK; `mypy src/click/utils.py`: Success |
-| Rodada 1 (comparação) | `get_error_hint` + `auto_envvar_prefix` / issue [#3914](https://github.com/pallets/click/issues/3914) |
+| Completed? | **Yes, locally** (commit only under `/tmp/click-campo2`; not sent upstream) |
+| Native checks | `pytest tests/test_utils/test_LazyFile.py`: 2 passed; suite: **2627 passed**; `ruff check` on touched files: OK; `mypy src/click/utils.py`: Success |
+| Round 1 (comparison) | `get_error_hint` + `auto_envvar_prefix` / issue [#3914](https://github.com/pallets/click/issues/3914) |
 
-Diff essencial: em `src/click/utils.py`, `_LazyFile.__init__` só faz `open(...).close()` early se o path **não** for FIFO; teste `test_lazyfile_skips_eager_open_for_fifo` em `tests/test_utils/test_LazyFile.py`. Ticket `rd.md` com `## Scope` / listas Markdown e globs.
+Essential diff: in `src/click/utils.py`, `_LazyFile.__init__` only does early `open(...).close()` if the path is **not** a FIFO; test `test_lazyfile_skips_eager_open_for_fifo` in `tests/test_utils/test_LazyFile.py`. Ticket `rd.md` with `## Scope` / Markdown lists and globs.
 
-## Verificação das 12 correções
+## Verification of the 12 fixes
 
-| # | correção | resultado | evidência |
-|---|----------|-----------|-----------|
-| 1 | graph SkipDirs na raiz do walk | **funcionou** | Dir real `/tmp/target` com `src/`+`tests/`: `1456 nós`. Em rodada 1, `/tmp/target` → 0 nós. **Nuance**: `ln -s /tmp/click-campo2 /tmp/target` → 0 nós (`filepath.Walk` não desce symlink de raiz) — não é regressão do SkipDirs |
-| 2 | verify `hidden_test_cmd` sem `tests/hidden/` | **funcionou** | Sem dir; `hidden_test_cmd` no YAML → `hidden_available: true`, `hidden_passed: true`. Com `--hidden-test-cmd false` → `hidden_passed: false`, verdict `ESCALATE` |
-| 3 | guard `--strict --json` exit ≠ 0 | **funcionou** | Com `protected_paths: [src/click/utils.py]` e diff no arquivo: JSON com violation e `EXIT_STRICT:1`; sem `--strict` exit 0 |
-| 4 | guard lê `protected_paths` de `guard.yaml` | **funcionou** | Mesmo manifesto: `type=protected_path`, `file=src/click/utils.py`. Sem YAML custom, só defaults; `core.py` no YAML bloqueou probe |
-| 5 | init detecção de toolchain | **funcionou** | Em Click (com `uv.lock`): `verify.test_cmd: uv run pytest`. Fixture só `pyproject.toml`: `pytest`. Não mais `go test ./...` |
-| 6 | review `tests/hidden` por path | **funcionou** | Ticket cita `tests/hidden/**` em Forbidden; review limpa: `findings: []` (rodada 1: FP critical por substring) |
-| 7 | bench `default_agent` e `compare --agent` | **funcionou** | `default_agent: echo fake-agent` + `tb bench run -r 1` sem `--agent` → OK. Sem default → exit 1 exigindo flag. `compare --config-a/--config-b --agent 'echo hi'` → OK (~1.1s) |
-| 8 | review/drift parse `## Scope`/`## Escopo`, listas, `**` | **funcionou** | `## Scope` + backticks: drift sem `out_of_scope`. `## Escopo` + `src/click/**/*.py` / `tests/**/*.py`: só `rd.md` fora (esperado) |
-| 9 | verify `build_cmd` / `lint_cmd` | **funcionou** (via YAML) | PASS com `build_ran/lint_ran/passed: true`. Flags CLI `--build-cmd`/`--lint-cmd` **não existem** (só config) |
-| 10 | init lê AGENTS/CLAUDE e `--write-agents` | **funcionou** (parcial hints) | `--write-agents` criou `AGENTS.md` + `agent_docs.yaml`. Fixture com `CLAUDE.md`: `sources: [CLAUDE.md]`; `hints: []` apesar de texto “use pytest” |
-| 11 | graph Python `calls` | **funcionou** | Rebuild: `1956 nós / 5584 arestas`, `edges_calls: 2815`. `callers --function open_stream` e `format_filename` não vazios; `impact --file src/click/utils.py` listou tipos/testes |
-| 12 | visual skipped agregado + docs CLI | **funcionou** / **parcial docs** | `--ruler visual` sem manifesto: `skipped: true`, `skip_reason: manifesto de telas ausente`. `docs/cli.md` alinhado em mcp/mem/guard/bench; `tb ticket` permanece como “planejado Fase 3+” |
+| # | fix | result | evidence |
+|---|-----|--------|----------|
+| 1 | graph SkipDirs at walk root | **worked** | Real dir `/tmp/target` with `src/`+`tests/`: `1456 nodes`. In round 1, `/tmp/target` → 0 nodes. **Nuance**: `ln -s /tmp/click-campo2 /tmp/target` → 0 nodes (`filepath.Walk` does not descend a root symlink) — not a SkipDirs regression |
+| 2 | verify `hidden_test_cmd` without `tests/hidden/` | **worked** | No dir; `hidden_test_cmd` in YAML → `hidden_available: true`, `hidden_passed: true`. With `--hidden-test-cmd false` → `hidden_passed: false`, verdict `ESCALATE` |
+| 3 | guard `--strict --json` exit ≠ 0 | **worked** | With `protected_paths: [src/click/utils.py]` and a diff on the file: JSON with violation and `EXIT_STRICT:1`; without `--strict` exit 0 |
+| 4 | guard reads `protected_paths` from `guard.yaml` | **worked** | Same manifest: `type=protected_path`, `file=src/click/utils.py`. Without custom YAML, only defaults; `core.py` in YAML blocked a probe |
+| 5 | init toolchain detection | **worked** | On Click (with `uv.lock`): `verify.test_cmd: uv run pytest`. Fixture with only `pyproject.toml`: `pytest`. No longer `go test ./...` |
+| 6 | review `tests/hidden` by path | **worked** | Ticket cites `tests/hidden/**` under Forbidden; clean review: `findings: []` (round 1: critical FP by substring) |
+| 7 | bench `default_agent` and `compare --agent` | **worked** | `default_agent: echo fake-agent` + `tb bench run -r 1` without `--agent` → OK. Without default → exit 1 requiring the flag. `compare --config-a/--config-b --agent 'echo hi'` → OK (~1.1s) |
+| 8 | review/drift parse `## Scope`/`## Escopo`, lists, `**` | **worked** | `## Scope` + backticks: drift without `out_of_scope`. `## Escopo` + `src/click/**/*.py` / `tests/**/*.py`: only `rd.md` out (expected) |
+| 9 | verify `build_cmd` / `lint_cmd` | **worked** (via YAML) | PASS with `build_ran/lint_ran/passed: true`. CLI flags `--build-cmd`/`--lint-cmd` **do not exist** (config only) |
+| 10 | init reads AGENTS/CLAUDE and `--write-agents` | **worked** (partial hints) | `--write-agents` created `AGENTS.md` + `agent_docs.yaml`. Fixture with `CLAUDE.md`: `sources: [CLAUDE.md]`; `hints: []` despite “use pytest” text |
+| 11 | graph Python `calls` | **worked** | Rebuild: `1956 nodes / 5584 edges`, `edges_calls: 2815`. `callers --function open_stream` and `format_filename` non-empty; `impact --file src/click/utils.py` listed types/tests |
+| 12 | aggregated visual skipped + CLI docs | **worked** / **partial docs** | `--ruler visual` without manifest: `skipped: true`, `skip_reason: manifesto de telas ausente`. `docs/cli.md` aligned on mcp/mem/guard/bench; `tb ticket` remains “planejado Fase 3+” |
 
-## Uso do tb por comando
+## tb usage by command
 
-| comando | resultado | ajudou/atrapalhou/neutro | evidência |
-|---------|-----------|--------------------------|-----------|
-| `tb version` | OK `0.1.0-dev`, commit/built `unknown` | neutro | Sem ldflags; ~0.006s |
-| `tb init --write-agents` | `.toolbelt/` + `AGENTS.md` + `uv run pytest` | **ajudou** | Toolchain certa; mode `600` nos configs |
-| `tb mem init/list/add/check` | OK; 4 invariantes; retenção 1.00 | ajudou | `mem add --type` ainda rejeitado (docs já não vendem como implementado) |
-| Ticket / Scope | Manual `rd.md`; `tb ticket` inexistente | neutro | Docs marcam Fase 3+; parser Markdown funcionou |
-| `tb graph rebuild .` | 1956/5584; calls presentes | **ajudou** | Em `/tmp/click-campo2` (~0.21s). Search achou `_LazyFile` |
-| `tb graph` em dir `target` | real: nós>0; symlink: 0 | ajudou / nuance | SkipDirs raiz corrigido; symlink raiz ainda cego |
-| `tb graph impact/callers` | impact útil; callers por símbolo misto | ajudou | `_LazyFile` callers vazio; `open_stream`/`format_filename` OK |
-| `tb verify run` | PASS com build+lint+visible+hidden | **ajudou** | Após não proteger `utils.py` no guard.yaml da tarefa |
-| `tb verify --ruler visual` | PASS `skipped=true` | neutro | Sem manifesto de telas |
-| `tb guard check A..B --strict --json` | exit 1 com violation | **ajudou** | Sintaxe é range, não `--base` |
-| `tb drift` / `tb review` | Scope OK; review sem FP | **ajudou** | `--base HEAD^` literal → falso `base_mismatch`; SHA completo OK |
-| `tb bench run` / `compare --agent` | default_agent e `--agent` OK | ajudou parcial | Precisou copiar `bench/tasks` do toolbelt; init não semeia tasks |
-| `tb mcp` | tools/list + `tb_version` + search OK | ajudou parcial | Sem `TB_GRAPH=on`, `tb_graph_search` `isError` |
-| Checks nativos vs tb | suite/ruff/mypy OK | — | tb cobriu build/lint/test configurados; não substituiu mypy |
+| command | result | helped / hindered / neutral | evidence |
+|---------|--------|-----------------------------|----------|
+| `tb version` | OK `0.1.0-dev`, commit/built `unknown` | neutral | No ldflags; ~0.006s |
+| `tb init --write-agents` | `.toolbelt/` + `AGENTS.md` + `uv run pytest` | **helped** | Right toolchain; mode `600` on configs |
+| `tb mem init/list/add/check` | OK; 4 invariants; retention 1.00 | helped | `mem add --type` still rejected (docs no longer sell it as implemented) |
+| Ticket / Scope | Manual `rd.md`; `tb ticket` nonexistent | neutral | Docs mark Phase 3+; Markdown parser worked |
+| `tb graph rebuild .` | 1956/5584; calls present | **helped** | Under `/tmp/click-campo2` (~0.21s). Search found `_LazyFile` |
+| `tb graph` in dir `target` | real: nodes>0; symlink: 0 | helped / nuance | Root SkipDirs fixed; root symlink still blind |
+| `tb graph impact/callers` | useful impact; mixed symbol callers | helped | `_LazyFile` callers empty; `open_stream`/`format_filename` OK |
+| `tb verify run` | PASS with build+lint+visible+hidden | **helped** | After not protecting `utils.py` in the task’s guard.yaml |
+| `tb verify --ruler visual` | PASS `skipped=true` | neutral | No screen manifest |
+| `tb guard check A..B --strict --json` | exit 1 with violation | **helped** | Syntax is a range, not `--base` |
+| `tb drift` / `tb review` | Scope OK; review without FP | **helped** | Literal `--base HEAD^` → false `base_mismatch`; full SHA OK |
+| `tb bench run` / `compare --agent` | default_agent and `--agent` OK | helped partial | Needed to copy `bench/tasks` from toolbelt; init does not seed tasks |
+| `tb mcp` | tools/list + `tb_version` + search OK | helped partial | Without `TB_GRAPH=on`, `tb_graph_search` `isError` |
+| Native checks vs tb | suite/ruff/mypy OK | — | tb covered configured build/lint/test; did not replace mypy |
 
-## Problemas que continuam
+## Problems that persist
 
-| problema (rodada 1 / síntese) | status nesta rodada | evidência |
-|------------------------------|---------------------|-----------|
-| `version` → `unknown` sem ldflags | continua | `commit: unknown`, `built: unknown` |
-| Config mode `0600` | continua | `stat`: `600` em `config.yaml` e `AGENTS.md` |
-| MCP graph exige `TB_GRAPH=on` | continua (por desenho ADR-011) | sem env → isError |
-| Sem `tb ticket` | continua (agora documentado) | `docs/cli.md` “Não implementado” |
-| Init não cria `bench/tasks` | continua | `bench list` falha até copiar fixtures |
-| Review/guard ainda exigem operador disciplinado | parcial | Guard.yaml protegendo o arquivo da tarefa aborta verify cedo (anti-cheat correto, mas atrapalha o fluxo se o manifesto for ingenioso demais) |
+| problem (round 1 / synthesis) | status this round | evidence |
+|-------------------------------|-------------------|----------|
+| `version` → `unknown` without ldflags | persists | `commit: unknown`, `built: unknown` |
+| Config mode `0600` | persists | `stat`: `600` on `config.yaml` and `AGENTS.md` |
+| MCP graph requires `TB_GRAPH=on` | persists (by ADR-011 design) | without env → isError |
+| No `tb ticket` | persists (now documented) | `docs/cli.md` “Não implementado” |
+| Init does not create `bench/tasks` | persists | `bench list` fails until fixtures are copied |
+| Review/guard still need a disciplined operator | partial | Guard.yaml protecting the task file aborts verify early (correct anti-cheat, but hinders flow if the manifest is too naive) |
 
-## Problemas novos
+## New problems
 
-1. **P2 — `filepath.Walk` em raiz symlink → grafo 0 nós**  
-   - Repro: `ln -s /tmp/click-campo2 /tmp/target && cd /tmp/target && TB_GRAPH=on tb graph --enable rebuild .` → `0 nós`. Dir real `/tmp/target` com fontes → >0.  
-   - Esperado: documentar ou resolver symlink da raiz antes do walk.  
-   - Atual: silêncio com índice vazio.
+1. **P2 — `filepath.Walk` on symlink root → graph 0 nodes**  
+   - Repro: `ln -s /tmp/click-campo2 /tmp/target && cd /tmp/target && TB_GRAPH=on tb graph --enable rebuild .` → `0 nodes`. Real dir `/tmp/target` with sources → >0.  
+   - Expected: document or resolve the root symlink before the walk.  
+   - Actual: silence with an empty index.
 
-2. **P2 — `tb drift --base HEAD^` compara string, não o SHA resolvido**  
-   - Repro: ticket com `base_commit: <sha>` + `--base HEAD^` → `base_mismatch: true` (`actual_base: "HEAD^"`).  
-   - Esperado: resolver ref git antes de comparar.  
-   - Atual: mismatch falso; com SHA expandido, OK.
+2. **P2 — `tb drift --base HEAD^` compares the string, not the resolved SHA**  
+   - Repro: ticket with `base_commit: <sha>` + `--base HEAD^` → `base_mismatch: true` (`actual_base: "HEAD^"`).  
+   - Expected: resolve the git ref before comparing.  
+   - Actual: false mismatch; with expanded SHA, OK.
 
-3. **P3 — `init` lê `CLAUDE.md` mas não extrai hints de comandos**  
-   - Repro: `CLAUDE.md` com “use pytest -q” → `hints: []`.  
-   - Esperado: dicas de test/lint quando o texto é óbvio, ou documentar limites.  
+3. **P3 — `init` reads `CLAUDE.md` but does not extract command hints**  
+   - Repro: `CLAUDE.md` with “use pytest -q” → `hints: []`.  
+   - Expected: test/lint tips when the text is obvious, or document limits.  
 
-4. **P3 — `build_cmd`/`lint_cmd` só no YAML, sem flags CLI**  
+4. **P3 — `build_cmd`/`lint_cmd` only in YAML, no CLI flags**  
    - Repro: `tb verify run --build-cmd …` → `unknown flag`.  
-   - Esperado: flags espelhando `test_cmd`/`hidden-test-cmd`, ou docs explícitas de que só YAML vale.
+   - Expected: flags mirroring `test_cmd`/`hidden-test-cmd`, or explicit docs that only YAML counts.
 
-5. **P3 — callers pelo nome da classe `_LazyFile` vazio**  
-   - Repro: `graph callers --function _LazyFile` → `(vazio)` apesar de `calls` no índice e instancias no código/testes.  
-   - Esperado: resolver construtor/`Class(` ou mensagem de cobertura.
+5. **P3 — callers by class name `_LazyFile` empty**  
+   - Repro: `graph callers --function _LazyFile` → `(vazio)` despite `calls` in the index and instances in code/tests.  
+   - Expected: resolve constructor/`Class(` or a coverage message.
 
-## O que o tb pegou e o que deixou passar
+## What tb caught and what it let slip
 
-**Pegou**
-- Path protegido via `guard.yaml` (`utils.py` / `core.py`) e exit code `--strict --json`.
-- Drift/review com `## Scope` + globs `**`; FP de `tests/hidden` no ticket **não** voltou.
-- Verify rodando build + lint + visible + hidden sem pasta `tests/hidden/`.
-- Graph Python com milhares de `calls`; impact em `utils.py` apontou consumidores.
-- Init com `uv run pytest` e seed de `AGENTS.md`.
-- Bench com `default_agent` e `compare --agent`.
+**Caught**
+- Protected path via `guard.yaml` (`utils.py` / `core.py`) and `--strict --json` exit code.
+- Drift/review with `## Scope` + `**` globs; ticket `tests/hidden` FP **did not** return.
+- Verify running build + lint + visible + hidden without a `tests/hidden/` folder.
+- Python graph with thousands of `calls`; impact on `utils.py` pointed at consumers.
+- Init with `uv run pytest` and `AGENTS.md` seed.
+- Bench with `default_agent` and `compare --agent`.
 
-**Deixou passar / não ajudou**
-- Não guiou a escolha da tarefa nem a escrita do ticket (`tb ticket` ausente).
-- Grafo mudo se o cwd for symlink chamado `target`.
-- Falso `base_mismatch` com refs relativas (`HEAD^`).
-- Sem mypy/typecheck no pipeline padrão (só o que configurei em lint/build).
-- `hints` de CLAUDE.md vazios.
+**Let slip / did not help**
+- Did not guide task choice or ticket writing (missing `tb ticket`).
+- Mute graph if cwd is a symlink named `target`.
+- False `base_mismatch` with relative refs (`HEAD^`).
+- No mypy/typecheck in the default pipeline (only what I configured in lint/build).
+- Empty CLAUDE.md `hints`.
 
-## Interação com instrumentação existente / onboarding
+## Interaction with existing instrumentation / onboarding
 
-Repo **sem** instrumentação prévia. Com `--write-agents`:
+Repo **without** prior instrumentation. With `--write-agents`:
 
-| Artefato | Qualidade |
-|----------|-----------|
-| `.toolbelt/config.yaml` | `test_cmd: uv run pytest` correto; `build_cmd`/`lint_cmd`/`hidden`/`default_agent` precisei preencher à mão |
-| `AGENTS.md` | Esqueleto útil apontando verify/guard/mem |
-| `agent_docs.yaml` | Registrou `AGENTS.md`; hints vazios |
-| `bench/` | dirs vazios; tasks **não** criadas |
-| `guard.yaml` | Não gerado pelo init; criei manualmente e foi honrado |
+| Artifact | Quality |
+|----------|---------|
+| `.toolbelt/config.yaml` | Correct `test_cmd: uv run pytest`; I had to fill `build_cmd`/`lint_cmd`/`hidden`/`default_agent` by hand |
+| `AGENTS.md` | Useful skeleton pointing at verify/guard/mem |
+| `agent_docs.yaml` | Recorded `AGENTS.md`; empty hints |
+| `bench/` | empty dirs; tasks **not** created |
+| `guard.yaml` | Not generated by init; I created it manually and it was honored |
 
-Onboarding bem melhor que a rodada 1 (não mais `go test` default), mas ainda falta seed de ticket/bench e extração de hints.
+Onboarding much better than round 1 (no longer Go default), but still missing ticket/bench seed and hint extraction.
 
-## Comparação com a rodada 1
+## Comparison with round 1
 
-| Aspecto | Rodada 1 | Rodada 2 | Veredito |
-|---------|----------|----------|----------|
-| Init toolchain | `go test ./...` | `uv run pytest` | **melhor** |
-| Graph em `/tmp/target` | 0 nós | dir real OK; symlink 0 | **melhor** (com nuance) |
-| Python `calls` / impact | vazios | 2815 calls; impact útil | **melhor** |
-| guard.yaml | ignorado | lido + strict JSON | **melhor** |
-| Review FP `tests/hidden` | critical FP | findings vazios | **melhor** |
-| Scope Markdown / `**` | frágil | `## Scope`/`## Escopo` OK | **melhor** |
-| hidden sem dir | não rodava | roda / falha de verdade | **melhor** |
-| build/lint no verify | inerte | honrados no YAML | **melhor** |
-| bench default_agent / compare `--agent` | quebrado | funciona | **melhor** |
-| AGENTS.md | nem lia nem gerava | `--write-agents` + leitura | **melhor** |
-| `tb ticket` / version unknown / 0600 / TB_GRAPH | dor | igual | **igual** |
-| Completar a tarefa | apesar do tb | tb ajudou mais (verify/graph/guard) | **melhor** |
+| Aspect | Round 1 | Round 2 | Verdict |
+|--------|---------|---------|---------|
+| Init toolchain | `go test ./...` | `uv run pytest` | **better** |
+| Graph under `/tmp/target` | 0 nodes | real dir OK; symlink 0 | **better** (with nuance) |
+| Python `calls` / impact | empty | 2815 calls; useful impact | **better** |
+| guard.yaml | ignored | read + strict JSON | **better** |
+| Review FP `tests/hidden` | critical FP | empty findings | **better** |
+| Markdown Scope / `**` | fragile | `## Scope`/`## Escopo` OK | **better** |
+| hidden without dir | did not run | runs / fails for real | **better** |
+| build/lint in verify | inert | honored in YAML | **better** |
+| bench default_agent / compare `--agent` | broken | works | **better** |
+| AGENTS.md | neither read nor generated | `--write-agents` + read | **better** |
+| `tb ticket` / version unknown / 0600 / TB_GRAPH | pain | same | **same** |
+| Completing the task | despite tb | tb helped more (verify/graph/guard) | **better** |
 
-## Sugestões de melhoria
+## Improvement suggestions
 
-1. **[P2][graph]** Resolver `EvalSymlinks` na raiz antes do walk (ou avisar se a raiz é symlink).  
-2. **[P2][drift]** Resolver refs git (`HEAD^`, tags) antes de comparar com `base_commit`.  
-3. **[P2][init]** Semear `bench/tasks` mínimo ou falhar com mensagem “copie fixtures / rode no repo toolbelt”.  
-4. **[P3][init]** Extrair hints de comandos de `AGENTS.md`/`CLAUDE.md` ou documentar que só paths são registrados.  
-5. **[P3][verify]** Flags `--build-cmd` / `--lint-cmd` espelhando o YAML.  
-6. **[P3][graph]** Melhorar resolução de callers para classes / `__init__` Python.  
-7. **[P3][init]** Template `rd.md` com `## Scope` para fechar o loop ticket→drift→review.
+1. **[P2][graph]** Resolve `EvalSymlinks` at the root before the walk (or warn if the root is a symlink).  
+2. **[P2][drift]** Resolve git refs (`HEAD^`, tags) before comparing with `base_commit`.  
+3. **[P2][init]** Seed a minimal `bench/tasks` or fail with “copy fixtures / run in the toolbelt repo”.  
+4. **[P3][init]** Extract command hints from `AGENTS.md`/`CLAUDE.md` or document that only paths are recorded.  
+5. **[P3][verify]** `--build-cmd` / `--lint-cmd` flags mirroring YAML.  
+6. **[P3][graph]** Better caller resolution for Python classes / `__init__`.  
+7. **[P3][init]** `rd.md` template with `## Scope` to close the ticket→drift→review loop.
 
-## Métricas
+## Metrics
 
-| Métrica | Rodada 2 | Rodada 1 (click) |
-|---------|----------|------------------|
-| Wall time sessão (clone→relatório) | ~ordem de dezenas de minutos | similar |
-| Seções de exercício instrumentadas | 41 | — |
-| Invocações `tb` (aprox., sessão) | ~55–65 (init/mem/graph/verify/guard/drift/review/bench/mcp + retests) | 48 |
-| Falhas exit ≠ 0 (várias intencionais) | ~13 marcadores + erros de flag/docs | 19 |
-| Soma durações cronometradas no log | ~1.8s parciais + verify/pytest ~segundos + bench compare ~1.4s | ~7.3s |
-| Mais lentos | `bench compare --agent` ~1.1s; suite nativa pytest ~3.7–5s; `graph rebuild` ~0.21s | bench compare fake ~5.1s |
-| Falhas de produto relevantes restantes | symlink-raiz→0 nós; `HEAD^` base_mismatch; hints vazios; sem flags build/lint | SkipDirs; guard.yaml morto; init Go; review FP; sem calls |
+| Metric | Round 2 | Round 1 (click) |
+|--------|---------|-----------------|
+| Session wall time (clone→report) | ~tens of minutes | similar |
+| Instrumented exercise sections | 41 | — |
+| Approx. session `tb` invocations | ~55–65 (init/mem/graph/verify/guard/drift/review/bench/mcp + retests) | 48 |
+| exit ≠ 0 failures (several intentional) | ~13 markers + flag/docs errors | 19 |
+| Sum of timed durations in the log | ~1.8s partial + verify/pytest ~seconds + bench compare ~1.4s | ~7.3s |
+| Slowest | `bench compare --agent` ~1.1s; native pytest suite ~3.7–5s; `graph rebuild` ~0.21s | bench compare fake ~5.1s |
+| Remaining relevant product failures | symlink-root→0 nodes; `HEAD^` base_mismatch; empty hints; no build/lint flags | SkipDirs; dead guard.yaml; Go init; review FP; no calls |
 
-Artefatos locais (não no toolbelt): `/tmp/tb-campo2-click-evidence.log`, clone `/tmp/click-campo2` com commit experimental `a3160c8` (não publicado upstream).
+Local artifacts (not in toolbelt): `/tmp/tb-campo2-click-evidence.log`, clone `/tmp/click-campo2` with experimental commit `a3160c8` (not published upstream).

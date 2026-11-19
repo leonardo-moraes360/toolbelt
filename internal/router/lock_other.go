@@ -10,8 +10,8 @@ import (
 
 var errRouterBusy = errors.New("outro tb router run ativo neste repositório")
 
-// acquireLock (sem flock): lockfile O_EXCL removido ao sair. Se o processo
-// morrer sem limpar, o arquivo fica e o usuário precisa removê-lo.
+// acquireLock (no flock): an O_EXCL lockfile removed on exit. If the process
+// dies without cleaning up, the file remains and the user must remove it.
 func acquireLock(path string) (release func(), err error) {
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600) //nolint:gosec // .toolbelt/router/lock
 	if err != nil {

@@ -1,28 +1,28 @@
-🇧🇷 Português | [🇺🇸 English](../en/adr/011-grafo-sob-demanda.md)
+🇺🇸 English | [🇧🇷 Português](../pt-BR/adr/011-grafo-sob-demanda.md)
 
-# ADR-011: Grafo de Código Sob Demanda com A/B
+# ADR-011: On-Demand Code Graph with A/B
 
 ## Status
 
-accepted (implementação Fase 2: `tb graph` + MCP + A/B `bench/ab/graph-*.yaml`)
+accepted (Phase 2 implementation: `tb graph` + MCP + A/B `bench/ab/graph-*.yaml`)
 
-## Contexto
+## Context
 
-A intuição comum é que grafos de código (AST, call graph, dependency graph) sempre economizam tokens ao evitar leituras desnecessárias de arquivos. No entanto, pesquisas recentes desafiam essa suposição:
+The common intuition is that code graphs (AST, call graph, dependency graph) always save tokens by avoiding unnecessary file reads. However, recent research challenges that assumption:
 
-- [How Should Agents See Code?](https://arxiv.org/abs/2611.07286) (Sepidband et al., 2026, preprint): mapas de código cortam 17–39% de tokens **quando localizar é o gargalo**, mas **sobem a latência** e nem sempre compensam
-- [Analyzing and Mitigating Cost-Inefficient Behaviors in Coding Agents](https://arxiv.org/abs/2609.30725) (Hu et al., 2026, preprint): busca estrutural pode **encarecer até 28,14%** em certos cenários; skills escritas por humanos cortam até 41,73%
+- [How Should Agents See Code?](https://arxiv.org/abs/2611.07286) (Sepidband et al., 2026, preprint): code maps cut 17–39% of tokens **when locating is the bottleneck**, but **increase latency** and do not always pay off
+- [Analyzing and Mitigating Cost-Inefficient Behaviors in Coding Agents](https://arxiv.org/abs/2609.30725) (Hu et al., 2026, preprint): structural search can **cost up to 28.14% more** in certain scenarios; human-written skills cut up to 41.73%
 
-A implicação é que o toolbelt não deve forçar o uso do grafo em toda tarefa, mas oferecê-lo como ferramenta opcional com medição de quando ajuda vs. quando encarece.
+The implication is that toolbelt should not force graph use on every task, but offer it as an optional tool with measurement of when it helps vs. when it costs more.
 
-## Decisão
+## Decision
 
-Adotamos uma abordagem de **grafo sob demanda com medição A/B**:
+We adopt an **on-demand graph with A/B measurement** approach:
 
-### 1. Grafo como Ferramenta, Não como Pré-requisito
+### 1. Graph as a Tool, Not a Prerequisite
 
 ```yaml
-# O grafo é uma ferramenta que o agente pode escolher usar
+# The graph is a tool the agent can choose to use
 tools:
   - name: tb_graph_search
     description: "Busca semântica no grafo de código"
@@ -38,42 +38,42 @@ tools:
     optional: true
 ```
 
-**Mudança**: o hook "consulte o grafo antes de ler arquivos" vira **recomendação**, não obrigação.
+**Change**: the "consult the graph before reading files" hook becomes a **recommendation**, not an obligation.
 
-### 2. Saída Enxuta por Padrão
+### 2. Lean Output by Default
 
 ```bash
-# Antes (verboso)
+# Before (verbose)
 tb graph search "autenticação"
 # Retorna: título, descrição, código, contexto, arquivos relacionados...
 
-# Depois (enxuto)
+# After (lean)
 tb graph search "autenticação" --format compact
 # Retorna: [file:line] título (1 linha por resultado)
 
-# Detalhes sob demanda
+# Details on demand
 tb graph search "autenticação" --file src/auth.go --expand
 ```
 
-### 3. A/B por Tipo de Tarefa
+### 3. A/B by Task Type
 
-O benchmark inclui experimentos A/B:
+The benchmark includes A/B experiments:
 
-| Tipo de Tarefa | Condição A | Condição B | Métricas |
-|----------------|------------|------------|----------|
-| Localização em repo grande | Sem grafo | Com grafo | tokens, tempo, acurácia |
-| Bug fix localizado | Sem grafo | Com grafo | tokens, tempo, acurácia |
-| Refatoração cross-file | Sem grafo | Com grafo | tokens, tempo, acurácia |
-| Implementação de feature | Sem grafo | Com grafo | tokens, tempo, acurácia |
+| Task Type | Condition A | Condition B | Metrics |
+|-----------|-------------|-------------|---------|
+| Location in large repo | Without graph | With graph | tokens, time, accuracy |
+| Localized bug fix | Without graph | With graph | tokens, time, accuracy |
+| Cross-file refactoring | Without graph | With graph | tokens, time, accuracy |
+| Feature implementation | Without graph | With graph | tokens, time, accuracy |
 
-**Hipótese a testar**: grafo compensa mais em localização e refatoração cross-file, menos em bug fixes localizados.
+**Hypothesis to test**: graph pays off more for location and cross-file refactoring, less for localized bug fixes.
 
-### 4. Watchdog de Desperdício
+### 4. Waste Watchdog
 
-O router detecta padrões de ineficiência identificados no estudo:
+The router detects inefficiency patterns identified in the study:
 
 ```yaml
-# Padrões a detectar (apareceram em 79–98% das tarefas no estudo)
+# Patterns to detect (appeared in 79–98% of tasks in the study)
 inefficiency_patterns:
   - redundant_search: "Mesma query executada 2+ vezes"
   - similar_scripts: "Scripts com >80% de similaridade executados"
@@ -81,14 +81,14 @@ inefficiency_patterns:
   - excessive_graph_calls: ">10 chamadas de grafo sem leitura de arquivo"
 ```
 
-O watchdog reporta métricas de desperdício como KPI.
+The watchdog reports waste metrics as KPIs.
 
-### 5. Skills Humanas Priorizadas
+### 5. Human Skills Prioritized
 
-Com base no achado de que skills escritas por humanos cortam até 41,73% do custo:
+Based on the finding that human-written skills cut up to 41.73% of cost:
 
 ```yaml
-# Skills têm prioridade sobre busca automática
+# Skills have priority over automatic search
 skills:
   - name: "localizar-handler-go"
     description: "Localiza handlers HTTP em projetos Go"
@@ -99,48 +99,48 @@ skills:
     # Skill humana evita N chamadas de grafo
 ```
 
-## Consequências
+## Consequences
 
-### Positivas
+### Positive
 
-- **Custo real medido**: A/B identifica quando o grafo vale o investimento
-- **Flexibilidade**: agente escolhe ferramenta certa para a tarefa
-- **Menos desperdício**: watchdog detecta padrões ineficientes
-- **Skills reutilizáveis**: conhecimento humano capturado e priorizado
+- **Real cost measured**: A/B identifies when the graph is worth the investment
+- **Flexibility**: agent chooses the right tool for the task
+- **Less waste**: watchdog detects inefficient patterns
+- **Reusable skills**: human knowledge captured and prioritized
 
-### Negativas
+### Negative
 
-- **Complexidade de benchmark**: requer infraestrutura de A/B
-- **Variância**: resultados dependem do tipo de tarefa e tamanho do repo
-- **Risco de subuso**: agente pode não usar grafo quando deveria
-- **Manutenção de skills**: requer curadoria humana contínua
+- **Benchmark complexity**: requires A/B infrastructure
+- **Variance**: results depend on task type and repo size
+- **Underuse risk**: agent may not use the graph when it should
+- **Skill maintenance**: requires continuous human curation
 
-### Métricas de Sucesso
+### Success Metrics
 
-| Métrica | Meta | Justificativa |
-|---------|------|---------------|
-| graph_roi_positive_pct | ≥ 60% | Grafo deve compensar na maioria das tarefas onde é usado |
-| wasteful_pattern_rate | ≤ 20% | Padrões de desperdício devem ser raros |
-| skill_hit_rate | ≥ 30% | Skills humanas devem ser acionadas quando aplicáveis |
+| Metric | Target | Justification |
+|--------|--------|---------------|
+| graph_roi_positive_pct | ≥ 60% | Graph should pay off on most tasks where it is used |
+| wasteful_pattern_rate | ≤ 20% | Waste patterns should be rare |
+| skill_hit_rate | ≥ 30% | Human skills should fire when applicable |
 
-## Alternativas Consideradas
+## Alternatives Considered
 
-### Grafo Obrigatório
+### Mandatory Graph
 
-- **Descrição**: forçar consulta ao grafo antes de qualquer leitura de arquivo
-- **Por que não**: pesquisa mostra que pode encarecer até 28,14% em certos cenários
+- **Description**: force graph consultation before any file read
+- **Why not**: research shows it can cost up to 28.14% more in certain scenarios
 
-### Grafo Desabilitado por Padrão
+### Graph Disabled by Default
 
-- **Descrição**: grafo só ligado explicitamente pelo usuário
-- **Por que não**: perde benefício de 17–39% de economia quando localização é o gargalo
+- **Description**: graph only enabled explicitly by the user
+- **Why not**: loses the 17–39% savings benefit when location is the bottleneck
 
-### Heurística Estática
+### Static Heuristic
 
-- **Descrição**: regra fixa (ex: "use grafo se repo > 1000 arquivos")
-- **Por que não**: não captura variação por tipo de tarefa; A/B é mais preciso
+- **Description**: fixed rule (e.g. "use graph if repo > 1000 files")
+- **Why not**: does not capture variation by task type; A/B is more precise
 
-## Referências
+## References
 
 - [How Should Agents See Code?](https://arxiv.org/abs/2611.07286) — Sepidband et al., 2026 (preprint)
 - [Analyzing and Mitigating Cost-Inefficient Behaviors in Coding Agents](https://arxiv.org/abs/2609.30725) — Hu et al., 2026 (preprint)

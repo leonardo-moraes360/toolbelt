@@ -219,6 +219,7 @@ func TestDetectTestCmd_PnpmMissingFallsBackToNpm(t *testing.T) {
 }
 
 func TestDetectBuildLintCmd(t *testing.T) {
+	withLookPath(t, map[string]bool{"golangci-lint": true})
 	tests := []struct {
 		name      string
 		files     map[string]string
@@ -401,7 +402,7 @@ func TestInitDetectsToolchain(t *testing.T) {
 	withLookPath(t, map[string]bool{
 		"go": true, "npm": true, "pnpm": true, "yarn": true, "bun": true,
 		"pytest": true, "cargo": true, "make": true, "uv": true,
-		"python": true, "python3": true,
+		"python": true, "python3": true, "golangci-lint": true,
 	})
 
 	tests := []struct {
@@ -599,5 +600,40 @@ func TestInitDetailed_WarnsWhenNoTestToolchain(t *testing.T) {
 	}
 	if loaded.Verify.BuildCmd != "npm run build" {
 		t.Fatalf("build_cmd = %q, want npm run build", loaded.Verify.BuildCmd)
+	}
+}
+
+// Dogfood #1: with a golangci config but no binary on PATH, init does not
+// write `golangci-lint run` (tb verify would fail); it falls back to go vet.
+func TestDetectLintCmd_GolangciMissingFromPath(t *testing.T) {
+	withLookPath(t, map[string]bool{"go": true, "make": true})
+	root := t.TempDir()
+	files := map[string]string{
+		"go.mod":        "module example.com/x\n",
+		".golangci.yml": "run: {}\n",
+		"Makefile":      "lint:\n\tgolangci-lint run\n",
+	}
+	for name, content := range files {
+		if err := os.WriteFile(filepath.Join(root, name), []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := DetectLintCmd(root); got != "go vet ./..." {
+		t.Fatalf("DetectLintCmd() = %q, want %q", got, "go vet ./...")
+	}
+}
+
+// Dogfood #7: config.yaml is versioned, so it does not get mode 0600.
+func TestSaveUsesVersionedFileMode(t *testing.T) {
+	path := filepath.Join(t.TempDir(), DefaultConfigFile)
+	if err := Save(DefaultConfig(), path); err != nil {
+		t.Fatal(err)
+	}
+	st, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Mode().Perm()&0o044 == 0 {
+		t.Fatalf("config.yaml com modo %v; esperado legível pelo grupo/outros (umask permitindo)", st.Mode().Perm())
 	}
 }

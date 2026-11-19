@@ -25,7 +25,7 @@ func runGit(t *testing.T, dir string, args ...string) string {
 	return strings.TrimSpace(string(out))
 }
 
-// newRepo cria um repositório temporário com branch explícita (independe de init.defaultBranch).
+// newRepo creates a temp repository with an explicit branch (independent of init.defaultBranch).
 func newRepo(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
@@ -172,7 +172,7 @@ func startedOrder(s *Summary) []string {
 	return out
 }
 
-// requireDoneWithCommit exige o ticket done, com branch própria e commit novo.
+// requireDoneWithCommit requires the ticket done, with its own branch and a new commit.
 func requireDoneWithCommit(t *testing.T, st *ticket.Store, id string) {
 	t.Helper()
 	tk := get(t, st, id)
@@ -205,7 +205,7 @@ func TestDependencyOrdering(t *testing.T) {
 	for _, id := range []string{a.ID, b.ID, c.ID, free.ID} {
 		requireDoneWithCommit(t, st, id)
 	}
-	// o commit do worker contém o arquivo do agente
+	// the worker's commit contains the agent's file
 	if out := runGit(t, root, "show", "--stat", "--format=%s", get(t, st, b.ID).Result.HeadCommit); !strings.Contains(out, "out-"+b.ID+".txt") || !strings.Contains(out, "tb: "+b.ID) {
 		t.Fatalf("commit do worker: %s", out)
 	}
@@ -220,7 +220,7 @@ func TestDirectDeliverySameWorkerAndBaseChaining(t *testing.T) {
 	st := ticket.Open(root)
 	a := mk(t, st, "a") // TKT-001
 	x := mkTimeout(t, st, "x", "1h")
-	bTk := mk(t, st, "b", a.ID) // depende de a
+	bTk := mk(t, st, "b", a.ID)
 	_ = x
 	script := `if [ "$TB_TICKET_ID" = "TKT-001" ]; then echo A > a.txt; sleep 0.1; fi
 if [ "$TB_TICKET_ID" = "TKT-002" ]; then sleep 0.4; fi
@@ -275,9 +275,9 @@ func TestSubscriptionTTLFallsBackToBoard(t *testing.T) {
 	root := newRepo(t)
 	st := ticket.Open(root)
 	a := mk(t, st, "a")         // TKT-001 quick -> w1
-	x := mk(t, st, "x")         // TKT-002 médio -> w2
-	b1 := mk(t, st, "b1", a.ID) // TKT-003 longo
-	b2 := mk(t, st, "b2", a.ID) // TKT-004 reservado para w1 enquanto vivo
+	x := mk(t, st, "x")         // TKT-002 medium -> w2
+	b1 := mk(t, st, "b1", a.ID) // TKT-003 long
+	b2 := mk(t, st, "b2", a.ID) // TKT-004 reserved for w1 while alive
 	clock := &fakeClock{}
 	script := `case "$TB_TICKET_ID" in
 TKT-002) sleep 0.4;;
@@ -303,12 +303,12 @@ echo ok > f-$TB_TICKET_ID.txt`
 	waitFor(t, "b1 em execução e x concluído", func() bool {
 		return get(t, st, b1.ID).Status == ticket.StatusRunning && get(t, st, x.ID).Status == ticket.StatusDone
 	})
-	// w2 está ocioso, mas b2 está reservado para w1 (assinatura viva)
+	// w2 is idle, but b2 is reserved for w1 (live subscription)
 	time.Sleep(150 * time.Millisecond)
 	if g := get(t, st, b2.ID); g.Status != ticket.StatusPending || g.Subscription == nil || g.Subscription.Worker != "w1" {
 		t.Fatalf("b2 deveria seguir pending e reservado para w1: %+v", g)
 	}
-	clock.Advance(31 * time.Minute) // expira o TTL (30m)
+	clock.Advance(31 * time.Minute) // expires the TTL (30m)
 	waitFor(t, "b2 pego pelo board", func() bool { return get(t, st, b2.ID).Status != ticket.StatusPending })
 	sum := <-ch
 	var via, worker string
@@ -342,7 +342,7 @@ func TestSubscribeRespectsMaxPerWorker(t *testing.T) {
 	if n != 2 {
 		t.Fatalf("assinaturas = %d, esperado 2 (teto)", n)
 	}
-	// desabilitar a entrega direta não reserva nada
+	// disabling direct delivery reserves nothing
 	cfg.DirectDelivery.Enabled = false
 	r2 := newRouter(t, root, func(o *Options) { o.Config = cfg })
 	r2.clearSubscriptions("w1")
@@ -474,7 +474,7 @@ func TestKillControl(t *testing.T) {
 		s, err := ReadState(root)
 		return err == nil && len(s.Workers) == 1 && s.Workers[0].Status == "working" && s.Workers[0].Ticket == tk.ID
 	})
-	if _, err := RequestKill(root, "w9", "x", time.Now()); err != nil { // existe formato válido, worker inexistente é ignorado
+	if _, err := RequestKill(root, "w9", "x", time.Now()); err != nil { // valid format, unknown worker is ignored
 		t.Fatal(err)
 	}
 	if _, err := RequestKill(root, "../etc", "x", time.Now()); err == nil {
@@ -725,7 +725,7 @@ func TestRecoverOrphanRunning(t *testing.T) {
 	}
 }
 
-// planFixture: a,b livres; c depende de a; d de a+b; g depende de f (cancelado).
+// planFixture: a,b free; c depends on a; d on a+b; g depends on f (canceled).
 type planFixture struct {
 	board         *ticket.Board
 	a, b, c, d, g ticket.Ticket
@@ -760,7 +760,7 @@ func TestBuildPlanDirectDelivery(t *testing.T) {
 		t.Fatalf("rodada 1: %+v", r1)
 	}
 	r2 := p.Rounds[1].Assignments
-	// c depende só de a (rodou em w1): entrega direta, base encadeada; d depende de 2 (HEAD)
+	// c depends only on a (ran on w1): direct delivery, chained base; d depends on 2 (HEAD)
 	if len(r2) != 2 || r2[0].Ticket != fx.c.ID || r2[0].Via != ViaDirect || r2[0].Base != fx.a.ID || r2[1].Ticket != fx.d.ID || r2[1].Base != "HEAD" {
 		t.Fatalf("rodada 2: %+v", r2)
 	}
@@ -769,7 +769,7 @@ func TestBuildPlanDirectDelivery(t *testing.T) {
 	}
 }
 
-// sem entrega direta tudo é board.
+// without direct delivery everything comes from the board.
 func TestBuildPlanWithoutDirectDelivery(t *testing.T) {
 	fx := newPlanFixture(t)
 	p := BuildPlan(fx.board, 2, ticket.StrategyFIFO, false, 5)

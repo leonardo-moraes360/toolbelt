@@ -68,6 +68,33 @@ func RegisterGraphTools() {
 		Handler: handleGraphImpact,
 	})
 	Register(&Tool{
+		Name:        "tb_graph_explain",
+		Description: "Explica um nó do grafo: arestas de entrada/saída com proveniência (paridade com tb graph explain)",
+		InputSchema: &InputSchema{
+			Type: "object",
+			Properties: map[string]Property{
+				"node":  {Type: "string", Description: "ID, título, função ou arquivo"},
+				"limit": {Type: "integer", Description: "Máximo de nós explicados", Default: graph.DefaultExplainLimit},
+			},
+			Required: []string{"node"},
+		},
+		Handler: handleGraphExplain,
+	})
+	Register(&Tool{
+		Name:        "tb_graph_path",
+		Description: "Menor caminho entre dois nós do grafo (paridade com tb graph path)",
+		InputSchema: &InputSchema{
+			Type: "object",
+			Properties: map[string]Property{
+				"from":      {Type: "string", Description: "Nó de origem"},
+				"to":        {Type: "string", Description: "Nó de destino"},
+				"max_depth": {Type: "integer", Description: "Máximo de saltos", Default: graph.DefaultPathMaxDepth},
+			},
+			Required: []string{"from", "to"},
+		},
+		Handler: handleGraphPath,
+	})
+	Register(&Tool{
 		Name:        "tb_graph_index",
 		Description: "Indexa o grafo de código sob demanda",
 		InputSchema: &InputSchema{
@@ -91,31 +118,43 @@ func openGraphStore() (*graph.Store, error) {
 	return s, nil
 }
 
-func openGraphStoreFresh() (*graph.Store, error) {
+// graphStaleHint tells the agent how to refresh a stale index.
+const graphStaleHint = "index is stale (files changed since the last index): call tb_graph_index, then repeat the query"
+
+// openGraphStoreReadOnly opens the index for an MCP query without ever
+// writing it. Unlike the CLI, which reindexes when graph.index_on_change is
+// on, MCP queries only report staleness: they are annotated readOnlyHint, so
+// a client may auto-approve or parallelize them, and only tb_graph_index
+// writes. (M8ven review, finding 3.)
+func openGraphStoreReadOnly() (*graph.Store, error) {
 	s, err := openGraphStore()
 	if err != nil {
 		return nil, err
 	}
 	opts := graphOptionsFromConfig()
-	indexOnChange := true
-	if cfg, err := config.Load(); err == nil {
-		indexOnChange = cfg.Graph.IndexOnChange
-	}
-	if _, err := s.EnsureFresh(".", &opts, indexOnChange); err != nil {
+	stale, err := s.CheckStale(".", &opts)
+	if err != nil {
 		return nil, err
 	}
+	s.SetStale(stale)
 	return s, nil
 }
 
-func graphNodesPayload(s *graph.Store, nodes []graph.Node) map[string]any {
-	return map[string]any{
-		"stale": s.Stale(),
-		"nodes": nodes,
+// graphPayload adds the staleness fields shared by every query result.
+func graphPayload(s *graph.Store, fields map[string]any) map[string]any {
+	fields["stale"] = s.Stale()
+	if s.Stale() {
+		fields["hint"] = graphStaleHint
 	}
+	return fields
+}
+
+func graphNodesPayload(s *graph.Store, nodes []graph.Node) map[string]any {
+	return graphPayload(s, map[string]any{"nodes": nodes})
 }
 
 func handleGraphSearch(_ context.Context, args map[string]any) (any, error) {
-	s, err := openGraphStoreFresh()
+	s, err := openGraphStoreReadOnly()
 	if err != nil {
 		return nil, err
 	}
@@ -125,7 +164,7 @@ func handleGraphSearch(_ context.Context, args map[string]any) (any, error) {
 }
 
 func handleGraphCallers(_ context.Context, args map[string]any) (any, error) {
-	s, err := openGraphStoreFresh()
+	s, err := openGraphStoreReadOnly()
 	if err != nil {
 		return nil, err
 	}
@@ -141,7 +180,7 @@ func handleGraphCallers(_ context.Context, args map[string]any) (any, error) {
 }
 
 func handleGraphDeps(_ context.Context, args map[string]any) (any, error) {
-	s, err := openGraphStoreFresh()
+	s, err := openGraphStoreReadOnly()
 	if err != nil {
 		return nil, err
 	}
@@ -157,7 +196,7 @@ func handleGraphDeps(_ context.Context, args map[string]any) (any, error) {
 }
 
 func handleGraphImpact(_ context.Context, args map[string]any) (any, error) {
-	s, err := openGraphStoreFresh()
+	s, err := openGraphStoreReadOnly()
 	if err != nil {
 		return nil, err
 	}
@@ -173,6 +212,38 @@ func handleGraphImpact(_ context.Context, args map[string]any) (any, error) {
 		}
 	}
 	return graphNodesPayload(s, nodes), nil
+}
+
+func handleGraphExplain(_ context.Context, args map[string]any) (any, error) {
+	s, err := openGraphStoreReadOnly()
+	if err != nil {
+		return nil, err
+	}
+	node := StringArg(args, "node")
+	if node == "" {
+		return nil, fmt.Errorf("node é obrigatório")
+	}
+	exps, err := s.Explain(node, IntArg(args, "limit", graph.DefaultExplainLimit))
+	if err != nil {
+		return nil, err
+	}
+	return graphPayload(s, map[string]any{"nodes": exps}), nil
+}
+
+func handleGraphPath(_ context.Context, args map[string]any) (any, error) {
+	s, err := openGraphStoreReadOnly()
+	if err != nil {
+		return nil, err
+	}
+	from, to := StringArg(args, "from"), StringArg(args, "to")
+	if from == "" || to == "" {
+		return nil, fmt.Errorf("from e to são obrigatórios")
+	}
+	steps, err := s.ShortestPath(from, to, IntArg(args, "max_depth", graph.DefaultPathMaxDepth))
+	if err != nil {
+		return nil, err
+	}
+	return graphPayload(s, map[string]any{"hops": len(steps) - 1, "steps": steps}), nil
 }
 
 func handleGraphIndex(_ context.Context, args map[string]any) (any, error) {

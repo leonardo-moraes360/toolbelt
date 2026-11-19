@@ -61,3 +61,17 @@ review:
 env:
     allow: []
     pass: []
+router:
+    max_workers: 3
+    strategy: dependency
+    agent_cmd: []
+    direct_delivery:
+        enabled: true
+        subscription_ttl: 30m
+        max_subscriptions_per_worker: 5
+    timeouts:
+        per_ticket: 10m
+        global: 1h
+    retry:
+        max_attempts: 2
+    slow_threshold: 0.8

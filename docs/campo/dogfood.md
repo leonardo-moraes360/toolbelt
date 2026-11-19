@@ -1,64 +1,85 @@
-🇧🇷 Português | [🇺🇸 English](../en/campo/dogfood.md)
+🇺🇸 English | [🇧🇷 Português](../pt-BR/campo/dogfood.md)
 
-# Dogfood — `tb` no próprio repositório
+# Dogfood — `tb` on its own repository
 
-Log de atritos e bugs encontrados ao usar `tb` para desenvolver o toolbelt.
-Formato: data · comando · esperado vs. obtido · severidade.
+Log of friction and bugs found while using `tb` to develop toolbelt.
+Format: date · command · expected vs. actual · severity.
 
 ## 2026-11-17 — bootstrap (`v0.0.2-20-ga76cee4`)
 
-Sequência: `make install` → `tb init --write-agents` → `tb mem init` → `tb mem add` (×6)
-→ `TB_GRAPH=on tb graph index` → `tb verify run` → `tb mcp` (smoke `tools/list`).
+Sequence: `make install` → `tb init --write-agents` → `tb mem init` → `tb mem add` (×6)
+→ `TB_GRAPH=on tb graph index` → `tb verify run` → `tb mcp` (`tools/list` smoke).
 
-| # | Comando | Esperado | Obtido | Sev. |
+| # | Command | Expected | Actual | Sev. |
 |---|---------|----------|--------|------|
-| 1 | `tb init` | `lint_cmd` só se o binário existir no PATH (como `test_cmd`) | grava `golangci-lint run` sem checar PATH; `verify run` falha com `comando não encontrado` | média |
-| 2 | `tb verify run --json` | em FAIL/ESCALATE, indicar qual teste/pacote falhou | só `visible_passed: false` + `ESCALATE` após 3 iterações; sem trecho da saída — precisei rodar `go test` à mão | alta |
-| 3 | `tb verify run` | — | 3 iterações (~20s) re-rodando a mesma suíte determinística sem mudança de código entre elas | baixa |
-| 4 | `go test ./...` (suite do tb) | passa independente do git do host | `internal/review` falha com `init.defaultBranch=main`: `git checkout master` hardcoded (`review_test.go:1279,1326,1407`) | média |
-| 5 | `tb init --write-agents` | — | `agent_docs.yaml` registra `sources: [AGENTS.md]` — o arquivo que o próprio init acabou de semear (auto-referência) | baixa |
-| 6 | `tb mem edit --ref` | mensagem de erro coerente com o aceito | erro lista só `docs/adr/…`/`docs/decisions/…`, mas `docs/en/adr/…` é aceito; sem forma de limpar `ref` (precisei `retire` + `add`) | baixa |
-| 7 | `tb init` | arquivos versionáveis com modo padrão | `config.yaml`/`invariants.yaml` criados `0600` | baixa |
-| 8 | `tb graph index` | — | ok: 3960 nós / 14746 arestas em 0,16s; 2940 nós são `section` de docs (PT + EN duplicados) — avaliar ruído na busca | info |
-| 9 | `tb mcp` | — | ok: 22 tools no `tools/list` | info |
+| 1 | `tb init` | `lint_cmd` only if the binary is on PATH (like `test_cmd`) | writes `golangci-lint run` without a PATH check; `verify run` fails with `comando não encontrado` | medium |
+| 2 | `tb verify run --json` | on FAIL/ESCALATE, say which test/package failed | only `visible_passed: false` + `ESCALATE` after 3 iterations; no output excerpt — had to run `go test` by hand | high |
+| 3 | `tb verify run` | — | 3 iterations (~20s) re-running the same deterministic suite with no code change in between | low |
+| 4 | `go test ./...` (tb suite) | passes regardless of host git config | `internal/review` fails with `init.defaultBranch=main`: hardcoded `git checkout master` (`review_test.go:1279,1326,1407`) | medium |
+| 5 | `tb init --write-agents` | — | `agent_docs.yaml` records `sources: [AGENTS.md]` — the file init itself just seeded (self-reference) | low |
+| 6 | `tb mem edit --ref` | error message consistent with what is accepted | error lists only `docs/adr/…`/`docs/decisions/…`, but `docs/en/adr/…` is accepted; no way to clear `ref` (needed `retire` + `add`) | low |
+| 7 | `tb init` | versionable files with default mode | `config.yaml`/`invariants.yaml` created `0600` | low |
+| 8 | `tb graph index` | — | ok: 3960 nodes / 14746 edges in 0.16s; 2940 nodes are doc `section`s (PT + EN duplicated) — assess search noise | info |
+| 9 | `tb mcp` | — | ok: 22 tools in `tools/list` | info |
 
 ## 2026-11-17 — release `v0.0.3` (`2eb65c1`)
 
-Verificação: `sha256sum -c` ok; certificado do bundle sigstore com SAN
-`…/release.yml@refs/tags/v0.0.3`, issuer GitHub OIDC, commit `2eb65c1` = `v0.0.3^{}`.
-Assinatura/Rekor **não** verificados (sem `cosign`); `gh attestation verify` indisponível no `gh` 2.46.
+Verification: `sha256sum -c` ok; sigstore bundle certificate with SAN
+`…/release.yml@refs/tags/v0.0.3`, GitHub OIDC issuer, commit `2eb65c1` = `v0.0.3^{}`.
+Signature/Rekor **not** verified (no `cosign`); `gh attestation verify` unavailable in `gh` 2.46.
 
-| # | Comando | Esperado | Obtido | Sev. |
+| # | Command | Expected | Actual | Sev. |
 |---|---------|----------|--------|------|
-| 2 | `tb verify run --json` | causa da falha no JSON | **resolvido**: `reason`/`error` trazem a saída do `test_cmd` | — |
-| 10 | `tb verify run --json` | trecho com as linhas `--- FAIL` | `reason` truncado pelo início (`[no test files]`, `ok …`); falhas de pacotes posteriores somem no `…` | média |
-| 11 | `tb init` + `TestDocsEnglishMirrorComplete` | `--write-agents`/bootstrap não quebra a suíte | criar `docs/campo/*.md` sem par em `docs/en/` quebra `go test` — invariante de docs PT/EN pega pelo teste, não pelo `tb guard` | info |
-| 12 | `tb verify run --dry-run` | — | ok: `verdict: SKIPPED` + plano | info |
+| 2 | `tb verify run --json` | failure cause in JSON | **fixed**: `reason`/`error` carry the `test_cmd` output | — |
+| 10 | `tb verify run --json` | excerpt with the `--- FAIL` lines | `reason` truncated from the start (`[no test files]`, `ok …`); failures in later packages vanish in the `…` | medium |
+| 11 | `tb init` + `TestDocsEnglishMirrorComplete` | `--write-agents`/bootstrap does not break the suite | creating `docs/campo/*.md` without a pair in `docs/en/` breaks `go test` — the PT/EN docs invariant is caught by the test, not by `tb guard` | info |
+| 12 | `tb verify run --dry-run` | — | ok: `verdict: SKIPPED` + plan | info |
 
-## 2026-11-17 — Fase 3 (ticket/board/router/watchdog/merge)
+## 2026-11-17 — Phase 3 (ticket/board/router/watchdog/merge)
 
-| # | Comando | Esperado | Obtido | Sev. |
+| # | Command | Expected | Got | Sev. |
+|---|---------|----------|-----|------|
+| 4 | `go test ./...` | — | **fixed**: `initGitRepo` pins `-b master` | — |
+| 13 | `tb stack … --ticket rd.md` | analyze uncommitted changes (working tree) | only compares `--base..--head` (commits); needed a throwaway commit in a detached worktree to run the stack before committing | medium |
+| 14 | `tb stack drift review` | — | ok: caught `internal/review/review_test.go` outside the rd.md Scope | info |
+| 15 | `tb guard` (via stack) | environment-conditional `t.Skip` (Landlock/git missing) distinguishable from cheating skips | 24 `test_skip` warnings for legitimate environment skips; noise | low |
+| 16 | `tb sandbox run -- sh -c 'echo > /dev/null'` | writing to `/dev/null` allowed | `Permission denied` (also in v0.0.3): git/shells break inside the sandbox — fixed in this phase | high |
+
+## 2026-11-18 — release `v0.0.5` + fresh bootstrap (`000b955`)
+
+Release: `sha256sum -c` ok; sigstore bundle certificate with SAN
+`…/release.yml@refs/tags/v0.0.5`, GitHub OIDC issuer, commit `000b955` = `v0.0.5^{}`.
+Signature/Rekor and `gh attestation verify` still not verified (no `cosign`; `gh` without `attestation`).
+
+Bootstrap from scratch in a worktree (`config.yaml`/`agent_docs.yaml`/`invariants.yaml` removed):
+`tb init --write-agents` → `tb mem init` → old invariants restored + 7 new ones (bus, graph, CGO, release)
+→ `TB_GRAPH=on tb graph index` → `tb verify run` → `tb mcp` (`tools/list` smoke).
+
+| # | Command | Expected | Got | Sev. |
+|---|---------|----------|-----|------|
+| 1 | `tb init` | `lint_cmd` only if the binary is on PATH | **still open** in v0.0.5: writes `golangci-lint run` without `golangci-lint` on PATH; reverted to `go vet ./...` by hand | medium |
+| 3 | `tb verify run` | — | **fixed**: 1 iteration (~15s), `PASS` | — |
+| 7 | `tb init` / `tb mem init` | versionable files with default mode | **still open**: `config.yaml`, `agent_docs.yaml`, `invariants.yaml` created `0600` | low |
+| 17 | `tb init` inside a `git worktree` | local state patterns ignored by git | writes to `.git/worktrees/<wt>/info/exclude`, which git does not read (only `$GIT_COMMON_DIR/info/exclude`); here `.gitignore` masks it, but in a repo without `.gitignore` local state shows up in `git status` | medium |
+| 18 | `tb init` (hints from AGENTS.md/CLAUDE.md) | commands only | extracted a comment from inside a `bash` fence (`# make install overwrites…`) and a bare `golangci-lint` from prose as hints | low |
+| 19 | `tb init` | — | ok: new config already ships the `router:` section with Phase 3 defaults | info |
+| 20 | `tb graph index` / `tb graph search "bus harness wake"` | function ahead of docs sections | 4567 nodes / 19328 edges in 0.17s; 4 `docs/` sections (PT + EN) before `func:busrun.wake` — same noise as #8 | low |
+| 21 | `tb mcp` | — | ok: 36 tools in `tools/list` (was 22) | info |
+
+## 2026-11-18 — `tb egm` R0 spike (`bench/egm-spike`, `claude` 2.1.326)
+
+Environment: kernel 7.0, git 2.53, `claude` as a native ELF binary (no interpreter) in
+`~/.local/share/claude/versions/`. Authentication: only the `claudeAiOauth` key of
+`~/.claude/.credentials.json` copied into a disposable `0700` HOME, with `CLAUDE_CONFIG_DIR`
+pointing to it. Goldfish flags: `-p --output-format json --tools "" --strict-mcp-config
+--setting-sources "" --no-session-persistence`, prompt on stdin.
+
+| # | Command | Expected | Actual | Sev. |
 |---|---------|----------|--------|------|
-| 4 | `go test ./...` | — | **resolvido**: `initGitRepo` fixa `-b master` | — |
-| 13 | `tb stack … --ticket rd.md` | analisar mudanças não commitadas (working tree) | só compara `--base..--head` (commits); precisei de commit descartável em worktree detached para rodar o stack antes de commitar | média |
-| 14 | `tb stack drift review` | — | ok: pegou `internal/review/review_test.go` fora do Scope declarado no rd.md | info |
-| 15 | `tb guard` (via stack) | `t.Skip` condicionado a ambiente (Landlock/git ausente) distinguível de skip de trapaça | 24 avisos `test_skip` para skips legítimos de ambiente; ruído | baixa |
-| 16 | `tb sandbox run -- sh -c 'echo > /dev/null'` | escrita em `/dev/null` permitida | `Permission denied` (também na v0.0.3): git/shells quebram no sandbox — corrigido nesta fase | alta |
-
-## 2026-11-18 — spike R0 do `tb egm` (`bench/egm-spike`, `claude` 2.1.326)
-
-Ambiente: kernel 7.0, git 2.53, `claude` binário ELF nativo (sem interpretador) em
-`~/.local/share/claude/versions/`. Autenticação: cópia só da chave `claudeAiOauth` de
-`~/.claude/.credentials.json` para um HOME descartável `0700`, com `CLAUDE_CONFIG_DIR`
-apontando para ele. Flags do goldfish: `-p --output-format json --tools "" --strict-mcp-config
---setting-sources "" --no-session-persistence`, prompt por stdin.
-
-| # | Comando | Esperado | Obtido | Sev. |
-|---|---------|----------|--------|------|
-| 17 | `egm-spike isolation` | pacote RO, `TMPDIR`/HOME privados, HOME real, credencial, repositório, `/proc/<ppid>/environ`, `/proc/1/environ`, `/dev/pts` e `/dev/shm` ilegíveis, env mínimo, sem órfãos | ok: 16/16 sondas; canário no environ do pai não vaza (a restrição de ptrace da Landlock bloqueia a leitura) | info |
-| 18 | `egm-spike claude` (1ª execução) | goldfish responde | `EAI_AGAIN`: `/etc/resolv.conf` é symlink para `/run/systemd/resolve/stub-resolv.conf`, e `/run` não é liberado. Corrigido com regra só-leitura de arquivo no realpath do `resolv.conf`. Provavelmente afeta também os agentes do router | alta |
-| 19 | `egm-spike claude` | sem ferramentas, sem `CLAUDE.md`/memórias, atestação válida | ok: `SEM-FERRAMENTAS` com `num_turns=1` e sem `permission_denials`; `NENHUMA` para instruções prévias; nonce ecoado, 3/3 trechos literais. Custo ~US$ 0,03 por goldfish | info |
-| 20 | controle fora do sandbox (mesmo prompt de memória) | o canário discrimina | ok: com o HOME real, a resposta cita `graphify` e `token-reducer` do `CLAUDE.md` global. Custo US$ 3,47 (contexto completo do ambiente) | info |
-| 21 | credencial real | não muda por causa do spike | ok: hash e `expiresAt` iguais antes e depois dos goldfish; a cópia não sofreu refresh. O arquivo real só foi reescrito pelo `claude` fora do sandbox (uso normal), sem refresh de token | info |
-| 22 | `go test ./internal/sandbox/` | regra de tmp compartilhado vale com workdir fora de `/tmp` | `isSubpath` trata `../x` como subcaminho: `addTmpWriteRule` nunca aplica a regra e `ValidatePath` aceita caminhos fora do workdir. Pré-existente, proposto como tarefa separada | alta |
-| 23 | R0 itens 5 a 8 restantes | — | pendentes: calibração do matching (corpus de paráfrases), taxa de convergência, refresh perto do vencimento do token, `safe.directory` com outro uid (exige outro usuário) | info |
+| 22 | `egm-spike isolation` | packet RO, private `TMPDIR`/HOME, real HOME, credential, repository, `/proc/<ppid>/environ`, `/proc/1/environ`, `/dev/pts` and `/dev/shm` unreadable, minimal env, no orphans | ok: 16/16 probes; a canary in the parent's environ does not leak (Landlock's ptrace restriction blocks the read) | info |
+| 23 | `egm-spike claude` (1st run) | goldfish answers | `EAI_AGAIN`: `/etc/resolv.conf` is a symlink to `/run/systemd/resolve/stub-resolv.conf`, and `/run` is not allowed. Fixed with a read-only file rule on the `resolv.conf` realpath. Probably affects router agents too | high |
+| 24 | `egm-spike claude` | no tools, no `CLAUDE.md`/memories, valid attestation | ok: `SEM-FERRAMENTAS` with `num_turns=1` and no `permission_denials`; `NENHUMA` for prior instructions; nonce echoed, 3/3 literal quotes. Cost ~US$ 0.03 per goldfish | info |
+| 25 | control outside the sandbox (same memory prompt) | the canary discriminates | ok: with the real HOME, the answer quotes `graphify` and `token-reducer` from the global `CLAUDE.md`. Cost US$ 3.47 (the environment's full context) | info |
+| 26 | real credential | unchanged by the spike | ok: same hash and `expiresAt` before and after the goldfish runs; the copy was not refreshed. The real file was only rewritten by `claude` outside the sandbox (normal use), with no token refresh | info |
+| 27 | `go test ./internal/sandbox/` | shared tmp rule applies with a workdir outside `/tmp` | `isSubpath` treats `../x` as a subpath: `addTmpWriteRule` never applies the rule and `ValidatePath` accepts paths outside the workdir. Pre-existing; **fixed** on main by `fix/sandbox-issubpath` | high |
+| 28 | remaining R0 items 5 to 8 | — | pending: matching calibration (paraphrase corpus), convergence rate, refresh near token expiry, `safe.directory` with another uid (needs another user) | info |

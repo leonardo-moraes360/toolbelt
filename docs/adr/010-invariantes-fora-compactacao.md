@@ -1,28 +1,28 @@
-🇧🇷 Português | [🇺🇸 English](../en/adr/010-invariantes-fora-compactacao.md)
+🇺🇸 English | [🇧🇷 Português](../pt-BR/adr/010-invariantes-fora-compactacao.md)
 
-# ADR-010: Invariantes Fixados Fora da Compactação
+# ADR-010: Invariants Pinned Outside Compaction
 
 ## Status
 
 proposed
 
-## Contexto
+## Context
 
-Estudos recentes sobre compactação de contexto em LLMs revelam um problema crítico para agentes de código:
+Recent studies on LLM context compaction reveal a critical problem for coding agents:
 
-- [Benchmarks Are Surprisingly Compaction-Friendly](https://arxiv.org/abs/2610.31778) (Salle et al., 2026, preprint) mostra que o 1º resumo já perde cerca de 1/3 das regras anti-trapaça
-- Regras de "não faça" (proibições) caem ~6× mais que outras informações durante a compactação
-- [Compact-Bench](https://arxiv.org/abs/2610.31710) (Sun et al., 2026, preprint) demonstra que resumos LLM retêm no máximo 16% dos detalhes recorrentes, enquanto extração mecânica retém 79,1%
+- [Benchmarks Are Surprisingly Compaction-Friendly](https://arxiv.org/abs/2610.31778) (Salle et al., 2026, preprint) shows that the 1st summary already loses about 1/3 of anti-cheat rules
+- "Don't do" rules (prohibitions) drop ~6× more than other information during compaction
+- [Compact-Bench](https://arxiv.org/abs/2610.31710) (Sun et al., 2026, preprint) shows that LLM summaries retain at most 16% of recurring details, while mechanical extraction retains 79.1%
 
-Para o toolbelt, isso significa que regras críticas do mandate (paths proibidos, limites de segurança, restrições de scope) podem ser perdidas durante compactação de contexto, abrindo brechas para reward hacking e violações de segurança.
+For toolbelt, this means critical mandate rules (forbidden paths, security limits, scope restrictions) can be lost during context compaction, opening gaps for reward hacking and security violations.
 
-## Decisão
+## Decision
 
-Adotamos uma estratégia de **invariantes fixados** combinada com **compactação híbrida**:
+We adopt a **pinned invariants** strategy combined with **hybrid compaction**:
 
-### 1. Arquivo de Invariantes
+### 1. Invariants File
 
-Um arquivo separado (`invariants.yaml` ou `.toolbelt/invariants.md`) contém regras que **nunca** passam pelo processo de compactação:
+A separate file (`invariants.yaml` or `.toolbelt/invariants.md`) contains rules that **never** go through the compaction process:
 
 ```yaml
 # .toolbelt/invariants.yaml
@@ -47,81 +47,81 @@ security:
   - "Rede negada exceto allowlist explícita"
 ```
 
-### 2. Processo de Compactação Híbrida
+### 2. Hybrid Compaction Process
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                    ANTES DA COMPACTAÇÃO                         │
-│  1. Extração mecânica (determinística):                        │
-│     - Arquivos tocados                                          │
-│     - Comandos executados                                       │
-│     - Falhas de teste (exit codes, mensagens de erro)          │
-│     - Decisões tomadas (com timestamp)                         │
+│                    BEFORE COMPACTION                            │
+│  1. Mechanical extraction (deterministic):                      │
+│     - Files touched                                             │
+│     - Commands executed                                         │
+│     - Test failures (exit codes, error messages)                │
+│     - Decisions made (with timestamp)                           │
 │                                                                 │
-│  2. Estado extraído salvo em formato estruturado               │
+│  2. Extracted state saved in structured format                  │
 └─────────────────────────────────────────────────────────────────┘
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                    COMPACTAÇÃO LLM                              │
-│  - Resumo do raciocínio e progresso                            │
-│  - Contexto narrativo                                           │
-│  - NÃO inclui invariantes nem estado mecânico                  │
+│                    LLM COMPACTION                               │
+│  - Summary of reasoning and progress                            │
+│  - Narrative context                                            │
+│  - Does NOT include invariants or mechanical state              │
 └─────────────────────────────────────────────────────────────────┘
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                    CONTEXTO REMONTADO                           │
-│  1. Invariantes (intactos, do arquivo original)                │
-│  2. Estado mecânico (intacto, da extração)                     │
-│  3. Resumo LLM (compactado)                                    │
+│                    REASSEMBLED CONTEXT                          │
+│  1. Invariants (intact, from original file)                     │
+│  2. Mechanical state (intact, from extraction)                  │
+│  3. LLM summary (compacted)                                     │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-### 3. KPI de Retenção
+### 3. Retention KPI
 
-Benchmark interno que mede a retenção de invariantes:
+Internal benchmark that measures invariant retention:
 
 ```
 retenção_invariantes = (invariantes preservados após N compactações) / (invariantes originais)
 ```
 
-**Meta**: 100% de retenção (por design, já que invariantes não passam pela compactação).
+**Target**: 100% retention (by design, since invariants do not go through compaction).
 
-## Consequências
+## Consequences
 
-### Positivas
+### Positive
 
-- **Segurança garantida**: regras anti-trapaça e constraints de segurança nunca são perdidas
-- **Auditabilidade**: invariantes são verificáveis antes e depois de cada turno
-- **Compatibilidade**: extração mecânica funciona com qualquer modelo de compactação
-- **Economia de tokens**: informação estruturada é mais compacta que prosa
+- **Guaranteed security**: anti-cheat rules and security constraints are never lost
+- **Auditability**: invariants are verifiable before and after each turn
+- **Compatibility**: mechanical extraction works with any compaction model
+- **Token savings**: structured information is more compact than prose
 
-### Negativas
+### Negative
 
-- **Overhead de implementação**: requer parser e formato estruturado para invariantes
-- **Rigidez**: mudanças em invariantes requerem atualização explícita do arquivo
-- **Duplicação potencial**: algumas informações podem aparecer tanto no resumo quanto nos invariantes
+- **Implementation overhead**: requires a parser and structured format for invariants
+- **Rigidity**: changes to invariants require explicit file updates
+- **Potential duplication**: some information may appear in both the summary and the invariants
 
-## Alternativas Consideradas
+## Alternatives Considered
 
-### Prompt Engineering para Preservar Regras
+### Prompt Engineering to Preserve Rules
 
-- **Descrição**: instruir o modelo de compactação a preservar certas informações
-- **Por que não**: pesquisa mostra que isso não é confiável; regras de "não faça" caem ~6× mais mesmo com instruções explícitas
+- **Description**: instruct the compaction model to preserve certain information
+- **Why not**: research shows this is unreliable; "don't do" rules drop ~6× more even with explicit instructions
 
-### Compactação Apenas Mecânica
+### Mechanical Compaction Only
 
-- **Descrição**: eliminar compactação LLM e usar apenas extração determinística
-- **Por que não**: perde contexto narrativo e raciocínio que podem ser úteis
+- **Description**: eliminate LLM compaction and use only deterministic extraction
+- **Why not**: loses narrative context and reasoning that can be useful
 
-### Hash de Invariantes
+### Invariant Hash
 
-- **Descrição**: hash do arquivo de invariantes verificado a cada turno
-- **Por que não**: não previne a perda durante compactação, apenas detecta depois
-- **Nota**: pode ser usado **adicionalmente** como verificação
+- **Description**: hash of the invariants file verified every turn
+- **Why not**: does not prevent loss during compaction, only detects it afterward
+- **Note**: can be used **additionally** as a check
 
-## Referências
+## References
 
 - [Benchmarks Are Surprisingly Compaction-Friendly](https://arxiv.org/abs/2610.31778) — Salle et al., 2026 (preprint)
 - [Compact-Bench](https://arxiv.org/abs/2610.31710) — Sun et al., 2026 (preprint)
