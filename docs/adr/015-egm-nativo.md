@@ -4,7 +4,7 @@
 
 ## Status
 
-proposed. It does not move to `accepted` before the R0 spike of the [core spec](../specs/egm-nativo.md).
+accepted (2026-11-19). The R0 spike of the [core spec](../specs/egm-nativo.md) ran ([dogfood #30–#34](../campo/dogfood.md)) and revised the matching and convergence design; Phase A is implemented (PRs [#115](https://github.com/leonardo-moraes360/toolbelt/pull/115), [#116](https://github.com/leonardo-moraes360/toolbelt/pull/116) and [#117](https://github.com/leonardo-moraes360/toolbelt/pull/117)). R0 item 8 (git over a repository owned by another uid, which needs a second user) is still open. The [trust spec](../specs/egm-trust.md) stays a draft.
 
 ## Context
 
@@ -55,10 +55,7 @@ Each goldfish is a **one-shot**, stateless process, started from `egm.agent_cmd`
   - **Workdir:** it is the goldfish's packet, outside the repository.
   - **System reads:** the existing ones (`/etc`, `/proc`…) stay allowed. Reading another process's environ goes through the ptrace check, which Landlock restricts outside the domain; the spike confirms this. The absence of tools is a second barrier.
 - **Minimal env.** The env is built from scratch. Variables that inject code into the runtime (`NODE_OPTIONS`, `PYTHONPATH`, `LD_*`…) are refused.
-- **Disposable HOME.** A `0700` directory outside the repository, deleted at the end. That way, the vendor's `CLAUDE.md`, memories and global settings never reach the goldfish. Authentication follows this order of preference, proposed here and confirmed in the spike:
-  1. API key via `egm.env.pass`;
-  2. the vendor's config directory inside the disposable HOME;
-  3. copying a credential file, only as a last resort.
+- **Disposable HOME.** A `0700` directory outside the repository, deleted at the end. That way, the vendor's `CLAUDE.md`, memories and global settings never reach the goldfish. Authentication is an API key via `egm.env.pass` or, with the `claude` profile, a copy of only the `claudeAiOauth` key of the vendor's credential file into the disposable HOME (`CLAUDE_CONFIG_DIR`). tb refuses to start (`auth_expired`) when the access token has less than 10 minutes left, longer than a goldfish's timeout, so no goldfish refreshes the copy and the real credential is never rotated by it.
 
 ### 2. Third-party content executes nothing and leaks nothing
 
@@ -109,7 +106,8 @@ This follows the model of [ADR-013](013-barramento-multi-vendor.md), which alrea
 - The checkers and the scan run **in both engines**, with a defined severity.
 - A persona with no agent is `unavailable`, never "zero findings".
 - The type (`spec` or `adr`, by glob) determines the structural standard. The presence of the detailed plan determines the required reviewers.
-- A spec without a plan reaches at most `PASS_PARTIAL`. An ADR can reach `PASS`.
+- With the `llm` engine, an ADR can reach `PASS`; a spec without a plan reaches at most `PASS_PARTIAL`.
+- **Without an agent, nothing reaches `PASS`.** The deterministic engine leaves the LLM personas `unavailable`, so coverage is always partial and the best verdict for any document is `PASS_PARTIAL`. An offline user gets the checkers and the scan, and the gate passes with a warning; `--strict` or `egm.require_full_coverage` make it fail.
 - `review.Finding`, `tb review` and `tb drift` **do not change**.
 
 ### 5. State and convergence outside the LLM, tied to content
@@ -129,17 +127,17 @@ Creating and removing worktrees does not affect the state.
   - Checker lineages close or reopen by re-running the checker.
 - **Clean round.** No blocking lineage (blocker or major open, contested, escalated or unconfirmed `fixed`) and no required reviewer `not_run`.
 - **Convergence.**
-  - It takes 2 consecutive clean rounds **over the same content**, with a cap of 5 per cycle.
+  - It takes 2 consecutive clean rounds **over the same content**, with a cap of `egm.max_rounds` (default 8) per cycle.
   - Converging writes a record for that content and closes the cycle.
   - After the cap, the verdict is `FAIL`, and the way out is `--restart` with new content.
 - **Two kinds of downgrades.**
   - **Lineage downgrades** (forced settle, `--decline` of a major) persist while the lineage stays in that status. An edit followed by a new convergence does not erase them. They only go away with `--fix` over a real fix, confirmed by the owning reviewer.
-  - **Cycle downgrades** (extra rounds, `--restart`, partial coverage…) apply only to that cycle's convergence. `--restart` always requires new content.
+  - **Cycle downgrades** (`--restart`, partial coverage, `max_*` exclusions…) apply only to that cycle's convergence. `--restart` always requires new content.
 - **Verdicts**, evaluated in a fixed order over the worktree content or, in the gate, over the commit's content:
   - `NO_STATE`;
   - `PASS`: a record for this content and this policy, with no downgrade at all and no blocking lineage;
   - `PASS_PARTIAL`: a record with a downgrade. `tb stack` gains the WARN state for this case, and `--strict` or `egm.require_full_coverage` turn it into a failure;
-  - `FAIL`: the cycle hit the cap without extra rounds, or used up the extras;
+  - `FAIL`: the cycle hit `max_rounds` without converging;
   - `STALE`: there is a record only for another content or for another policy, or there is a blocking lineage over an already converged content;
   - `IN_PROGRESS`.
 
@@ -198,15 +196,15 @@ The upstream's interactive questions become idempotent subcommands of `tb egm re
 - Touching `internal/sandbox`, a security-critical component.
 - egm gets its own git hardening. The router and merge keep theirs, and unification is left to the trust spec.
 - **Vendor credentials:**
-  - copying the file, if that is the chosen form, creates a short local exposure window;
-  - a token refresh inside the disposable HOME may invalidate the real credential, which must be tested in the spike;
+  - the copy of the `claudeAiOauth` key creates a short local exposure window (a `0600` file in the `0700` disposable HOME, deleted at the end);
+  - the copy cannot be refreshed, so with less than 10 minutes left tb refuses to run and the user runs the vendor CLI once outside tb;
   - on macOS, the credential lives in the Keychain, a declared limitation.
 - The anti-injection scan is heuristic, so a subtle injection obeyed by every reviewer remains a residual risk.
 - **In Phase A, an agent that actively commits fraud as the same user can reach `PASS`.** The core promises nothing against this, and the gate is local.
 - If the spike shows that Landlock does not block `/proc/<pid>/environ` of another process, protecting tb's environ comes to depend only on the vendor honoring "no tools", which tb checks in the envelope.
 - Touching a gated document requires reviewing it, old ADRs included.
-- Convergence with 9 non-deterministic reviewers may be rare; the spike measures this before implementation.
-- **Cost:** about 9 agent runs per round, limited by budget.
+- Convergence with 9 non-deterministic reviewers is rare on drafts: in R0 neither real document converged in 4–6 rounds, because each edit drew new findings ([dogfood #32 and #33](../campo/dogfood.md)). Phase A targets documents past the draft stage, keeps `max_rounds: 8` and reports `capped` instead of promising convergence.
+- **Cost:** about 9 agent runs per round (about US$ 2–2.5 with `claude`), limited by budget.
 - Vendor profiles depend on flags and envelopes of third-party CLIs, which change.
 - There are in-house personas to maintain.
 
