@@ -721,7 +721,7 @@ worktree, build/lint/test rodam num worktree detach temporário (ver `tb verify`
 `result` do passo inclui `head_sha` e `workdir`.
 
 **Op `egm` (gate):** seleciona os documentos sob gate (`egm.doc_globs`, por padrão
-`docs/specs/**` e `docs/adr/**`) adicionados ou modificados em
+`docs/specs/**` e `docs/adr/**`; um índice `README.md` nunca é selecionado) adicionados ou modificados em
 `merge-base(base, head)..head`, mais os de `--egm-doc`, e avalia cada um com
 `tb egm status --at <head>`. O documento, as fontes e a config do repositório vêm do
 commit, então um documento convergido que mudou depois da revisão fica `STALE`.
@@ -1005,7 +1005,7 @@ revisores custa cerca de US$ 2–2,5.
 
 ```bash
 tb egm review docs/specs/x.md            # rodada 1 (exit 0; 1 em FAIL)
-tb egm loop next docs/specs/x.md         # próxima rodada; recusada se nada mudou
+tb egm loop next docs/specs/x.md         # próxima rodada; recusada se nada mudou ou já convergiu (exit 0)
 tb egm resolve docs/specs/x.md --fix F-1,F-2
 tb egm resolve docs/specs/x.md --decline F-4
 tb egm resolve docs/specs/x.md --force-settle F-3 --reason "risco aceito"

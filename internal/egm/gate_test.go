@@ -304,3 +304,27 @@ func TestGateDeletedOrMissingDocs(t *testing.T) {
 		t.Fatal("--egm-doc outside the repository accepted")
 	}
 }
+
+// TestGateSkipsIndex is dogfood #38: a README.md index under a gated
+// directory is not selected nor counted as uncommitted, but --egm-doc can
+// still name it.
+func TestGateSkipsIndex(t *testing.T) {
+	f, ctx := convergedAtHead(t)
+	writeFile(t, filepath.Join(f.root, "docs", "specs", "README.md"), "# Specs\n\n- [x](x.md)\n")
+	gitT(t, f.root, "add", ".")
+	gitT(t, f.root, "commit", "-qm", "index")
+	r := f.gate(ctx, "HEAD~1", false)
+	if !r.OK || len(r.Docs) != 0 || !hasGateWarning(r, "no_gated_docs") {
+		t.Fatalf("index selected: %+v", r)
+	}
+	writeFile(t, filepath.Join(f.root, "docs", "specs", "README.md"), "# Specs, edited\n")
+	if r := f.gate(ctx, "HEAD~1", false); !r.OK || hasGateWarning(r, "uncommitted_gated_docs") {
+		t.Fatalf("index counted as uncommitted: %+v", r)
+	}
+	if r := f.gate(ctx, "HEAD~1", false, "docs/specs/README.md"); len(r.Docs) != 1 || r.Docs[0].Verdict != VerdictNoState {
+		t.Fatalf("--egm-doc index: %+v", r)
+	}
+	if !IsGated([]string{"docs/adr/**"}, "docs/adr/015-x.md") || IsGated([]string{"docs/adr/**"}, "docs/adr/README.md") {
+		t.Fatal("IsGated")
+	}
+}

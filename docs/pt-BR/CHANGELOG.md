@@ -19,7 +19,12 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 - `bench/egm-spike`: spike R0 do `tb egm` (isolamento do goldfish com `claude -p` real), com os modos `collect`/`calibrate` e o corpus de matching `internal/egm/testdata/paraphrases.json`
 
 ### Alterado
+- ADR-015 aceito: status, autenticação, o teto `PASS_PARTIAL` offline, o limite `max_rounds` e os dados de convergência alinhados com os resultados da Fase A
 - A saída da CLI e do servidor MCP passa a ser em inglês: help do cobra (`Short`/`Long`/`Example`), uso das flags, mensagens de erro, relatórios (ex.: `guard: ok (3 rules, 0 violations)`, drift `Out of scope` / `Forbidden touched`) e descrições das tools/schemas MCP; o parsing de entrada continua aceitando os títulos em português do `rd.md` (`Escopo`, `Proibido`, `Aceite`)
+
+### Corrigido
+- Op `egm` do `tb stack`: um índice `README.md` sob `egm.doc_globs` deixou de ser documento sob gate, então editar `docs/adr/README.md` não derruba o gate com `NO_STATE` (dogfood #38)
+- `tb egm loop next` depois de uma convergência sobre o mesmo `content` e `policy_sha` não abre mais ciclo e rodada novos (cerca de 9 execuções de agente com a engine `llm`): mostra `already converged over this content in cycle N` com o relatório existente e sai com exit 0 (R26, dogfood #39)
 
 ## [0.0.6] - 2026-11-18
 

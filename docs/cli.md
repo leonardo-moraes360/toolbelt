@@ -722,8 +722,8 @@ detached worktree (see `tb verify`); the step `result` includes `head_sha` and
 `workdir`.
 
 **`egm` op (gate):** selects the gated documents (`egm.doc_globs`, default
-`docs/specs/**` and `docs/adr/**`) added or modified in `merge-base(base, head)..head`,
-plus `--egm-doc`, and evaluates each one with `tb egm status --at <head>`. The
+`docs/specs/**` and `docs/adr/**`; a `README.md` index is never selected) added or
+modified in `merge-base(base, head)..head`, plus `--egm-doc`, and evaluates each one with `tb egm status --at <head>`. The
 document, its sources and the repository config come from the commit, so a converged
 document that changed after the review is `STALE`. `PASS` is `ok`; `PASS_PARTIAL` is
 `ok` with `warn: true` (`ok: false` with `--strict` or `egm.require_full_coverage`);
@@ -993,7 +993,7 @@ US$ 2–2.5.
 
 ```bash
 tb egm review docs/specs/x.md            # round 1 (exit 0; 1 on FAIL)
-tb egm loop next docs/specs/x.md         # next round; refused when nothing changed
+tb egm loop next docs/specs/x.md         # next round; refused when nothing changed or already converged (exit 0)
 tb egm resolve docs/specs/x.md --fix F-1,F-2
 tb egm resolve docs/specs/x.md --decline F-4
 tb egm resolve docs/specs/x.md --force-settle F-3 --reason "accepted risk"

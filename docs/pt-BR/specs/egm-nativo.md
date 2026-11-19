@@ -33,7 +33,7 @@ As proteções contra fraude ativa do próprio autor, que roda como o mesmo usu�
 | persona | Lente do revisor: o que procurar e como julgar (`personas/<nome>.md`). |
 | standard | Critério de qualidade (`standards/<nome>.md`). Os estruturais listam headings exigidos (R13). |
 | tipo de documento | `spec` ou `adr` (R6). Define o standard estrutural; o plano detalhado define os revisores obrigatórios. |
-| documento sob gate | Documento que casa com `egm.doc_globs` (R33). |
+| documento sob gate | Documento que casa com `egm.doc_globs` (R33), exceto um índice de diretório chamado `README.md` (sem diferenciar maiúsculas), que lista documentos em vez de ser um. |
 | heading | Linha ATX (`#` a `######` seguidos de espaço) fora de bloco de código cercado. As comparações usam a linha inteira, com os `#`, sem espaços nas pontas. |
 | preset `consolidated` | Rodada com os revisores obrigatórios (R10) em paralelo, sem checkpoints. |
 | config de usuário | Seção `egm:` de `config.GlobalConfigPath()`. |
@@ -468,7 +468,7 @@ O resultado vai em `docs/campo/dogfood.md` (PT e EN).
   - nenhuma está `fixed` sem confirmação;
   - nenhum revisor obrigatório ficou `not_run`.
 
-  Há convergência com `egm.clean_rounds` (padrão 2) rodadas limpas consecutivas **sobre o mesmo `content`**. Uma rodada limpa com `content` diferente da anterior reinicia a contagem em 1. A convergência grava um registro para o `content` e encerra o ciclo; a rodada seguinte abre um ciclo novo.
+  Há convergência com `egm.clean_rounds` (padrão 2) rodadas limpas consecutivas **sobre o mesmo `content`**. Uma rodada limpa com `content` diferente da anterior reinicia a contagem em 1. A convergência grava um registro para o `content` e encerra o ciclo; a rodada seguinte abre um ciclo novo, e o `loop next` só a abre depois que o `content` ou o `policy_sha` mudar ou alguma linhagem ainda puder mudar numa rodada nova (R26).
 
   Teto do ciclo: `capped` quando a rodada `egm.max_rounds` (padrão 8; no R0 não houve rodada limpa em 4 rodadas efetivas por documento, dogfood #32) do ciclo termina sem convergir. A partir daí, `loop next` é recusado com exit 1 (`FAIL`). A saída é `--restart`, que exige `content` novo.
 - R24 (rebaixamentos): há dois tipos, e todos ficam registrados.
@@ -491,7 +491,7 @@ O resultado vai em `docs/campo/dogfood.md` (PT e EN).
   | 6 | `IN_PROGRESS` | Nenhuma das anteriores. |
 
   O relatório traz também `loop_state ∈ running|capped|converged`. Uma cobertura menor que a da primeira rodada do ciclo não é recusada: vira rebaixamento de ciclo (R24). `skipped` estrutural (`no_detailed_section`, `range_too_small`) não conta como redução.
-- R26: no `loop next`, os árbitros das linhagens `contest_pending` (R29) rodam primeiro. Depois, se o `content` não mudou desde a rodada anterior **e** existe alguma linhagem bloqueante cujo status não muda sem edição ou `resolve` (`open`, `reopened`, `escalated`, ou `contest_pending` sem árbitro elegível), **e** não há nenhuma linhagem `fixed` sem confirmação, que sempre pode mudar numa rodada nova, o tb não abre rodada nova e mostra `documento e fontes não mudaram desde a rodada N; há findings bloqueantes abertos`. Sai com exit 0 se algum árbitro rodou e com exit 2 se nenhum rodou. Nos demais casos, a rodada é aberta. Árbitro elegível significa motor `llm` com agente, saldo de orçamento e menos de 2 `not_run` seguidos naquela linhagem. Se alguma linhagem bloqueante tem um dono que não pode rodar no motor efetivo, por ter sido removido por `--reviewers`, estar `unavailable` ou por o motor ter caído para `deterministic`, o tb não abre a rodada, sai com exit 2 e `reason: owner_unavailable`, e a tentativa não conta para o teto. Com `auto` e linhagens de dono LLM no estado, cair para `deterministic` exige `--engine deterministic` explícito.
+- R26: no `loop next`, verificado o teto (R23), se o ciclo atual convergiu, o `content` e o `policy_sha` são iguais aos do seu registro de convergência e nenhuma linhagem ainda pode mudar numa rodada nova (nenhuma é bloqueante, `fixed` sem confirmação ou `contest_pending`, qualquer que seja a severidade), o tb não abre rodada nem ciclo, mostra `already converged over this content in cycle N (rounds …)` com o relatório da rodada convergida (com a engine dela, não a desta execução) e sai com exit 0, sem rodar revisores nem árbitros (dogfood #39). Nos demais casos, os árbitros das linhagens `contest_pending` (R29) rodam primeiro. Depois, se o `content` não mudou desde a rodada anterior **e** existe alguma linhagem bloqueante cujo status não muda sem edição ou `resolve` (`open`, `reopened`, `escalated`, ou `contest_pending` sem árbitro elegível), **e** não há nenhuma linhagem `fixed` sem confirmação, que sempre pode mudar numa rodada nova, o tb não abre rodada nova e mostra `documento e fontes não mudaram desde a rodada N; há findings bloqueantes abertos`. Sai com exit 0 se algum árbitro rodou e com exit 2 se nenhum rodou. Nos demais casos, a rodada é aberta. Árbitro elegível significa motor `llm` com agente, saldo de orçamento e menos de 2 `not_run` seguidos naquela linhagem. Se alguma linhagem bloqueante tem um dono que não pode rodar no motor efetivo, por ter sido removido por `--reviewers`, estar `unavailable` ou por o motor ter caído para `deterministic`, o tb não abre a rodada, sai com exit 2 e `reason: owner_unavailable`, e a tentativa não conta para o teto. Com `auto` e linhagens de dono LLM no estado, cair para `deterministic` exige `--engine deterministic` explícito.
 - R27 (orçamento): o tb conta as execuções de agente do ciclo (revisores, retries e árbitros) e para em `egm.max_agent_runs` (padrão 120). O que faltar vira `not_run` com `reason: budget`.
   - O pior caso de uma rodada é `revisores × 2 + contestações pendentes × 2`, e `--dry-run` imprime esse valor e o saldo.
   - Uma rodada cujo pior caso passe do saldo é recusada com exit 2.
@@ -826,7 +826,7 @@ Nota sobre o fake-agent:
   - precedência dos vereditos (R25);
   - ciclos;
   - `capped` e `--restart`;
-  - R26 com e sem árbitros;
+  - R26 com e sem árbitros, e depois da convergência sobre o mesmo conteúdo e política;
   - árbitro `withdraw`, `uphold` e `not_run`;
   - orçamento;
   - processo morto com o lock (o lock é liberado);
