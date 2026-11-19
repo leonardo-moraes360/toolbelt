@@ -87,8 +87,12 @@ type Runner struct {
 
 	// sweepMu serializes Sweep with the bookkeeping below, so a Run that
 	// checks Escaped after its own sweep sees orphans another Run collected.
-	sweepMu      sync.Mutex
-	escaped      map[string]bool
+	sweepMu sync.Mutex
+	escaped map[string]bool
+	// known are the owners this runner started: an orphan declaring any
+	// other owner is treated as unattributed, so it cannot pick a victim
+	// that does not exist or hide behind a made-up name.
+	known        map[string]bool
 	unattributed bool
 	running      map[*runSlot]struct{}
 	closed       bool
@@ -158,7 +162,7 @@ func newRunnerConfig(set *Settings, p *Profile) (*Runner, error) {
 	r := &Runner{
 		prof: p, bin: bin, args: p.Argv[1:], path: set.Path, pass: set.Env.Pass,
 		copies: copies, realHome: home, timeout: timeout, maxStdout: int(set.MaxStdoutBytes),
-		escaped: map[string]bool{}, running: map[*runSlot]struct{}{},
+		escaped: map[string]bool{}, known: map[string]bool{}, running: map[*runSlot]struct{}{},
 	}
 	if r.path == "" {
 		r.path = "/usr/bin:/bin"
@@ -231,7 +235,7 @@ func (r *Runner) Run(ctx context.Context, req *GoldfishRequest) *GoldfishResult 
 	if err != nil {
 		return sandboxFailure(err)
 	}
-	slot, runCtx, ok := r.begin(ctx)
+	slot, runCtx, ok := r.begin(ctx, req.Owner)
 	if !ok {
 		return sandboxFailure(errors.New("runner closed"))
 	}
@@ -283,11 +287,12 @@ func (r *Runner) sandboxConfig(req *GoldfishRequest, ws *workspace, stdout *byte
 }
 
 // begin registers a goldfish in flight so an unattributed orphan can kill it.
-func (r *Runner) begin(ctx context.Context) (*runSlot, context.Context, bool) {
+func (r *Runner) begin(ctx context.Context, owner string) (*runSlot, context.Context, bool) {
 	runCtx, cancel := context.WithCancel(ctx)
 	slot := &runSlot{cancel: cancel}
 	r.sweepMu.Lock()
 	defer r.sweepMu.Unlock()
+	r.known[owner] = true
 	if r.closed {
 		cancel()
 		return nil, nil, false
@@ -322,7 +327,7 @@ func (r *Runner) attributeLocked(o *sandbox.Orphan) {
 	if owner == "" {
 		owner = o.GroupOwner
 	}
-	if owner != "" {
+	if owner != "" && r.known[owner] {
 		r.escaped[owner] = true
 		return
 	}
@@ -338,6 +343,15 @@ func (r *Runner) Escaped(owner string) bool {
 	r.sweepMu.Lock()
 	defer r.sweepMu.Unlock()
 	return r.escaped[owner]
+}
+
+// ResetUnattributed clears the flag at the start of a phase, so an orphan
+// left by an arbiter does not void the reviewers of the round (R3 scopes the
+// rule to phase 2).
+func (r *Runner) ResetUnattributed() {
+	r.sweepMu.Lock()
+	r.unattributed = false
+	r.sweepMu.Unlock()
 }
 
 // Unattributed reports whether an orphan without owner was seen; the round

@@ -158,8 +158,11 @@ func Touches(lines []int, changed map[int]bool, margin int) bool {
 	if len(lines) != 2 {
 		return len(changed) > 0
 	}
-	for l := lines[0] - margin; l <= lines[1]+margin; l++ {
-		if changed[l] {
+	// Iterate the changed set, not the range: scope lines come from model
+	// output and may be huge.
+	lo, hi := lines[0]-margin, lines[1]
+	for l := range changed {
+		if l >= lo && l-margin <= hi {
 			return true
 		}
 	}

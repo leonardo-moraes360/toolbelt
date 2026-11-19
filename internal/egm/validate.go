@@ -185,7 +185,10 @@ func priorComplete(answers []PriorAnswer, ids []string) bool {
 
 func annotateFinding(f *Finding, in *ValidateInput) {
 	f.Reviewer = in.Reviewer
-	f.Unverified = !scopeHeadingExists(in.Doc, &f.Scope) || !evidenceVerified(f.Evidence, in)
+	// Lines past the snapshot are clamped (and the finding unverified): a
+	// model-chosen [5, MaxInt64] must not drive loops over line ranges.
+	beyond := clampLines(f.Scope.Lines, len(in.Doc.Lines))
+	f.Unverified = beyond || !scopeHeadingExists(in.Doc, &f.Scope) || !evidenceVerified(f.Evidence, in)
 	// R9: the range is only a focus; a scope not contained in it still
 	// counts but is marked.
 	f.OutOfRange = f.Scope.Lines[0] < in.Range[0] || f.Scope.Lines[1] > in.Range[1]
@@ -327,3 +330,15 @@ var (
 		"rationale": nonEmpty,
 	}}
 )
+
+// clampLines keeps scope lines inside [1, n]; it reports whether any was
+// beyond the snapshot.
+func clampLines(lines []int, n int) bool {
+	beyond := false
+	for i := range lines {
+		if lines[i] > n {
+			lines[i], beyond = max(1, n), true
+		}
+	}
+	return beyond
+}

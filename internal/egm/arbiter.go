@@ -21,12 +21,23 @@ func (s *State) moveLineage(l *Lineage, cmd, to, by, reason string, round int) {
 // arbiters runs the arbiter of each contest_pending lineage before the round
 // (R26, R29). It reports whether any arbiter ran.
 func (rc *roundCtx) arbiters(ctx context.Context) (bool, error) {
+	pending := false
+	for _, l := range rc.st.Lineages {
+		pending = pending || (l.Status == StContestPending && l.ArbiterNotRun < 2)
+	}
+	if !pending {
+		return false, nil
+	}
+	mapper, err := rc.s.mapper(ctx, rc.st)
+	if err != nil {
+		return false, err
+	}
 	ran := false
 	for _, l := range rc.st.Lineages {
 		if l.Status != StContestPending || l.ArbiterNotRun >= 2 {
 			continue
 		}
-		did, err := rc.arbiter(ctx, l)
+		did, err := rc.arbiter(ctx, l, mapper(l))
 		if err != nil {
 			return ran, err
 		}
@@ -40,15 +51,53 @@ type arbiterJob struct {
 	rng                          [2]int
 }
 
-func (rc *roundCtx) arbiter(ctx context.Context, l *Lineage) (bool, error) {
-	cy := rc.st.cycle()
-	bud := &budgetGate{cy: cy, max: rc.s.set.MaxAgentRuns}
-	j, err := rc.prepareArbiter(l)
+// arbiterEvidence is the contest evidence in the current snapshot: its file
+// text and its mapped line.
+func (rc *roundCtx) arbiterEvidence(l *Lineage, lm *LineMap) (path, text string, line int, ok bool) {
+	e := l.ContestEvidence
+	if e == nil || e.Path == rc.s.rel {
+		ln := 1
+		if e != nil {
+			ln = lm.Map(e.Line)
+		} else if len(l.Scope.Lines) == 2 {
+			ln = l.Scope.Lines[0]
+		}
+		return rc.s.rel, rc.s.text, ln, true
+	}
+	for _, src := range rc.s.sources.Included {
+		if src.Path == e.Path {
+			return src.Path, src.Text, e.Line, true
+		}
+	}
+	return "", "", 0, false
+}
+
+func (rc *roundCtx) arbiter(ctx context.Context, l *Lineage, lm *LineMap) (bool, error) {
+	round := len(rc.st.Rounds)
+	scope := lm.MapScope(l.Scope)
+	path, text, line, ok := rc.arbiterEvidence(l, lm)
+	// R17a holds for the text the arbiter will see now, not only for the
+	// text at contest time: an edit after --contest may add a directive.
+	guardErr := error(nil)
+	if ok {
+		guardErr = injectionGuard(rc.s, rc.st, text, Evidence{Path: path, Line: line})
+	}
+	if !ok || guardErr != nil {
+		why := "the contest evidence is no longer a source"
+		if guardErr != nil {
+			why = guardErr.Error()
+		}
+		rc.st.moveLineage(l, "arbiter", StOpen, "arbiter", "contest dropped: "+why, round)
+		return false, nil
+	}
+	j, err := rc.prepareArbiter(l, scope, Block{Path: path, Text: excerpt(text, line, line), Start: max(1, line-arbiterWindow)})
 	if err != nil {
 		return false, err
 	}
-	out, reason, ran := rc.runArbiter(ctx, j, bud)
-	round := len(rc.st.Rounds)
+	out, reason, ran, err := rc.runArbiter(ctx, j, &budgetGate{cy: rc.st.cycle(), max: rc.s.set.MaxAgentRuns})
+	if err != nil {
+		return ran, err
+	}
 	if out == nil {
 		l.ArbiterNotRun++
 		if l.ArbiterNotRun >= 2 {
@@ -76,35 +125,43 @@ func (rc *roundCtx) applyVerdict(l *Lineage, out *ArbiterOutput, round int) {
 	}
 }
 
-func (rc *roundCtx) runArbiter(ctx context.Context, j *arbiterJob, bud *budgetGate) (*ArbiterOutput, string, bool) {
-	reason, ran := "budget", false
+func (rc *roundCtx) runArbiter(ctx context.Context, j *arbiterJob, bud *budgetGate) (out *ArbiterOutput, reason string, ran bool, err error) {
+	reason = "budget"
+	rc.env.runner.ResetUnattributed()
 	for attempt := 1; attempt <= 2; attempt++ {
 		if !bud.take() {
-			reason = "budget"
-			break
+			return nil, "budget", ran, nil
 		}
 		ran = true
 		res := rc.env.runner.Run(ctx, &GoldfishRequest{Owner: j.owner, Attempt: attempt, Packet: j.packet, Prompt: j.prompt})
-		if rc.env.runner.Escaped(j.owner) {
-			return nil, "escaped_process", ran
-		}
-		if !res.Completed {
+		switch {
+		case ctx.Err() != nil:
+			return nil, "", ran, errorf(ExitError, "interrupted", "interrupted while the arbiter ran; nothing was recorded")
+		case rc.env.runner.Escaped(j.owner):
+			return nil, "escaped_process", ran, nil
+		case rc.env.runner.Unattributed():
+			rc.env.runner.ResetUnattributed()
+			return nil, "unattributed_orphan", ran, nil
+		case !res.Completed:
 			reason = res.Reason
 			if noRetry(reason) {
-				break
+				return nil, reason, ran, nil
 			}
 			continue
 		}
-		out, why := ParseArbiterOutput(res.Payload, j.nonce, rc.s.doc, j.rng, rc.s.set.Attest.MinQuotes)
+		o, why := ParseArbiterOutput(res.Payload, j.nonce, rc.s.doc, j.rng, rc.s.set.Attest.MinQuotes)
 		if why == "" {
-			return out, "", ran
+			return o, "", ran, nil
 		}
 		reason = why
 	}
-	return nil, reason, ran
+	return nil, reason, ran, nil
 }
 
-func (rc *roundCtx) prepareArbiter(l *Lineage) (*arbiterJob, error) {
+// prepareArbiter writes the arbiter packet (R1) with only the scope ±20
+// lines of the document and the evidence ±20 lines (R29). The flagged lines
+// of an injection-scan lineage go only in TRECHO-SINALIZADO.
+func (rc *roundCtx) prepareArbiter(l *Lineage, scope Scope, evidence Block) (*arbiterJob, error) {
 	s := rc.s
 	persona, err := LoadPersona("arbiter")
 	if err != nil {
@@ -112,27 +169,48 @@ func (rc *roundCtx) prepareArbiter(l *Lineage) (*arbiterJob, error) {
 	}
 	rc.st.NextArbiter++
 	m := rc.st.NextArbiter
+	rng := window(scope, len(s.doc.Lines))
 	j := &arbiterJob{
 		owner:  fmt.Sprintf("egm:%s:a%d:%s", Slug(s.rel), m, l.ID),
 		packet: filepath.Join(s.stateDir, fmt.Sprintf("arbiter-%d", m), l.ID),
 		nonce:  newNonce(),
-		rng:    window(l.Scope, len(s.doc.Lines)),
+		rng:    rng,
 	}
-	blocks := []Block{{Path: s.rel, Text: s.text}}
-	if e := l.ContestEvidence; e != nil && e.Path != s.rel {
-		for _, src := range s.sources.Included {
-			if src.Path == e.Path {
-				blocks = append(blocks, Block{Path: src.Path, Text: src.Text})
-			}
-		}
-	}
-	flagged := ""
+	flagged, mask := "", Scope{}
 	if l.Owner == injectionChecker {
-		flagged = flaggedExcerpt(s.doc, l.Scope)
+		flagged, mask = flaggedExcerpt(s.doc, scope), scope
 	}
-	j.prompt = BuildArbiterPrompt(&ArbiterInput{Nonce: j.nonce, Persona: persona, Flagged: flagged, Blocks: blocks, MinQuotes: s.set.Attest.MinQuotes,
-		Lineage: PriorItem{Lineage: l.ID, Severity: l.Severity, Status: l.Status, Scope: l.Scope, Message: l.Message, Rationale: l.Rationale, Evidence: l.Evidence}})
+	blocks := []Block{{Path: s.rel, Text: docExcerpt(s.doc, rng, mask), Start: rng[0]}}
+	if evidence.Path != s.rel || evidence.Start < rng[0] || evidence.Start > rng[1] {
+		blocks = append(blocks, evidence)
+	}
+	item := PriorItem{Lineage: l.ID, Severity: l.Severity, Status: l.Status, Scope: scope, Message: l.Message, Rationale: l.Rationale, Evidence: l.Evidence}
+	j.prompt = BuildArbiterPrompt(&ArbiterInput{Nonce: j.nonce, Persona: persona, Flagged: flagged, Blocks: blocks, MinQuotes: s.set.Attest.MinQuotes, Lineage: item})
 	return j, writeAtomic(j.packet, "prompt.txt", []byte(j.prompt))
+}
+
+// excerpt returns the lines lo-20..hi+20 of text.
+func excerpt(text string, lo, hi int) string {
+	lines := strings.Split(strings.TrimSuffix(text, "\n"), "\n")
+	a, b := max(1, lo-arbiterWindow), min(len(lines), hi+arbiterWindow)
+	if a > b {
+		return ""
+	}
+	return strings.Join(lines[a-1:b], "\n") + "\n"
+}
+
+// docExcerpt returns the document lines of rng, with the masked scope lines
+// replaced by a marker.
+func docExcerpt(d *Doc, rng [2]int, mask Scope) string {
+	var b strings.Builder
+	for n := rng[0]; n <= rng[1] && n <= len(d.Lines); n++ {
+		if len(mask.Lines) == 2 && n >= mask.Lines[0] && n <= mask.Lines[1] {
+			b.WriteString("[see TRECHO-SINALIZADO]\n")
+			continue
+		}
+		b.WriteString(d.Lines[n-1] + "\n")
+	}
+	return b.String()
 }
 
 // window is the scope ±20 lines, clipped to the document.

@@ -33,19 +33,23 @@ func (rc *roundCtx) run(ctx context.Context) (*Outcome, error) {
 	}
 	planned := rc.plan()
 	if err := rc.ownersRun(planned); err != nil {
-		return nil, err
+		return nil, rc.keepArbiters(err)
 	}
-	need, left := worstCase(planned, nil), rc.budgetLeft()
+	pending := (*State)(nil)
+	if rc.o.DryRun {
+		pending = rc.st // arbiters did not run: count the pending contests (R27)
+	}
+	need, left := worstCase(planned, pending), rc.budgetLeft()
 	if rc.o.DryRun {
 		return &Outcome{Report: s.report(rc.st, rc.st.lastRound(), rc.engine, rc.reason),
 			Message: fmt.Sprintf("dry run: worst case %d agent runs; %d left in the cycle budget", need, left)}, nil
 	}
 	if need > left {
-		return nil, errorf(ExitError, "budget", "the round needs up to %d agent runs and the cycle has %d left (egm.max_agent_runs)", need, left)
+		return nil, rc.keepArbiters(errorf(ExitError, "budget", "the round needs up to %d agent runs and the cycle has %d left (egm.max_agent_runs)", need, left))
 	}
 	rd, err := rc.round(ctx, planned)
 	if err != nil {
-		return nil, err
+		return nil, err // the state was changed in memory only: nothing is saved
 	}
 	rep := s.report(rc.st, rd, rc.engine, rc.reason)
 	if err := s.persist(rc.st, rd, rep); err != nil {
@@ -66,7 +70,7 @@ func (rc *roundCtx) gateLoop(ctx context.Context) (*Outcome, error) {
 	if rc.engine == EngineDeterministic && rc.o.Engine != EngineDeterministic && llmOwned(st) {
 		return nil, errorf(ExitError, "owner_unavailable", "the llm engine is unavailable (%s) and the state has lineages owned by LLM reviewers: pass --engine deterministic to fall back", rc.reason)
 	}
-	if rc.env != nil {
+	if rc.env != nil && !rc.o.DryRun {
 		ran, err := rc.arbiters(ctx)
 		if err != nil {
 			return nil, err
@@ -84,6 +88,17 @@ func (rc *roundCtx) gateLoop(ctx context.Context) (*Outcome, error) {
 		return nil, errorf(ExitError, "no_change", "%s", msg)
 	}
 	return nil, nil
+}
+
+// keepArbiters saves the arbiters' outcomes when the round is then refused,
+// so their runs are not paid twice.
+func (rc *roundCtx) keepArbiters(err error) error {
+	if rc.arbiterRan {
+		if serr := saveState(rc.s.stateDir, rc.st); serr != nil {
+			return serr
+		}
+	}
+	return err
 }
 
 func llmOwned(st *State) bool {

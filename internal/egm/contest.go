@@ -48,7 +48,7 @@ func (rv *resolver) validateContest(ctx context.Context, l *Lineage, raw string)
 	if err != nil {
 		return nil, err
 	}
-	if err := rv.injectionGuard(text, e); err != nil {
+	if err := injectionGuard(rv.s, rv.st, text, e); err != nil {
 		return nil, err
 	}
 	return func() {
@@ -98,10 +98,10 @@ func (rv *resolver) evidenceText(ctx context.Context, l *Lineage, e Evidence) (s
 // injectionGuard is R17a for a contest: the evidence excerpt (±20 lines) may
 // contain only the already-flagged matches of injection-scan lineages with
 // the same match_sha, and no term aimed at the arbiter near any match.
-func (rv *resolver) injectionGuard(text string, e Evidence) error {
+func injectionGuard(s *snapshot, st *State, text string, e Evidence) error {
 	d := ParseDoc(text, nil)
 	lo, hi := max(1, e.Line-arbiterWindow), min(len(d.Lines), e.Line+arbiterWindow)
-	exempt := rv.exemptLines(e.Path)
+	exempt := exemptLines(s, st, e.Path)
 	for _, m := range scanLines(d) {
 		if m.line < lo || m.line > hi {
 			continue
@@ -128,18 +128,18 @@ func nearArbiterTerm(line, match string) bool {
 // exemptLines are the scope lines of injection-scan lineages in open,
 // reopened, contest_pending or settled whose match_sha still equals the
 // current scan's.
-func (rv *resolver) exemptLines(path string) map[int]bool {
+func exemptLines(s *snapshot, st *State, path string) map[int]bool {
 	out := map[int]bool{}
-	if path != rv.s.rel {
+	if path != s.rel {
 		return out
 	}
 	current := map[string]string{}
-	for i := range rv.s.checks.Findings {
-		if f := &rv.s.checks.Findings[i]; f.Reviewer == injectionChecker {
+	for i := range s.checks.Findings {
+		if f := &s.checks.Findings[i]; f.Reviewer == injectionChecker {
 			current[f.Key] = f.MatchSHA
 		}
 	}
-	for _, l := range rv.st.Lineages {
+	for _, l := range st.Lineages {
 		if l.Owner != injectionChecker || len(l.Scope.Lines) != 2 || current[l.Key] != l.MatchSHA {
 			continue
 		}

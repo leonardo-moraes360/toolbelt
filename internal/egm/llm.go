@@ -213,7 +213,7 @@ func (s *snapshot) writePacket(j *job, blocks []Block, persona string, hasStanda
 // noRetry reasons are not retried (R16).
 func noRetry(reason string) bool {
 	switch reason {
-	case "tools_used", "escaped_process", "unattributed_orphan", "budget":
+	case "tools_used", "escaped_process", "unattributed_orphan", "budget", "interrupted":
 		return true
 	}
 	return false
@@ -269,6 +269,7 @@ func (e *llmEnv) runJob(ctx context.Context, j *job, bud *budgetGate) {
 // runPhase2 runs the pending reviewers in parallel up to max_parallel and
 // applies R3's orphan attribution at the end.
 func (s *snapshot) runPhase2(ctx context.Context, e *llmEnv, jobs []*job, bud *budgetGate) {
+	e.runner.ResetUnattributed()
 	sem := make(chan struct{}, s.set.MaxParallel)
 	var wg sync.WaitGroup
 	for _, j := range jobs {
@@ -309,6 +310,10 @@ func (s *snapshot) llmPhase(ctx context.Context, e *llmEnv, st *State, rd *Round
 		jobs = append(jobs, j)
 	}
 	s.runPhase2(ctx, e, jobs, &budgetGate{cy: cy, max: s.set.MaxAgentRuns})
+	if ctx.Err() != nil {
+		// Interrupted (SIGINT/SIGTERM): nothing of this round is kept.
+		return nil, nil, errorf(ExitError, "interrupted", "interrupted during phase 2; the round was not recorded")
+	}
 	var findings []*Finding
 	answers := map[string][]PriorAnswer{}
 	for _, j := range jobs {
