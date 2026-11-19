@@ -537,8 +537,8 @@ func (ce *convergeEnv) converge2(path, outPrefix string, maxRounds, cleanRounds 
 	if res.Stop == "" {
 		res.Stop = "capped"
 	}
-	for _, l := range res.Log {
-		res.CostUSD += l.CostUSD
+	for i := range res.Log {
+		res.CostUSD += res.Log[i].CostUSD
 	}
 	_ = os.WriteFile(outPrefix+"."+filepath.Base(path)+".final.md", []byte(doc), 0o600)
 	return res

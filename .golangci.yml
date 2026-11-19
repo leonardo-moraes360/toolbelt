@@ -105,6 +105,7 @@ linters:
       # R0 spike of tb egm (docs/specs/egm-nativo.md): a throwaway prototype,
       # not part of tb; long linear experiment loops are expected there.
       - linters:
+          - funlen
           - gocyclo
           - nestif
         path: bench/egm-spike/
