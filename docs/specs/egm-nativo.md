@@ -2,7 +2,7 @@
 
 # Spec: native EGM, Phase A, core (`tb egm review|loop|resolve|status`)
 
-Author: toolbelt · Status: R18–R27 revised with the R0 data and simplified after the re-measurement (not reviewed); R0 open only for item 8; implementation slice 1 (deterministic engine, interactive mode) done · Date: 2026-11-17 · Decision: [ADR-015](../adr/015-egm-nativo.md) · Companion: [egm trust](egm-trust.md)
+Author: toolbelt · Status: R18–R27 revised with the R0 data and simplified after the re-measurement (not reviewed); R0 open only for item 8; implementation slices 1 (deterministic engine, interactive mode) and 2 (`llm` engine, arbiter) done · Date: 2026-11-17 · Decision: [ADR-015](../adr/015-egm-nativo.md) · Companion: [egm trust](egm-trust.md)
 
 ## Overview
 

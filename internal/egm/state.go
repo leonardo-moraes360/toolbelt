@@ -41,6 +41,13 @@ type Lineage struct {
 	ScopeRound  int      `json:"scope_round"`
 	Occurrences []string `json:"occurrences"`
 	Unverified  bool     `json:"unverified,omitempty"`
+	// ConfirmedRound is the round in which a fixed lineage was confirmed
+	// (PRIOR carries fixed lineages confirmed in the current cycle, R9).
+	ConfirmedRound int `json:"confirmed_round,omitempty"`
+	// ArbiterNotRun counts consecutive arbiter not_run (2 → escalated, R29).
+	ArbiterNotRun int `json:"arbiter_not_run,omitempty"`
+	// ContestEvidence is the --contest evidence (R28).
+	ContestEvidence *Evidence `json:"contest_evidence,omitempty"`
 }
 
 // ReviewerRun is a reviewer's status in a round (glossary).
@@ -113,6 +120,7 @@ type State struct {
 	Convergences []Convergence     `json:"convergences"`
 	NextLineage  int               `json:"next_lineage"`
 	NextResolve  int               `json:"next_resolve"`
+	NextArbiter  int               `json:"next_arbiter"`
 }
 
 func newState(doc, slug string) *State {
@@ -258,6 +266,15 @@ func syncDir(dir string) error {
 	defer d.Close()
 	if err := d.Sync(); err != nil && runtime.GOOS != "windows" {
 		return err
+	}
+	return nil
+}
+
+func (s *State) roundN(n int) *Round {
+	for i := range s.Rounds {
+		if s.Rounds[i].N == n {
+			return &s.Rounds[i]
+		}
 	}
 	return nil
 }

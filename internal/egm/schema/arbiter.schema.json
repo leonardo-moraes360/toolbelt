@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/leonardo-moraes360/toolbelt/internal/egm/schema/arbiter.schema.json",
+  "title": "egm arbiter output (R29)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["nonce", "checked", "verdict", "rationale"],
+  "properties": {
+    "nonce": {"type": "string", "minLength": 1},
+    "checked": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["heading", "quote"],
+        "properties": {
+          "heading": {"type": "string"},
+          "quote": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "verdict": {"type": "string", "enum": ["withdraw", "uphold"]},
+    "rationale": {"type": "string", "minLength": 1}
+  }
+}
