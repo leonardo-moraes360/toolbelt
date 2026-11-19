@@ -40,7 +40,7 @@ Phase A has two specs:
 - **[Core](../specs/egm-nativo.md)** (Phase A): isolation, review, loop, resolve and arbiter, plus the defenses against **third-party content** (cloned repository, downloaded file, the reviewed document itself). The core assumes an honest but sloppy elephant.
 - **[Trust](../specs/egm-trust.md)** (Phase A.2, after the R0 spike): defenses against **active fraud** by the elephant as the same user.
 
-This split came after 8 review rounds of a single spec. The core then went through 5 more rounds and was frozen for the R0 spike, with the matching and convergence design marked as provisional until the spike's data. The anti-fraud findings grew every round, including about the defenses themselves, and kept the rest from converging.
+This split came after 8 review rounds of a single spec. The core then went through 5 more rounds and was frozen for the R0 spike, with the matching and convergence design marked as provisional until the spike's data; on 2026-11-19 it was revised with that data (spec R18–R27, [dogfood #31 and #32](../campo/dogfood.md)). The anti-fraud findings grew every round, including about the defenses themselves, and kept the rest from converging.
 
 ### 1. A goldfish is an isolated process with no tools
 

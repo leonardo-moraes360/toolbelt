@@ -40,7 +40,7 @@ A Fase A tem duas specs:
 - **[Núcleo](../specs/egm-nativo.md)** (Fase A): isolamento, revisão, loop, resolve e árbitro, mais as defesas contra **conteúdo de terceiros** (repositório clonado, arquivo baixado, o próprio documento revisado). O núcleo parte de um elephant honesto, mas desleixado.
 - **[Trust](../specs/egm-trust.md)** (Fase A.2, depois do spike R0): defesas contra **fraude ativa** do elephant como o mesmo usuário.
 
-Essa divisão veio depois de 8 rodadas de revisão de uma spec única. O núcleo passou depois por mais 5 rodadas e foi congelado para o spike R0, com o desenho de matching e convergência marcado como provisório até os dados do spike. Os findings anti-fraude cresciam a cada rodada, inclusive sobre as próprias defesas, e impediam a convergência do restante.
+Essa divisão veio depois de 8 rodadas de revisão de uma spec única. O núcleo passou depois por mais 5 rodadas e foi congelado para o spike R0, com o desenho de matching e convergência marcado como provisório até os dados do spike; em 2026-11-19 foi revisto com esses dados (R18–R27 da spec, [dogfood #31 e #32](../campo/dogfood.md)). Os findings anti-fraude cresciam a cada rodada, inclusive sobre as próprias defesas, e impediam a convergência do restante.
 
 ### 1. Goldfish é um processo isolado e sem ferramentas
 

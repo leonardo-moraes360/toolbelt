@@ -2,7 +2,7 @@
 
 # Spec: EGM nativo, Fase A, núcleo (`tb egm review|loop|resolve|status`)
 
-Autor: toolbelt · Status: Congelado para o spike R0 (5 rodadas da série nova; R18–R27 provisórios, ver Questões em aberto) · Data: 2026-11-17 · Decisão: [ADR-015](../adr/015-egm-nativo.md) · Complemento: [egm trust](egm-trust.md)
+Autor: toolbelt · Status: R18–R27 revistos com os dados do R0 (rodada 1 da revisão, não revisada); R0 aberto só no item 8 e na nova medição da convergência · Data: 2026-11-17 · Decisão: [ADR-015](../adr/015-egm-nativo.md) · Complemento: [egm trust](egm-trust.md)
 
 ## Visão geral
 
@@ -43,9 +43,11 @@ As proteções contra fraude ativa do próprio autor, que roda como o mesmo usu�
 | nonce | Valor aleatório de 128 bits por execução. Delimita os blocos de dado e precisa ser ecoado na saída. Prova que a saída é desta execução, **não** que o modelo resistiu a injeção. |
 | atestação | Lista `checked` de trechos literais do documento que o revisor leu, conferida pelo tb (R17). |
 | fontes citadas da linhagem | O documento mais a união dos `evidence[].path` **verificados** das ocorrências que passaram pelo `resolveSource` na rodada (`cited`, R21). |
-| `origin_round` / `opened_round` | Rodada em que a linhagem nasceu / última rodada em que ela ficou `open` ou `reopened` (uma reabertura atualiza `opened_round`). |
-| linhagem bloqueante | Linhagem blocker ou major em `open`, `reopened`, `contest_pending`, `escalated` ou `fixed` sem confirmação. |
-| política | `policy_sha`: o sha256 do JSON canônico com revisores obrigatórios (o conjunto completo), `clean_rounds`, `match`, `attest`, `detail_headings`, `doc_types`, `refs_ignore`, `max_source_bytes` e `max_packet_bytes` efetivos (R21). O motor e o perfil não entram; eles ficam registrados nas rodadas, e seus efeitos já são rebaixamentos (R24). |
+| `origin_round` / `opened_round` | Rodada em que a linhagem nasceu / última rodada em que ela ficou `open`, `reopened` ou `late` (uma reabertura, ou uma linhagem `late` subindo para `open`, atualiza `opened_round`). |
+| linhagem bloqueante | Linhagem blocker ou major em `open`, `reopened`, `contest_pending`, `escalated` ou `fixed` sem confirmação. Nem uma linhagem `late` nem um `fixed` sem confirmação vindo de `late` (R28) é bloqueante (R20). |
+| linhas alteradas (desde a rodada *m*) | As linhas do snapshot atual do documento, ou de uma fonte em `cited`, que diferem do snapshot da rodada *m* pelo mapeamento de linhas do R20, mais a linha antes e a linha depois de cada ponto de remoção. |
+| linhagem `late` | Um `major` novo de um revisor LLM que não se vincula a nenhuma linhagem, numa região que o mesmo revisor já revisou neste ciclo e que não mudou desde então (R20). |
+| política | `policy_sha`: o sha256 do JSON canônico com revisores obrigatórios (o conjunto completo), `clean_rounds`, `match`, `late_margin`, `attest`, `detail_headings`, `doc_types`, `refs_ignore`, `max_source_bytes` e `max_packet_bytes` efetivos (R21). O motor e o perfil não entram; eles ficam registrados nas rodadas, e seus efeitos já são rebaixamentos (R24). |
 | conteúdo | `content`: o sha256 da lista ordenada por path de pares `(path, sha256 dos bytes)` do documento e de todas as fontes resolvidas pelo R7 a partir do documento, antes do empacotamento por revisor e independentemente de quem rodou, mais o `checks_sha` (o sha256 das entradas dos checkers: cada path verificado com tipo e existência). Os bytes vêm do worktree no modo interativo e do blob no modo gate (R7a). |
 | registro de convergência | Registro que liga um `content` a uma convergência (R23). |
 | rodadas contadas | As `egm.clean_rounds` rodadas limpas consecutivas, sobre o mesmo `content`, que geraram um registro de convergência. |
@@ -121,7 +123,7 @@ O tb só chama git nas fases 1 e 3, nunca enquanto um goldfish roda (R3).
 
 ### Requisitos
 
-**R0: spike.** Este requisito bloqueia R1, R2, R3, R4, R4b e R5, e a passagem do ADR-015 para `accepted`. R4c e R4d não dependem do spike. **R18 a R27 são provisórios**: o desenho de matching, linhagem e convergência só é fechado com os dados do R0, e pode mudar.
+**R0: spike.** Este requisito bloqueia R1, R2, R3, R4, R4b e R5, e a passagem do ADR-015 para `accepted`. R4c e R4d não dependem do spike. R18 a R27 foram revistos com os dados do R0 ([dogfood #31 e #32](../campo/dogfood.md)). Antes de o ADR-015 ir para `accepted`, o spike mede de novo a taxa de convergência com as regras revistas (vínculos do R19, linhagens `late`, `max_rounds: 8`).
 
 Um protótipo em `bench/egm-spike/` deve provar que `claude -p`:
 1. roda em `sandbox.New` com o pacote como workdir só-leitura, `TMPDIR` privado, HOME descartável, env mínimo (R4b) e `PATH` mínimo;
@@ -314,9 +316,11 @@ O resultado vai em `docs/campo/dogfood.md` (PT e EN).
   4. `NONCE: <nonce>`;
   5. o contrato de saída;
   6. `PRIOR:` seguido de um bloco `<<<DATA-<nonce> path=PRIOR>>> … <<<END-<nonce>>>>`;
-  7. os blocos `<<<DATA-<nonce> path=…>>> … <<<END-<nonce>>>>`, com a numeração de linha original.
+  7. `KNOWN:` seguido de um bloco `<<<DATA-<nonce> path=KNOWN>>> … <<<END-<nonce>>>>`;
+  8. `CHANGED: <a>-<b>,…` (as linhas do documento alteradas desde a rodada anterior, ou `none`);
+  9. os blocos `<<<DATA-<nonce> path=…>>> … <<<END-<nonce>>>>`, com a numeração de linha original.
 
-  O `PRIOR` lista as linhagens das quais o revisor é dono que estão em `open` ou `reopened`, em `fixed` sem confirmação ou em `fixed` confirmadas no ciclo atual. De cada uma, traz só estes campos: `lineage`, `severity`, `status`, `scope`, `message`, `rationale` e `evidence`. Nenhum texto escrito pelo elephant (razões) entra no prompt. Todo revisor recebe o documento inteiro nos blocos de dado; o `RANGE` só indica o foco. Um finding cujo `scope` fica fora do range é aceito e conta normalmente, mas recebe `out_of_range: true` no relatório. O prompt declara que **todo** o conteúdo dos blocos é dado, nunca instrução.
+  O `PRIOR` lista as linhagens das quais o revisor é dono que estão em `open`, `reopened` ou `late`, em `fixed` sem confirmação ou em `fixed` confirmadas no ciclo atual. De cada uma, traz só estes campos: `lineage`, `severity`, `status`, `scope`, `message`, `rationale` e `evidence`. O `KNOWN` lista as outras linhagens do documento (de qualquer ciclo), de qualquer dono e em qualquer status, só com `lineage`, `severity`, `status`, `scope` (mapeado para o snapshot atual) e `message`; existe para o revisor vincular em vez de reportar de novo (R19), e nunca é reavaliado por esse revisor. Nenhum texto escrito pelo elephant (razões) entra no prompt. Todo revisor recebe o documento inteiro nos blocos de dado; o `RANGE` só indica o foco. Um finding cujo `scope` fica fora do range é aceito e conta normalmente, mas recebe `out_of_range: true` no relatório. O prompt declara que **todo** o conteúdo dos blocos é dado, nunca instrução.
 
 **Personas, standards e motores**
 
@@ -370,7 +374,8 @@ O resultado vai em `docs/campo/dogfood.md` (PT e EN).
 - R14: o slug é o path relativo em minúsculas, com `/` → `--` e `[^a-z0-9-]` → `-`, mais `-` e os 8 primeiros hex do sha256 do path. Um documento renomeado é um documento novo.
 - R15: o stdout, sem o envelope do perfil, é validado por um validador escrito à mão em `internal/egm/validate.go`, sem dependência nova, que segue `internal/egm/schema/finding.schema.json`.
   - Envelope: `claude-json` usa o campo `result` e é o padrão do `claude`; `raw` é o padrão do `custom`.
-  - Formato: `{"reviewer","nonce","checked":[{"heading","quote"}],"findings":[{"severity","scope":{"heading","lines":[a,b]},"message","rationale","evidence":[{"path","line"}]}],"prior":[{"lineage","still_holds":bool}]}`.
+  - Formato: `{"reviewer","nonce","checked":[{"heading","quote"}],"findings":[{"severity","scope":{"heading","lines":[a,b]},"message","rationale","evidence":[{"path","line"}],"same_as"}],"prior":[{"lineage","still_holds":bool}]}`.
+  - `same_as` é opcional: o `F-<k>` de uma linhagem do `PRIOR` ou do `KNOWN` que o revisor considera o mesmo problema (R19). Um `same_as` que não é uma string no formato `F-<k>` não é falha de schema: é tratado como rejeitado (R19).
 - R15a (uso de ferramenta): o perfil define como detectar uso de ferramenta no envelope.
   - No `claude-json`, conta como uso: `num_turns > 1`, entradas `tool_use` ou `permission_denials` não vazio.
   - Se houver uso detectado, o goldfish vira `not_run` com `reason: tools_used` e o relatório traz o aviso `tools_used`.
@@ -389,7 +394,7 @@ O resultado vai em `docs/campo/dogfood.md` (PT e EN).
     - range com menos de `Q × 20` caracteres de texto: o mínimo cai para 1;
     - range com texto e sem heading: zero headings exigidos e `heading` vazio;
     - range sem heading e sem texto: o revisor fica `skipped` (`reason: range_too_small`).
-- R17a (scan anti-injeção): antes de cada rodada, o tb varre **todo** o snapshot (prosa, código e citações), o bloco `PRIOR` de cada revisor e as fontes enviadas.
+- R17a (scan anti-injeção): antes de cada rodada, o tb varre **todo** o snapshot (prosa, código e citações), os blocos `PRIOR` e `KNOWN` de cada revisor e as fontes enviadas.
   - **Padrões:** ficam em `internal/egm/injection_patterns.txt` (RE2, um por linha, sem diferenciar maiúsculas). O conteúdo inicial é **exatamente**:
     - `ignore (all |the )?(previous|prior|above) instructions`
     - `do not report (any|this|these|the) (findings?|issues?|problems?)`
@@ -400,8 +405,8 @@ O resultado vai em `docs/campo/dogfood.md` (PT e EN).
     - `responda apenas (com|o) json`
   - **Finding:** os matches sob o mesmo heading, ou do mesmo arquivo de fonte, formam **um** finding `major` do `injection-scan`.
     - `scope` é a união das linhas.
-    - Também traz `context` e `match_sha` (o sha256 do texto casado). `context` é `code` (bloco cercado ou código inline), `quote` (linha iniciada por `>`), `source` (fonte), `prior` (bloco `PRIOR`) ou `prose` (o resto).
-    - Um match no `PRIOR` não gera linhagem. O trecho casado é trocado por `[PADRÃO-REMOVIDO]` no `PRIOR` daquela rodada, e o tb gera o aviso `prior_injection`.
+    - Também traz `context` e `match_sha` (o sha256 do texto casado). `context` é `code` (bloco cercado ou código inline), `quote` (linha iniciada por `>`), `source` (fonte), `prior` (bloco `PRIOR` ou `KNOWN`) ou `prose` (o resto).
+    - Um match no `PRIOR` ou no `KNOWN` não gera linhagem. O trecho casado é trocado por `[PADRÃO-REMOVIDO]` no bloco daquela rodada, e o tb gera o aviso `prior_injection` ou `known_injection`.
   - **Contestação** (R29):
     - as linhas de `scope` vão ao árbitro entre aspas e escapadas, num bloco `TRECHO-SINALIZADO`;
     - a contestação é recusada se houver termo dirigido ao árbitro (`arbiter`, `árbitro`, `withdraw`, `uphold`, `verdict`, `veredito`) a até 80 caracteres de algum match;
@@ -414,30 +419,45 @@ O resultado vai em `docs/campo/dogfood.md` (PT e EN).
 
 **Matching, linhagem e estado**
 
-- R18 (funções de comparação): `normalize(msg)` passa para minúsculas, tira acentos e pontuação, colapsa espaços e remove as stopwords de `internal/egm/stopwords.txt`.
+- R18 (funções de comparação): `normalize(msg)` passa para minúsculas, tira acentos e pontuação, colapsa espaços, remove as stopwords de `internal/egm/stopwords.txt` e corta cada token nas primeiras `egm.match.stem` runas (padrão 4; 0 mantém as palavras inteiras).
   - `sim(a,b)` é o Jaccard dos tokens de `normalize`.
-  - `overlap(r1,r2)` é `|r1∩r2| / min(|r1|,|r2|)`.
-  - Os limiares ficam em `egm.match.sim` (padrão 0.3) e `egm.match.overlap` (padrão 0.5), calibrados no R0.
-- R19 (fusão e dono): na mesma rodada, dois findings se fundem quando `sim ≥ egm.match.sim` e, além disso, `overlap ≥ egm.match.overlap` ou, sem `lines`, o mesmo `heading`. A fusão mantém a maior severidade e a lista `reviewers[]`.
+  - `region(a,b)` vale quando os dois têm o mesmo `heading` e, se os dois têm `lines`, a distância entre os intervalos, `max(0, max(a₁,b₁) − min(a₂,b₂))`, é no máximo `egm.match.gap` (padrão 3). O `scope` de uma linhagem existente é mapeado antes para o snapshot atual (R20).
+  - Padrões calibrados no R0 sobre `internal/egm/testdata/paraphrases.json` (dogfood #31): `sim` 0,23 com `stem` 4 dá cerca de 3% de merges errados e 20% de matches perdidos no corpus, e, calibrando num documento e testando no outro, 22–24% perdidos e 4–7% de merges errados, os dois acima das metas. Um limiar de sobreposição de linhas não teve efeito e saiu. Por isso o matching léxico é só reserva (R19).
+- R19 (vínculo e merge): cada finding novo passa por estes passos, nesta ordem:
+  1. **Vínculo declarado:** se `same_as` aponta uma linhagem que estava no `PRIOR` ou no `KNOWN` deste revisor na rodada, está em `open`, `reopened`, `late` ou `fixed`, e `region` vale entre o finding e a linhagem, o finding é ocorrência dessa linhagem. Também não vale um vínculo com linhagem de outro dono com severidade menor que a do finding: o finding vira linhagem nova, do seu revisor. Senão, o `same_as` é ignorado, o relatório traz `same_as_rejected` com a ocorrência e a linhagem, e o finding segue para o passo 2.
+  2. **Reserva léxica:** o finding é ocorrência da primeira linhagem, na ordem de `F-<k>`, com `sim ≥ egm.match.sim` e `region` (a regra de severidade entre donos do passo 1 vale aqui também); senão, funde-se com findings novos da mesma rodada que cumprem as mesmas duas condições; senão, é novo.
 
-  O dono é o revisor da ocorrência de **maior severidade**. Os empates se resolvem nesta ordem: revisor com fontes de código, depois a ordem do R10, e os checkers depois dos revisores.
-- R20 (reavaliação): entre rodadas, quem reavalia é o **revisor dono**. O conjunto do R9 entra no `PRIOR` dele, e ele responde `prior[].still_holds` para cada linhagem. Omitir uma linhagem desse conjunto invalida a saída.
+  O merge mantém a maior severidade e a lista `reviewers[]`. O dono é o revisor da ocorrência de **maior severidade**. Empates são decididos nesta ordem: revisor com fontes de código, depois a ordem do R10, e checkers depois dos revisores.
+- R20 (reavaliação): entre rodadas, quem reavalia é o **revisor dono**. O conjunto do R9 vai no `PRIOR` dele, e ele responde `prior[].still_holds` para cada linhagem. Omitir uma linhagem desse conjunto invalida a saída.
 
   | Status | `still_holds: true` | `still_holds: false` |
   |--------|---------------------|----------------------|
-  | open / reopened | continua | → fixed (`by: reviewer`, confirmado) |
-  | fixed | → reopened | continua fixed (confirmado) |
+  | open / reopened / late | fica | → fixed (`by: reviewer`, confirmada) |
+  | fixed | → reopened | fica fixed (confirmada) |
 
-  - **Linhagens de checker:** reavaliadas pela re-execução do checker.
-    - Não reproduzida: vira `fixed`, confirmado.
-    - Reproduzida: `fixed` vira `reopened`.
+  - **Correção exige mudança:** `still_holds: false` numa linhagem `open`, `reopened` ou `late` é aplicado assim:
+    - uma mudança desde a `opened_round` toca as linhas do `scope` mapeado (± `egm.late_margin`) ou as linhas `evidence[].line ± 5` de uma fonte em `cited` (o teste do R28): a linhagem vira `fixed`, confirmada;
+    - o `content` mudou, mas nenhuma mudança toca essas linhas: a linhagem vira `fixed`, confirmada, e o relatório traz `fixed_elsewhere`, para que uma correção que só o dono garante fique visível;
+    - o `content` não mudou: a resposta é ignorada, a linhagem fica, e o relatório traz `fixed_without_edit`.
+
+    No R0 os donos nunca mantiveram uma linhagem aberta (0 de 188 reavaliações, dogfood #32); o `fixed_elsewhere` é como essa leniência aparece no relatório.
+  - **Linhagens de checker:** reavaliadas rodando o checker de novo.
+    - Não reproduzido: vira `fixed`, confirmada.
+    - Reproduzido: `fixed` vira `reopened`.
   - **Dono fixo:** o dono de uma linhagem nunca muda na Fase A. Se o dono não roda na rodada (`skipped`, `unavailable` ou removido por `--reviewers`), a linhagem não muda. Uma linhagem bloqueante com dono que não pode rodar faz o R26 recusar a rodada.
-  - **Findings novos:** são casados com as linhagens existentes pelo mapeamento de linhas (`git diff --no-index -U0` entre os snapshots) e pelo R19.
+  - **Mapeamento de linhas:** os `scope` das linhagens existentes são mapeados para o snapshot atual por `git diff --no-index -U0` entre os snapshots; os mesmos diffs, do documento e das fontes em `cited`, dão as linhas alteradas.
+  - **Findings novos:** passam pelo R19.
     - Casou com uma linhagem `fixed`: ela reabre.
-    - Casou com uma linhagem `open` ou `reopened`: registra a ocorrência; se a severidade nova for maior, a linhagem sobe para ela.
-    - Casou com `settled`, `declined`, `contest_pending` ou `escalated` e a severidade nova **não é maior**: só registra a ocorrência, salvo o R17a.
-    - Casou com uma dessas, mas a severidade nova é maior: vira uma nova `F-<k>`.
-    - Não casou: vira uma nova `F-<k>`.
+    - Casou com uma linhagem `open`, `reopened` ou `late`: registra a ocorrência; se a severidade nova for maior, a linhagem sobe para ela. Uma linhagem `late` vira `open` quando sobe para blocker ou quando a ocorrência nova toca as linhas alteradas desde a rodada anterior (± `egm.late_margin`).
+    - Casou com `settled`, `declined`, `contest_pending` ou `escalated` e a severidade nova **não é maior**: só registra a ocorrência, exceto no R17a.
+    - Casou com uma dessas, mas a severidade nova é maior: vira um `F-<k>` novo.
+    - Não casou: vira um `F-<k>` novo em `open`, ou em `late` quando tudo isto vale:
+      - a severidade é `major` e o finding vem de um revisor LLM (não de checker nem do `injection-scan`);
+      - o mesmo revisor ficou `completed` numa rodada anterior *m* deste ciclo, e o range dele na rodada *m* cobria o `scope` mapeado do finding;
+      - o `scope` não está a até `egm.late_margin` linhas de uma linha alterada desde a rodada *m*, e nenhuma `evidence` do finding aponta para uma linha alterada desde a rodada *m* numa fonte.
+
+      Um revisor que não rodou, ficou `unavailable` ou foi removido por `--reviewers` nas rodadas anteriores, portanto, nunca produz `late`.
+  - **Por que `late` existe:** no R0 toda rodada trouxe majors novos depois das edições do autor, e nenhuma rodada foi limpa (dogfood #32). Os dados não dizem se esses majors estavam em regiões editadas; a nova medição registra isso. Uma linhagem `late` aparece no relatório e pode ser corrigida ou recusada, mas não mantém o loop aberto; ela é rebaixamento de linhagem enquanto estiver `late` (R24).
 - R21 (estado): o diretório de estado contém:
   - `state.json` (`0600`), gravado em arquivo temporário seguido de `rename` e `fsync` do diretório;
   - `round-<n>/`;
@@ -446,7 +466,7 @@ O resultado vai em `docs/campo/dogfood.md` (PT e EN).
   O `state.json` guarda:
   - **Rodadas:** `n`, `cycle`, `content`, `policy_sha`, `doc_sha256`, `head_commit`, `sources` (path → sha256), motor, revisores obrigatórios e executados com status, e `argv_sha256`.
   - **Mapa** de ocorrência para linhagem.
-  - **Linhagens:** `severity`, `owner`, `persona`, `status ∈ open|fixed|reopened|contest_pending|settled|escalated|declined`, `confirmed`, `contests`, `origin_round`, `opened_round`, `cited`, `match_sha` (no `injection-scan`) e `downgrade` (R24).
+  - **Linhagens:** `severity`, `owner`, `persona`, `status ∈ open|late|fixed|reopened|contest_pending|settled|escalated|declined`, `confirmed`, `contests`, `origin_round`, `opened_round`, `cited`, `match_sha` (no `injection-scan`) e `downgrade` (R24).
   - **Transições:** comando, rodada, motivo e `by ∈ elephant|reviewer|rerun|arbiter`.
   - **Registros de convergência:** `content`, `policy_sha`, as rodadas contadas e as flags de rebaixamento de ciclo.
 
@@ -456,15 +476,15 @@ O resultado vai em `docs/campo/dogfood.md` (PT e EN).
 **Convergência e veredito**
 
 - R23 (rodada limpa e convergência): uma rodada é limpa quando, **após** o matching e a reavaliação, valem as três condições:
-  - nenhuma linhagem blocker ou major está em `open`, `reopened`, `contest_pending` ou `escalated`;
+  - nenhuma linhagem blocker ou major está em `open`, `reopened`, `contest_pending` ou `escalated` (`late` não conta);
   - nenhuma está `fixed` sem confirmação;
   - nenhum revisor obrigatório ficou `not_run`.
 
   Há convergência com `egm.clean_rounds` (padrão 2) rodadas limpas consecutivas **sobre o mesmo `content`**. Uma rodada limpa com `content` diferente da anterior reinicia a contagem em 1. A convergência grava um registro para o `content` e encerra o ciclo; a rodada seguinte abre um ciclo novo.
 
-  Teto do ciclo: `capped` quando a rodada `egm.max_rounds` (padrão 5) do ciclo termina sem convergir. A partir daí, `loop next` é recusado com exit 1 (`FAIL`). A saída é `--restart`, que exige `content` novo.
+  Teto do ciclo: `capped` quando a rodada `egm.max_rounds` (padrão 8; no R0 não houve rodada limpa em 4 rodadas efetivas por documento, dogfood #32) do ciclo termina sem convergir. A partir daí, `loop next` é recusado com exit 1 (`FAIL`). A saída é `--restart`, que exige `content` novo.
 - R24 (rebaixamentos): há dois tipos, e todos ficam registrados.
-  - **De linhagem**, valem enquanto a linhagem estiver no status: `forced` (`--force-settle`) e `declined` de `major`. Um `forced` de **blocker** é marcado `forced_blocker`, e o `tb stack` dá `ok: false` com ele mesmo sem `--strict` (R33). Eles persistem entre ciclos. Saem só por `--fix` a partir de `settled` ou `declined` (R28), seguido da confirmação do dono (`still_holds: false`).
+  - **De linhagem**, valem enquanto a linhagem estiver no status: `forced` (`--force-settle`), `declined` de `major` e `late`. Um `forced` de **blocker** é marcado `forced_blocker`, e o `tb stack` dá `ok: false` com ele mesmo sem `--strict` (R33). Eles persistem entre ciclos. `forced` e `declined` saem só por `--fix` a partir de `settled` ou `declined` (R28), seguido da confirmação do dono (`still_holds: false`); `late` sai quando a linhagem deixa de ser `late`.
   - **De ciclo**, valem para o registro de convergência daquele ciclo:
     - `--restart`;
     - algum revisor obrigatório que não ficou `completed` numa rodada contada, por qualquer motivo que não seja `skipped` estrutural, inclusive por ter sido removido por `--reviewers`. O `policy_sha` sempre usa o conjunto obrigatório completo, nunca o subconjunto de `--reviewers`;
@@ -494,9 +514,9 @@ O resultado vai em `docs/campo/dogfood.md` (PT e EN).
 
   | Flag | De | Para | Restrição |
   |------|----|------|-----------|
-  | `--fix F-…` | open, reopened, escalated, contest_pending, settled, declined | fixed (sem confirmação) | Desde a **rodada de referência** (a da última transição de status da linhagem: a `opened_round`, ou a rodada em que ela foi para `settled` ou `declined`), houve um diff com alguma linha alterada que, ignorando espaços, tocou as linhas de `scope` mapeadas ou as linhas `evidence[].line ± 5` de uma fonte em `cited`. O `resolve` compara um snapshot novo e redigido do worktree (o documento e as fontes de `cited`, resolvidas pelo `resolveSource`, gravado em `<dir-estado>/resolve-<n>/`) com o snapshot da rodada de referência. A normalização de espaços é feita em Go sobre os hunks. A partir de `contest_pending`, cancela a contestação (`contests` continua 1). A partir de `settled`/`declined`, o rebaixamento de linhagem só sai com a confirmação do dono. Uma correção em outro trecho fecha pela reavaliação do dono, sem `--fix`. |
+  | `--fix F-…` | open, late, reopened, escalated, contest_pending, settled, declined | fixed (sem confirmação; não bloqueante quando veio de `late`) | Desde a **rodada de referência** (a da última transição de status da linhagem: a `opened_round`, ou a rodada em que ela foi para `settled` ou `declined`), houve um diff com alguma linha alterada que, ignorando espaços, tocou as linhas de `scope` mapeadas ou as linhas `evidence[].line ± 5` de uma fonte em `cited`. O `resolve` compara um snapshot novo e redigido do worktree (o documento e as fontes de `cited`, resolvidas pelo `resolveSource`, gravado em `<dir-estado>/resolve-<n>/`) com o snapshot da rodada de referência. A normalização de espaços é feita em Go sobre os hunks. A partir de `contest_pending`, cancela a contestação (`contests` continua 1). A partir de `settled`/`declined`, o rebaixamento de linhagem só sai com a confirmação do dono. Uma correção em outro trecho fecha pela reavaliação do dono, sem `--fix`. |
   | `--contest F-x --evidence path:line` | open, reopened | contest_pending | Motor efetivo com agente; `contests == 0`; o path está em `cited` e passa de novo pelo `resolveSource`; a persona não é comprehension. Se o path é o documento, a evidência vem do snapshot da rodada atual. Se é outra fonte, ela precisa estar versionada, e o sha256 dos bytes do worktree, o dos bytes do blob em `HEAD` e o registrado na `opened_round` precisam ser iguais. Registrar a contestação faz `contests = 1`. |
-  | `--decline F-…` | open, reopened | declined | `contests == 0`. Vale só para `nit` e `major`; um `major` recusado recebe rebaixamento de linhagem. Nunca vale para `blocker`. |
+  | `--decline F-…` | open, late, reopened | declined | `contests == 0`. Vale só para `nit` e `major`; um `major` recusado recebe rebaixamento de linhagem. Nunca vale para `blocker`. |
   | `--force-settle F-x --reason "…"` | open, reopened, contest_pending, escalated | settled | `forced: true`, rebaixamento de linhagem |
 
 - R29 (árbitro): o árbitro recebe, nos blocos do R9:
@@ -555,7 +575,7 @@ O resultado vai em `docs/campo/dogfood.md` (PT e EN).
   - `coverage`, `engine` e `engine_reason`;
   - `findings` por linhagem;
   - `skipped_sources`;
-  - `warnings` (`config_untrusted`, `tools_used`, `prior_injection`, `unstaged_source`, `filtered_source`, `secret_like`…); o aviso `no_gated_docs` é do `tb stack`, não do relatório;
+  - `warnings` (`config_untrusted`, `tools_used`, `prior_injection`, `known_injection`, `same_as_rejected`, `fixed_elsewhere`, `fixed_without_edit`, `unstaged_source`, `filtered_source`, `secret_like`…); o aviso `no_gated_docs` é do `tb stack`, não do relatório;
   - `downgrades` e `budget`.
 
   A ordenação é estável e o corpo não tem timestamps. O `report.md` é gerado a partir do JSON.
@@ -568,7 +588,7 @@ O resultado vai em `docs/campo/dogfood.md` (PT e EN).
   **Chaves de limite:** `max_agent_runs`, `max_rounds`, `max_parallel`, `timeout_per_reviewer`, `max_source_bytes`, `max_packet_bytes` e `max_stdout_bytes`. O repositório só pode **baixar** esses valores. Um valor do repositório acima do valor da config de usuário (ou do padrão) é limitado a ele, e o tb emite `config_untrusted`.
 
   **Chaves de política:** o repositório só pode **endurecer**.
-  - `clean_rounds`, `attest.min_quotes`, `match.sim` e `match.overlap` só sobem.
+  - `clean_rounds`, `attest.min_quotes`, `match.sim`, `match.stem` (com 0, palavras inteiras, contando como acima de qualquer outro valor) e `late_margin` só sobem; `match.gap` só desce.
   - `require_full_coverage` só vira `true`.
   - `doc_globs` só ganha itens, e os itens do repositório valem só para a seleção do gate (R33), não para a exclusão de fontes (R7).
   - `doc_types`, `refs_ignore` e `detail_headings` vêm só da config de usuário.
@@ -602,10 +622,11 @@ egm:
   doc_types: {"docs/adr/**": adr}   # resto → spec
   detail_headings: ["## Detailed Implementation Plan", "## Plano de Implementação Detalhado", "## Implementation Plan"]
   refs_ignore: ["refs/**"]
-  match: {sim: 0.3, overlap: 0.5}   # 0 < x ≤ 1
+  match: {sim: 0.23, stem: 4, gap: 3}   # 0 < sim ≤ 1; stem ≥ 0; gap ≥ 0 (linhas)
+  late_margin: 3             # ≥ 0 (linhas), R20
   attest: {min_quotes: 3}    # ≥ 1
   require_full_coverage: false
-  max_rounds: 5              # ≥ 1, por ciclo
+  max_rounds: 8              # ≥ 1, por ciclo
   clean_rounds: 2            # 1 ≤ clean_rounds ≤ max_rounds
   max_agent_runs: 120        # ≥ 1, por ciclo
   max_source_bytes: 65536
@@ -636,6 +657,7 @@ egm:
 | Credencial vazada ou rotacionada | R0, R4 |
 | Saída falsa no stderr, JSON truncado | R2 |
 | Atalho desleixado (`--fix` sem corrigir, contestar até passar, rebaixar severidade, `--decline`/`--force-settle` lavado por edição, blocker absorvido por nit recusado, reverter para um conteúdo que já convergiu com blocker aberto) | R28, R29, R20 (severidade maior vira linhagem nova), R23, R24, R25 (linha 2 exige zero bloqueantes abertos), R26 |
+| Um revisor esconde um finding novo atrás de `same_as`, ou o dono fecha uma linhagem sem mudança | R19 (`same_as` só para linhagem mostrada na rodada, não fechada, com `region` e sem subir a severidade de outro dono), R20 (`fixed_without_edit`, `fixed_elsewhere`), R17a sobre o `KNOWN`. Risco residual: um dono que garante uma correção em outro lugar é acreditado, e só o aviso mostra isso |
 | Convergência sobre textos diferentes, trocar o conteúdo depois da revisão | R23, R25, R33 (`status --at head`) |
 | Crash no meio de uma escrita, ou dois processos ao mesmo tempo | R21 (escrita atômica, `flock` não bloqueante) |
 | Config do repositório afrouxando a política | R34 (o repositório só endurece) |
@@ -646,7 +668,7 @@ egm:
 ## Requisitos não funcionais (NFRs)
 
 - **Determinismo:** no motor `deterministic`, as mesmas entradas geram o mesmo `report.json` byte a byte.
-- **Custo:** cerca de 9 execuções por rodada com DetailedRange e 6 sem, limitadas pelo R27.
+- **Custo:** cerca de 9 execuções por rodada com DetailedRange e 6 sem, limitadas pelo R27. No R0, uma rodada de 9 revisores `claude` mais o goldfish autor custou cerca de US$ 2–2,5 (dogfood #32).
 
 ## Alternativas
 
@@ -654,13 +676,12 @@ Ver o [ADR-015](../adr/015-egm-nativo.md#alternativas-consideradas).
 
 ## Questões em aberto
 
-- O R0 define: autenticação, flags sem ferramentas, detecção de uso de ferramenta e diretórios de runtime do `claude`, limiares de matching e taxa de convergência. Com isso, R18 a R27 são revistos.
-- **Resultado do matching no R0** ([dogfood #31](../campo/dogfood.md)): com os padrões do R18, 53% dos pares de paráfrase de `internal/egm/testdata/paraphrases.json` não se fundem. Nenhuma variante léxica testada (Jaccard ou containment, com ou sem radicais) atinge merges errados ≤ 5% e matches perdidos ≤ 20% calibrando num documento e testando no outro; `egm.match.overlap` não tem efeito. R18–R20 precisam mudar antes da implementação, por exemplo com o revisor dono ligando findings novos às linhagens do `PRIOR`, com o matching léxico só como reserva.
-- **Resultado da convergência no R0** ([dogfood #32](../campo/dogfood.md)): com os 9 revisores, um autor corrigindo todo blocker/major aberto e `clean_rounds: 2`, nenhum dos documentos convergiu em 4–5 rodadas (US$ 17 gastos), e nenhuma rodada foi limpa. As linhagens bloqueantes abertas caíram no `vault.md` (18 → 3), mas não no `egm-trust.md` (21 → 13 com uma rodada parcial); os donos nunca mantiveram uma linhagem do PRIOR aberta, então o que bloqueia são majors novos atraídos por cada edição. A mediana passa de 4: antes de implementar, `max_rounds`, a regra de rodada limpa (por exemplo, rodada limpa tolerando majors novos só fora das linhas editadas, ou só os donos revisando depois da rodada 1) e o conjunto padrão de revisores precisam ser revistos, e a estimativa de custo vai de 9 para cerca de 10 execuções e US$ 2,5 por rodada.
+- O R0 definiu a autenticação (cópia de `claudeAiOauth` para o HOME descartável com `CLAUDE_CONFIG_DIR`, só com o access token fresco), as flags sem ferramentas e a detecção de uso de ferramenta, os diretórios de runtime (diretório do binário, realpath do `resolv.conf`) e os dados de matching e convergência ([dogfood #22–#32](../campo/dogfood.md)). R18–R27 foram revistos com isso. Ainda aberto do R0: o item 8 (`safe.directory` com outro uid) e a nova medição da convergência com as regras revistas.
+- O R4 precisa checar o `expiresAt` do access token antes da fase 2 e parar com erro claro, porque uma cópia não renova um token vencido (dogfood #29); o `egm-spike` já faz isso.
+- Se a nova medição ainda não convergir em `max_rounds`, os próximos candidatos são: depois da rodada 1, rodam só os donos das linhagens do ciclo e os revisores cujo range toca as linhas alteradas, ou `clean_rounds: 1`.
 - Findings da última rodada de revisão que ficaram para depois do R0:
   - revisores de código veem o documento inteiro, mas o `implementation-readiness` continua só no DetailedRange;
   - cobertura offline: uma linhagem `injection-scan` sem agente só sai por re-execução, `--fix` ou `--force-settle`;
-  - convergência com 9 revisores não determinísticos: se for rara, a Fase A troca o número de rodadas limpas ou a regra de rodada limpa;
   - transferência de dono, `supersedes` e rodadas além do teto ficaram fora da v1 e podem voltar com dados.
 
 ## Plano de Implementação Detalhado
@@ -799,13 +820,18 @@ Nota sobre o fake-agent:
   - atestação inválida, só com headings, válida no DetailedRange desta spec, e `range_too_small`;
   - CUJ-7 e CUJ-8;
   - duas rodadas limpas sobre conteúdos diferentes não convergem;
+  - `same_as` para uma linhagem do `KNOWN` com `region` vincula; `same_as` para linhagem não mostrada, ou sem `region`, dá `same_as_rejected` e cai no passo 2 do R19;
+  - `still_holds: false` sem mudança desde a `opened_round` dá `fixed_without_edit`; com mudança em outro lugar, `fixed` e `fixed_elsewhere`;
+  - `same_as` para linhagem `declined` ou `settled` é rejeitado; um blocker vinculado ao major de outro dono abre linhagem nova; uma `message` do `KNOWN` com padrão de injeção é redigida com `known_injection`;
+  - rodada 2: um major novo sem vínculo fora das linhas alteradas vira `late`, não bloqueia o R23 e dá `PASS_PARTIAL`; o mesmo finding como blocker, ou tocando as linhas alteradas, vira `open`; uma linhagem `late` sobe para `open` quando uma ocorrência posterior toca as linhas alteradas;
+  - a rodada 1 nunca produz `late`; findings de checker e do `injection-scan` nunca viram `late`; um revisor removido por `--reviewers` na rodada 1 não produz `late` na rodada 2; um major num ponto de remoção ou sobre uma linha alterada de fonte não é `late`; `--fix` de uma linhagem `late` não deixa a rodada suja;
   - `withdraw` de blocker reaberto pelo dono;
   - estreitamento de cobertura;
   - exclusão `max_*`;
   - dono `skipped` transfere a linhagem;
   - gate com documento alterado sem `PASS`, documento apagado, seleção vazia e renomeação.
 - **Match:**
-  - corpus do R0;
+  - corpus do R0: com os padrões, merges errados e matches perdidos sobre o `paraphrases.json` ficam dentro dos valores registrados no R18;
   - linhas deslocadas;
   - heading renomeado;
   - dono por severidade;
