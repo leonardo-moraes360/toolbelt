@@ -50,7 +50,7 @@ Example:
 
 		config.SetFile(cfgFile)
 
-		if cmd.Name() != "init" && cmd.Name() != "version" && cmd.Name() != "help" {
+		if cmd.Name() != "init" && cmd.Name() != "version" && cmd.Name() != "help" && !isEgmCommand(cmd) {
 			_, err := config.Load()
 			if err != nil {
 				log.Debug("config not loaded", "error", err)

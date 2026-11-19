@@ -2,7 +2,7 @@
 
 # Spec: EGM nativo, Fase A, núcleo (`tb egm review|loop|resolve|status`)
 
-Autor: toolbelt · Status: R18–R27 revistos com os dados do R0 e simplificados depois da nova medição (não revisado); R0 aberto só no item 8 · Data: 2026-11-17 · Decisão: [ADR-015](../adr/015-egm-nativo.md) · Complemento: [egm trust](egm-trust.md)
+Autor: toolbelt · Status: R18–R27 revistos com os dados do R0 e simplificados depois da nova medição (não revisado); R0 aberto só no item 8; fatia 1 da implementação (engine determinística, modo interativo) feita · Data: 2026-11-17 · Decisão: [ADR-015](../adr/015-egm-nativo.md) · Complemento: [egm trust](egm-trust.md)
 
 ## Visão geral
 
@@ -417,7 +417,7 @@ O resultado vai em `docs/campo/dogfood.md` (PT e EN).
 - R18 (funções de comparação): `normalize(msg)` passa para minúsculas, tira acentos e pontuação, colapsa espaços, remove as stopwords de `internal/egm/stopwords.txt` e corta cada token nas primeiras `egm.match.stem` runas (padrão 4; 0 mantém as palavras inteiras).
   - `sim(a,b)` é o Jaccard dos tokens de `normalize`.
   - `region(a,b)` vale quando os dois têm o mesmo `heading` e, se os dois têm `lines`, a distância entre os intervalos, `max(0, max(a₁,b₁) − min(a₂,b₂))`, é no máximo `egm.match.gap` (padrão 3). O `scope` de uma linhagem existente é mapeado antes para o snapshot atual (R20).
-  - Padrões calibrados no R0 sobre `internal/egm/testdata/paraphrases.json` (dogfood #31): `sim` 0,23 com `stem` 4 dá cerca de 3% de merges errados e 20% de matches perdidos no corpus, e, calibrando num documento e testando no outro, 22–24% perdidos e 4–7% de merges errados, os dois acima das metas. Um limiar de sobreposição de linhas não teve efeito e saiu. Matches perdidos aparecem como linhagens duplicadas, que custam rodadas mas nunca escondem um finding.
+  - Padrões calibrados no R0 sobre `internal/egm/testdata/paraphrases.json` (dogfood #31): `sim` 0,23 com `stem` 4 dá cerca de 3% de merges errados e 24% de matches perdidos no corpus (20% só pelo texto; 4 dos 87 pares de paráfrase estão sob headings diferentes, que a `region` nunca funde, dogfood #34), e, calibrando num documento e testando no outro, 22–24% perdidos e 4–7% de merges errados, os dois acima das metas. Um limiar de sobreposição de linhas não teve efeito e saiu. Matches perdidos aparecem como linhagens duplicadas, que custam rodadas mas nunca escondem um finding.
   - Um vínculo declarado pelo revisor (`same_as`) e uma lista das linhagens dos outros revisores no prompt foram testados no R0 e saíram: os revisores nunca os usaram (dogfood #33).
 - R19 (merge): linhagens de outro dono com severidade menor que a do finding não são candidatas. Um finding novo é ocorrência da primeira candidata, na ordem de `F-<k>`, com `sim ≥ egm.match.sim` e `region`; senão, funde-se com findings novos da mesma rodada que cumprem as mesmas condições; senão, é novo.
 
@@ -691,7 +691,7 @@ Ver o [ADR-015](../adr/015-egm-nativo.md#alternativas-consideradas).
 | `internal/egm/gitconfig.go` | Create | Classificação das chaves de `git config --list` (R4d) |
 | `internal/egm/redact.go` | Create | Redação do egm com preservação de linhas (R8) |
 | `internal/egm/personas/*.md`, `internal/egm/standards/*.md` | Create | 8 personas e `arbiter`; standards `feature-spec`, `adr`, `implementation-readiness`, `zoom-out` (R10, R11, R13, R29) |
-| `internal/egm/checkers/refs.go`, `internal/egm/checkers/sections.go`, `internal/egm/checkers/planfiles.go` | Create | Checkers (R13) |
+| `internal/egm/checkers.go`, `internal/egm/checker_refs.go`, `internal/egm/checker_plan.go` | Create | Checkers (R13); no pacote `egm`, porque um subpacote checkers separado importaria `Repo` e `Doc` do `egm` e formaria um ciclo |
 | `internal/egm/injection.go`, `internal/egm/injection_patterns.txt` | Create | Scan (R17a) |
 | `internal/egm/attest.go` | Create | Atestação (R17) |
 | `internal/egm/stopwords.txt` | Create | Stopwords (R18) |

@@ -1,0 +1,111 @@
+package egm
+
+import (
+	"context"
+	"fmt"
+	"strings"
+)
+
+const exampleMarker = "<!-- tb:egm-example -->"
+
+type refCandidate struct {
+	rel  string
+	line int
+}
+
+// refCandidates returns the R7 (b) spans with a "/" that survive steps 1–5 of
+// resolveSource. Those that leave the root or cross a symlink are dropped
+// without saying whether they exist (R13).
+func refCandidates(d *Doc, root string, set *Settings, exempt map[string]bool, res *CheckResult) []refCandidate {
+	var out []refCandidate
+	seen := map[string]bool{}
+	for i, l := range d.Lines {
+		n := i + 1
+		for _, s := range SpanCandidates(l) {
+			if !strings.Contains(s, "/") {
+				continue
+			}
+			rel, why := cleanRel("", s)
+			if why != "" || seen[rel] {
+				continue
+			}
+			if reason := refExemption(l, rel, set, exempt); reason != "" {
+				if reason != "internal" {
+					res.Exemptions = append(res.Exemptions, Exemption{Path: rel, Line: n, Reason: reason})
+				}
+				continue
+			}
+			if _, why, _ := lstatChain(root, rel); why == "symlink" {
+				continue
+			}
+			seen[rel] = true
+			out = append(out, refCandidate{rel: rel, line: n})
+		}
+	}
+	return out
+}
+
+func refExemption(line, rel string, set *Settings, exempt map[string]bool) string {
+	switch {
+	case strings.HasPrefix(rel, ".toolbelt/") || rel == ".toolbelt" || strings.HasPrefix(rel, ".git/") || rel == ".git":
+		return "internal"
+	case strings.Contains(line, exampleMarker):
+		return "example_marker"
+	case exempt[strings.TrimSuffix(rel, "/")]:
+		return "plan_create"
+	case MatchAny(set.RefsIgnore, rel):
+		return "refs_ignore"
+	}
+	return ""
+}
+
+func checkRefsExist(ctx context.Context, d *Doc, docRel, root string, set *Settings, idx indexView, exempt map[string]bool, res *CheckResult) error {
+	cands := refCandidates(d, root, set, exempt, res)
+	paths := make([]string, 0, len(cands))
+	for _, c := range cands {
+		paths = append(paths, strings.TrimSuffix(c.rel, "/"))
+	}
+	found, err := idx.exists(ctx, paths)
+	if err != nil {
+		return err
+	}
+	for _, c := range cands {
+		p := strings.TrimSuffix(c.rel, "/")
+		kind := found[p]
+		res.inputs = append(res.inputs, p+"\t"+kindOrMissing(kind))
+		if kind != "" {
+			continue
+		}
+		res.Findings = append(res.Findings, Finding{
+			Reviewer: checkRefs, Severity: SevMajor,
+			Scope:    Scope{Heading: d.HeadingAt(c.line), Lines: []int{c.line, c.line}},
+			Message:  fmt.Sprintf("%#q is not a versioned file or directory", c.rel),
+			Evidence: []Evidence{{Path: docRel, Line: c.line}},
+			Key:      "refs:" + p,
+		})
+	}
+	return nil
+}
+
+// RunCheckers runs the deterministic checkers and the injection scan over the
+// snapshot (R13, R17a). They run in both engines.
+func RunCheckers(ctx context.Context, d *Doc, docRel, docType, root string, set *Settings, idx indexView, sources []Source) (*CheckResult, error) {
+	res := &CheckResult{}
+	res.Findings = append(res.Findings, checkRequiredSections(d, docType, docRel)...)
+	exempt := createExempt(ParsePlan(d))
+	if err := checkRefsExist(ctx, d, docRel, root, set, idx, exempt, res); err != nil {
+		return nil, err
+	}
+	if d.HasDetailed() {
+		if err := checkPlanFiles(ctx, d, docRel, root, idx, res); err != nil {
+			return nil, err
+		}
+	}
+	res.Findings = append(res.Findings, ScanInjection(d, docRel)...)
+	for _, s := range sources {
+		if f := ScanInjectionSource(s.Path, s.Text); f != nil {
+			res.Findings = append(res.Findings, *f)
+		}
+	}
+	return res, nil
+}

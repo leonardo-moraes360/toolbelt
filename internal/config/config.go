@@ -40,6 +40,9 @@ type Config struct {
 
 	// Ticket scheduler (tb router run).
 	Router RouterConfig `yaml:"router"`
+
+	// tb egm (docs/specs/egm-nativo.md).
+	Egm EgmConfig `yaml:"egm"`
 }
 
 type Defaults struct {
@@ -187,6 +190,7 @@ func (r *RouterConfig) Validate() error {
 
 func DefaultConfig() *Config {
 	return &Config{
+		Egm: DefaultEgmConfig(),
 		Defaults: Defaults{
 			Sandbox:    false,
 			Timeout:    "30s",

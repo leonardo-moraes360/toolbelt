@@ -249,7 +249,7 @@ tb bus recv --channel feature-x --as grok-1 --wait 20s
 - [x] Graphify: reimplementação própria ([ADR-014](adr/014-graphify-reimplementacao.md)) — `tb graph explain`/`path`
 - [x] `tb graph search` com ranking BM25 (título/path/pacote, quebra de camelCase/`snake_case`, multi-termo)
 - [ ] Vault Markdown compatível com Obsidian (`tb vault`, Fase A) — spec em rascunho ([docs/pt-BR/specs/vault.md](specs/vault.md)), sem código
-- [ ] Integração com Elephant-Goldfish Model (ou reimplementação)
+- [ ] Reimplementação do Elephant-Goldfish Model (`tb egm`, [ADR-015](adr/015-egm-nativo.md)): spike R0 feito; fatia 1 da Fase A (engine determinística) feita; engine `llm` e árbitro, depois gate (`tb stack`) e MCP pendentes
 - [ ] Componentes opcionais em Rust para inferência local
 - [ ] Rulers adicionais para `tb verify`
 - [ ] `tb merge` estratégias `prompt` / `semantic`
