@@ -86,7 +86,7 @@ func (e *EgmConfig) Validate() error {
 		{e.Vendor != "claude" && e.Vendor != "custom", "egm.vendor must be claude or custom"},
 		{e.Output != "" && e.Output != "claude-json" && e.Output != "raw", "egm.output must be claude-json or raw"},
 		{e.ToolsCheck != "auto" && e.ToolsCheck != "none", "egm.tools_check must be auto or none"},
-		{e.Match.Sim <= 0 || e.Match.Sim > 1, "egm.match.sim must be in (0, 1]"},
+		{!(e.Match.Sim > 0 && e.Match.Sim <= 1), "egm.match.sim must be in (0, 1]"}, // also rejects NaN
 		{e.Match.Stem < 0, "egm.match.stem must be >= 0"},
 		{e.Match.Gap < 0, "egm.match.gap must be >= 0"},
 		{e.Attest.MinQuotes < 1, "egm.attest.min_quotes must be >= 1"},

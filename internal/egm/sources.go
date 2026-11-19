@@ -309,6 +309,15 @@ var errTooBig = errors.New("too big")
 // readRegular reads a file that must still be regular when opened, up to max
 // bytes (errTooBig above).
 func readRegular(p string, maxBytes int64) ([]byte, error) {
+	// Check the type before opening: open(2) on a FIFO blocks for good and
+	// ignores the context (R7: the document must be a regular file).
+	li, err := os.Lstat(p)
+	if err != nil {
+		return nil, err
+	}
+	if !li.Mode().IsRegular() {
+		return nil, errors.New("not a regular file")
+	}
 	f, err := os.Open(p) //nolint:gosec // callers validated the path
 	if err != nil {
 		return nil, err

@@ -343,13 +343,13 @@ func (s *snapshot) round(ctx context.Context, st *State, o *Options, engine, rea
 	if err != nil {
 		return nil, err
 	}
-	r := &reconciler{st: st, round: n, mapper: mapper, ran: map[string]bool{
+	r := &reconciler{st: st, round: n, mapper: mapper, docRel: s.rel, ran: map[string]bool{
 		checkRefs: true, checkSections: true, checkPlan: true, injectionChecker: true,
 	}}
 	r.fold(s.checks.Findings)
 	rd.Warnings = r.warnings
 	rd.Clean = roundClean(st, &rd, s.sources.Unstaged)
-	rd.Downgrades = roundDowngrades(&rd, s.docType, s.hasDetailed, false)
+	rd.Downgrades = roundDowngrades(&rd, s.docType, s.hasDetailed, s.sources.MaxExcluded && codeReviewerRan(&rd))
 	st.Rounds = append(st.Rounds, rd)
 	advanceCycle(st, &s.set)
 	return st.lastRound(), nil
@@ -357,7 +357,7 @@ func (s *snapshot) round(ctx context.Context, st *State, o *Options, engine, rea
 
 // mapper maps each lineage's scope from its round's snapshot to the current
 // one (R20), diffing each old snapshot once.
-func (s *snapshot) mapper(ctx context.Context, st *State) (func(*Lineage) Scope, error) {
+func (s *snapshot) mapper(ctx context.Context, st *State) (func(*Lineage) *LineMap, error) {
 	maps := map[int]*LineMap{}
 	for _, l := range st.Lineages {
 		if _, ok := maps[l.ScopeRound]; ok {
@@ -373,7 +373,7 @@ func (s *snapshot) mapper(ctx context.Context, st *State) (func(*Lineage) Scope,
 		}
 		maps[l.ScopeRound] = lm
 	}
-	return func(l *Lineage) Scope { return maps[l.ScopeRound].MapScope(l.Scope) }, nil
+	return func(l *Lineage) *LineMap { return maps[l.ScopeRound] }, nil
 }
 
 // writeSnapshot writes target.md and sources/ under dir (R1).

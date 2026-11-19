@@ -107,5 +107,23 @@ func RunCheckers(ctx context.Context, d *Doc, docRel, docType, root string, set 
 			res.Findings = append(res.Findings, *f)
 		}
 	}
+	res.Findings = dedupeByKey(res.Findings)
 	return res, nil
+}
+
+// dedupeByKey keeps the first finding per (reviewer, key): checker lineages
+// are matched by key, so a repeated key (the same path twice in the plan)
+// must not open a new lineage every round.
+func dedupeByKey(fs []Finding) []Finding {
+	seen := map[string]bool{}
+	out := fs[:0]
+	for i := range fs {
+		k := fs[i].Reviewer + "\x00" + fs[i].Key
+		if fs[i].Key != "" && seen[k] {
+			continue
+		}
+		seen[k] = true
+		out = append(out, fs[i])
+	}
+	return out
 }

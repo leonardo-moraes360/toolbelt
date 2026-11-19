@@ -2,6 +2,7 @@ package egm
 
 import (
 	"encoding/json"
+	"math"
 	"os"
 	"strings"
 	"testing"
@@ -353,5 +354,28 @@ func TestStateAtomicAndLock(t *testing.T) {
 	}
 	if none, err := loadState(t.TempDir()); none != nil || err != nil {
 		t.Fatal("NO_STATE in a clean dir")
+	}
+}
+
+func TestNaNPolicyRejected(t *testing.T) {
+	user := config.DefaultEgmConfig()
+	s := ApplyRepoConfig(&user, []byte("egm:\n  match: {sim: .nan}\n"))
+	if s.Match.Sim != user.Match.Sim {
+		t.Fatalf("NaN accepted: %v", s.Match.Sim)
+	}
+	bad := config.DefaultEgmConfig()
+	bad.Match.Sim = math.NaN()
+	if bad.Validate() == nil {
+		t.Fatal("Validate accepted NaN")
+	}
+}
+
+func TestPlanRootGlobIsFinding(t *testing.T) {
+	c := &planCheck{root: t.TempDir()}
+	if c.badPath("*.md") == "" {
+		t.Fatal("root glob accepted")
+	}
+	if c.badPath("docs/*.md") != "" {
+		t.Fatal("subdirectory glob refused")
 	}
 }

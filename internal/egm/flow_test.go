@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 const flowSpec = `# Spec: x
@@ -308,4 +309,38 @@ func TestFlowEngineFlag(t *testing.T) {
 	o.Reviewers = []string{"nope"}
 	_, err = Review(context.Background(), &o)
 	wantReason(t, err, "usage")
+}
+
+// TestFlowFIFODocument: a named pipe as the document exits 2 instead of
+// blocking in open(2) (review finding 1).
+func TestFlowFIFODocument(t *testing.T) {
+	f := newFlow(t, "")
+	fifo := filepath.Join(f.root, "docs", "specs", "pipe.md")
+	mkfifo(t, fifo)
+	o := f.opts()
+	o.Doc = "docs/specs/pipe.md"
+	done := make(chan error, 1)
+	go func() { _, err := Status(context.Background(), &o); done <- err }()
+	select {
+	case err := <-done:
+		wantReason(t, err, "usage")
+	case <-time.After(5 * time.Second):
+		t.Fatal("tb egm blocked on a FIFO document")
+	}
+}
+
+// TestFlowDuplicatePlanPath: the same missing path twice in the plan keeps a
+// single lineage across rounds (review finding 2).
+func TestFlowDuplicatePlanPath(t *testing.T) {
+	f := newFlow(t, "")
+	f.edit("## Technical Plan\n", "## Technical Plan\n\nPlan.\n\n## Detailed Implementation Plan\n\n| File | Action | Reason |\n|---|---|---|\n| `src/a.go` | Modify | x |\n| `src/a.go` | Modify | y |\n\n")
+	ctx := context.Background()
+	n1 := len(f.must(Review(ctx, f.optsP())).Report.Findings)
+	f.edit("Plan.", "Plan, v2.")
+	n2 := len(f.must(LoopNext(ctx, f.optsP())).Report.Findings)
+	f.edit("Plan, v2.", "Plan, v3.")
+	n3 := len(f.must(LoopNext(ctx, f.optsP())).Report.Findings)
+	if n1 != n2 || n2 != n3 {
+		t.Fatalf("lineages grew: %d %d %d", n1, n2, n3)
+	}
 }

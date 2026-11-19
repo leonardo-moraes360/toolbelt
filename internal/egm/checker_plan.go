@@ -2,6 +2,7 @@ package egm
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"path"
 	"regexp"
@@ -233,6 +234,9 @@ func (c *planCheck) badPath(p string) string {
 	}
 	if i := strings.Index(rel, "*"); i >= 0 {
 		rel = path.Dir(rel[:i+1])
+		if rel == "." {
+			return "is a glob at the repository root, which would sweep the whole index"
+		}
 	}
 	if _, why, _ := lstatChain(c.root, strings.TrimSuffix(rel, "/")); why == "symlink" {
 		return "crosses a symlink"
@@ -247,6 +251,11 @@ func (c *planCheck) checkExistence(ctx context.Context, r *PlanRow, found map[st
 			continue
 		}
 		kind, err := c.kindOf(ctx, p, found)
+		var e *Error
+		if errors.As(err, &e) && e.Reason == "too_many_entries" {
+			c.finding(r, SevMajor, "glob:"+p, fmt.Sprintf("plan glob %#q matches under a directory with more than %d versioned files; list the files", p, maxGlobEntries))
+			continue
+		}
 		if err != nil {
 			return err
 		}

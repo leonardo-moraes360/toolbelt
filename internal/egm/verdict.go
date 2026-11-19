@@ -50,6 +50,17 @@ func roundDowngrades(rd *Round, docType string, hasDetailed, maxExcluded bool) [
 	return out
 }
 
+// codeReviewerRan reports whether a reviewer with code sources completed, the
+// case in which a max_* exclusion reduces coverage (R7 effects, R24).
+func codeReviewerRan(rd *Round) bool {
+	for _, rv := range rd.Reviewers {
+		if spec, ok := presetSpec(rv.Name); ok && spec.CodeSources && rv.Status == "completed" {
+			return true
+		}
+	}
+	return false
+}
+
 // advanceCycle updates convergence and the cap after round rd (R23). It
 // returns true when the round produced a convergence record.
 func advanceCycle(st *State, set *Settings) bool {

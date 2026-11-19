@@ -2,6 +2,7 @@ package egm
 
 import (
 	"encoding/json"
+	"fmt"
 	"sort"
 )
 
@@ -109,6 +110,11 @@ func PolicySHA(set *Settings, hasDetailed bool) string {
 		RequiredReviewers(hasDetailed), set.CleanRounds, set.Match, set.Attest, set.DetailHeadings,
 		set.DocTypes, set.RefsIgnore, set.MaxSourceBytes, set.MaxPacketBytes,
 	}
-	b, _ := json.Marshal(p) // maps marshal with sorted keys: canonical
+	b, err := json.Marshal(p) // maps marshal with sorted keys: canonical
+	if err != nil {
+		// Validate rejects NaN/Inf; never let a marshal error collapse every
+		// policy into the same hash.
+		panic(fmt.Sprintf("egm: policy not serializable: %v", err))
+	}
 	return sha256Hex(b)
 }

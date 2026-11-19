@@ -216,7 +216,7 @@ func (s *Settings) applyMatch(r *repoEgm) {
 	}
 	m := r.Match
 	if m.Sim != nil {
-		if *m.Sim < s.Match.Sim || *m.Sim > 1 {
+		if !(*m.Sim >= s.Match.Sim && *m.Sim <= 1) { // also rejects NaN
 			s.untrusted("egm.match.sim can only go up (max 1); ignored")
 		} else {
 			s.Match.Sim = *m.Sim

@@ -206,31 +206,30 @@ func (rv *resolver) touched(l *Lineage) (bool, error) {
 		return false, err
 	}
 	changed := lm.Changed()
-	scope := l.Scope
+	// Scope and evidence lines are numbered in ScopeRound's snapshot.
+	sm := lm
 	if l.ScopeRound != l.RefRound {
 		old, err := rv.readRound(l.ScopeRound, rv.s.rel)
 		if err != nil {
 			return false, err
 		}
-		if sm, err := DiffSnapshots(rv.ctx, rv.s.stateDir, old, rv.s.text); err == nil {
-			scope = sm.MapScope(scope)
+		if sm, err = DiffSnapshots(rv.ctx, rv.s.stateDir, old, rv.s.text); err != nil {
+			return false, err
 		}
-	} else {
-		scope = lm.MapScope(scope)
 	}
-	if Touches(scope.Lines, changed, 0) {
+	if Touches(sm.MapScope(l.Scope).Lines, changed, 0) {
 		return true, nil
 	}
-	return rv.evidenceTouched(l, lm)
+	return rv.evidenceTouched(l, sm, changed)
 }
 
-func (rv *resolver) evidenceTouched(l *Lineage, docMap *LineMap) (bool, error) {
+func (rv *resolver) evidenceTouched(l *Lineage, docMap *LineMap, changed map[int]bool) (bool, error) {
 	for _, e := range l.Evidence {
 		if !containsStr(l.Cited, e.Path) {
 			continue
 		}
 		if e.Path == rv.s.rel {
-			if Touches([]int{docMap.Map(e.Line), docMap.Map(e.Line)}, docMap.Changed(), 5) {
+			if Touches([]int{docMap.Map(e.Line), docMap.Map(e.Line)}, changed, 5) {
 				return true, nil
 			}
 			continue

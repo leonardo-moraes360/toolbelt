@@ -12,7 +12,8 @@ import (
 type reconciler struct {
 	st       *State
 	round    int
-	mapper   func(l *Lineage) Scope
+	mapper   func(l *Lineage) *LineMap
+	docRel   string
 	ran      map[string]bool // owners that ran this round
 	warnings []Warning
 }
@@ -34,7 +35,13 @@ func (r *reconciler) transition(l *Lineage, to, by, reason string) {
 // fold applies the round's findings. Findings get their occurrence IDs here.
 func (r *reconciler) fold(findings []Finding) {
 	for _, l := range r.st.Lineages {
-		l.Scope = r.mapper(l)
+		lm := r.mapper(l)
+		l.Scope = lm.MapScope(l.Scope)
+		for i := range l.Evidence {
+			if l.Evidence[i].Path == r.docRel {
+				l.Evidence[i].Line = lm.Map(l.Evidence[i].Line)
+			}
+		}
 		l.ScopeRound = r.round
 	}
 	byKey := map[string]*Finding{}
