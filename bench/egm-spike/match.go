@@ -6,8 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
-	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -191,11 +189,7 @@ func runCollect(rep *report, args []string) error {
 		return fmt.Errorf("runs inválido %q", args[0])
 	}
 	out, docs := args[1], args[2:]
-	link, err := exec.LookPath("claude")
-	if err != nil {
-		return fmt.Errorf("claude não encontrado: %w", err)
-	}
-	bin, err := filepath.EvalSymlinks(link)
+	bin, err := claudeReady(30 * time.Minute)
 	if err != nil {
 		return err
 	}

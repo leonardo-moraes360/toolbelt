@@ -48,7 +48,7 @@ func (r *report) add(name string, ok bool, detail string) {
 
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Fprintln(os.Stderr, "uso: egm-spike isolation|claude|collect|calibrate")
+		fmt.Fprintln(os.Stderr, "uso: egm-spike isolation|claude|collect|calibrate|converge")
 		os.Exit(2)
 	}
 	rep := &report{Mode: os.Args[1], Extra: map[string]any{}}
@@ -60,6 +60,8 @@ func main() {
 		err = runClaude(rep)
 	case "collect":
 		err = runCollect(rep, os.Args[2:])
+	case "converge":
+		err = runConverge(rep, os.Args[2:])
 	case "calibrate":
 		err = runCalibrate(rep, os.Args[2:])
 	default:
@@ -253,6 +255,16 @@ type goldfishRun struct {
 }
 
 func runGoldfish(bin string, prompt string, owner string) (*goldfishRun, error) {
+	reg := sandbox.NewRegistry(ownerVar)
+	reg.SetOwnerVar(ownerVar)
+	release, _ := sandbox.AcquireSubreaper()
+	defer release()
+	return runGoldfishShared(bin, prompt, owner, reg)
+}
+
+// runGoldfishShared runs one goldfish under a Registry shared by every goldfish
+// of the process (R3); the caller holds the subreaper.
+func runGoldfishShared(bin string, prompt string, owner string, reg *sandbox.Registry) (*goldfishRun, error) {
 	e, err := newEnv()
 	if err != nil {
 		return nil, err
@@ -267,11 +279,6 @@ func runGoldfish(bin string, prompt string, owner string) (*goldfishRun, error) 
 	}
 	copyPath := filepath.Join(e.home, ".claude", ".credentials.json")
 	run := &goldfishRun{CopyBefore: sha(copyPath)}
-
-	reg := sandbox.NewRegistry(ownerVar)
-	reg.SetOwnerVar(ownerVar)
-	release, _ := sandbox.AcquireSubreaper()
-	defer release()
 
 	ro := []string{filepath.Dir(bin)}
 	// /etc/resolv.conf is often a symlink into /run (systemd-resolved), which
