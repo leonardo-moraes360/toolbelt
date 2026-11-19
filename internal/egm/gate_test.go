@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/leonardo-moraes360/toolbelt/internal/config"
 )
 
 func (f *flow) statusAt(ctx context.Context, rev string) *Report {
@@ -201,5 +203,104 @@ func TestGateSourcesChanged(t *testing.T) {
 	r := f.gate(ctx, "HEAD~1", false)
 	if len(r.Docs) != 0 || !hasGateWarning(r, "sources_changed") {
 		t.Fatalf("%+v", r)
+	}
+}
+
+// TestGateWorktreeLayoutIgnored: the document's directory may be missing or
+// a symlink in the worktree; gate mode reads the commit's path, never the
+// redirected one.
+func TestGateWorktreeLayoutIgnored(t *testing.T) {
+	f, ctx := convergedAtHead(t)
+	specs := filepath.Join(f.root, "docs", "specs")
+	if err := os.RemoveAll(specs); err != nil {
+		t.Fatal(err)
+	}
+	if r := f.statusAt(ctx, "HEAD"); r.Verdict != VerdictPassPartial || r.Doc != f.doc {
+		t.Fatalf("missing dir: %s %s", r.Verdict, r.Doc)
+	}
+	writeFile(t, filepath.Join(f.root, "docs", "other", "x.md"), "# Other\n")
+	if err := os.Symlink("other", specs); err != nil {
+		t.Fatal(err)
+	}
+	if r := f.statusAt(ctx, "HEAD"); r.Verdict != VerdictPassPartial || r.Doc != f.doc {
+		t.Fatalf("symlinked dir: %s %s", r.Verdict, r.Doc)
+	}
+	o := f.opts()
+	o.Doc, o.At = "../outside.md", "HEAD"
+	_, err := Status(ctx, &o)
+	wantReason(t, err, "usage")
+}
+
+// TestGateIgnoredTrackedSourceParity: a tracked source that matches
+// .gitignore counts in both modes, so the contents match (R7a).
+func TestGateIgnoredTrackedSourceParity(t *testing.T) {
+	f, ctx := convergedAtHead(t)
+	writeFile(t, filepath.Join(f.root, ".gitignore"), "internal/kept.go\n")
+	gitT(t, f.root, "add", ".gitignore")
+	gitT(t, f.root, "commit", "-qm", "ignore a tracked source")
+	wt := f.must(Status(ctx, f.optsP())).Report
+	at := f.statusAt(ctx, "HEAD")
+	if wt.Content != at.Content || wt.Verdict != at.Verdict {
+		t.Fatalf("worktree %s %s vs gate %s %s (skipped %+v)", wt.Verdict, wt.Content, at.Verdict, at.Content, wt.SkippedSources)
+	}
+}
+
+// TestGateRepoConfigRules: a .toolbelt symlink at head is untrusted, and a
+// repository doc_globs item that leaves the root is ignored.
+func TestGateRepoConfigRules(t *testing.T) {
+	f := newFlow(t, "")
+	ctx := context.Background()
+	writeFile(t, filepath.Join(f.root, "cfg", "config.yaml"), "egm:\n  clean_rounds: 3\n")
+	if err := os.Symlink("cfg", filepath.Join(f.root, ".toolbelt")); err != nil {
+		t.Fatal(err)
+	}
+	gitT(t, f.root, "add", ".")
+	gitT(t, f.root, "commit", "-qm", "symlinked config")
+	r := f.statusAt(ctx, "HEAD")
+	found := false
+	for _, w := range r.Warnings {
+		found = found || w.Code == "config_untrusted"
+	}
+	if !found {
+		t.Fatalf("symlinked .toolbelt not flagged: %+v", r.Warnings)
+	}
+	user := config.DefaultEgmConfig()
+	set := ApplyRepoConfig(&user, []byte("egm:\n  doc_globs: ['../*.md', '/etc/*', 'docs//x', 'rfcs/**']\n"))
+	if len(set.Warnings) != 3 || !containsStr(set.GateDocGlobs, "rfcs/**") || containsStr(set.GateDocGlobs, "../*.md") {
+		t.Fatalf("globs %v warnings %+v", set.GateDocGlobs, set.Warnings)
+	}
+}
+
+func TestGlobPrefix(t *testing.T) {
+	for g, want := range map[string]string{
+		"docs/specs/**": "docs/specs", "docs/adr/*.md": "docs/adr", "*.md": ".", "**/*.md": ".",
+		"docs/x.md": "docs/x.md", "docs/a?/b": "docs",
+	} {
+		if got := globPrefix(g); got != want {
+			t.Errorf("globPrefix(%q) = %q, want %q", g, got, want)
+		}
+	}
+}
+
+// TestGateDeletedOrMissingDocs: a gated document deleted from the worktree
+// is uncommitted; an --egm-doc absent at head is an ERROR, not a pass.
+func TestGateDeletedOrMissingDocs(t *testing.T) {
+	f, ctx := convergedAtHead(t)
+	writeFile(t, filepath.Join(f.root, "README.md"), "# r\n")
+	gitT(t, f.root, "add", ".")
+	gitT(t, f.root, "commit", "-qm", "readme")
+	if err := os.Remove(filepath.Join(f.root, f.doc)); err != nil {
+		t.Fatal(err)
+	}
+	if r := f.gate(ctx, "HEAD~1", false); r.OK || !hasGateWarning(r, "uncommitted_gated_docs") {
+		t.Fatalf("deleted doc: %+v", r)
+	}
+	gitT(t, f.root, "checkout", "-q", "--", f.doc)
+	r := f.gate(ctx, "HEAD~1", false, "docs/specs/nope.md")
+	if r.OK || len(r.Docs) != 1 || r.Docs[0].Verdict != "ERROR" {
+		t.Fatalf("missing --egm-doc: %+v", r)
+	}
+	if _, err := Gate(ctx, &GateOptions{RepoDir: f.root, Base: "HEAD~1", Head: "HEAD", Docs: []string{"../x.md"}, ConfigFile: f.cfg}); err == nil {
+		t.Fatal("--egm-doc outside the repository accepted")
 	}
 }

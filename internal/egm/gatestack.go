@@ -3,6 +3,7 @@ package egm
 import (
 	"context"
 	"os"
+	"path"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -70,8 +71,12 @@ func Gate(ctx context.Context, o *GateOptions) (*GateResult, error) {
 		return nil, err
 	}
 	docs, changed := selectGated(diff, set.GateDocGlobs)
+	cwd, err := filepath.EvalSymlinks(o.RepoDir)
+	if err != nil {
+		return nil, errorf(ExitError, "usage", "%s: %v", o.RepoDir, err)
+	}
 	for _, d := range o.Docs {
-		rel, err := gateRel(repo.Root, o.RepoDir, d)
+		rel, err := gateRel(repo.Root, cwd, d)
 		if err != nil {
 			return nil, err
 		}
@@ -116,18 +121,6 @@ func selectGated(diff []NameStatus, globs []string) (docs []string, changed map[
 		}
 	}
 	return docs, changed
-}
-
-func gateRel(root, cwd, doc string) (string, error) {
-	p, err := gateDocPath(cwd, doc)
-	if err != nil {
-		return "", err
-	}
-	rel, err := filepath.Rel(root, p)
-	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		return "", errorf(ExitError, "usage", "--egm-doc %s is outside the repository", doc)
-	}
-	return filepath.ToSlash(rel), nil
 }
 
 func gateDoc(ctx context.Context, root, doc, head string, o *GateOptions) GateDoc {
@@ -205,17 +198,19 @@ func emptySelection(ctx context.Context, repo *Repo, head string, globs []string
 	return nil
 }
 
-// globPrefix is the directory part of a glob before its first "*".
+// globPrefix is the directory part of a glob before its first wildcard;
+// "." for a root-level glob. A literal glob is its own prefix.
 func globPrefix(g string) string {
 	i := strings.IndexAny(g, "*?[")
 	if i < 0 {
-		return g
+		return path.Clean(g)
 	}
 	d := g[:i]
-	if j := strings.LastIndex(d, "/"); j >= 0 {
-		return d[:j]
+	j := strings.LastIndex(d, "/")
+	if j <= 0 {
+		return "."
 	}
-	return ""
+	return path.Clean(d[:j])
 }
 
 // uncommittedGated lists gated documents of the worktree that are
@@ -248,7 +243,9 @@ func uncommittedGated(ctx context.Context, repo *Repo, head string, globs []stri
 func globDirs(globs []string) []string {
 	var dirs []string
 	for _, g := range globs {
-		if p := globPrefix(g); p != "" && !containsStr(dirs, p) {
+		// A prefix git would refuse cannot come from a validated glob; skip
+		// it rather than fail the whole step.
+		if p := globPrefix(g); validRelPath(p) == nil && !containsStr(dirs, p) {
 			dirs = append(dirs, p)
 		}
 	}
@@ -262,17 +259,21 @@ func changedFromHead(ctx context.Context, repo *Repo, head string, globs, dirs [
 	if err != nil {
 		return nil, err
 	}
-	var present []string
+	var present, out []string
 	for _, e := range staged {
-		if !MatchAny(globs, e.Path) || containsStr(present, e.Path) {
+		if !MatchAny(globs, e.Path) || containsStr(present, e.Path) || containsStr(out, e.Path) {
 			continue
 		}
-		if fi, why, missing := lstatChain(repo.Root, e.Path); !missing && why == "" && fi.Mode().IsRegular() {
-			present = append(present, e.Path)
+		// Deleted, or replaced by a symlink or a non-regular file: a
+		// worktree change against head all the same.
+		if fi, why, missing := lstatChain(repo.Root, e.Path); missing || why != "" || !fi.Mode().IsRegular() {
+			out = append(out, e.Path)
+			continue
 		}
+		present = append(present, e.Path)
 	}
 	if len(present) == 0 {
-		return nil, nil
+		return out, nil
 	}
 	hashes, err := repo.HashObject(ctx, present...)
 	if err != nil {
@@ -286,7 +287,6 @@ func changedFromHead(ctx context.Context, repo *Repo, head string, globs, dirs [
 	for _, e := range tree {
 		at[e.Path] = e.Object
 	}
-	var out []string
 	for i, p := range present {
 		if at[p] != hashes[i] {
 			out = append(out, p)

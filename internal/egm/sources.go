@@ -187,15 +187,7 @@ func CollectSources(ctx context.Context, repo *Repo, set *Settings, docRel, docT
 	if err != nil {
 		return nil, err
 	}
-	var kept []string
-	for _, f := range files {
-		if ignored[f] {
-			c.skip(f, "ignored")
-		} else {
-			kept = append(kept, f)
-		}
-	}
-	if err := c.checkIndex(ctx, kept); err != nil {
+	if err := c.checkIndex(ctx, files, ignored); err != nil {
 		return nil, err
 	}
 	return c.finish(), nil
@@ -223,7 +215,10 @@ func (c *sourceCtx) filterFS(rels []string) []string {
 	return files
 }
 
-func (c *sourceCtx) checkIndex(ctx context.Context, files []string) error {
+// checkIndex keeps the versioned sources. Ignore rules only drop unversioned
+// files: a tracked file that matches .gitignore is in the commit, and gate
+// mode (R7a) must see the same content.
+func (c *sourceCtx) checkIndex(ctx context.Context, files []string, ignored map[string]bool) error {
 	if len(files) == 0 {
 		return nil
 	}
@@ -239,6 +234,8 @@ func (c *sourceCtx) checkIndex(ctx context.Context, files []string) error {
 	for _, f := range files {
 		e, ok := idx[f]
 		switch {
+		case !ok && ignored[f]:
+			c.skip(f, "ignored")
 		case !ok:
 			c.unstaged(f, "unversioned")
 		case e.Mode != "100644" && e.Mode != "100755":

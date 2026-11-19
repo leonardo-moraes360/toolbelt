@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -207,7 +208,15 @@ func (s *Settings) applyPolicy(r *repoEgm) {
 		}
 	}
 	s.applyMatch(r)
-	s.GateDocGlobs = appendNew(s.GateDocGlobs, r.DocGlobs)
+	var globs []string
+	for _, g := range r.DocGlobs {
+		if validDocGlob(g) {
+			globs = append(globs, g)
+		} else {
+			s.untrusted(fmt.Sprintf("egm.doc_globs item %q is not a repository-relative glob; ignored", g))
+		}
+	}
+	s.GateDocGlobs = appendNew(s.GateDocGlobs, globs)
 }
 
 func (s *Settings) applyMatch(r *repoEgm) {
@@ -282,4 +291,18 @@ func readRepoConfig(root string) ([]byte, *Warning) {
 		return nil, &Warning{Code: "config_untrusted", Message: "larger than 64 KiB or unreadable: ignored", Path: ".toolbelt/config.yaml"}
 	}
 	return b, nil
+}
+
+// validDocGlob accepts a clean repository-relative slash glob: no absolute
+// path, backslash, NUL, empty, "." or ".." component.
+func validDocGlob(g string) bool {
+	if g == "" || strings.HasPrefix(g, "/") || strings.ContainsAny(g, "\\\x00") {
+		return false
+	}
+	for _, part := range strings.Split(g, "/") {
+		if part == "" || part == "." || part == ".." {
+			return false
+		}
+	}
+	return true
 }

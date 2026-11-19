@@ -82,17 +82,21 @@ func prepare(ctx context.Context, o *Options) (*snapshot, error) {
 	if err != nil {
 		return nil, errorf(ExitError, "config", "%v", err)
 	}
-	pathOf := docPathIn
+	var repo *Repo
+	var docPath string
 	if o.At != "" {
-		pathOf = gateDocPath
-	}
-	docPath, err := pathOf(o.Cwd, o.Doc)
-	if err != nil {
-		return nil, err
-	}
-	repo, err := DiscoverRepo(docPath)
-	if err != nil {
-		return nil, err
+		var rel string
+		if repo, rel, err = gateLocate(o.Cwd, o.Doc); err != nil {
+			return nil, err
+		}
+		docPath = filepath.Join(repo.Root, filepath.FromSlash(rel))
+	} else {
+		if docPath, err = docPathIn(o.Cwd, o.Doc); err != nil {
+			return nil, err
+		}
+		if repo, err = DiscoverRepo(docPath); err != nil {
+			return nil, err
+		}
 	}
 	s := &snapshot{repo: repo, target: "worktree"}
 	var raw []byte
@@ -162,7 +166,7 @@ func (s *snapshot) phase1(ctx context.Context) error {
 	var err error
 	var idx indexView = worktreeIndex{s.repo}
 	if s.at != "" {
-		idx = treeIndex{s.repo, s.at}
+		idx = newTreeIndex(s.repo, s.at)
 		s.sources, err = CollectSourcesAt(ctx, s.repo, &s.set, s.at, s.rel, s.text)
 	} else {
 		s.sources, err = CollectSources(ctx, s.repo, &s.set, s.rel, s.text)

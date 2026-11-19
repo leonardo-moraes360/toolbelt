@@ -18,82 +18,129 @@ const (
 
 func regularMode(m string) bool { return m == "100644" || m == "100755" }
 
-// treeIndex is indexView over a commit tree.
+// treeIndex is indexView over a commit tree. modes caches each path's
+// ls-tree mode ("" when absent), so prefixes shared by many references and
+// plan paths are queried once.
 type treeIndex struct {
-	repo *Repo
-	oid  string
+	repo  *Repo
+	oid   string
+	modes map[string]string
 }
 
-func (t treeIndex) exists(ctx context.Context, paths []string) (map[string]string, error) {
+func newTreeIndex(repo *Repo, oid string) *treeIndex {
+	return &treeIndex{repo: repo, oid: oid, modes: map[string]string{}}
+}
+
+// load fills the cache for the paths not yet queried, in one ls-tree call.
+func (t *treeIndex) load(ctx context.Context, paths []string) error {
+	var todo []string
+	for _, p := range paths {
+		if _, ok := t.modes[p]; !ok && !containsStr(todo, p) {
+			todo = append(todo, p)
+		}
+	}
+	if len(todo) == 0 {
+		return nil
+	}
+	entries, err := t.repo.lsTreeOID(ctx, t.oid, todo...)
+	if err != nil {
+		return err
+	}
+	for _, p := range todo {
+		t.modes[p] = ""
+	}
+	for _, e := range entries {
+		if _, ok := t.modes[e.Path]; ok {
+			t.modes[e.Path] = e.Mode
+		}
+	}
+	return nil
+}
+
+func (t *treeIndex) exists(ctx context.Context, paths []string) (map[string]string, error) {
 	out := map[string]string{}
 	if len(paths) == 0 {
 		return out, nil
 	}
-	entries, err := t.repo.LsTree(ctx, t.oid, paths...)
-	if err != nil {
+	if err := t.load(ctx, paths); err != nil {
 		return nil, err
 	}
 	for _, p := range paths {
-		for _, e := range entries {
-			if e.Path != p {
-				continue
-			}
-			// A tree entry only exists with versioned files below it, the
-			// same "dir" as the index view.
+		// A tree entry only exists with versioned files below it, the same
+		// "dir" as the index view.
+		switch m := t.modes[p]; {
+		case m == modeTree:
+			out[p] = "dir"
+		case m != "":
 			out[p] = "file"
-			if e.Mode == modeTree {
-				out[p] = "dir"
-			}
 		}
 	}
 	return out, nil
 }
 
-func (t treeIndex) under(ctx context.Context, dir string, limit int) ([]string, error) {
+func (t *treeIndex) under(ctx context.Context, dir string, limit int) ([]string, error) {
 	return t.repo.LsTreeNames(ctx, t.oid, dir, limit)
 }
 
-// symlinked lists every prefix of rel in one ls-tree call: a 120000 entry on
-// the way means the path crosses a versioned symlink.
-func (t treeIndex) symlinked(ctx context.Context, rel string) (bool, error) {
+// symlinked reports whether a prefix of rel is a versioned symlink (120000).
+func (t *treeIndex) symlinked(ctx context.Context, rel string) (bool, error) {
 	parts := strings.Split(rel, "/")
 	prefixes := make([]string, 0, len(parts))
 	for i := range parts {
 		prefixes = append(prefixes, strings.Join(parts[:i+1], "/"))
 	}
-	entries, err := t.repo.LsTree(ctx, t.oid, prefixes...)
-	if err != nil {
+	if err := t.load(ctx, prefixes); err != nil {
 		return false, err
 	}
-	for _, e := range entries {
-		if e.Mode == modeSymlink {
+	for _, p := range prefixes {
+		if t.modes[p] == modeSymlink {
 			return true, nil
 		}
 	}
 	return false, nil
 }
 
-// gateDocPath resolves the document path for gate mode: the document may be
-// absent from the worktree, so only its directory goes through EvalSymlinks.
-func gateDocPath(cwd, doc string) (string, error) {
-	p := doc
+// gateLocate finds the repository from cwd and the document's path inside
+// it without touching the worktree below cwd: in gate mode the document's
+// directory may be missing or a symlink in the worktree, and following it
+// would evaluate another document (or another repository).
+func gateLocate(cwd, doc string) (repo *Repo, rel string, err error) {
+	if !filepath.IsAbs(cwd) {
+		return nil, "", errorf(ExitError, "usage", "cwd must be absolute")
+	}
+	realCwd, err := filepath.EvalSymlinks(cwd)
+	if err != nil {
+		return nil, "", errorf(ExitError, "usage", "cwd %s: %v", cwd, err)
+	}
+	if repo, err = DiscoverRepo(filepath.Join(realCwd, ".egm-gate")); err != nil {
+		return nil, "", err
+	}
+	rel, err = gateRel(repo.Root, realCwd, doc)
+	return repo, rel, err
+}
+
+// gateRel is doc as a clean repository-relative path, resolved against cwd
+// lexically (no symlinks followed).
+func gateRel(root, cwd, doc string) (string, error) {
+	p := filepath.Clean(doc)
 	if !filepath.IsAbs(p) {
-		if !filepath.IsAbs(cwd) {
-			return "", errorf(ExitError, "usage", "cwd must be absolute")
-		}
 		p = filepath.Join(cwd, p)
 	}
-	dir, err := filepath.EvalSymlinks(filepath.Dir(p))
+	rel, err := filepath.Rel(root, p)
 	if err != nil {
-		return "", errorf(ExitError, "usage", "document %s: %v", doc, err)
+		return "", errorf(ExitError, "usage", "document %s is outside the repository root %s", doc, root)
 	}
-	return filepath.Join(dir, filepath.Base(p)), nil
+	rel = filepath.ToSlash(rel)
+	if validRelPath(rel) != nil || rel == "." {
+		return "", errorf(ExitError, "usage", "document %s is outside the repository root %s", doc, root)
+	}
+	return rel, nil
 }
 
 // readBlobFile reads a regular file of the tree at oid, up to limit bytes.
 // ok=false means absent, not regular or behind a symlink.
 func readBlobFile(ctx context.Context, repo *Repo, oid, rel string, limit int64) (b []byte, mode string, err error) {
-	entries, err := repo.LsTree(ctx, oid, rel)
+	entries, err := repo.lsTreeOID(ctx, oid, rel)
 	if err != nil {
 		return nil, "", err
 	}
@@ -113,6 +160,15 @@ func readBlobFile(ctx context.Context, repo *Repo, oid, rel string, limit int64)
 // readRepoConfigAt is readRepoConfig over the commit's blob (R34, gate mode).
 func readRepoConfigAt(ctx context.Context, repo *Repo, oid string) ([]byte, *Warning, error) {
 	const rel = ".toolbelt/config.yaml"
+	dir, err := repo.lsTreeOID(ctx, oid, ".toolbelt")
+	if err != nil {
+		return nil, nil, err
+	}
+	for _, e := range dir {
+		if e.Path == ".toolbelt" && e.Mode != modeTree {
+			return nil, &Warning{Code: "config_untrusted", Message: "not a regular file/directory: ignored", Path: rel}, nil
+		}
+	}
 	b, mode, err := readBlobFile(ctx, repo, oid, rel, maxRepoConfigBytes)
 	var e *Error
 	if errors.As(err, &e) && e.Reason == "blob_too_large" {
@@ -150,7 +206,8 @@ func (s *snapshot) readDocAt(ctx context.Context, docPath string) error {
 
 // CollectSourcesAt is CollectSources over the commit's tree (R7a): the same
 // candidates and exclusions; the mode comes from ls-tree and the bytes from
-// cat-file blob. ignore rules do not apply to versioned files.
+// cat-file blob. Ignore rules do not apply: every file of a tree is tracked,
+// and the interactive mode keeps tracked ignored files too.
 func CollectSourcesAt(ctx context.Context, repo *Repo, set *Settings, oid, docRel, docText string) (*SourceSet, error) {
 	c := &sourceCtx{repo: repo, set: set, doc: docRel, out: &SourceSet{}, used: int64(len(docText))}
 	rels, skipped := sourceCandidates(docRel, docText)
@@ -166,7 +223,7 @@ func CollectSourcesAt(ctx context.Context, repo *Repo, set *Settings, oid, docRe
 	if len(files) == 0 {
 		return c.finish(), nil
 	}
-	entries, err := repo.LsTree(ctx, oid, files...)
+	entries, err := repo.lsTreeOID(ctx, oid, files...)
 	if err != nil {
 		return nil, err
 	}
