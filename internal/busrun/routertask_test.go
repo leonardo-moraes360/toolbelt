@@ -40,13 +40,13 @@ func newTaskEnv(t *testing.T, body string) *taskEnv {
 			t.Fatal(err)
 		}
 	}
-	if err := os.WriteFile(filepath.Join(e.root, ".toolbelt/tickets/TKT-001.yaml"), []byte("id: TKT-001\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(e.root, ".toolbelt", "tickets", "TKT-001.yaml"), []byte("id: TKT-001\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	bin := t.TempDir()
 	// The counter lives in the workspace: the only place a confined child writes.
 	te := &taskEnv{env: e, router: r.Member, script: filepath.Join(bin, "task.sh"),
-		ran: filepath.Join(e.root, ".toolbelt/workspaces/TKT-001/ran")}
+		ran: filepath.Join(e.root, ".toolbelt", "workspaces", "TKT-001", "ran")}
 	full := "#!/bin/sh\necho run >> " + te.ran + "\n" + body
 	if err := os.WriteFile(te.script, []byte(full), 0o755); err != nil {
 		t.Fatal(err)
@@ -57,8 +57,8 @@ func newTaskEnv(t *testing.T, body string) *taskEnv {
 
 func (te *taskEnv) task(thread string) RouterTask {
 	return RouterTask{V: RouterTaskVersion, Ticket: "TKT-001", Thread: thread, Attempt: 1, Title: "t",
-		Workspace:  filepath.Join(te.root, ".toolbelt/workspaces/TKT-001"),
-		TicketFile: filepath.Join(te.root, ".toolbelt/tickets/TKT-001.yaml"), Timeout: "1m"}
+		Workspace:  filepath.Join(te.root, ".toolbelt", "workspaces", "TKT-001"),
+		TicketFile: filepath.Join(te.root, ".toolbelt", "tickets", "TKT-001.yaml"), Timeout: "1m"}
 }
 
 func (te *taskEnv) assign(t *testing.T, from bus.Member, task *RouterTask) {
@@ -236,11 +236,11 @@ func TestRouterTaskValidation(t *testing.T) {
 		t.Fatal(err)
 	}
 	bad := ok
-	bad.Ticket, bad.Workspace = "../x", filepath.Join(te.root, ".toolbelt/workspaces/../x")
+	bad.Ticket, bad.Workspace = "../x", filepath.Join(te.root, ".toolbelt", "workspaces", "..", "x")
 	link := ok
 	link.Ticket = "TKT-002"
-	link.Workspace = filepath.Join(te.root, ".toolbelt/workspaces/TKT-002")
-	link.TicketFile = filepath.Join(te.root, ".toolbelt/tickets/TKT-002.yaml")
+	link.Workspace = filepath.Join(te.root, ".toolbelt", "workspaces", "TKT-002")
+	link.TicketFile = filepath.Join(te.root, ".toolbelt", "tickets", "TKT-002.yaml")
 	_ = os.Symlink(t.TempDir(), link.Workspace)
 	_ = os.WriteFile(link.TicketFile, []byte("x"), 0o644)
 	for name, m := range map[string]*bus.Message{
@@ -289,7 +289,7 @@ func TestRouterTaskGrants(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(te.root, ".git"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	_ = os.WriteFile(filepath.Join(te.root, ".git/config"), nil, 0o644)
+	_ = os.WriteFile(filepath.Join(te.root, ".git", "config"), nil, 0o644)
 	task := te.task("TKT-001/g.1")
 	te.assign(t, te.router, &task)
 	te.runUntil(t, te.openH(t, true), task.Thread)
@@ -368,8 +368,8 @@ func TestRouterTaskSymlinkedRoot(t *testing.T) {
 		t.Error("an exec binary in the repository root (read grant on .toolbelt) accepted")
 	}
 	task := te.task("TKT-001/s.1")
-	task.Workspace = filepath.Join(link, ".toolbelt/workspaces/TKT-001")
-	task.TicketFile = filepath.Join(link, ".toolbelt/tickets/TKT-001.yaml")
+	task.Workspace = filepath.Join(link, ".toolbelt", "workspaces", "TKT-001")
+	task.TicketFile = filepath.Join(link, ".toolbelt", "tickets", "TKT-001.yaml")
 	if !h.taskPathsOK(&task) || !strings.HasPrefix(task.Workspace, resolvePath(te.root)) {
 		t.Fatalf("symlinked but correct paths refused or not canonicalized: %+v", task)
 	}

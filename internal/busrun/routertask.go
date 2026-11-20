@@ -119,7 +119,8 @@ func (h *Harness) validTask(m *bus.Message, roles map[string]bus.Role) (RouterTa
 		t.Thread == "" || t.Thread != m.Thread {
 		return t, false
 	}
-	return t, h.taskPathsOK(&t)
+	ok := h.taskPathsOK(&t)
+	return t, ok
 }
 
 // canonRoot is the repository root with symlinks resolved; every path check
