@@ -206,27 +206,37 @@ func arbiterWithdrew(st *State, id string) bool {
 // section, and an unknown heading to the whole document: a claim always
 // carries lines (T-R1).
 func (s *snapshot) claimLines(ctx context.Context, l *Lineage, maps map[int]*LineMap) ([]int, error) {
-	n := len(s.doc.Lines)
-	if len(l.Scope.Lines) == 2 {
-		lm, ok := maps[l.ScopeRound]
-		if !ok {
-			old, err := s.readRound(l.ScopeRound, s.rel)
-			if err != nil {
-				return nil, err
-			}
-			if old == "" {
-				return nil, errorf(ExitError, "state", "round %d snapshot of %s is missing", l.ScopeRound, s.rel)
-			}
-			if lm, err = DiffSnapshots(ctx, s.stateDir, old, s.text); err != nil {
-				return nil, err
-			}
-			maps[l.ScopeRound] = lm
-		}
-		if m := lm.MapScope(l.Scope).Lines; len(m) == 2 && m[0] >= 1 && m[1] <= n {
-			return m, nil
-		}
+	if len(l.Scope.Lines) != 2 {
+		return s.sectionLines(l.Scope.Heading), nil
+	}
+	lm, err := s.roundMap(ctx, l.ScopeRound, maps)
+	if err != nil {
+		return nil, err
+	}
+	if m := lm.MapScope(l.Scope).Lines; len(m) == 2 && m[0] >= 1 && m[1] <= len(s.doc.Lines) {
+		return m, nil
 	}
 	return s.sectionLines(l.Scope.Heading), nil
+}
+
+// roundMap maps round n's snapshot to the current document, cached per round.
+func (s *snapshot) roundMap(ctx context.Context, n int, maps map[int]*LineMap) (*LineMap, error) {
+	if lm, ok := maps[n]; ok {
+		return lm, nil
+	}
+	old, err := s.readRound(n, s.rel)
+	if err != nil {
+		return nil, err
+	}
+	if old == "" {
+		return nil, errorf(ExitError, "state", "round %d snapshot of %s is missing", n, s.rel)
+	}
+	lm, err := DiffSnapshots(ctx, s.stateDir, old, s.text)
+	if err != nil {
+		return nil, err
+	}
+	maps[n] = lm
+	return lm, nil
 }
 
 // sectionLines is the range from heading h to the line before the next

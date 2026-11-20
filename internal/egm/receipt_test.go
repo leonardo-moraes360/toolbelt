@@ -23,17 +23,17 @@ func (f *flow) converge(ctx context.Context) *Report {
 	return nil
 }
 
-func (f *flow) readReceipt() (*Receipt, []byte) {
+func (f *flow) readReceipt() (rc *Receipt, raw []byte) {
 	f.t.Helper()
 	b, err := os.ReadFile(filepath.Join(f.root, ReceiptPath(f.doc)))
 	if err != nil {
 		f.t.Fatal(err)
 	}
-	var rc Receipt
-	if err := json.Unmarshal(b, &rc); err != nil {
+	rc = &Receipt{}
+	if err := json.Unmarshal(b, rc); err != nil {
 		f.t.Fatal(err)
 	}
-	return &rc, b
+	return rc, b
 }
 
 func TestReceiptRefusedWhenNotPassing(t *testing.T) {
