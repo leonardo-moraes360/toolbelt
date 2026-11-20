@@ -51,11 +51,14 @@ func (s *Store) ClaimConfined(m Member, thread string) (Claim, error) {
 	return s.claimThread(m, thread, ConfinementMarker)
 }
 
+// ErrNoClaim: the thread has no claim row.
+var ErrNoClaim = errors.New("no claim")
+
 // Claim reads one claim row. It is a read: it works on an expired channel.
 func (s *Store) Claim(channel, thread string) (Claim, error) {
 	c, err := scanClaim(s.db.QueryRow(selectClaim, channel, thread))
 	if errors.Is(err, sql.ErrNoRows) {
-		return Claim{}, fmt.Errorf("thread %q has no claim", thread)
+		return Claim{}, fmt.Errorf("%w: thread %q", ErrNoClaim, thread)
 	}
 	return c, err
 }

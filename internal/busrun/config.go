@@ -161,12 +161,6 @@ func (c *Config) routerTaskDefaults() {
 	if len(rt.AllowedTools) == 0 {
 		rt.AllowedTools = append([]string(nil), DefaultRouterTaskTools...)
 	}
-	for _, t := range c.WakeOn {
-		if t == bus.TypeTaskAssign {
-			return
-		}
-	}
-	c.WakeOn = append(c.WakeOn, bus.TypeTaskAssign)
 }
 
 // timingDefaults: notify waits longer for a human and times out sooner.
@@ -176,6 +170,9 @@ func (c *Config) timingDefaults() {
 		if c.Adapter == AdapterNotify {
 			c.RewakeAfter = time.Hour // a human may take a while
 		}
+	}
+	if c.Timeout == 0 && c.RouterTasks != nil {
+		c.Timeout = time.Hour // tasks are capped by router_tasks.timeout and the payload's
 	}
 	if c.Timeout == 0 {
 		switch c.Adapter {

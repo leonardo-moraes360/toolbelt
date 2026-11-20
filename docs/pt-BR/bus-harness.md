@@ -94,7 +94,7 @@ budget:
   max_wakes: 6
   per: 1h
 rewake_after: 10m
-router_tasks: null       # tarefas do router confinadas ao worktree do ticket (docs/bus-router.md)
+router_tasks: null       # {from, timeout, allowed_tools}: worker dedicado a tarefas do router, confinado ao worktree do ticket; sem wakes comuns (docs/bus-router.md)
 timeout: 30s             # por despertar
 pass_env: []             # variáveis liberadas ao filho, por nome (inclusive segredos)
 secret_files: []         # arquivos KEY=VALOR (absolutos, regulares, 0600) cujos valores o audit redige; ausente = tb bus run não abre

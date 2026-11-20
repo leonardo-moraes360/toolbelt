@@ -3,9 +3,11 @@
 package busrun
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -70,12 +72,32 @@ func (te *taskEnv) assign(t *testing.T, from bus.Member, task *RouterTask) {
 func (te *taskEnv) openH(t *testing.T, sandboxed bool) *Harness {
 	t.Helper()
 	h, err := Open(&Options{Root: te.root, Channel: "ch", Name: "w", Poll: 10 * time.Millisecond,
-		TaskPoll: 50 * time.Millisecond, AllowUnsandboxed: !sandboxed})
+		TaskPoll: 50 * time.Millisecond, AllowUnsandboxed: !sandboxed, unconfinedTasks: !sandboxed})
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(h.Close)
 	return h
+}
+
+// runUntil runs the harness until thread is completed or revoked, or 10s.
+func (te *taskEnv) runUntil(t *testing.T, h *Harness, thread string) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	done := make(chan error, 1)
+	go func() { done <- h.Run(ctx, false) }()
+	for ctx.Err() == nil {
+		if c, err := te.store.Claim("ch", thread); err == nil && (c.CompletedAt != nil || c.RevokedAt != nil) {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	time.Sleep(100 * time.Millisecond) // let the child exit and the audit line land
+	cancel()
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
 }
 
 func (te *taskEnv) runs() int {
@@ -107,7 +129,7 @@ func TestRouterTaskHappyPath(t *testing.T) {
 	task := te.task("TKT-001/abc.1")
 	te.assign(t, te.router, &task)
 	h := te.openH(t, landlockOn())
-	runFor(t, h, 800*time.Millisecond)
+	te.runUntil(t, h, task.Thread)
 	c, v := te.verdict(t, task.Thread)
 	if c.Owner != "agent:w" || c.Confinement != bus.ConfinementMarker || c.CompletedAt == nil || v.Verdict != "PASS" || v.Summary != "ok" {
 		t.Fatalf("claim %+v verdict %+v\n%s", c, v, readAudit(t, te.env))
@@ -120,7 +142,7 @@ func TestRouterTaskHappyPath(t *testing.T) {
 	}
 	// AC13: no rewake and no second run, even after a restart.
 	h.Close()
-	runFor(t, te.openH(t, false), 300*time.Millisecond)
+	runFor(t, te.openH(t, landlockOn()), 300*time.Millisecond)
 	if n := te.runs(); n != 1 {
 		t.Fatalf("task ran %d times", n)
 	}
@@ -139,7 +161,7 @@ func TestRouterTaskLost(t *testing.T) {
 	if _, err := te.store.ClaimThread(other.Member, task.Thread); err != nil {
 		t.Fatal(err)
 	}
-	runFor(t, te.openH(t, false), 400*time.Millisecond)
+	runFor(t, te.openH(t, false), 500*time.Millisecond)
 	if te.runs() != 0 || !strings.Contains(readAudit(t, te.env), "router_task_lost") {
 		t.Fatalf("runs=%d\n%s", te.runs(), readAudit(t, te.env))
 	}
@@ -152,13 +174,14 @@ func TestRouterTaskRevoked(t *testing.T) {
 	te.assign(t, te.router, &task)
 	h := te.openH(t, false)
 	go func() {
-		for te.runs() == 0 {
+		for deadline := time.Now().Add(5 * time.Second); te.runs() == 0 && time.Now().Before(deadline); {
 			time.Sleep(10 * time.Millisecond)
 		}
 		_, _ = te.store.Revoke(te.router, task.Thread, "timeout")
 	}()
 	start := time.Now()
-	runFor(t, h, 1500*time.Millisecond)
+	te.runUntil(t, h, task.Thread)
+	time.Sleep(300 * time.Millisecond) // the watcher polls every 50ms
 	c, _ := te.verdict(t, task.Thread)
 	if c.CompletedAt != nil || c.RevokedAt == nil || !strings.Contains(readAudit(t, te.env), "router_task_revoked") {
 		t.Fatalf("claim %+v\n%s", c, readAudit(t, te.env))
@@ -173,13 +196,16 @@ func TestRouterTaskBadVerdicts(t *testing.T) {
 	cases := map[string]string{
 		"":                                   "no verdict file",
 		"echo nope > \"$TB_TASK_VERDICT\"\n": "invalid verdict file",
+		"printf '{\"verdict\":\"pass\"}' > \"$TB_TASK_VERDICT\"\n":         "invalid verdict file",
+		"head -c 5000 /dev/zero > \"$TB_TASK_VERDICT\"\n":                  "no verdict file",
+		"ln -s /etc/hostname \"$TB_TASK_VERDICT\"\n":                       "no verdict file",
 		"printf '{\"verdict\":\"PASS\"}' > \"$TB_TASK_VERDICT\"\nexit 3\n": "the child exited 3",
 	}
 	for body, want := range cases {
 		te := newTaskEnv(t, body)
 		task := te.task("TKT-001/bad.1")
 		te.assign(t, te.router, &task)
-		runFor(t, te.openH(t, false), 600*time.Millisecond)
+		te.runUntil(t, te.openH(t, false), task.Thread)
 		if _, v := te.verdict(t, task.Thread); v.Verdict != "FAIL" || v.Summary != want {
 			t.Errorf("%q: %+v", body, v)
 		}
@@ -202,6 +228,13 @@ func TestRouterTaskValidation(t *testing.T) {
 	if _, valid := h.validTask(msg("agent:router", &ok, ok.Thread), roles); !valid {
 		t.Fatal("a valid task was refused")
 	}
+	inv, _ := te.store.CreateInvite("ch", bus.RoleRouter, "router2", 0)
+	if _, err := te.store.Join("ch", inv.Code, &bus.AgentCard{Name: "router2"}, bus.RoleRouter); err != nil {
+		t.Fatal(err)
+	}
+	if roles, err = h.roles(); err != nil {
+		t.Fatal(err)
+	}
 	bad := ok
 	bad.Ticket, bad.Workspace = "../x", filepath.Join(te.root, ".toolbelt/workspaces/../x")
 	link := ok
@@ -212,7 +245,8 @@ func TestRouterTaskValidation(t *testing.T) {
 	_ = os.WriteFile(link.TicketFile, []byte("x"), 0o644)
 	for name, m := range map[string]*bus.Message{
 		"supervisor":      msg("agent:boss", &ok, ok.Thread),
-		"other router":    msg("agent:w", &ok, ok.Thread),
+		"worker":          msg("agent:w", &ok, ok.Thread),
+		"other router":    msg("agent:router2", &ok, ok.Thread),
 		"ticket ../x":     msg("agent:router", &bad, bad.Thread),
 		"symlinked space": msg("agent:router", &link, link.Thread),
 		"thread mismatch": msg("agent:router", &ok, "TKT-001/other.1"),
@@ -248,7 +282,8 @@ func TestRouterTaskGrants(t *testing.T) {
 	}
 	probe := "probe() { if ( eval \"$1\" ) 2>/dev/null; then echo \"$2 ok\" >> rep; else echo \"$2 denied\" >> rep; fi; }\n" +
 		"probe \": > ../../../x\" root\nprobe \"echo x >> ../../../.git/config\" gitconfig\n" +
-		"probe \"echo x >> ../../bus/bus.db\" busdb\nprobe \"cat $TB_TASK_TICKET_FILE\" ticket\n" +
+		"probe \"echo x >> ../../bus/bus.db\" busdb\nprobe \"cat ../../bus/bus.db\" busread\n" +
+		"probe \"echo x >> ../../tickets/TKT-001.yaml\" liveticket\nprobe \"cat $TB_TASK_TICKET_FILE\" ticket\n" +
 		"printf '{\"verdict\":\"PASS\"}' > \"$TB_TASK_VERDICT\"\n"
 	te := newTaskEnv(t, probe)
 	if err := os.MkdirAll(filepath.Join(te.root, ".git"), 0o755); err != nil {
@@ -257,12 +292,12 @@ func TestRouterTaskGrants(t *testing.T) {
 	_ = os.WriteFile(filepath.Join(te.root, ".git/config"), nil, 0o644)
 	task := te.task("TKT-001/g.1")
 	te.assign(t, te.router, &task)
-	runFor(t, te.openH(t, true), 1500*time.Millisecond)
+	te.runUntil(t, te.openH(t, true), task.Thread)
 	rep, err := os.ReadFile(filepath.Join(task.Workspace, "rep"))
 	if err != nil {
 		t.Fatalf("no report: %v\n%s", err, readAudit(t, te.env))
 	}
-	for _, want := range []string{"root denied", "gitconfig denied", "busdb denied", "ticket ok"} {
+	for _, want := range []string{"root denied", "gitconfig denied", "busdb denied", "busread denied", "liveticket denied", "ticket ok"} {
 		if !strings.Contains(string(rep), want) {
 			t.Fatalf("report:\n%s", rep)
 		}
@@ -285,5 +320,57 @@ func TestRouterTaskClaudeArgv(t *testing.T) {
 	}
 	if _, err := LoadConfig(te.writeConfig(t, "adapter: notify\nnotify:\n  backend: terminal\nrouter_tasks:\n  from: router\n")); err == nil {
 		t.Fatal("router_tasks accepted with notify")
+	}
+}
+
+// A router_tasks harness is a dedicated task worker: ordinary messages never
+// wake it, and a flood of invalid assigns cannot starve a valid one.
+func TestRouterTaskDedicated(t *testing.T) {
+	te := newTaskEnv(t, "printf '{\"verdict\":\"PASS\"}' > \"$TB_TASK_VERDICT\"\n")
+	te.send(t, bus.TypeQuery, `{}`)
+	for i := range 60 {
+		bad := te.task("TKT-001/junk." + strconv.Itoa(i))
+		bad.V = "other/0.1"
+		te.assign(t, te.router, &bad)
+	}
+	task := te.task("TKT-001/ok.1")
+	te.assign(t, te.router, &task)
+	te.runUntil(t, te.openH(t, false), task.Thread)
+	if _, v := te.verdict(t, task.Thread); v.Verdict != "PASS" || te.runs() != 1 {
+		t.Fatalf("verdict %+v runs %d\n%s", v, te.runs(), readAudit(t, te.env))
+	}
+}
+
+// Paths are compared canonically: a symlinked root cannot slip a grant on
+// the repository past the check.
+func TestRouterTaskSymlinkedRoot(t *testing.T) {
+	te := newTaskEnv(t, "")
+	h := te.openH(t, false)
+	link := filepath.Join(t.TempDir(), "link")
+	if err := os.Symlink(te.root, link); err != nil {
+		t.Fatal(err)
+	}
+	for _, w := range []string{link, filepath.Join(link, ".git"), filepath.Join(link, ".toolbelt", "bus")} {
+		h.cfg.Sandbox.Write = []string{w}
+		if err := h.taskSandboxOK(); err == nil {
+			t.Errorf("sandbox.write %s accepted", w)
+		}
+	}
+	h.cfg.Sandbox.Write = nil
+	h.cfg.Sandbox.Read = []string{filepath.Join(link, ".toolbelt", "bus")}
+	if err := h.taskSandboxOK(); err == nil {
+		t.Error("sandbox.read inside .toolbelt accepted")
+	}
+	h.cfg.Sandbox.Read = nil
+	h.cfg.Exec.Argv = []string{filepath.Join(te.root, "agent.sh")}
+	_ = os.WriteFile(h.cfg.Exec.Argv[0], []byte("#!/bin/sh\n"), 0o755)
+	if err := h.taskSandboxOK(); err == nil {
+		t.Error("an exec binary in the repository root (read grant on .toolbelt) accepted")
+	}
+	task := te.task("TKT-001/s.1")
+	task.Workspace = filepath.Join(link, ".toolbelt/workspaces/TKT-001")
+	task.TicketFile = filepath.Join(link, ".toolbelt/tickets/TKT-001.yaml")
+	if !h.taskPathsOK(&task) || !strings.HasPrefix(task.Workspace, resolvePath(te.root)) {
+		t.Fatalf("symlinked but correct paths refused or not canonicalized: %+v", task)
 	}
 }

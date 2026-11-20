@@ -117,11 +117,10 @@ func claimExisting(tx *sql.Tx, cur *Claim, m Member, lease time.Duration, now in
 	case cur.ReleasedAt != nil:
 		return takeover(tx, cur, m, now, marker)
 	case cur.Owner == m.ID():
+		// A thread the member already holds unconfined never gains the
+		// marker: an unconfined process held that epoch.
 		if marker != "" && cur.Confinement != marker {
-			if _, err := tx.Exec(`UPDATE claims SET confinement = ? WHERE channel = ? AND thread = ?`, marker, m.Channel, thread); err != nil {
-				return Claim{}, err
-			}
-			cur.Confinement = marker
+			return Claim{}, fmt.Errorf("thread %q is already held unconfined by %s", thread, cur.Owner)
 		}
 		return *cur, nil
 	}

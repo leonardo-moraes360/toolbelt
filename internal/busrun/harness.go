@@ -31,6 +31,8 @@ type Options struct {
 	HeartbeatEvery time.Duration
 	// TaskPoll is how often a router task's claim is checked (default 1s).
 	TaskPoll time.Duration
+	// unconfinedTasks lets package tests run router tasks without Landlock.
+	unconfinedTasks bool
 }
 
 type Harness struct {
@@ -59,6 +61,7 @@ type Harness struct {
 	auditMu sync.Mutex        // the heartbeat goroutine audits too
 	lost    map[string]string // thread -> new owner of the lease_lost already audited
 	hbErr   string            // last heartbeat error audited, to log each change once
+	canon   string            // canonical root (symlinks resolved), for router-task checks
 }
 
 // With the channel expired and the store quiet, recheck only at this interval
@@ -301,7 +304,10 @@ func (h *Harness) step(ctx context.Context, once bool) (bool, error) {
 	if cursor >= h.st.NotifiedSeq {
 		h.st.Read = true
 	}
-	msgs, err := h.pendingAfterTasks(ctx, max(cursor, h.st.NotifiedSeq), now)
+	if h.cfg.RouterTasks != nil {
+		return false, h.stepTasks(ctx, cursor, now)
+	}
+	msgs, err := h.pending(max(cursor, h.st.NotifiedSeq), 0)
 	if err != nil {
 		return false, err
 	}
@@ -309,13 +315,7 @@ func (h *Harness) step(ctx context.Context, once bool) (bool, error) {
 		h.firstSeen = time.Time{}
 		return h.maybeRewake(ctx, cursor, now)
 	}
-	last := msgs[len(msgs)-1].Seq
-	if h.firstSeen.IsZero() {
-		h.firstSeen = now
-	}
-	if last != h.lastMax {
-		h.lastMax, h.lastArrival = last, now
-	}
+	h.noteArrival(msgs, now)
 	if !once && !h.ready(msgs, now) {
 		return false, nil
 	}
@@ -475,30 +475,14 @@ func (h *Harness) fail(p *Packet) error {
 	return errors.Join(err, h.save())
 }
 
-// routerTasks handles router tasks out of the pending batch, before the
-// ordinary messages, and returns the ordinary ones. Tasks never debounce:
-// the router's claim timeout is ticking.
-func (h *Harness) routerTasks(ctx context.Context, msgs []bus.Message, from int64, now time.Time) ([]bus.Message, error) {
-	if h.cfg.RouterTasks == nil {
-		return msgs, nil
+// noteArrival tracks the coalescing window: when the first waking message
+// was seen and when the latest one arrived.
+func (h *Harness) noteArrival(msgs []bus.Message, now time.Time) {
+	last := msgs[len(msgs)-1].Seq
+	if h.firstSeen.IsZero() {
+		h.firstSeen = now
 	}
-	h.st.pruneTasks(from)
-	tasks, rest, err := h.splitTasks(msgs)
-	if err != nil || len(tasks) == 0 {
-		return rest, err
+	if last != h.lastMax {
+		h.lastMax, h.lastArrival = last, now
 	}
-	if open, err := h.channelOpen(now); err != nil || !open {
-		return rest, err
-	}
-	return rest, h.handleTasks(ctx, tasks)
-}
-
-// pendingAfterTasks returns the waking messages after (from, ...], with
-// router tasks already handled and removed.
-func (h *Harness) pendingAfterTasks(ctx context.Context, from int64, now time.Time) ([]bus.Message, error) {
-	msgs, err := h.pending(from, 0)
-	if err != nil {
-		return nil, err
-	}
-	return h.routerTasks(ctx, msgs, from, now)
 }

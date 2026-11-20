@@ -113,6 +113,12 @@ func TestClaimConfinedMarker(t *testing.T) {
 	if plain.Confinement != "" {
 		t.Fatalf("ordinary claim has a marker: %+v", plain)
 	}
+	if _, err := s.ClaimConfined(w, "T/m.2"); err == nil {
+		t.Fatal("a thread held unconfined gained the marker")
+	}
+	if again, err := s.ClaimConfined(w, "T/m.1"); err != nil || again.Epoch != got.Epoch {
+		t.Fatalf("confined re-claim: %+v %v", again, err)
+	}
 	c.add(DefaultLease + 1)
 	b := third(t, s, "b-agent")
 	taken, err := s.ClaimThread(b, "T/m.1")

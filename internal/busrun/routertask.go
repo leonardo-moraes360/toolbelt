@@ -11,19 +11,23 @@ import (
 	"regexp"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/leonardo-moraes360/toolbelt/internal/bus"
 )
 
 // Router tasks (docs/bus-router.md, B4a): the harness claims, keeps the
 // lease and completes outside the sandbox; the confined child only edits the
-// ticket worktree and writes a verdict file.
+// ticket worktree and writes a verdict file. A harness with router_tasks is
+// a dedicated task worker: it never runs ordinary wakes, so no process of
+// this agent writes the repository root and no recv consumes a task.
 
 const (
 	RouterTaskVersion = "router-task/0.1"
 	maxVerdictBytes   = 4 << 10
 	maxSummaryBytes   = 500
 	maxTicketBytes    = 1 << 20
+	taskBatch         = 50
 )
 
 var ticketIDRe = regexp.MustCompile(`^TKT-\d{3,}$`)
@@ -57,39 +61,38 @@ type Verdict struct {
 	Summary string `json:"summary,omitempty"`
 }
 
-type taskMsg struct {
-	msg  bus.Message
-	task RouterTask
-}
-
-// splitTasks separates valid router tasks from ordinary messages; tasks
-// already handled are dropped from both.
-func (h *Harness) splitTasks(msgs []bus.Message) (tasks []taskMsg, rest []bus.Message, err error) {
-	if h.cfg.RouterTasks == nil {
-		return nil, msgs, nil
+// stepTasks handles the router-task assigns after the harness's own task
+// cursor, one at a time and in order. Ordinary messages are never woken.
+func (h *Harness) stepTasks(ctx context.Context, cursor int64, now time.Time) error {
+	if open, err := h.channelOpen(now); err != nil || !open {
+		return err
 	}
-	var roles map[string]bus.Role
+	from := max(cursor, h.st.NotifiedSeq, h.st.TaskSeq)
+	msgs, err := h.store.Pending(h.member, from, 0, []bus.Type{bus.TypeTaskAssign}, h.cfg.topics(), taskBatch)
+	if err != nil || len(msgs) == 0 {
+		return err
+	}
+	if len(msgs) == taskBatch {
+		h.lastVersion = 0 // a full batch: look again next tick even if the store did not change
+	}
+	roles, err := h.roles()
+	if err != nil {
+		return err
+	}
 	for i := range msgs {
-		m := &msgs[i]
-		if _, done := h.st.RouterTasks[m.ID]; done {
-			continue
+		if ctx.Err() != nil {
+			return nil
 		}
-		if m.Type != bus.TypeTaskAssign {
-			rest = append(rest, *m)
-			continue
+		// Advanced before the claim: a crash mid-task never handles it twice.
+		h.st.TaskSeq = msgs[i].Seq
+		if err := h.save(); err != nil {
+			return err
 		}
-		if roles == nil {
-			if roles, err = h.roles(); err != nil {
-				return nil, nil, err
-			}
+		if t, ok := h.validTask(&msgs[i], roles); ok {
+			h.runTask(ctx, &t)
 		}
-		if t, ok := h.validTask(m, roles); ok {
-			tasks = append(tasks, taskMsg{msg: *m, task: t})
-			continue
-		}
-		rest = append(rest, *m)
 	}
-	return tasks, rest, nil
+	return nil
 }
 
 func (h *Harness) roles() (map[string]bus.Role, error) {
@@ -104,7 +107,8 @@ func (h *Harness) roles() (map[string]bus.Role, error) {
 	return out, nil
 }
 
-// validTask applies every rule of "which messages are router tasks".
+// validTask applies every rule of "which messages are router tasks"; on
+// success the task's paths are the canonical ones.
 func (h *Harness) validTask(m *bus.Message, roles map[string]bus.Role) (RouterTask, bool) {
 	var t RouterTask
 	from := bus.AgentID(h.cfg.RouterTasks.From)
@@ -118,54 +122,71 @@ func (h *Harness) validTask(m *bus.Message, roles map[string]bus.Role) (RouterTa
 	return t, h.taskPathsOK(&t)
 }
 
-// taskPathsOK: exact workspace and ticket paths, real directory and regular
-// file, and a thread still open.
-func (h *Harness) taskPathsOK(t *RouterTask) bool {
-	if t.Workspace != filepath.Join(h.root, ".toolbelt", "workspaces", t.Ticket) ||
-		t.TicketFile != filepath.Join(h.root, ".toolbelt", "tickets", t.Ticket+".yaml") {
-		return false
+// canonRoot is the repository root with symlinks resolved; every path check
+// compares canonical paths.
+func (h *Harness) canonRoot() string {
+	if h.canon == "" {
+		h.canon = resolvePath(h.root)
 	}
-	if st, err := os.Lstat(t.Workspace); err != nil || !st.IsDir() {
-		return false
-	}
-	if st, err := os.Lstat(t.TicketFile); err != nil || !st.Mode().IsRegular() {
-		return false
-	}
-	c, err := h.store.Claim(h.member.Channel, t.Thread)
-	return err != nil || (c.CompletedAt == nil && c.RevokedAt == nil)
+	return h.canon
 }
 
-// handleTasks handles each router task once, before ordinary messages.
-func (h *Harness) handleTasks(ctx context.Context, tasks []taskMsg) error {
-	for i := range tasks {
-		if h.st.RouterTasks == nil {
-			h.st.RouterTasks = map[string]int64{}
-		}
-		// Marked before the claim: a crash mid-task never handles it twice.
-		h.st.RouterTasks[tasks[i].msg.ID] = tasks[i].msg.Seq
-		if err := h.save(); err != nil {
-			return err
-		}
-		h.runTask(ctx, &tasks[i])
+// taskPathsOK: the workspace and ticket file resolve to exactly their place
+// under the canonical root (no symlink anywhere on the way), a real
+// directory and a regular file, and the thread is still open. It rewrites
+// both paths to their canonical form.
+func (h *Harness) taskPathsOK(t *RouterTask) bool {
+	root := h.canonRoot()
+	ws := filepath.Join(root, ".toolbelt", "workspaces", t.Ticket)
+	tf := filepath.Join(root, ".toolbelt", "tickets", t.Ticket+".yaml")
+	if r, err := filepath.EvalSymlinks(t.Workspace); err != nil || r != ws {
+		return false
 	}
-	return nil
+	if r, err := filepath.EvalSymlinks(t.TicketFile); err != nil || r != tf {
+		return false
+	}
+	if st, err := os.Lstat(ws); err != nil || !st.IsDir() {
+		return false
+	}
+	if st, err := os.Lstat(tf); err != nil || !st.Mode().IsRegular() {
+		return false
+	}
+	t.Workspace, t.TicketFile = ws, tf
+	c, err := h.store.Claim(h.member.Channel, t.Thread)
+	if errors.Is(err, bus.ErrNoClaim) {
+		return true
+	}
+	return err == nil && c.CompletedAt == nil && c.RevokedAt == nil
 }
 
 func (h *Harness) taskEvent(name string, t *RouterTask, epoch int64, detail string) {
 	h.audit(&Event{Event: name, Detail: fmt.Sprintf("ticket=%s thread=%s epoch=%d %s", t.Ticket, t.Thread, epoch, detail)})
 }
 
-func (h *Harness) runTask(ctx context.Context, tm *taskMsg) {
-	t := &tm.task
+// confinedOK: a task never runs without Landlock, whoever opened the harness.
+func (h *Harness) confinedOK() bool {
+	return h.opts.unconfinedTasks || (!h.opts.AllowUnsandboxed && landlockOn())
+}
+
+func (h *Harness) runTask(ctx context.Context, t *RouterTask) {
+	if !h.confinedOK() {
+		h.taskEvent("router_task_refused", t, 0, "no Landlock sandbox")
+		return
+	}
 	claim, err := h.store.ClaimConfined(h.member, t.Thread)
 	if err != nil {
 		h.taskEvent("router_task_lost", t, 0, "")
 		return
 	}
 	h.taskEvent("router_task_start", t, claim.Epoch, "")
-	verdict, revoked := h.execTask(ctx, t, claim.Epoch)
-	if revoked {
+	verdict, outcome := h.execTask(ctx, t, claim.Epoch)
+	switch outcome {
+	case taskRevoked:
 		h.taskEvent("router_task_revoked", t, claim.Epoch, "")
+		return
+	case taskCanceled:
+		// Shutdown: no verdict; the lease runs out or the router revokes.
+		h.taskEvent("router_task_canceled", t, claim.Epoch, "")
 		return
 	}
 	res, _ := json.Marshal(verdict)
@@ -180,50 +201,62 @@ func (h *Harness) runTask(ctx context.Context, tm *taskMsg) {
 	h.taskEvent(name, t, claim.Epoch, "verdict="+verdict.Verdict)
 }
 
-// execTask runs the confined child and returns its verdict, or revoked when
-// the watcher saw the thread change hands.
-func (h *Harness) execTask(ctx context.Context, t *RouterTask, epoch int64) (Verdict, bool) {
+type taskOutcome int
+
+const (
+	taskDone taskOutcome = iota
+	taskRevoked
+	taskCanceled
+)
+
+// execTask runs the confined child and returns its verdict.
+func (h *Harness) execTask(ctx context.Context, t *RouterTask, epoch int64) (Verdict, taskOutcome) {
 	dir := h.base + ".task"
 	if err := prepareTaskDir(dir, t.TicketFile); err != nil {
-		return failVerdict("cannot prepare the task: " + err.Error()), false
+		return failVerdict("cannot prepare the task"), taskDone
 	}
 	if err := h.taskSandboxOK(); err != nil {
-		return failVerdict(err.Error()), false
+		return failVerdict("sandbox entries overlap the repository"), taskDone
+	}
+	spec, err := h.taskSpec(t, dir)
+	if err != nil {
+		return failVerdict("cannot build the child"), taskDone
+	}
+	if !h.taskPathsOK(t) { // re-checked right before the spawn
+		return failVerdict("the workspace changed"), taskDone
 	}
 	childCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	revoked := make(chan struct{})
 	watchDone := make(chan struct{})
 	go func() { defer close(watchDone); h.watchTask(childCtx, t.Thread, epoch, revoked, cancel) }()
-	spec, err := h.taskSpec(t, dir)
-	if err != nil {
-		cancel()
-		<-watchDone
-		return failVerdict(err.Error()), false
-	}
 	out, runErr := runChild(childCtx, h, spec)
 	cancel()
 	<-watchDone
 	select {
 	case <-revoked:
-		return Verdict{}, true
+		return Verdict{}, taskRevoked
 	default:
 	}
 	switch {
+	case ctx.Err() != nil:
+		return Verdict{}, taskCanceled
 	case runErr != nil:
-		return failVerdict("the child could not run"), false
+		return failVerdict("the child could not run"), taskDone
 	case out.TimedOut:
-		return failVerdict("timeout"), false
+		return failVerdict("timeout"), taskDone
 	case out.ExitCode != 0:
-		return failVerdict(fmt.Sprintf("the child exited %d", out.ExitCode)), false
+		return failVerdict(fmt.Sprintf("the child exited %d", out.ExitCode)), taskDone
 	}
-	return readVerdict(filepath.Join(dir, "verdict.json")), false
+	v := readVerdict(filepath.Join(dir, "verdict.json"))
+	v.Summary = h.redactor.redact(v.Summary)
+	return v, taskDone
 }
 
 func failVerdict(reason string) Verdict { return Verdict{Verdict: "FAIL", Summary: reason} }
 
-// watchTask kills the child (cancel) when the claim is revoked or changes
-// owner or epoch.
+// watchTask kills the child (cancel) when the claim is revoked, released or
+// changes owner or epoch.
 func (h *Harness) watchTask(ctx context.Context, thread string, epoch int64, revoked chan<- struct{}, cancel func()) {
 	tick := time.NewTicker(h.taskPoll())
 	defer tick.Stop()
@@ -237,7 +270,7 @@ func (h *Harness) watchTask(ctx context.Context, thread string, epoch int64, rev
 		if err != nil {
 			continue
 		}
-		if c.RevokedAt != nil || c.Owner != h.member.ID() || c.Epoch != epoch {
+		if c.RevokedAt != nil || c.ReleasedAt != nil || c.Owner != h.member.ID() || c.Epoch != epoch {
 			close(revoked)
 			cancel()
 			return
@@ -252,13 +285,14 @@ func (h *Harness) taskPoll() time.Duration {
 	return time.Second
 }
 
-// prepareTaskDir recreates dir with a copy of the ticket: the live file is
-// never granted (ticket writes rename it).
+// prepareTaskDir recreates dir with a copy of the ticket (the live file is
+// never granted: ticket writes rename it) and a fresh tmp dir. The verdict
+// file is written by the child.
 func prepareTaskDir(dir, ticketFile string) error {
 	if err := os.RemoveAll(dir); err != nil {
 		return err
 	}
-	if err := os.MkdirAll(dir, 0o700); err != nil {
+	if err := os.MkdirAll(filepath.Join(dir, "tmp"), 0o700); err != nil {
 		return err
 	}
 	b, err := readRegular(ticketFile, maxTicketBytes)
@@ -269,7 +303,7 @@ func prepareTaskDir(dir, ticketFile string) error {
 }
 
 // readRegular reads a regular file of at most limit bytes, without
-// following a final symlink.
+// following a final symlink or blocking on a FIFO.
 func readRegular(path string, limit int64) ([]byte, error) {
 	f, err := os.OpenFile(path, os.O_RDONLY|openNoFollow, 0)
 	if err != nil {
@@ -289,40 +323,109 @@ func readRegular(path string, limit int64) ([]byte, error) {
 	return io.ReadAll(io.LimitReader(f, limit))
 }
 
+// readVerdict accepts only PASS or FAIL; anything else is a FAIL with fixed
+// text. The summary is cut on a rune boundary.
 func readVerdict(path string) Verdict {
 	b, err := readRegular(path, maxVerdictBytes)
 	if err != nil {
 		return failVerdict("no verdict file")
 	}
 	var v Verdict
-	if json.Unmarshal(b, &v) != nil || v.Verdict == "" {
+	if json.Unmarshal(b, &v) != nil || (v.Verdict != "PASS" && v.Verdict != "FAIL") {
 		return failVerdict("invalid verdict file")
 	}
-	if len(v.Summary) > maxSummaryBytes {
-		v.Summary = v.Summary[:maxSummaryBytes]
-	}
-	return Verdict{Verdict: v.Verdict, Summary: v.Summary}
+	return Verdict{Verdict: v.Verdict, Summary: cutRunes(v.Summary, maxSummaryBytes)}
 }
 
-// taskSandboxOK refuses a sandbox entry that would void the confinement:
-// writes on or around the repository, .git or .toolbelt, and reads that
-// include .toolbelt.
+func cutRunes(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	s = s[:n]
+	for !utf8.ValidString(s) {
+		s = s[:len(s)-1]
+	}
+	return s
+}
+
+// resolvePath resolves symlinks in p, or in its longest existing prefix
+// when p does not exist yet.
+func resolvePath(p string) string {
+	p = filepath.Clean(p)
+	if abs, err := filepath.Abs(p); err == nil {
+		p = abs
+	}
+	rest := ""
+	for cur := p; ; cur = filepath.Dir(cur) {
+		if r, err := filepath.EvalSymlinks(cur); err == nil {
+			return filepath.Join(r, rest)
+		}
+		if filepath.Dir(cur) == cur {
+			return p
+		}
+		rest = filepath.Join(filepath.Base(cur), rest)
+	}
+}
+
+func overlaps(a, b string) bool {
+	a, b = resolvePath(a), resolvePath(b)
+	return inside(a, b) || inside(b, a)
+}
+
+func inside(path, dir string) bool {
+	rel, err := filepath.Rel(dir, path)
+	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
+
+// taskSandboxOK refuses a grant that would void the confinement: writes on
+// or around the repository, .git or .toolbelt, and reads (sandbox.read and
+// the adapter binary's directories) on or around .toolbelt.
 func (h *Harness) taskSandboxOK() error {
-	guarded := []string{h.root, filepath.Join(h.root, ".git"), filepath.Join(h.root, ".toolbelt")}
+	root := h.canonRoot()
+	guarded := []string{root, filepath.Join(root, ".git"), filepath.Join(root, ".toolbelt")}
 	for _, w := range h.cfg.Sandbox.Write {
 		for _, g := range guarded {
-			if within(w, g) || within(g, w) {
+			if overlaps(w, g) {
 				return fmt.Errorf("router_tasks: sandbox.write %s overlaps %s", w, g)
 			}
 		}
 	}
-	tb := filepath.Join(h.root, ".toolbelt")
-	for _, r := range h.cfg.Sandbox.Read {
-		if within(tb, r) {
-			return fmt.Errorf("router_tasks: sandbox.read %s includes %s", r, tb)
+	tb := filepath.Join(root, ".toolbelt")
+	reads := append([]string{}, h.cfg.Sandbox.Read...)
+	if bin := h.taskBinary(); bin != "" {
+		reads = append(reads, binDirs(bin)...)
+	}
+	for _, r := range reads {
+		if overlaps(r, tb) {
+			return fmt.Errorf("router_tasks: read grant %s overlaps %s", r, tb)
 		}
 	}
 	return nil
+}
+
+// taskBinary is the child's executable as the sandbox will resolve it.
+func (h *Harness) taskBinary() string {
+	cmd := ""
+	switch h.cfg.Adapter {
+	case AdapterHarness:
+		cmd = h.cfg.Harness.Command
+		if cmd == "" {
+			cmd = "claude"
+		}
+	case AdapterExec:
+		if len(h.cfg.Exec.Argv) > 0 {
+			cmd = h.cfg.Exec.Argv[0]
+		}
+	}
+	bin, err := lookPath(cmd)
+	if err != nil {
+		return ""
+	}
+	abs, err := filepath.Abs(bin)
+	if err != nil {
+		return ""
+	}
+	return abs
 }
 
 func taskTimeout(t *RouterTask, cfg *Config) time.Duration {
@@ -334,20 +437,17 @@ func taskTimeout(t *RouterTask, cfg *Config) time.Duration {
 }
 
 // taskSpec builds the confined child: the workspace is its workdir and only
-// writable repository path; .git is readable; no bus access.
+// writable repository path; .git is readable; no bus access; its own tmp.
 func (h *Harness) taskSpec(t *RouterTask, dir string) (*childSpec, error) {
-	tmp := h.base + ".tmp"
-	if err := os.MkdirAll(tmp, 0o700); err != nil {
-		return nil, err
-	}
+	tmp := filepath.Join(dir, "tmp")
 	verdict := filepath.Join(dir, "verdict.json")
 	ticketCopy := filepath.Join(dir, "ticket.yaml")
 	spec := &childSpec{
 		workdir:    t.Workspace,
-		extraWrite: []string{dir, tmp},
+		extraWrite: []string{dir},
 		timeout:    taskTimeout(t, h.cfg),
 	}
-	if gitDir := filepath.Join(h.root, ".git"); exists(gitDir) {
+	if gitDir := filepath.Join(h.canonRoot(), ".git"); exists(gitDir) {
 		spec.extraRead = []string{gitDir} // git status/diff work; nothing in it is writable
 	}
 	p := &Packet{V: PacketVersion, Channel: h.member.Channel, Agent: h.member.ID(), Reason: "router_task",
@@ -382,6 +482,9 @@ func TaskPrompt(t *RouterTask, ticketCopy, verdict string) string {
 		"{\"verdict\":\"FAIL\",\"summary\":\"why\"} to %s and exit.", t.Ticket, t.Thread, ticketCopy, verdict)
 }
 
+// taskDisallowedTools are refused even if a permission mode would allow them.
+var taskDisallowedTools = []string{"Bash", "WebFetch", "WebSearch", "Task"}
+
 func (h *Harness) taskClaudeArgv(t *RouterTask, mcp, ticketCopy, verdict string) []string {
 	hc := h.cfg.Harness
 	cmd := hc.Command
@@ -396,21 +499,11 @@ func (h *Harness) taskClaudeArgv(t *RouterTask, mcp, ticketCopy, verdict string)
 	}
 	argv := []string{cmd, "-p", TaskPrompt(t, ticketCopy, verdict), "--output-format", "stream-json", "--verbose",
 		"--mcp-config", mcp, "--strict-mcp-config", "--permission-mode", hc.PermissionMode,
-		"--allowedTools", strings.Join(tools, ",")}
+		"--allowedTools", strings.Join(tools, ","), "--disallowedTools", strings.Join(taskDisallowedTools, ",")}
 	if hc.Model != "" {
 		argv = append(argv, "--model", hc.Model)
 	}
 	return argv
-}
-
-// pruneTasks drops handled IDs at or below seq (they can no longer come
-// back from pending).
-func (st *State) pruneTasks(seq int64) {
-	for id, s := range st.RouterTasks {
-		if s <= seq {
-			delete(st.RouterTasks, id)
-		}
-	}
 }
 
 func exists(p string) bool {
