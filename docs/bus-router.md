@@ -2,9 +2,14 @@
 
 # Router on the bus — B4 spec
 
-Status: **draft, round 2** (one fresh-context review applied; not implemented).
+Status: **draft, round 3** (two fresh-context reviews applied; not implemented).
 
 Specification for stage **B4** of [ADR-013](adr/013-barramento-multi-vendor.md) (§8): the Phase 3 router ([ADR-009](adr/009-router-e-workers.md)) gains a second worker type, an agent registered on a bus channel. It builds on the protocol ([bus-protocolo.md](bus-protocolo.md)), the lease ([bus-lease.md](bus-lease.md)) and the harness ([bus-harness.md](bus-harness.md), [bus-notify-discover.md](bus-notify-discover.md)).
+
+B4 ships in two parts, each testable alone:
+
+- **B4a:** bus operations and the harness `router_tasks` mode. It can be tested with a fake router.
+- **B4b:** bus slots in `tb router run`.
 
 ## Problem
 
@@ -12,151 +17,204 @@ Specification for stage **B4** of [ADR-013](adr/013-barramento-multi-vendor.md) 
 
 ## Principles
 
-1. **Same confinement as a local worker.** A bus agent that takes a router task runs confined to that ticket's worktree, by its harness. An agent that can write the repository root can rewrite `.git/config` filters, `.git/worktrees/`, tickets, router state and `bus.db`, so no check by the router would mean anything. Unconfined agents are an explicit, documented opt-in.
-2. **The router stays the only writer of tickets and commits.** A bus agent edits files in the worktree and reports a verdict. The router commits, checks and records.
-3. **Same result contract.** `tb merge` keeps reading `Result.BaseCommit`/`HeadCommit` from the local repository and does not change.
-4. **Every attempt is a unique, closable thread.** Threads are never reused, across attempts, router runs or a recreated board, and the router can close one for good.
-5. **The claims table is the source of truth.** The router reads claims and results by thread, never by advancing a cursor another process could share.
-6. **Agent output is untrusted.** The verdict only decides whether the router tries to commit; the router's integrity checks decide whether the commit counts. Agent text goes to the redacted router log, never into a ticket field or a prompt.
+1. **Same confinement as a local worker.** The model that works on a router task runs confined to that ticket's worktree. An agent that can write the repository root can rewrite `.git/config` filters, `.git/worktrees/`, tickets, router state and `bus.db`, so no router check would mean anything. B4 has no unconfined mode.
+2. **The model never touches the bus for a router task.** The harness process, outside the sandbox, does the claim, keeps the lease and completes. The confined child only edits files and writes a verdict file. A child that could open `bus.db` could forge claims, results and revokes.
+3. **The router stays the only writer of tickets and commits.** It commits the worktree only after the harness has completed, which happens only after the child's process group has exited, so nothing writes while it commits.
+4. **Same result contract.** `tb merge` keeps reading `Result.BaseCommit`/`HeadCommit` from the local repository and does not change.
+5. **Every attempt is a unique, closable thread.** Threads are never reused, and the router can close one for good with a single transaction that also tells it whether a result got there first.
+6. **The claims table is the source of truth.** The router reads claims and results by thread, never by advancing a cursor.
+7. **Agent output is untrusted.** The verdict only decides whether the router tries to commit; the router's integrity checks decide whether the commit counts. Agent text goes to the redacted router log only.
 
-## Setup
+## Part B4a: bus and harness
 
-1. The human creates the channel and a `router` invite, and joins the router from the CLI:
+### Bus operations
 
-   ```bash
-   tb bus channel create feature-x --owner leonardo
-   tb bus invite feature-x --role router --name router
-   tb bus join feature-x --invite <code> --name router --role router
-   ```
+The store schema goes from v2 to v3: `claims` gains `revoked_at`, `revoked_by`, `revoke_reason` and `confinement` (text, written only by the harness claim below). Migration follows the v1 → v2 rules: one IMMEDIATE transaction, one-way upgrade.
 
-2. Each worker joins with `--role worker` and runs `tb bus run` with the `harness` or `exec` adapter and `router_tasks: true` in its wake file (below).
-3. The router config:
+| Operation | Who | Does |
+|---|---|---|
+| `Claim(channel, thread)` | any member | Reads one claim row: owner, epoch, `claimed_at`, `released_at`, `completed_at`, `result_id`, `revoked_at`, `revoke_reason`, `confinement`. Works on an expired channel (a read). |
+| `Message(channel, id)` | any member | Reads one message by ID. Works on an expired channel. |
+| `Revoke(member, thread, reason)` | `router` or `supervisor` | One IMMEDIATE transaction that returns the final claim state. |
+| `ClaimConfined(member, thread, marker)` | the harness (internal API, no CLI flag or MCP tool) | As `ClaimThread`, and stores `marker` in `confinement`. |
 
-   ```yaml
-   router:
-     max_workers: 2          # local slots w1..wM; 0 = bus only
-     bus:
-       channel: feature-x    # empty = no bus slots (today's behaviour)
-       as: router            # the router's CLI session in that channel
-       slots: 2              # bus slots b1..bN (default 1 when channel is set)
-       to: role:worker       # task.assign recipient, or agent:<name> to pin one agent
-       claim_timeout: 5m     # an assign nobody claims within this is withdrawn
-       max_withdrawals: 3    # per ticket per run; then the ticket fails (unclaimed)
-       trust: confined       # confined | unconfined (see Trust)
-   ```
+**`Revoke` cases:**
 
-- `max_workers: 0` becomes valid only with `bus.channel` set; `router.New` stops replacing the whole config with defaults when `max_workers` is 0, and `RouterConfig.Validate` accepts it in that case.
-- With `max_workers: 0`, `preflight` no longer requires `agent_cmd` or Landlock (the router runs no agent). With local slots, both stay required.
-- `tb router run --check` (new) validates the session, its `router` role, the channel being active, the slot counts and `bus.to`, and warns when the channel has more than one `router`-role agent or when `bus.to` pins an agent whose card says `max_concurrency` below `slots`. It runs nothing.
+- The thread was **completed** with a result: nothing changes, and it returns `completed` with the `result_id`. The caller uses that as its decision: a result that got there first wins.
+- The thread is **open** (claimed, not completed): sets `revoked_at`, `revoked_by`, `revoke_reason` and `released_at`, and returns `revoked`.
+- The thread is **unclaimed**: inserts a row owned by the caller with `revoked_at` set, and returns `revoked`.
+- The thread was **already revoked**: no change; it returns `revoked`.
 
-## Bus changes
+**After a revoke:**
 
-B4 needs three store operations, all on the router's member (role `router`; `supervisor` also allowed for `Revoke`):
+- `ClaimThread` fails with `thread revoked` (checked before "already completed").
+- `Complete` fails with `lease_lost` (the revoke is checked before completion).
+- `Heartbeat` lists the thread under `lost` with the reason.
 
-| Operation | Does |
-|---|---|
-| `Claim(channel, thread)` | reads one claim row: owner, epoch, `claimed_at`, `released_at`, `completed_at`, `result_id`. Readable by any member. |
-| `Message(channel, id)` | reads one message by ID (to fetch the `task.result` a claim points at). |
-| `Revoke(member, thread, reason)` | closes a thread for good: if unclaimed, inserts a claim row owned by the caller, completed with no result; if claimed and open, sets `released_at` and `completed_at` and sends `task.status {"state":"revoked","thread":T,"reason":R}` to `agent:<owner>`. A later `claim` fails with "already completed", a later `complete` with `lease_lost`. Router and supervisor only. |
+**`marker`** is a small JSON object, `{"router_tasks":true,"landlock":true}`. The router (B4b) accepts only claims that carry it.
 
-- `Revoke` is the fence the router lacked: it stops a stale owner's result from ever counting and makes a late claim on a withdrawn thread fail.
-- No other bus rule changes. `task.status` stays sendable by anyone, so consumers must check the sender (below).
+- A member that calls the ordinary `tb bus claim` or `tb_bus_claim` gets no marker.
+- The marker states what the `tb` harness process enforced; it is not a credential. Within the B1 trust boundary (a hostile process of the same user is out of scope), it answers whether a misconfigured harness took the task.
 
-## Slots and scheduling
+### Harness `router_tasks`
 
-- The pool is `w1..wM` (local), then `b1..bN` (bus). Free slots fill in that order, so local slots keep priority.
-- `ValidWorkerID` becomes `^[wb]\d+$`; `tb watchdog kill` accepts both, and its error text lists both forms.
-- Timeouts, `retry.max_attempts`, the global timeout and `slow_threshold` apply unchanged. The ticket timeout starts at the claim, not at the assign; the wait for a claim is bounded by `claim_timeout` instead.
-- **Direct delivery does not apply to bus slots in B4**: a dependent of a ticket finished on a bus slot goes to `bus.to` like any other ticket (subscriptions are keyed by slot today, and a bus agent is not a slot).
-- Each bus attempt runs in its own goroutine, like a local worker: it polls the store every tick (default 1s) and returns `workerDone` to the Run goroutine, which keeps all ticket state. Cancel goes through the slot's `cancel()`. The `done` channel is sized `M + N`.
+The wake file gains:
 
-## Lifecycle of a bus attempt
+```yaml
+router_tasks:
+  from: router        # the only agent whose router-task assigns are honored
+  timeout: 30m        # cap per task; the payload timeout applies if shorter
+```
 
-### 1. Prepare
+- `router_tasks` is allowed with `adapter: harness` or `exec`, and refused with `notify`.
+- `--check` refuses it without Landlock: `--allow-unsandboxed` is incompatible with router tasks.
 
-As for a local worker: ticket `running`, `Worker = bN`, `Attempts++`, worktree `.toolbelt/workspaces/<ID>` on branch `tb-workspace/<ID>` from the base, reset first.
+**Which messages are router tasks.** A `task.assign` is handled as a router task only when all of these hold:
 
-The thread is `<ID>/<run>.<attempt>`, for example `TKT-007/k3m9q2.2`:
+- the sender is `agent:<from>`, and its role in the store is `router`;
+- the payload is `router-task/0.1`;
+- `ticket` matches `^TKT-\d{3,}$`;
+- `workspace` is exactly `<root>/.toolbelt/workspaces/<ticket>`, and `Lstat` shows a real directory, not a symlink;
+- `ticket_file` is exactly `<root>/.toolbelt/tickets/<ticket>.yaml`, a regular file;
+- `thread` equals the message thread, and `Claim(thread)` shows it neither completed nor revoked.
 
-- `<run>` is 6 random base32 characters chosen when the router starts;
-- it is stored in the ticket as `Result.bus_thread` **at start**, so `recover` and the result check know it.
+Any other `task.assign` is an ordinary message.
 
-A board recreated with IDs from `TKT-001`, a second run, or a requeued attempt never reuses a thread.
+**Batching.** Router tasks are split out of the pending batch and handled one at a time, before the ordinary messages. They never wake the agent through the ordinary path and never trigger a rewake. The harness records handled router-task message IDs in its state, so a restart does not handle one twice, and it leaves the agent's cursor alone.
 
-### 2. Assign
+**Handling one task:**
 
-One `task.assign` from the router:
+1. **Claim.** `ClaimConfined(thread, marker)`. If the claim fails (another worker won, or the thread was revoked), the harness logs `router_task_lost` and stops: no child, no workspace access.
+2. **Prepare.**
+   - It copies `ticket_file` to `<agent tmp>/task/ticket.yaml`. The live file is not granted, because ticket writes rename it.
+   - It creates an empty `<agent tmp>/task/verdict.json` path.
+3. **Run the child**, confined. Its grants:
+   - **write:** the workspace (its workdir), the agent tmp dir and the `sandbox.write` entries;
+   - **read:** `<root>/.git` (so `git status` and `git diff` work; the index may stay unwritable), the task copy and the `sandbox.read` entries;
+   - **refused, at `--check` and at wake time:** any `sandbox.write` entry that equals, contains or lies inside `<root>`, `<root>/.git` or `<root>/.toolbelt`, and any `sandbox.read` entry that contains `<root>/.toolbelt`;
+   - **no bus access:** the `claude` preset gets no MCP config and `allowed_tools` without `tb_bus_*`, and `exec` gets no session token;
+   - **a fresh session:** the `claude` preset starts a new session per task, with no `--resume`, so one ticket's context never leaks into the next;
+   - **timeout:** the smallest of `router_tasks.timeout`, the payload's `timeout` and the adapter's `timeout`.
+4. **Fixed prompt** (`claude`), or a packet with `reason: "router_task"` and a `task` object `{ticket, thread, workspace, ticket_copy, verdict_file}` (`exec`). It tells the agent to:
+   - work only in the current directory;
+   - read the ticket from the copy;
+   - not commit (git can read but the repository is not writable);
+   - write `{"verdict":"PASS"}` or `{"verdict":"FAIL","summary":"..."}` to `verdict_file`, then exit.
+5. **Watch.** While the child runs, a watcher goroutine (next to the heartbeat one) polls `Claim(thread)` every second. If it sees a revoke, or an owner or epoch other than the harness's, it kills the child's process group and logs `router_task_revoked`.
+6. **Complete.** After the child's process group has exited (the harness kills what is left of the group), the harness reads `verdict_file`. It must be a regular file of at most 4 KiB holding one JSON object.
+   - It calls `Complete(thread, epoch, verdict)`.
+   - A missing, oversized or malformed verdict, a crash or a timeout completes with `{"verdict":"FAIL","summary":"<reason>"}`. Here `<reason>` is fixed text from the harness, not the child's output.
+   - A `lease_lost` on complete (revoked meanwhile) is logged, and nothing else happens.
+7. **Audit.** `router_task_start`, `router_task_ok`, `router_task_failed`, `router_task_lost` and `router_task_revoked`, with ticket, thread and epoch. Never a payload or the verdict summary.
+
+- The harness heartbeat keeps the claim's lease while the child runs, as in B2.
+- `task.status` messages play no part: revokes are read from the claim row.
+- **Landlock and retries.** A child's rule binds to the inode of the workspace directory at wake time. The router revokes before it resets a worktree, and the watcher kills the child on revoke, so no child of an old attempt is running when the directory is recreated. A child that is somehow still alive keeps its rule on the old inode and cannot write the new one.
+
+## Part B4b: router bus slots
+
+### Configuration
+
+The bus settings come only from **trusted config**: the global config or `-c`, through `config.LoadTrusted`, never the repository's `.toolbelt/config.yaml`. An agent that can write the repository cannot repoint the router.
+
+```yaml
+router:
+  max_workers: 2          # local slots w1..wM; 0 = bus only
+  bus:
+    channel: feature-x    # empty = no bus slots (today's behaviour)
+    as: router            # the router's CLI session in that channel
+    slots: 2              # bus slots b1..bN (default 1 when channel is set)
+    to: role:worker       # task.assign recipient, or agent:<name> to pin one agent
+    claim_timeout: 5m     # an attempt with no valid claim within this fails (unclaimed)
+```
+
+- **`RouterConfig` holds the bus block.** `Validate` accepts `max_workers: 0` only with `bus.channel`. `router.New` stops replacing the whole config when `max_workers` is 0.
+- **`--workers`** cannot express bus-only (it only overrides when greater than 0); bus-only is set in config.
+- **`preflight`** with `max_workers: 0` no longer requires `agent_cmd` or Landlock (the router runs no agent); with local slots, both stay required.
+- **`tb router run --check` (new)** refuses each of the following, and runs nothing:
+  - a missing session, or one whose role is not `router`;
+  - an expired channel;
+  - more than one `router`-role member on the channel (two routers would fight over the same tickets);
+  - an invalid `bus.to`.
+
+### Slots and scheduling
+
+- The pool is `w1..wM` (local), then `b1..bN` (bus). Free slots fill in that order.
+- `ValidWorkerID` becomes `^[wb]\d+$`; `tb watchdog kill` accepts both, and its error text lists both.
+- Each bus attempt runs in its own goroutine. It polls the store every second and returns `workerDone` to the Run goroutine, which keeps all ticket state. Cancel goes through the slot's `cancel()`. The `done` channel is sized `M + N`.
+- **Timeouts.** The ticket timeout starts at the claim: the slot gains `claimedAt`, used by the router watchdog and `tb watchdog status`. Before the claim, `claim_timeout` bounds the wait.
+- Direct delivery does not apply to bus slots: dependents go to `bus.to`.
+
+### Lifecycle of a bus attempt
+
+**1. Prepare.** As for a local worker: ticket `running`, `Worker = bN`, `Attempts++`, worktree reset and created from the base.
+
+The thread is `<ID>/<rand>.<attempt>`, for example `TKT-007/k3m9q2.2`, where `<rand>` is 6 random base32 characters per thread. It is stored in a new ticket field, `bus_thread`, outside `Result`:
+
+- written at start;
+- kept across a requeue;
+- cleared only once the router has confirmed the thread completed or revoked.
+
+**2. Assign.** One `task.assign` from the router:
 
 - recipient: `bus.to`;
 - thread: the attempt thread;
 - idempotency key: `<thread>/assign`;
+- `ttl`: `claim_timeout`;
 - payload: `router-task/0.1`, below.
 
-### 3. Claim
-
-The goroutine polls `Claim(thread)`. A claim counts only when all of these hold:
+**3. Claim.** The goroutine polls `Claim(thread)`. A claim is valid only when all of these hold:
 
 - the owner's role is `worker`;
-- when `bus.to` is `agent:X`, the owner is `X`;
+- the owner is the addressee, when `bus.to` is `agent:X`;
 - `claimed_at` is not before the assign's `created_at`;
-- with `trust: confined`, the owner's Agent Card says `sandbox: landlock` and `wake` is `harness` or `exec`.
+- `confinement` carries the router-tasks marker.
 
-A claim that fails any of these is revoked (`Revoke`, reason `claim_rejected`), logged as `bus_claim_rejected`, and the thread is withdrawn as below.
+An invalid claim is revoked at once (reason `claim_rejected`) and logged as `bus_claim_rejected`. The router then assigns again on a new thread within the same attempt; the attempt's claim deadline does not reset.
 
-**Withdraw.** With no valid claim after `claim_timeout`, the router:
+With no valid claim by the deadline, the router revokes (reason `unclaimed`) and fails the attempt with `error: unclaimed`. The attempt is spent, so `retry.max_attempts` bounds an absent worker.
 
-1. revokes the thread (reason `unclaimed`);
-2. puts the ticket back to `pending` without spending the attempt (`Attempts--`, safe because the next try gets a new thread);
-3. logs `bus_unclaimed`.
-
-After `max_withdrawals` withdrawals in one run, the ticket goes `failed` with `error: unclaimed` instead.
-
-### 4. Work
-
-The goroutine records the owner and epoch of the valid claim. On every tick it treats as **lease lost**:
+**4. Work.** The goroutine records the valid claim's owner and epoch. Every tick, it revokes the thread and fails the attempt with `bus_lease_lost` on any of:
 
 - an owner or epoch different from the recorded ones;
 - `released_at` set;
-- the owner not alive (B2 lease) for a full lease. The router then revokes the thread itself (reason `lease_expired`) instead of waiting for a human to run `tb bus watchdog`.
+- the owner not alive by the B2 definition (`now >= last_seen + lease`).
 
-On lease loss the attempt fails with `bus_lease_lost`.
+Timeout and cancel also revoke:
 
-Timeout and cancel:
+| Event | Revoke reason | Attempt |
+|---|---|---|
+| `slow_threshold` reached | (no revoke) | logs `worker_slow` |
+| ticket timeout | `timeout` | fails with `worker_stuck` |
+| ticket changed outside the router, or `tb watchdog kill bN` | `canceled` | slot freed |
 
-- at `slow_threshold`, the router logs `worker_slow`;
-- at the timeout, it revokes (reason `timeout`) and fails the attempt (`worker_stuck`);
-- a ticket changed outside the router, or `tb watchdog kill bN`, revokes (reason `canceled`) and frees the slot. The kill output says that the remote process is not stopped, only fenced.
+The kill output says the harness's child is stopped by the harness's watcher, not by the router.
 
-### 5. Result
+In every case the router acts on what `Revoke` returns. `completed` means a result got there first, and the router goes to step 5 with it.
 
-The agent completes with:
+**5. Result.** The goroutine sees `completed_at` with the recorded owner and epoch, or gets `completed` from a `Revoke`. It fetches `Message(result_id)` and checks that `from` is the owner and the thread is the attempt's.
 
-```bash
-tb bus complete TKT-007/k3m9q2.2 --epoch E --result '{"verdict":"PASS"}'
-```
-
-The goroutine sees `completed_at` set on the claim, with the recorded owner and epoch. It fetches `Message(result_id)` and checks that its `from` is the owner and its thread is the attempt thread.
-
-- **The first terminal event in store order wins.** A result completed before the router revoked counts, even if the router noticed it later (as a local worker that exited just before its cancel).
-- **`verdict: "PASS"`.** The router checks before committing:
+- **`verdict: "PASS"`.** The router checks:
   - `symbolic-ref HEAD` is `refs/heads/tb-workspace/<ID>`;
-  - `rev-parse HEAD` is still the base: the agent did not commit, switch branch or detach;
-  - the branch ref is still the base.
+  - `rev-parse HEAD` is the base;
+  - the branch ref is the base.
 
-  It then runs the same `commitWorkspace` as a local worker (`verifyWorkspace`, no nested `.git`, no gitlinks or `.gitmodules`, hardened `git add -A`, commit `tb: <ID> <title>`) and checks that the new HEAD has exactly one parent, the base.
-  - Any mismatch fails the attempt as an integrity error, escalated with no retry, as today.
-  - A PASS with no changes is `done` with `HeadCommit == BaseCommit`, as for a local worker; `tb merge` treats it as a no-op.
+  It then runs the same `commitWorkspace` as for a local worker. When there was something to commit, the new HEAD must have exactly one parent, the base. A PASS with no changes is `done` with `HeadCommit == BaseCommit`, a no-op for `tb merge`.
+  - Any mismatch is an integrity error, escalated with no retry, as today.
+  - A cancel that arrives during the commit is ignored until it ends.
 - **`verdict: "FAIL"`, or any other value or shape:** the attempt fails (`bus_verdict_fail`) and is retried while attempts remain.
+- **The commit subject** is `tb: <ID> <title>`, with control characters stripped from the title. This is new for both worker types.
 
-### 6. Retry, shutdown, restart
+**6. Retry, shutdown, restart, expiry.**
 
-- **Retry.** A new attempt resets the worktree and opens a new thread. A confined stale agent cannot write into the new worktree: its Landlock rule names the old directory, and the reset recreates it.
-- **Shutdown and the global timeout.** Each running bus attempt is revoked (reason `shutdown`) and put back to `pending` with `Attempts--`, as local workers are.
-- **Restart.** `recover` revokes the `bus_thread` of every `running` bus ticket before putting it back to `pending`.
-- **Expired channel.** A channel past its `--ttl` refuses writes, so:
-  - bus write errors are logged and never stop the loop;
-  - running bus attempts are put back to `pending` at once;
-  - bus slots stay idle with one `bus_channel_expired` alert, and local slots keep running.
+- **Retry:** the previous thread is revoked (or confirmed completed) before the worktree is reset. A failed reset (`RemoveAll` blocked) raises `workspace_reset_failed` and fails the ticket instead of looping.
+- **Shutdown and the global timeout:** each bus attempt is revoked (reason `shutdown`). If `Revoke` returns `completed`, the result is processed; otherwise the attempt goes back to `pending` with `Attempts--`. The revoke is bounded by the store's 5 s busy timeout.
+- **Restart:** `recover` revokes the `bus_thread` of every `running` ticket and honors a `completed` result. If the revoke fails (expired channel, busy store), the ticket goes back to `pending`, `bus_thread` is kept, `bus_write_failed` is logged, and the revoke is retried on the next start before that ticket is assigned again.
+- **Expired channel:** `Claim` and `Message` still work.
+  - A running attempt whose claim shows a result is honored.
+  - Others go back to `pending` with `bus_thread` kept.
+  - Bus slots stay idle with one `bus_channel_expired` alert, and local slots keep running.
+  - Bus write errors are logged (`bus_write_failed`) and never stop the loop.
 
 ### `router-task/0.1` payload
 
@@ -171,122 +229,117 @@ The goroutine sees `completed_at` set on the claim, with the recorded owner and 
   "ticket_file": "/home/leonardo/src/app/.toolbelt/tickets/TKT-007.yaml",
   "branch": "tb-workspace/TKT-007",
   "base": "a1b2c3d4e5f6...",
-  "claim_by": "2026-11-20T18:05:00Z",
   "timeout": "10m"
 }
 ```
 
-- The description, mandate and acceptance criteria are read from `ticket_file`; they are not copied into the message.
-- `title` is the ticket's title as stored. It may have been written by a planner model, so it is treated as data. It goes into the commit message only after control characters are stripped, as today.
+- Description, mandate and acceptance criteria are read from the ticket file (through the harness's copy). They are not in the message.
+- `title` is the stored ticket title. It may come from a planner model, so it is data.
 
 ### Result payload
+
+The harness writes it from the verdict file:
 
 ```json
 {"verdict": "PASS", "summary": "optional, at most 500 bytes"}
 ```
 
-- `summary` is cut to 500 bytes, stripped of control characters and ANSI escapes, redacted again, and written only to `.toolbelt/router/logs/<ID>.log`.
-- Any other field is ignored. A `commit`, `head` or `branch` from the agent is never used.
+- The router cuts `summary` to 500 bytes and strips control characters and ANSI escapes.
+- It then applies the harness's redaction rules (shared from `busrun`) and writes the summary only to `.toolbelt/router/logs/<ID>.log`.
+- Other fields are ignored. An agent `commit`, `head` or `branch` is never used.
 
-## Worker side: `router_tasks`
+### State
 
-The harness gains a wake-file option, `router_tasks: true` (adapters `harness` and `exec`; refused with `notify`). With it, a `task.assign` is handled as a router task only when all of these hold:
-
-- its sender's role is `router` (looked up in the store, not taken from the payload);
-- the payload is `router-task/0.1`;
-- `workspace` is exactly `<root>/.toolbelt/workspaces/<ticket>` and exists;
-- `ticket_file` is exactly `<root>/.toolbelt/tickets/<ticket>.yaml`;
-- `thread` equals the message thread.
-
-Anything else is an ordinary message: woken as usual, with no workspace.
-
-For a valid router task, the harness wakes the agent **once per task**, with:
-
-- **workdir** = the payload `workspace`, the only writable path besides the agent's own temp dir;
-- **read-only** grant on `ticket_file`;
-- **no grant** on the repository root, `.git` or `.toolbelt` (the worktree's `.git` file stays readable, as for local workers);
-- a **fixed prompt** naming the ticket and thread, and telling the agent to:
-  - claim the thread (`tb_bus_claim`);
-  - work only in its current directory;
-  - not commit;
-  - complete with `{"verdict":"PASS"}` or `{"verdict":"FAIL","summary":"..."}`, passing the epoch from the claim.
-
-The harness also:
-
-- acts on `task.status` `revoked`/`canceled` only when the sender's role is `router` or `supervisor`, and ignores them otherwise;
-- logs `router_task` in its audit (ticket and thread, no payload);
-- adds `task.status` to the wake types for router tasks, so a revoke wakes the agent and the prompt tells it to stop.
-
-The router ignores every `task.status` except its own revokes (it reads claims, not status messages). The harness's `wake_failed` status is ignored too; the claim timeout covers it.
-
-## Trust
-
-- **`trust: confined` (default).**
-  - Only claims from agents whose card declares `sandbox: landlock` and a `harness` or `exec` wake are accepted.
-  - The declaration is the agent's own: the router cannot inspect another process. That is the B1 trust boundary (a hostile process of the same user is out of scope); what confinement protects against is the agent's model writing outside its task.
-  - With `router_tasks`, the harness enforces it.
-- **`trust: unconfined`** accepts any `worker` claim, including GUI agents (`notify`), `--allow-unsandboxed` harnesses and harnesses without `router_tasks`.
-  - `tb router run` prints a warning at start and on each such claim (`bus_unconfined_claim`).
-  - In this mode an agent can write the repository root. The router's integrity checks, the tickets and the `tb merge` guarantees do not hold against it. Use it only for agents you would let run `git` in the repository yourself.
-- **Mandate.** As today, the router does not enforce `mandate.scope`/`forbidden` on paths; `tb stack` (`guard`, `review --ticket`) does, before merge.
-- **One host.** Workspace paths are local; a bus agent on another machine cannot take a router task.
-
-## State, watchdog and board
-
-- `state.json` gains, per bus slot, `thread`, `agent` (once claimed), `claimed_at` and `phase` (`assigned`, `claimed`, `committing`).
-- `tb watchdog status` and `tb board` show them for running bus tickets.
-- New alert kinds: `bus_unclaimed`, `bus_claim_rejected`, `bus_lease_lost`, `bus_verdict_fail`, `bus_unconfined_claim`, `bus_channel_expired`, `bus_write_failed`.
+- `Ticket.bus_thread`, as above.
+- `Result` gains `bus_agent` and `bus_epoch`, set at done from the claim row and carried in `workerDone`.
+- `state.json` gains `thread`, `agent`, `claimed_at` and `phase` (`assigned`, `claimed`, `committing`) per bus slot. `tb watchdog status` shows them.
+- New alert kinds: `bus_unclaimed`, `bus_claim_rejected`, `bus_lease_lost`, `bus_verdict_fail`, `bus_channel_expired`, `bus_write_failed`, `workspace_reset_failed`.
 - `tb router run --dry-run` shows which slot (`wN` or `bN`) each ready ticket would take.
-- `Result` gains `bus_thread` (set at start), `bus_agent` and `bus_epoch` (set at done, from the claim row, never from the payload).
+
+## Trust and limits
+
+- **Confinement holds only while no member with the repository root writable is on the channel.** An agent of the default `harness` mode (workdir = repository root) can still edit `.git`, tickets or `bus.db` directly, whatever the router does. Run such agents (a reviewer, a chat) in another channel, or confine them too.
+- **The marker** says the `tb` harness enforced confinement, which is what a misconfiguration would break. A hostile process of the same user is out of scope, as in B1.
+- **`~/.claude` in `sandbox.write`** (which the `claude` CLI needs) lets the confined model write the user's Claude settings, including hooks that run later outside any sandbox. Prefer granting only `~/.claude/projects` and the credentials file, and treat a broader grant as trusting the model with the user's Claude configuration.
+- **Mandate.** The router does not enforce `mandate.scope`/`forbidden` on paths. `tb stack` (`guard`, `review --ticket`) does, before merge.
+- **One host.** Workspace paths are local.
 
 ## Out of B4
 
+- A `trust: unconfined` mode (GUI or unsandboxed agents taking router tasks).
 - Direct delivery for bus slots, and agent-keyed reservations.
-- L2 (local-model triage and summaries), the escalation ladder by tier and cross-vendor review (ADR-013 §5).
-- Agents on another host.
-- Picking an agent by capability or tier from its card.
+- A withdrawal budget separate from `retry.max_attempts`.
+- Bus columns in `tb board`, and card-based checks such as `max_concurrency`.
+- L2, the escalation ladder by tier and cross-vendor review (ADR-013 §5).
+- Agents on another host, and picking an agent by capability or tier.
 - Enforcing the mandate on file paths.
-- Router tasks for the `claude` preset with a workdir other than the payload's (the preset's `harness.workdir` is ignored for router tasks).
 
 ## Acceptance criteria
 
-1. **Happy path.** Bus only (`max_workers: 0`), with a fake confined worker that claims, edits the worktree and completes `PASS`:
-   - the ticket ends `done`, with a single commit `tb: <ID> <title>` on `tb-workspace/<ID>` whose only parent is the base;
-   - `bus_thread`, `bus_agent` and `bus_epoch` are set;
-   - `tb merge <ID>` applies the commit unchanged.
-2. **Assign.** The `task.assign` payload matches `router-task/0.1` and goes to `bus.to` with thread `<ID>/<run>.<attempt>`. It carries no description, mandate or acceptance text.
-3. **Retry.** `FAIL` or a malformed result retries on a new thread with a reset worktree; after `max_attempts` the ticket is `failed`.
-4. **Agent commits.** An agent that commits by itself, switches branch, or detaches HEAD fails the pre-commit check and escalates with no retry. An agent commit holding a gitlink never reaches `done`. A result naming another SHA has no effect.
-5. **Withdraw.** With no claim within `claim_timeout`:
-   - the thread is revoked and a later claim on it fails with "already completed";
-   - the ticket goes back to `pending` with the attempt not spent, and `bus_unclaimed` is logged;
-   - after `max_withdrawals` the ticket is `failed`.
-6. **Invalid claims.** Each is revoked with `bus_claim_rejected`:
-   - a claim by a reviewer;
-   - with `bus.to: agent:a`, a claim by agent `b`;
-   - a claim made before the assign;
-   - under `confined`, a claim by an agent whose card says `sandbox: none`.
-7. **Lease lost.** For each, the attempt fails with `bus_lease_lost`, and the owner's later `complete` returns `lease_lost`:
-   - an owner silent past its lease, with no human running the watchdog;
-   - a takeover by another worker.
-8. **Timeout.** `worker_slow` at the threshold; at the timeout, revoke and `worker_stuck`. A `PASS` stored before the revoke still counts.
-9. **Stale results.** None of these ever marks a ticket `done`:
-   - a `task.result` from an earlier router run;
-   - one for a same-named ticket on a recreated board;
-   - one for a revoked thread.
-10. **Restart and shutdown.**
-    - A router restart revokes the open thread of running bus tickets and puts them back to `pending`.
-    - Shutdown and the global timeout end with no hang while bus slots are busy.
-11. **No cursor.** A human running `tb bus recv --as router` during a run does not change what the router sees.
-12. **Mixed slots.** Local and bus slots run side by side; local slots fill first.
-13. **Expired channel mid-attempt.** Bus attempts go back to `pending`, one `bus_channel_expired` alert, and local slots keep working.
-14. **`--check` and `preflight`.**
-    - `--check` refuses a missing session, a non-router role and an expired channel, and warns on a second router-role agent.
+### B4a
+
+1. **Revoke on an open thread.** `Revoke` returns `revoked`. Afterwards a `ClaimThread` fails with `thread revoked`, `Complete` fails with `lease_lost`, and the owner's `Heartbeat` lists the thread under `lost` with the reason.
+2. **Revoke on a completed thread.** It changes nothing and returns `completed` with the `result_id`. Revoke on an unclaimed thread blocks later claims.
+3. **Concurrent `Revoke` and `Complete`:** exactly one wins, and `Revoke`'s return value says which.
+4. **Migration.** A v2 store migrates to v3 and keeps its data; a v4 store is refused.
+5. **Marker.** `ClaimConfined` stores the marker. `tb bus claim` and `tb_bus_claim` cannot set it.
+6. **Happy path, with a fake router and a fake confined child.** The harness claims, the child edits the workspace and writes a `PASS` verdict, and the harness completes with that verdict and the right epoch.
+7. **A worker that loses the claim** never spawns a child and logs `router_task_lost`.
+8. **Grants, on a Landlock host.** The child can:
+   - write the workspace;
+   - read `<root>/.git` (`git status` works) and the ticket copy.
+
+   It cannot:
+   - write `<root>`, `<root>/.git/config`, `<root>/.toolbelt/bus/bus.db` or the live ticket file;
+   - open `bus.db` at all.
+9. **Refused `sandbox` entries.** A `sandbox.write` entry of `<root>`, `~` (when the root is inside it) or `<root>/.toolbelt` is refused at `--check` and at wake time.
+10. **Revoke during the child.** A revoke kills the child's process group within about 2 s and logs `router_task_revoked`; no complete follows.
+11. **Bad verdicts.** A missing, oversized or invalid verdict file, a child crash, and a timeout each complete as `FAIL` with fixed harness text.
+12. **Not router tasks.** Each of these is handled as an ordinary message, with no claim:
+    - a `router-task` from a non-pinned router-role agent;
+    - one from a supervisor;
+    - one with `ticket: ../x`;
+    - one with a symlinked workspace;
+    - one whose thread differs from the message's.
+13. **No rewake, no double handling.** A handled task does not rewake, and a harness restart does not handle it twice.
+14. **Fresh sessions.** The `claude` preset gets a new session per task (no `--resume`) and no bus tools.
+
+### B4b
+
+15. **Happy path.** Bus only, with a B4a worker:
+    - the ticket ends `done` with one commit `tb: <ID> <title>` whose only parent is the base;
+    - `bus_agent` and `bus_epoch` are set;
+    - `tb merge <ID>` applies it unchanged.
+16. **Assign.** The payload matches `router-task/0.1`, with thread `<ID>/<rand>.<attempt>` and `ttl` = `claim_timeout`. It carries no description, mandate or acceptance text.
+17. **Retry.** `FAIL` or a malformed result retries on a new thread with a reset worktree; after `max_attempts` the ticket is `failed`.
+18. **Agent commits.** An agent commit, a branch switch or a detached HEAD fails the pre-commit check and escalates with no retry. A result naming another SHA has no effect. A no-change PASS is `done` with `HeadCommit == BaseCommit`.
+19. **Invalid claims.** Each is revoked at once and the task is reassigned on a new thread:
+    - a claim with no marker;
+    - a claim by a reviewer;
+    - with `bus.to: agent:a`, a claim by `b`;
+    - a claim made before the assign.
+
+    With no valid claim by `claim_timeout`, the attempt fails as `unclaimed`.
+20. **Lease lost.** For each, the router revokes the thread, the attempt fails with `bus_lease_lost`, and the owner's later complete gets `lease_lost`:
+    - an owner silent past its lease, with no human running the watchdog;
+    - a takeover by another worker.
+21. **Timeout.** `worker_slow`, then revoke and `worker_stuck`. A `PASS` completed before the revoke counts, through `Revoke`'s `completed` return.
+22. **Stale results.** None of these ever marks a ticket `done`:
+    - a result from an earlier router run;
+    - one from a recreated board with the same ticket IDs;
+    - one on a revoked thread.
+23. **Restart.**
+    - A restart revokes open threads, honors a completed one and requeues the rest.
+    - With the channel expired, `bus_thread` is kept and revoked on a later start before the ticket is reassigned.
+24. **Shutdown and the global timeout** end with no hang while bus slots are busy. An attempt in `committing` finishes its commit.
+25. **No cursor.** `tb bus recv --as router` during a run changes nothing the router sees.
+26. **Mixed slots.** Local and bus slots run side by side; local slots fill first.
+27. **Expired channel mid-attempt.** An attempt with a stored result is honored, the others go back to `pending`, one `bus_channel_expired` alert is raised, and local slots keep working.
+28. **Trusted config.** `router.bus` set in the repository's `.toolbelt/config.yaml` is ignored; only the global config or `-c` counts.
+29. **`--check` and `preflight`.**
+    - `--check` refuses a missing session, a non-router role, an expired channel and a second router-role member.
     - `preflight` refuses `max_workers: 0` without `bus.channel`, and accepts it without `agent_cmd` and without Landlock when `bus.channel` is set.
-15. **Summary.** `summary` appears only in the router log, cut, stripped and redacted, never in the ticket YAML.
-16. **Harness `router_tasks`.**
-    - A valid router task runs the child with the workspace as its only writable path, plus a read-only `ticket_file`; on a Landlock host, a write to the repository root or to `.git/config` fails.
-    - A `router-task` sent by a supervisor, or one with `workspace` outside `.toolbelt/workspaces/<ticket>`, is woken as an ordinary message with no workspace.
-17. **Forged status.** A `task.status` `revoked` sent by a worker to another worker is ignored by that worker's harness, and the router never acts on it.
-18. **Unconfined.** Under `trust: unconfined`, a `notify` agent's claim is accepted with a start warning and a `bus_unconfined_claim` alert.
-19. **Watchdog kill.** `tb watchdog kill b1` revokes the attempt, frees the slot and reports that the remote process is not stopped.
+30. **Commit subject.** A title with control characters yields a commit subject without them, for local and bus workers alike.
+31. **Summary.** `summary` appears only in the router log, cut, stripped and redacted, never in the ticket YAML.
+32. **Watchdog kill.** `tb watchdog kill b1` revokes the attempt and frees the slot; the harness watcher stops the child.
+33. **Dry run.** `--dry-run` shows the `wN`/`bN` slot of each ready ticket, and `state.json` shows a bus slot's thread, agent and phase.
