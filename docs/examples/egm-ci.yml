@@ -28,8 +28,8 @@ jobs:
     continue-on-error: true
     timeout-minutes: 30
     env:
-      # The next release (the first with --egm-mode ci; not published yet).
-      # TB_SHA256 is its archive's line in checksums.txt.
+      # The first release with --egm-mode ci. TB_SHA256 is its archive's line
+      # in the release's checksums.txt.
       TB_VERSION: "0.0.7"
       TB_SHA256: "<sha256 of toolbelt_0.0.7_linux_amd64.tar.gz>"
       CLAUDE_CODE_VERSION: "2.1.326"
