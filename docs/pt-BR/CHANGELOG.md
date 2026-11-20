@@ -16,6 +16,7 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 - `internal/mdparse` (fatia 1 da Fase A do vault): parser Markdown folha com `Slugify`, `Headings` ATX cientes de cerca e de frontmatter, `SplitFrontmatter`, `Wikilinks` do Obsidian (rótulos, `\|` em tabela, fragmentos, embeds, fora de código inline) e `NormalizeForSearch`; ainda sem comando para o usuário
 
 ### Alterado
+- Spec em rascunho do B2 do barramento (`docs/bus-lease.md`): lease por agente com heartbeats, fencing por epoch nos claims (o `complete` recebe o epoch), watchdog sob demanda que manda `lease_expired` do remetente exclusivo do broker `system:watchdog`, heartbeats do harness e do `tb mcp`, e uma migração do store v1 → v2
 - O vault passa a ser versionado: `.toolbelt/vault/` saiu de `LocalCacheExcludePatterns`; o `tb init` exclui só `<vault.path>/.obsidian/`, cria um `vault.path` customizado, avisa `vault_gitignored` quando uma regra do `.gitignore` ignora o vault e repara uma seção de exclude cujo marcador de fim se perdeu, sem descartar as linhas do usuário. O `.gitignore` deste repositório passa a ignorar só `.toolbelt/vault/.obsidian/`
 - Seções Markdown do `tb graph`: linhas `#` dentro do frontmatter ou de bloco de código cercado deixam de ser seção, e uma sequência `#` de fechamento sai do texto do heading (regras ATX). Um arquivo Markdown que começa com uma quebra temática `---` passa a ser lido como frontmatter até a próxima linha `---` ou `...`, como no Obsidian
 

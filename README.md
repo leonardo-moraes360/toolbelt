@@ -258,7 +258,7 @@ tb bus recv --channel feature-x --as grok-1 --wait 20s
 ### Multi-vendor bus (`tb bus`, [ADR-013](docs/adr/013-barramento-multi-vendor.md))
 - [x] B0 — `bus/0.1` spec: envelope, Agent Card and invite ([docs/bus-protocolo.md](docs/bus-protocolo.md))
 - [x] B1 — SQLite store, CLI + MCP, single-use invite, `join`/`send`/`recv`/`claim`/`complete`/`log`
-- [ ] B2 — lease, heartbeat and watchdog on the bus
+- [ ] B2 — lease, heartbeat and watchdog on the bus ([draft spec](docs/bus-lease.md))
 - [ ] B3 (partial) — `tb bus run` with `exec` and `harness` adapters done ([docs/bus-harness.md](docs/bus-harness.md)); `notify` adapter and `tb bus discover` pending
 - [ ] B4 — Phase 3 router/board on top of the bus
 
