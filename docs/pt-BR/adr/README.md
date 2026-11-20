@@ -35,6 +35,7 @@ Cada ADR segue o formato:
 | [014](014-graphify-reimplementacao.md) | Graphify: reimplementar, não integrar | accepted |
 | [015](015-egm-nativo.md) | Reimplementação nativa do Elephant-Goldfish Model (`tb egm`) | accepted |
 | [016](016-vault-fase-a.md) | Vault Markdown, Fase A: o vault é o único armazenamento | proposed |
+| [017](017-appsec-red-blue-labs.md) | Capacidades nativas de AppSec red/blue e labs isolados (`tb red` / `tb blue` / `tb lab`) | proposto |
 
 ## Como Propor um ADR
 
