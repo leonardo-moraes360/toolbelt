@@ -31,7 +31,7 @@ jobs:
       # The first release with --egm-mode ci. TB_SHA256 is its archive's line
       # in the release's checksums.txt.
       TB_VERSION: "0.0.7"
-      TB_SHA256: "<sha256 of toolbelt_0.0.7_linux_amd64.tar.gz>"
+      TB_SHA256: "c6dcf3e8886bdbf5add9ae8a8dab6dfe314ee774826cd5c5c74f42496a3aa1d5"
       CLAUDE_CODE_VERSION: "2.1.326"
     steps:
       - uses: actions/checkout@v7
