@@ -70,19 +70,19 @@ type GoldfishResult struct {
 // Runner runs goldfish under one Registry and one subreaper (R3). It is safe
 // for concurrent use.
 type Runner struct {
-	prof      *Profile
-	bin       string // resolved agent binary
-	args      []string
-	path      string
-	pass      []string
-	readOnly  []string
-	copies    []string // egm.home.copy, relative to realHome
-	realHome  string
-	credPath  string // claude only
+	prof     *Profile
+	bin      string // resolved agent binary
+	args     []string
+	path     string
+	pass     []string
+	readOnly []string
+	copies   []string // egm.home.copy, relative to realHome
+	realHome string
+	credPath string // claude only
 	// apiKey: a claude API key or token reaches the goldfish through
 	// egm.env.pass (the spike's first auth preference, R0), so no credential
 	// file is checked or copied.
-	apiKey bool
+	apiKey    bool
 	timeout   time.Duration
 	maxStdout int
 

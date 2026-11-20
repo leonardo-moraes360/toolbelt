@@ -58,7 +58,7 @@ A Fase A deixa três lacunas:
 
   Um recibo é uma alegação, não uma prova. O CI não confia em nenhum campo sem conferir (T-R2).
 - **T-R2 (modo CI).** O `tb stack` ganha a flag `--egm-mode local|ci` (padrão `local`). O schema da `tb_stack` (`internal/registry/parity.go`) ganha `egm_mode`. O modo `ci` implica `--strict` no veredito de cada documento, exige `-c` e roda a rodada nova com `--engine llm` (R12). Sem `-c`, falha com exit 2. Uma seleção vazia continua só avisando (`no_gated_docs`), a menos que `--strict` seja passado explicitamente, para que o gate possa ser um check obrigatório em PRs que não tocam documento sob gate.
-  - **Seleção:** a do R33, sobre `merge-base(--base, --head)..--head`.
+  - **Seleção:** a do R33, sobre `merge-base(--base, --head)..--head`, com os globs do gate como a união dos da config do repositório no merge-base e em head, para que o PR não os estreite.
   - **Ordem das verificações:** cada documento selecionado é verificado na ordem abaixo, e a primeira falha decide o resultado:
     1. **Recibo presente e válido.** O blob do recibo existe em `--head` e é lido sem erro. Toda alegação tem `lines` dentro do documento. Senão, o resultado é `no_receipt` ou `receipt_invalid`, com `ok: false`.
     2. **Recibo atual.** `doc_sha256` e `sources` batem com o que o R7a recalcula em `--head`. Senão, o resultado é `receipt_stale`, com `ok: false`.

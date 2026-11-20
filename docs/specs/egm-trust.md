@@ -58,7 +58,7 @@ Phase A leaves three gaps:
 
   A receipt is a claim, not a proof. CI trusts no field without checking it (T-R2).
 - **T-R2 (CI mode).** `tb stack` gains the `--egm-mode local|ci` flag (default `local`). The `tb_stack` schema (`internal/registry/parity.go`) gains `egm_mode`. The `ci` mode implies `--strict` for each document's verdict, requires `-c`, and runs the fresh round with `--engine llm` (R12). Without `-c`, it fails with exit 2. An empty selection still only warns (`no_gated_docs`) unless `--strict` is passed explicitly, so the gate can be a required check on PRs that touch no gated document.
-  - **Selection:** R33's, over `merge-base(--base, --head)..--head`.
+  - **Selection:** R33's, over `merge-base(--base, --head)..--head`, with the gate globs as the union of the repository config's at the merge-base and at head, so the PR cannot narrow them.
   - **Order of checks:** each selected document is checked in the order below, and the first failure decides its result:
     1. **Receipt present and valid.** The receipt blob exists at `--head` and parses. Every claim has `lines` inside the document. Otherwise the result is `no_receipt` or `receipt_invalid`, with `ok: false`.
     2. **Receipt fresh.** `doc_sha256` and `sources` equal what R7a recomputes at `--head`. Otherwise the result is `receipt_stale`, with `ok: false`.

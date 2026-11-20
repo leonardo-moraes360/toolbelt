@@ -13,6 +13,7 @@ on:
   # No paths filter: a required check filtered out by paths stays pending.
   # A PR without gated documents passes with a no_gated_docs warning.
   pull_request:
+    types: [opened, synchronize, reopened, edited] # edited: a changed base branch
 
 permissions:
   contents: read
@@ -21,10 +22,14 @@ jobs:
   egm:
     runs-on: ubuntu-24.04 # Linux with Landlock: the reviewers run in a sandbox
     # Until the flakiness of a fresh round is measured (spec, Open Questions).
+    # While this is true the job succeeds even when the gate fails: the check
+    # is advisory, and a required check on it protects nothing. Remove it to
+    # enforce the gate.
     continue-on-error: true
     timeout-minutes: 30
     env:
-      # First release with --egm-mode ci; TB_SHA256 is its line in checksums.txt.
+      # The next release (the first with --egm-mode ci; not published yet).
+      # TB_SHA256 is its archive's line in checksums.txt.
       TB_VERSION: "0.0.7"
       TB_SHA256: "<sha256 of toolbelt_0.0.7_linux_amd64.tar.gz>"
       CLAUDE_CODE_VERSION: "2.1.326"

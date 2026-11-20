@@ -198,3 +198,40 @@ func TestCIEmptySelection(t *testing.T) {
 		t.Fatalf("empty with --strict: %+v %v", r, err)
 	}
 }
+
+// TestCIAuthVarsGroup: either claude auth variable is enough (T-R4).
+func TestCIAuthVarsGroup(t *testing.T) {
+	set := &Settings{EgmConfig: mustDefault()}
+	set.Env.Pass = []string{"ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN"}
+	t.Setenv("ANTHROPIC_API_KEY", "")
+	t.Setenv("CLAUDE_CODE_OAUTH_TOKEN", "")
+	if off, _ := ciEngine(set); off == "" {
+		t.Fatal("no auth variable set: want offline")
+	}
+	t.Setenv("CLAUDE_CODE_OAUTH_TOKEN", "tok")
+	if off, err := ciEngine(set); off != "" || err == nil {
+		t.Fatalf("token set, no agent_cmd: want a setup error, got offline=%q err=%v", off, err)
+	}
+	if !claudeAPIKey(set.Env.Pass) {
+		t.Fatal("claudeAPIKey with the token")
+	}
+}
+
+// TestCIGlobsNotNarrowedByPR: a PR that drops a repository glob and edits
+// a document under it is still gated in ci mode.
+func TestCIGlobsNotNarrowedByPR(t *testing.T) {
+	f, ctx := convergedAtHead(t)
+	writeFile(t, f.cfg, "egm:\n  clean_rounds: 1\n  env: {pass: [TB_EGM_TEST_KEY]}\n")
+	t.Setenv("TB_EGM_TEST_KEY", "")
+	writeFile(t, filepath.Join(f.root, ".toolbelt", "config.yaml"), "egm:\n  doc_globs: [\"docs/rfc/**\"]\n")
+	writeFile(t, filepath.Join(f.root, "docs", "rfc", "r.md"), "# RFC\n\nText.\n")
+	gitT(t, f.root, "add", ".")
+	gitT(t, f.root, "commit", "-qm", "rfc glob")
+	writeFile(t, filepath.Join(f.root, ".toolbelt", "config.yaml"), "egm: {}\n")
+	writeFile(t, filepath.Join(f.root, "docs", "rfc", "r.md"), "# RFC\n\nChanged.\n")
+	gitT(t, f.root, "commit", "-qam", "narrow the gate")
+	r := f.ciGate(ctx, "HEAD~1", false)
+	if r.OK || len(r.Docs) != 1 || r.Docs[0].Doc != "docs/rfc/r.md" {
+		t.Fatalf("narrowed globs: %+v", r)
+	}
+}

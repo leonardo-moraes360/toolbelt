@@ -116,10 +116,18 @@ func receiptCheck(ctx context.Context, root, rel, head, cfg string) (*Receipt, *
 // variable unset, or an unusable claude credential); any other reason the
 // llm engine cannot run is a broken CI setup, reported as an error.
 func ciEngine(set *Settings) (offline string, err error) {
+	// The claude auth variables count as a group: one of them set is enough.
+	auth := false
 	for _, k := range set.Env.Pass {
-		if os.Getenv(k) == "" {
+		switch {
+		case containsStr(claudeAuthVars, k):
+			auth = auth || os.Getenv(k) != ""
+		case os.Getenv(k) == "":
 			return k + " is not set (egm.env.pass)", nil
 		}
+	}
+	if !auth && passesAuthVar(set.Env.Pass) {
+		return strings.Join(claudeAuthVars, " or ") + " is not set (egm.env.pass)", nil
 	}
 	_, _, env, err := resolveEngine(&Options{Engine: EngineLLM}, set)
 	var e *Error
@@ -420,4 +428,13 @@ func ciPreflight(o *GateOptions) error {
 		return nil
 	}
 	return errorf(ExitError, "usage", "--egm-mode must be local or ci")
+}
+
+func passesAuthVar(pass []string) bool {
+	for _, k := range claudeAuthVars {
+		if containsStr(pass, k) {
+			return true
+		}
+	}
+	return false
 }

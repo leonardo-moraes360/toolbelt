@@ -74,7 +74,7 @@ func Gate(ctx context.Context, o *GateOptions) (*GateResult, error) {
 		c.Strict = true
 		o = &c
 	}
-	sel, err := gateSelect(ctx, o)
+	sel, err := gateSelect(ctx, o, ci)
 	if err != nil {
 		return nil, err
 	}
@@ -118,7 +118,7 @@ type gateSelection struct {
 	removed []string
 }
 
-func gateSelect(ctx context.Context, o *GateOptions) (*gateSelection, error) {
+func gateSelect(ctx context.Context, o *GateOptions, ci bool) (*gateSelection, error) {
 	repo, err := DiscoverRepo(filepath.Join(o.RepoDir, ".egm-gate"))
 	if err != nil {
 		return nil, err
@@ -134,6 +134,15 @@ func gateSelect(ctx context.Context, o *GateOptions) (*gateSelection, error) {
 	set, err := gateSettings(ctx, repo, head, o.ConfigFile)
 	if err != nil {
 		return nil, err
+	}
+	if ci {
+		// The PR's own .toolbelt/config.yaml must not narrow the gate: in
+		// ci mode the globs are the union of the merge-base's and head's.
+		old, err := gateSettings(ctx, repo, mb, o.ConfigFile)
+		if err != nil {
+			return nil, err
+		}
+		set.GateDocGlobs = appendNew(set.GateDocGlobs, old.GateDocGlobs)
 	}
 	diff, err := repo.DiffNameStatus(ctx, mb, head)
 	if err != nil {
