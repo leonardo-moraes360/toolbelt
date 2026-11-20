@@ -8,13 +8,15 @@ on:
     - cron: "41 7 * * 1"
 
 # publish_results requires no top-level write permissions.
-permissions: read-all
+permissions:
+  contents: read
 
 jobs:
   analysis:
     name: Scorecard analysis
     runs-on: ubuntu-latest
     permissions:
+      contents: read
       security-events: write
       id-token: write
 
