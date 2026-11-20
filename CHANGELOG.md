@@ -9,9 +9,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed
-- Windows build: `tb egm receipt` used `syscall.O_NOFOLLOW`, which does not exist on Windows, so the v0.0.7 release build failed and no v0.0.7 release was published; the flag is now unix-only (`os.Root` still confines the write).
-
 ## [0.0.7] - 2026-11-20
 
 ### Added
@@ -32,6 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CLI and MCP server output is now in English: cobra help (`Short`/`Long`/`Example`), flag usage, error messages, reports (e.g. `guard: ok (3 rules, 0 violations)`, drift `Out of scope` / `Forbidden touched`) and MCP tool/schema descriptions; input parsing still accepts the Portuguese `rd.md` headings (`Escopo`, `Proibido`, `Aceite`)
 
 ### Fixed
+- Windows build: `tb egm receipt` used `syscall.O_NOFOLLOW`, which does not exist on Windows; the flag is now unix-only (`os.Root` still confines the write)
 - `tb stack` `egm` op: a `README.md` index under `egm.doc_globs` is no longer a gated document, so editing `docs/adr/README.md` does not fail the gate with `NO_STATE` (dogfood #38)
 - `tb egm loop next` after a convergence over the same `content` and `policy_sha` no longer opens a new cycle and round (about 9 agent runs with the `llm` engine): it shows `already converged over this content in cycle N` with the existing report and exits 0 (R26, dogfood #39)
 
