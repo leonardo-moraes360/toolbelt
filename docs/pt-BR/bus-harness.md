@@ -4,7 +4,7 @@
 
 Status: **implementado** (B3). O adapter `notify` e o `tb bus discover` estão em [bus-notify-discover.md](bus-notify-discover.md); itens em "Fora deste corte" seguem pendentes.
 
-Especificação da etapa **B3** do [ADR-013](adr/013-barramento-multi-vendor.md): o processo que espera mensagens no lugar do agente e o acorda só quando há trabalho. Pressupõe o protocolo [`bus/0.1`](bus-protocolo.md) (B1). Este primeiro corte define dois adapters de despertar, `exec` e `harness`.
+Especificação da etapa **B3** do [ADR-013](adr/013-barramento-multi-vendor.md): o processo que espera mensagens no lugar do agente e o acorda só quando há trabalho. Pressupõe o protocolo [`bus/0.1`](bus-protocolo.md) (B1). Define os adapters de despertar `exec` e `harness`; o adapter `notify` está em [bus-notify-discover.md](bus-notify-discover.md).
 
 ## Problema
 
@@ -69,6 +69,8 @@ Entregue ao adapter. Nunca contém payload de mensagem.
     {"id": "01JD7Y3K2V8Q4M6N1P0R5S7T9W", "seq": 12, "from": "agent:claude-code", "type": "task.assign", "thread": "TKT-001"},
     {"id": "01JD7Y4A0B1C2D3E4F5G6H7J8K", "seq": 14, "from": "agent:claude-code", "type": "query"}
   ],
+  "types": {"query": 1, "task.assign": 1},
+  "senders": [{"from": "agent:claude-code", "count": 2}],
   "recv": "tb bus recv --channel feature-x --as marin"
 }
 ```

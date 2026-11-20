@@ -8,7 +8,8 @@ import (
 	"syscall"
 )
 
-// rootUID is who must own a desktop notifier (tests override it).
+// rootUID is who, besides uid 0, may own a desktop notifier and its
+// ancestors (tests set it to their own uid).
 var rootUID uint32
 
 func rootOwned(path string) error {
@@ -20,10 +21,11 @@ func rootOwned(path string) error {
 	if !ok {
 		return errors.New("cannot read the owner")
 	}
-	if sys.Uid != rootUID {
+	if sys.Uid != 0 && sys.Uid != rootUID {
 		return errors.New("not owned by root")
 	}
-	if st.Mode().Perm()&0o022 != 0 {
+	// A sticky root-owned directory (/tmp) lets nobody rename others' entries.
+	if st.Mode().Perm()&0o022 != 0 && (st.Mode()&os.ModeSticky == 0 || sys.Uid != 0) {
 		return errors.New("group- or world-writable")
 	}
 	return nil

@@ -4,7 +4,7 @@
 
 Status: **implemented** (B3). The `notify` adapter and `tb bus discover` are in [bus-notify-discover.md](bus-notify-discover.md); items under "Out of this cut" are still pending.
 
-Specification for stage **B3** of [ADR-013](adr/013-barramento-multi-vendor.md): the process that waits for messages on the agent's behalf and wakes it only when there is work. It builds on the [`bus/0.1`](bus-protocolo.md) protocol (B1). This first cut defines two wake adapters, `exec` and `harness`.
+Specification for stage **B3** of [ADR-013](adr/013-barramento-multi-vendor.md): the process that waits for messages on the agent's behalf and wakes it only when there is work. It builds on the [`bus/0.1`](bus-protocolo.md) protocol (B1). It defines the `exec` and `harness` wake adapters; the `notify` adapter is in [bus-notify-discover.md](bus-notify-discover.md).
 
 ## Problem
 
@@ -69,6 +69,8 @@ Delivered to the adapter. It never contains a message payload.
     {"id": "01JD7Y3K2V8Q4M6N1P0R5S7T9W", "seq": 12, "from": "agent:claude-code", "type": "task.assign", "thread": "TKT-001"},
     {"id": "01JD7Y4A0B1C2D3E4F5G6H7J8K", "seq": 14, "from": "agent:claude-code", "type": "query"}
   ],
+  "types": {"query": 1, "task.assign": 1},
+  "senders": [{"from": "agent:claude-code", "count": 2}],
   "recv": "tb bus recv --channel feature-x --as marin"
 }
 ```

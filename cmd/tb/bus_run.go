@@ -60,11 +60,7 @@ func runBusRun(cmd *cobra.Command, _ []string) error {
 	if err := h.Check(); err != nil {
 		return err
 	}
-	warnings, err := h.Warnings()
-	if err != nil {
-		return err
-	}
-	for _, w := range warnings {
+	for _, w := range h.Warnings() {
 		fmt.Fprintln(os.Stderr, "warning: "+w)
 	}
 	switch {

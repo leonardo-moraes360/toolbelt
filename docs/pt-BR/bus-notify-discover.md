@@ -48,7 +48,8 @@ timeout: 10s               # padrão para notify (30s no exec)
 - Estes são erros do `Validate`, então tanto o `tb bus run` quanto o `--check` os recusam:
   - `pass_env`, `secret_files`, `sandbox.read` ou `sandbox.write` não vazios com `adapter: notify` (o backend não precisa de nenhum deles);
   - um bloco `exec:` ou `harness:` com `adapter: notify`, e um bloco `notify:` com outro adapter;
-  - `backend: desktop` numa plataforma que não seja Linux nem macOS (`notify_unsupported`).
+  - `notify.backend` ausente (é obrigatório) ou `backend: desktop` numa plataforma que não seja Linux nem macOS (`notify_unsupported`).
+- Misturar blocos `exec:` e `harness:` continua aceito, como antes do `notify` existir.
 - Os padrões dependem do adapter: `rewake_after` é `1h` e `timeout` é `10s` para `notify`.
 
 ### Backends
@@ -63,8 +64,8 @@ timeout: 10s               # padrão para notify (30s no exec)
 
 - `command` vazio quer dizer o primeiro arquivo existente entre `/usr/bin/notify-send` e `/usr/local/bin/notify-send`. Não há busca no `PATH`; no macOS o caminho é sempre `/usr/bin/osascript`.
 - O caminho é resolvido uma vez, quando o harness abre (seguindo symlinks), e é esse arquivo que todo wake roda.
-- O `Validate` recusa o binário quando:
-  - ele, ou o diretório dele, não pertence ao root ou tem escrita para grupo ou outros;
+- Quando o harness abre (então tanto o `tb bus run` quanto o `--check` falham), o binário é recusado quando:
+  - ele, ou qualquer diretório acima dele até `/`, não pertence ao root ou tem escrita para grupo ou outros (um diretório sticky do root, como `/tmp`, é aceito). No NixOS o `/nix/store` tem escrita para o grupo, então defina `command` com um caminho que passe, ou use `backend: terminal`;
   - ele fica dentro da raiz do repositório ou de `<private>`.
   
   Um agente com acesso a shell consegue gravar `~/.local/bin/notify-send`; não consegue trocar um binário de sistema do root.
@@ -102,7 +103,7 @@ body:    2 task.assign, 1 query from "claude-code". Open marin and ask it to cal
   - Os tipos vêm do enum fechado `Type`.
   - Nenhuma thread, payload, `causation_id` ou chave de idempotência entra.
 - **Nomes de remetente são escolhidos pelo agente.** Um convite sem nome vinculado deixa quem entra escolher qualquer nome válido, então um nome pode parecer uma instrução. Por isso os remetentes aparecem entre aspas, sem o prefixo `agent:` e cada um cortado em 32 caracteres com `…`. `system:watchdog` e qualquer remetente `system:*` aparecem como `the broker`.
-- No máximo 3 remetentes, ordenados por contagem e depois por nome, seguidos de `and N others`.
+- No máximo 3 remetentes, ordenados por contagem e depois por nome, seguidos de `and 1 other` ou `and N others`. Todos os remetentes `system:*` contam como um só `the broker`.
 - Um `rewake` troca `new` por `still unread`. Quando o lote tem uma mensagem `urgent`, o resumo começa com `urgent: ` e a urgência é `urgent_urgency`. Qualquer membro pode mandar `urgent`, então no GNOME e no KDE `critical` fura o Não Perturbe; use `urgent_urgency: normal` para evitar isso. O orçamento limita isso a `max_wakes` por `per` de qualquer forma.
 - **A dica de shell usa `--peek`.** Um `recv` comum avançaria o cursor compartilhado do agente, e o `tb_bus_recv` do agente de GUI não devolveria mais nada.
 
@@ -184,7 +185,8 @@ Um `tb` puro é informado como `"path": "tb"` com `"same_tb": null`, porque ele 
 
 **O que é informado por entrada:**
 
-- para a entrada casada: a chave do servidor, o caminho absoluto, se é o mesmo arquivo do `tb` em execução (`os.SameFile`) e se `args` tem `--bus-as` (o valor dele é um par canal/nome, que é impresso);
+- para a entrada casada: a chave do servidor, o caminho absoluto, se é o mesmo arquivo do `tb` em execução (`os.SameFile`) e se `args` tem `--bus-as` (o valor só é impresso quando é um par canal/nome válido; senão aparece como `(invalid)`);
+- a saída em texto põe entre aspas qualquer caminho ou chave de projeto com caracteres de controle ou não imprimíveis, para que o `.mcp.json` de um repositório clonado não mande sequências de escape ao terminal;
 - `--bus-root`, os outros argumentos e o `env` da entrada `tb` nunca são impressos;
 - outros servidores só são contados (`"other_servers": N`).
 

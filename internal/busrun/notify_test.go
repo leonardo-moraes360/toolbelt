@@ -1,7 +1,10 @@
+//go:build unix
+
 package busrun
 
 import (
 	"bytes"
+	"context"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -52,6 +55,7 @@ func TestNotifyDesktopFlow(t *testing.T) {
 	t.Setenv("XDG_RUNTIME_DIR", xdg)
 	t.Setenv("OTHER_SECRET_TOKEN", "must-not-pass")
 	t.Setenv("DISPLAY", ":0")
+	t.Setenv("TB_BUS_CHANNEL", "leak")
 	for _, typ := range []bus.Type{bus.TypeTaskAssign, bus.TypeQuery, bus.TypeTaskAssign} {
 		if _, err := e.store.Send(e.owner, &bus.SendInput{To: "agent:w", Type: typ, Thread: "click.here",
 			Payload: []byte(`{"x":"click http://x"}`)}); err != nil {
@@ -63,10 +67,9 @@ func TestNotifyDesktopFlow(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer h.Close()
-	runFor(t, h, 800*time.Millisecond)
-	argv, err := os.ReadFile(h.base + ".notify/argv")
-	if err != nil {
-		t.Fatalf("notifier did not run: %v\n%s", err, readAudit(t, e))
+	argv := runUntilFile(t, h, h.base+".notify/argv")
+	if argv == nil {
+		t.Fatalf("notifier did not run:\n%s", readAudit(t, e))
 	}
 	want := "--app-name\ntoolbelt\n--urgency\nnormal\n--\ntoolbelt: w has 3 new messages in ch\n" +
 		"2 task.assign, 1 query from \"boss\". Open w and ask it to call tb_bus_recv. Peek from a shell: tb bus recv --channel ch --as w --peek\n"
@@ -192,6 +195,13 @@ func TestNotifyUntrustedBinary(t *testing.T) {
 		}
 		rootUID = uint32(os.Getuid()) //nolint:gosec // test uid
 	}
+	untrustedLayouts(t, e, bin, open)
+}
+
+// untrustedLayouts: a writable directory, a notifier under the repository
+// and a missing one are all refused.
+func untrustedLayouts(t *testing.T, e *env, bin string, open func() error) {
+	t.Helper()
 	if err := os.Chmod(filepath.Dir(bin), 0o777); err != nil {
 		t.Fatal(err)
 	}
@@ -213,6 +223,26 @@ func TestNotifyUntrustedBinary(t *testing.T) {
 	if err := open(); err == nil || !strings.Contains(err.Error(), "no desktop notifier") {
 		t.Fatalf("missing notifier: %v", err)
 	}
+}
+
+// runUntilFile runs the harness until path exists (or 5s pass) and returns
+// its content, nil when it never appeared.
+func runUntilFile(t *testing.T, h *Harness, path string) []byte {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	done := make(chan error, 1)
+	go func() { done <- h.Run(ctx, false) }()
+	defer func() { cancel(); <-done }()
+	for ctx.Err() == nil {
+		if b, err := os.ReadFile(path); err == nil && len(b) > 0 {
+			time.Sleep(50 * time.Millisecond) // let the child finish writing
+			b, _ = os.ReadFile(path)
+			return b
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	return nil
 }
 
 // AC10: terminal writes one line with the bell, without a sandbox.
@@ -242,8 +272,64 @@ func TestNotifyWakeMismatch(t *testing.T) {
 	e := newEnv(t)
 	e.writeConfig(t, "adapter: notify\nnotify:\n  backend: terminal\n")
 	h := e.open(t, nil)
-	w, err := h.Warnings()
-	if err != nil || len(w) != 1 || !strings.Contains(w[0], "card says manual") {
-		t.Fatalf("warnings: %v %v", w, err)
+	if w := h.Warnings(); len(w) != 1 || !strings.Contains(w[0], "card says manual") {
+		t.Fatalf("warnings: %v", w)
+	}
+}
+
+// Fail closed: with none of the allowed variables set, the desktop child
+// gets an empty environment, never the sandbox's inherited one.
+func TestNotifyEnvNeverNil(t *testing.T) {
+	saved := os.Environ()
+	t.Cleanup(func() {
+		os.Clearenv()
+		for _, kv := range saved {
+			k, v, _ := strings.Cut(kv, "=")
+			_ = os.Setenv(k, v)
+		}
+	})
+	os.Clearenv()
+	_ = os.Setenv("GITHUB_TOKEN", "x")
+	if env := notifyEnv(); env == nil || len(env) != 0 {
+		t.Fatalf("env: %#v", env)
+	}
+}
+
+// Distinct system senders merge into one label; one leftover is singular.
+func TestNotifySenderLabels(t *testing.T) {
+	p := packetOf("messages",
+		bus.Message{Seq: 1, From: "system:watchdog", Type: bus.TypeTaskStatus},
+		bus.Message{Seq: 2, From: "system:other", Type: bus.TypeTaskStatus},
+		bus.Message{Seq: 6, From: "system:watchdog", Type: bus.TypeTaskStatus},
+		bus.Message{Seq: 7, From: "system:other", Type: bus.TypeTaskStatus},
+		bus.Message{Seq: 3, From: "agent:a", Type: bus.TypeQuery},
+		bus.Message{Seq: 4, From: "agent:b", Type: bus.TypeQuery},
+		bus.Message{Seq: 5, From: "agent:c", Type: bus.TypeQuery})
+	got := senderList(p)
+	if strings.Count(got, "the broker") != 1 || !strings.HasSuffix(got, " and 1 other") {
+		t.Fatalf("senders: %q", got)
+	}
+}
+
+// AC9 end to end: an unread notification gets one "still unread" reminder
+// after rewake_after, then wake_unread.
+func TestNotifyRewakeUnread(t *testing.T) {
+	e := newEnv(t)
+	e.writeConfig(t, "adapter: notify\nnotify:\n  backend: terminal\nrewake_after: 150ms\ncoalesce:\n  debounce: 20ms\n  max_delay: 1s\n")
+	e.send(t, bus.TypeQuery, `{}`)
+	h, err := Open(&Options{Root: e.root, Channel: "ch", Name: "w", Poll: 10 * time.Millisecond})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer h.Close()
+	var buf bytes.Buffer
+	h.adapter.(*notifyAdapter).out = &buf
+	runFor(t, h, 1200*time.Millisecond)
+	lines := strings.Split(strings.TrimSpace(buf.String()), "\n")
+	if len(lines) != 2 || !strings.Contains(lines[0], "1 new message") || !strings.Contains(lines[1], "1 still unread message") {
+		t.Fatalf("lines: %q", lines)
+	}
+	if audit := readAudit(t, e); !strings.Contains(audit, `"wake_unread"`) {
+		t.Fatalf("audit:\n%s", audit)
 	}
 }

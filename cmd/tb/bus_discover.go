@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"runtime"
+	"strconv"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -65,10 +66,10 @@ func printDiscover(w io.Writer, c *busdiscover.Catalog) {
 		if cl.WritableByOthers {
 			warn = "  (writable by others)"
 		}
-		fmt.Fprintf(w, "  %-9s %s  preset: %s  wake: %s%s\n", cl.Name, cl.Path, preset, cl.Wake, warn)
+		fmt.Fprintf(w, "  %-9s %s  preset: %s  wake: %s%s\n", cl.Name, printable(cl.Path), preset, cl.Wake, warn)
 	}
 	if len(c.SkippedPathEntries) > 0 {
-		fmt.Fprintf(w, "  skipped relative PATH entries: %s\n", strings.Join(c.SkippedPathEntries, ", "))
+		fmt.Fprintf(w, "  skipped relative PATH entries: %s\n", printable(strings.Join(c.SkippedPathEntries, ", ")))
 	}
 	fmt.Fprintln(w, "\nMCP configs")
 	for i := range c.MCPConfigs {
@@ -85,10 +86,21 @@ next (GUI agents):  tb bus join <channel> --invite <code> --name <name> --wake n
 `)
 }
 
+// printable escapes control and non-printable characters: paths and scope
+// keys come from config files, possibly a cloned repository's, and must not
+// reach the terminal as escape sequences.
+func printable(s string) string {
+	q := strconv.Quote(s)
+	if q[1:len(q)-1] == s {
+		return s
+	}
+	return q
+}
+
 func mcpLine(m *busdiscover.MCPConfig) string {
-	head := fmt.Sprintf("%-14s %s", m.Client, m.Path)
+	head := fmt.Sprintf("%-14s %s", m.Client, printable(m.Path))
 	if m.Scope != "" && m.Scope != "user" {
-		head += " [" + m.Scope + "]"
+		head += " [" + printable(m.Scope) + "]"
 	}
 	switch {
 	case m.Kind != busdiscover.KindFile:
@@ -100,7 +112,7 @@ func mcpLine(m *busdiscover.MCPConfig) string {
 	}
 	parts := []string{}
 	for _, e := range *m.TB {
-		s := "tb mcp: " + e.Path
+		s := "tb mcp: " + printable(e.Path)
 		switch {
 		case e.SameTB == nil:
 			s += " (resolved on the client's PATH)"
@@ -117,7 +129,11 @@ func mcpLine(m *busdiscover.MCPConfig) string {
 	if len(parts) == 0 {
 		parts = append(parts, "tb mcp: not configured")
 	}
-	return fmt.Sprintf("%s  %s; %d other servers", head, strings.Join(parts, "; "), *m.OtherServers)
+	noun := "other servers"
+	if *m.OtherServers == 1 {
+		noun = "other server"
+	}
+	return fmt.Sprintf("%s  %s; %d %s", head, strings.Join(parts, "; "), *m.OtherServers, noun)
 }
 
 func init() {

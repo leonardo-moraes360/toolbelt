@@ -42,7 +42,7 @@ func newFixture(t *testing.T) *fixture {
 func (f *fixture) discover(t *testing.T, cwd string) *Catalog {
 	t.Helper()
 	c, err := Discover(&Options{PathEnv: f.bin + string(os.PathListSeparator) + "node_modules/.bin",
-		Home: f.home, Cwd: cwd, WorkDir: t.TempDir(), Self: f.self, GOOS: "linux"})
+		Home: f.home, Cwd: cwd, WorkDir: "/", Self: f.self, GOOS: "linux"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,7 +88,7 @@ func mcpFixture(t *testing.T) (c *Catalog, raw, other string) {
 	other = filepath.Join(t.TempDir(), "tb")
 	write(t, other, "", 0o755)
 	write(t, filepath.Join(f.home, ".claude.json"), `{"mcpServers":{"toolbelt":{"command":"`+f.self+`","args":["mcp","--bus-as","ch/marin","--bus-root","/secret/root"],"env":{"TB_X":"v"}}},
-	 "projects":{"/p/b":{"mcpServers":{"old":{"command":"`+other+`","args":["mcp"]}}},"/p/a":{"mcpServers":{}}}}`, 0o600)
+	 "projects":{"/p/b":{"mcpServers":{"old":{"command":"`+other+`","args":["mcp","--bus-as","\u001b]52;c;x\u0007/y"]}}},"/p/a":{"mcpServers":{}}}}`, 0o600)
 	proj := t.TempDir()
 	write(t, filepath.Join(proj, ".mcp.json"), `{"mcpServers":{"a":{"command":"tb","args":["mcp"]},"b":{"command":"sh","args":["-c","tb mcp"]}}}`, 0o600)
 	write(t, filepath.Join(f.home, ".codex", "config.toml"), "x = 1\n", 0o600)
@@ -127,7 +127,7 @@ func TestDiscoverMCPMatching(t *testing.T) {
 	if user := (*cc[0].TB)[0]; !*user.SameTB || *user.BusAs != "ch/marin" || user.Server != "toolbelt" {
 		t.Fatalf("user tb: %+v", user)
 	}
-	if old := (*cc[1].TB)[0]; *old.SameTB || old.Path != other {
+	if old := (*cc[1].TB)[0]; *old.SameTB || old.Path != other || *old.BusAs != InvalidBusAs {
 		t.Fatalf("another tb: %+v", old)
 	}
 	p := find(c, "project")

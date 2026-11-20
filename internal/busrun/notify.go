@@ -73,9 +73,14 @@ func resolveNotifyBinary(command string) (string, error) {
 // directory must be root-owned and not group/world-writable, and it must not
 // live under the repository or the bus private directory.
 func trustedBinary(bin, root string) error {
-	for _, p := range []string{bin, filepath.Dir(bin)} {
+	// Every ancestor too: a user-writable one could swap the directory
+	// between the check at open and the exec at wake.
+	for p := bin; ; p = filepath.Dir(p) {
 		if err := rootOwned(p); err != nil {
 			return fmt.Errorf("notify: %s: %w", p, err)
+		}
+		if filepath.Dir(p) == p {
+			break
 		}
 	}
 	priv, err := bus.PrivateDir(root)
@@ -128,7 +133,7 @@ func desktopArgv(bin, summary, body, urgency string) []string {
 // notifyEnv: what a desktop notifier needs to reach the session bus, and
 // nothing else (no DISPLAY, no secrets, no TB_BUS_*).
 func notifyEnv() []string {
-	var env []string
+	env := []string{} // never nil: a nil Env makes the sandbox inherit everything
 	for _, kv := range os.Environ() {
 		k, _, _ := strings.Cut(kv, "=")
 		switch {
@@ -185,14 +190,24 @@ func typeCounts(types map[bus.Type]int) string {
 // senders as the broker; senders arrive sorted by count, then name.
 func senderList(p *Packet) string {
 	var names []string
+	seen := map[string]bool{}
 	for _, s := range p.Senders {
-		if len(names) == maxSenderNames {
-			break
+		label := senderLabel(s.From)
+		if seen[label] {
+			continue // all system:* senders are one "the broker"
 		}
-		names = append(names, senderLabel(s.From))
+		seen[label] = true
+		names = append(names, label)
 	}
-	out := strings.Join(names, ", ")
-	if others := len(p.Senders) + p.SendersMore - len(names); others > 0 {
+	shown := names
+	if len(shown) > maxSenderNames {
+		shown = shown[:maxSenderNames]
+	}
+	out := strings.Join(shown, ", ")
+	switch others := len(names) + p.SendersMore - len(shown); {
+	case others == 1:
+		out += " and 1 other"
+	case others > 1:
 		out += fmt.Sprintf(" and %d others", others)
 	}
 	return out

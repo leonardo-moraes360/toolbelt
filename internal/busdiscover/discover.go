@@ -13,6 +13,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/leonardo-moraes360/toolbelt/internal/bus"
 )
 
 const (
@@ -322,15 +324,24 @@ func isTB(s *server) bool {
 	return s.Command == "tb" || (filepath.IsAbs(s.Command) && filepath.Base(s.Command) == "tb")
 }
 
+// InvalidBusAs replaces a --bus-as value that is not a channel/name pair:
+// configs can come from a cloned repository, so the raw value never leaves.
+const InvalidBusAs = "(invalid)"
+
 func busAs(args []string) *string {
 	for i, a := range args {
-		if v, ok := strings.CutPrefix(a, "--bus-as="); ok {
-			return &v
+		v, ok := strings.CutPrefix(a, "--bus-as=")
+		if !ok && a == "--bus-as" && i+1 < len(args) {
+			v, ok = args[i+1], true
 		}
-		if a == "--bus-as" && i+1 < len(args) {
-			v := args[i+1]
-			return &v
+		if !ok {
+			continue
 		}
+		ch, name, found := strings.Cut(v, "/")
+		if !found || bus.ValidName("channel", ch) != nil || bus.ValidName("agent", name) != nil {
+			v = InvalidBusAs
+		}
+		return &v
 	}
 	return nil
 }

@@ -196,6 +196,11 @@ func (c *Config) Validate() error {
 	if err := c.validateCommon(); err != nil {
 		return err
 	}
+	switch c.Adapter {
+	case AdapterExec, AdapterHarness, AdapterNotify:
+	default:
+		return fmt.Errorf("adapter %q invalid (use exec, harness or notify)", c.Adapter)
+	}
 	if err := c.foreignBlocks(); err != nil {
 		return err
 	}
@@ -208,8 +213,6 @@ func (c *Config) Validate() error {
 		return c.Harness.validate()
 	case AdapterNotify:
 		return c.validateNotify()
-	default:
-		return fmt.Errorf("adapter %q invalid (use exec, harness or notify)", c.Adapter)
 	}
 	return nil
 }
@@ -235,19 +238,21 @@ func (c *Config) validateCommon() error {
 	return nil
 }
 
-// foreignBlocks refuses an adapter block that belongs to another adapter.
+// foreignBlocks refuses mixing notify with another adapter's block: a
+// notify: block elsewhere, or an exec:/harness: block with notify. Mixes of
+// exec and harness stay accepted, as before notify existed.
 func (c *Config) foreignBlocks() error {
-	blocks := map[string]bool{
-		AdapterExec:    len(c.Exec.Argv) > 0,
-		AdapterHarness: !reflect.DeepEqual(c.Harness, HarnessConfig{}),
-		AdapterNotify:  c.Notify != (NotifyConfig{}),
-	}
-	for name, set := range blocks {
-		// harness defaults are applied only for the harness adapter, and
-		// notify defaults only for notify, so a set block here is the user's.
-		if set && name != c.Adapter {
-			return fmt.Errorf("%s: block not allowed with adapter %q", name, c.Adapter)
+	if c.Adapter != AdapterNotify {
+		if c.Notify != (NotifyConfig{}) {
+			return fmt.Errorf("notify: block not allowed with adapter %q", c.Adapter)
 		}
+		return nil
+	}
+	if len(c.Exec.Argv) > 0 {
+		return errors.New("exec: block not allowed with adapter notify")
+	}
+	if !reflect.DeepEqual(c.Harness, HarnessConfig{}) {
+		return errors.New("harness: block not allowed with adapter notify")
 	}
 	return nil
 }
@@ -282,6 +287,8 @@ func (n *NotifyConfig) validateBackend() error {
 		if goos == "darwin" && n.Command != "" {
 			return errors.New("notify.command is not used on macOS (always /usr/bin/osascript)")
 		}
+	case "":
+		return errors.New("notify.backend is required (desktop or terminal)")
 	default:
 		return fmt.Errorf("notify.backend %q invalid (use desktop or terminal)", n.Backend)
 	}

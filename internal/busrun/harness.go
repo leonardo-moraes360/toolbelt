@@ -181,13 +181,17 @@ func (h *Harness) Close() {
 
 func (h *Harness) Member() bus.Member { return h.member }
 
-// Warnings are printed by tb bus run and --check; they never stop the harness.
-func (h *Harness) Warnings() ([]string, error) {
+// Warnings are printed by tb bus run and --check; they never stop the
+// harness, so a failure to compute one becomes a warning too.
+func (h *Harness) Warnings() []string {
 	w, err := h.wakeMismatch()
-	if err != nil || w == "" {
-		return nil, err
+	switch {
+	case err != nil:
+		return []string{"wake_mismatch not checked: " + err.Error()}
+	case w == "":
+		return nil
 	}
-	return []string{w}, nil
+	return []string{w}
 }
 
 // backend names the notify backend for the audit; empty for other adapters.

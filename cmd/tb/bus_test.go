@@ -309,3 +309,25 @@ func TestBusDiscoverCLI(t *testing.T) {
 		t.Fatal("discover executed a CLI")
 	}
 }
+
+// AC8 (bus-notify-discover): --check with notify on a card that says
+// manual prints one warning and exits 0.
+func TestBusRunNotifyWakeMismatchCLI(t *testing.T) {
+	tbBin := buildTB(t)
+	dir := t.TempDir()
+	busCLISetup(t, tbBin, dir)
+	cfg := filepath.Join(t.TempDir(), "wake.yaml")
+	if err := os.WriteFile(cfg, []byte("adapter: notify\nnotify:\n  backend: terminal\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(tbBin, "bus", "run", "--channel", "fx", "--as", "claude-main", "--config", cfg, "--check")
+	cmd.Dir = dir
+	var stderr strings.Builder
+	cmd.Stderr = &stderr
+	if out, err := cmd.Output(); err != nil {
+		t.Fatalf("--check: %v\n%s%s", err, out, stderr.String())
+	}
+	if n := strings.Count(stderr.String(), "warning: wake_mismatch (card says manual, wake file says notify)"); n != 1 {
+		t.Fatalf("stderr:\n%s", stderr.String())
+	}
+}

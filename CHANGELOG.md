@@ -12,9 +12,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Bus B3 remainder (`docs/bus-notify-discover.md`): the `notify` wake adapter for GUI-only agents (`desktop` via a root-owned `notify-send` or `osascript`, `terminal` in-process; fixed English text with counts, types and quoted sender names only; minimal child env; `urgent_urgency`; `wake_mismatch` warning; audit `backend` field) and `tb bus discover` (known agent CLIs on `PATH` and MCP client configs running `tb mcp`, read safely; executes nothing). The wake packet gains `types` and `senders` counts
 
-### Changed
-- Bus B3 remainder draft spec (`docs/bus-notify-discover.md`): a `notify` wake adapter that pings the human (desktop via `notify-send`/`osascript`, or terminal) with validated names and counts only, and a read-only `tb bus discover` catalog of known agent CLIs and MCP client configs (only the `tb mcp` entry is read; nothing executed)
-
 ## [0.0.8] - 2026-11-20
 
 ### Added
