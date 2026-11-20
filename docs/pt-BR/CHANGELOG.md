@@ -29,6 +29,7 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 - A saída da CLI e do servidor MCP passa a ser em inglês: help do cobra (`Short`/`Long`/`Example`), uso das flags, mensagens de erro, relatórios (ex.: `guard: ok (3 rules, 0 violations)`, drift `Out of scope` / `Forbidden touched`) e descrições das tools/schemas MCP; o parsing de entrada continua aceitando os títulos em português do `rd.md` (`Escopo`, `Proibido`, `Aceite`)
 
 ### Corrigido
+- Build no Windows: o `tb egm receipt` usava `syscall.O_NOFOLLOW`, que não existe no Windows; a flag agora é só unix (o `os.Root` continua confinando a escrita)
 - Op `egm` do `tb stack`: um índice `README.md` sob `egm.doc_globs` deixou de ser documento sob gate, então editar `docs/adr/README.md` não derruba o gate com `NO_STATE` (dogfood #38)
 - `tb egm loop next` depois de uma convergência sobre o mesmo `content` e `policy_sha` não abre mais ciclo e rodada novos (cerca de 9 execuções de agente com a engine `llm`): mostra `already converged over this content in cycle N` com o relatório existente e sai com exit 0 (R26, dogfood #39)
 
