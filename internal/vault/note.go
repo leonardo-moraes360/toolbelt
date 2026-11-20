@@ -64,9 +64,11 @@ type Note struct {
 	Links      []mdparse.Wikilink
 	Issues     []Issue
 
-	line    int    // the frontmatter line being parsed
-	unread  bool   // too large or not regular: linkable, never parsed
-	rawHead string // the source, for line arithmetic (search)
+	line       int            // the frontmatter line being parsed
+	titleLine  int            // line of the title: its frontmatter key or its H1
+	fieldLines map[string]int // frontmatter key → file line
+	unread     bool           // too large or not regular: linkable, never parsed
+	rawHead    string         // the source, for line arithmetic (search)
 }
 
 // parseNote parses src as the note at file (repository-relative) with note
@@ -88,7 +90,7 @@ func parseNote(file, p, src string, types []string) *Note {
 		n.Title = n.Name
 		for _, h := range n.Headings {
 			if h.Level == 1 {
-				n.Title = h.Text
+				n.Title, n.titleLine = h.Text, h.Line
 				break
 			}
 		}
@@ -137,6 +139,10 @@ func (n *Note) frontmatter(src string, types []string) {
 		line := k.Line + 1 // YAML line 1 is file line 2
 		lines[k.Value] = line
 		n.field(k.Value, v, line, types)
+	}
+	n.fieldLines = lines
+	if n.Title != "" {
+		n.titleLine = lines["title"]
 	}
 	switch {
 	case n.Source == SourceInferred && n.Confidence == nil:

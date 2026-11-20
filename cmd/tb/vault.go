@@ -116,6 +116,10 @@ var vaultNewCmd = &cobra.Command{
 				if err != nil {
 					return nil, 0, err
 				}
+				if int64(len(b)) > v.Cfg.MaxNoteBytes {
+					return nil, 0, &vault.Error{Code: vault.ExitError, Reason: "note_too_large",
+						Msg: fmt.Sprintf("stdin is larger than vault.max_note_bytes (%d)", v.Cfg.MaxNoteBytes)}
+				}
 				o.Body = string(b)
 			}
 			r, err := v.New(&o)
@@ -129,6 +133,9 @@ var vaultSearchCmd = &cobra.Command{
 	Short: "Case- and accent-insensitive search over redacted title, aliases, tags and body",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if vaultSearchMax <= 0 {
+			return vaultFail(&vault.Error{Code: vault.ExitError, Reason: "usage", Msg: "--limit must be positive"})
+		}
 		return runVault(func(v *vault.Vault) (any, int, error) {
 			r, err := v.Search(args[0], vaultSearchMax)
 			return r, 0, err

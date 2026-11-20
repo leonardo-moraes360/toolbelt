@@ -101,10 +101,10 @@ func withVault(args map[string]any, fn func(*vault.Vault) (any, error)) (any, er
 }
 
 func handleVaultNew(_ context.Context, args map[string]any) (any, error) {
-	if !HasArg(args, "confidence") {
-		return nil, fmt.Errorf("confidence is required: agent notes are source inferred")
+	c, ok := args["confidence"].(float64) // a JSON number only: no "NaN" strings
+	if !ok {
+		return nil, fmt.Errorf("confidence is required as a number in [0, 1]: agent notes are source inferred")
 	}
-	c := FloatArg(args, "confidence", -1)
 	return withVault(args, func(v *vault.Vault) (any, error) {
 		return v.New(&vault.NewOptions{
 			Title: StringArg(args, "title"), Type: StringArg(args, "type"), Tags: StringSliceArg(args, "tags", nil),

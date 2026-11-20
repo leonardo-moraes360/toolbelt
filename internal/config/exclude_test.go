@@ -182,3 +182,13 @@ func TestExcludeOldSectionAndOrphanMarker(t *testing.T) {
 		t.Fatalf("not idempotent:\n%s", again)
 	}
 }
+
+func TestOrphanRepairKeepsUserObsidianAndCRLF(t *testing.T) {
+	extra := []string{"notes/.obsidian/"}
+	section := buildExcludeSection(extra)
+	orphan := "user\r\n" + gitExcludeBegin + "\r\n.toolbelt/graph.json\r\nnotes/.obsidian/\r\nother/.obsidian/\r\n"
+	got := upsertExcludeSectionWith(orphan, section, extra)
+	if !strings.Contains(got, "other/.obsidian/") || strings.Count(got, "notes/.obsidian/") != 1 || strings.Count(got, gitExcludeBegin) != 1 {
+		t.Fatalf("repair:\n%q", got)
+	}
+}

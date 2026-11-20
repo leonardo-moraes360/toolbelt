@@ -14,6 +14,7 @@ import (
 	"github.com/leonardo-moraes360/toolbelt/internal/config"
 	"github.com/leonardo-moraes360/toolbelt/internal/log"
 	_ "github.com/leonardo-moraes360/toolbelt/internal/registry"
+	"github.com/leonardo-moraes360/toolbelt/internal/vault"
 	"github.com/leonardo-moraes360/toolbelt/internal/version"
 )
 
@@ -218,7 +219,7 @@ Example:
 				"patterns", strings.Join(append(append([]string{}, config.LocalCacheExcludePatterns...), vaultInit.exclude...), ","))
 		}
 		if vaultInit.gitignored {
-			log.Warn("vault_gitignored: a .gitignore rule ignores the vault, so notes are not versioned; remove it to share them",
+			log.Warn("vault_gitignored: an ignore rule (.gitignore, info/exclude or a global excludes file) ignores the vault, so notes are not versioned; remove it to share them",
 				"vault", vaultInit.path)
 		}
 
@@ -304,14 +305,17 @@ type initVault struct {
 func ensureInitVault(repoRoot, dir string) (initVault, error) {
 	cfg, err := config.LoadFile(filepath.Join(dir, config.DefaultConfigFile))
 	if err != nil {
-		return initVault{}, fmt.Errorf("reading %s: %w", filepath.Join(dir, config.DefaultConfigFile), err)
+		log.Warn("vault config ignored: config unreadable", "error", err)
+		return initVault{}, nil
 	}
 	v := cfg.Vault
 	if err := v.Validate(); err != nil {
 		log.Warn("vault config ignored", "error", err)
 		return initVault{}, nil
 	}
-	if err := os.MkdirAll(filepath.Join(repoRoot, filepath.FromSlash(v.Path)), 0o755); err != nil {
+	// One component at a time, refusing symlinks: a cloned repository
+	// cannot make tb init create the vault outside it.
+	if err := vault.EnsureDir(repoRoot, v.Path); err != nil {
 		return initVault{}, fmt.Errorf("creating vault %s: %w", v.Path, err)
 	}
 	return initVault{path: filepath.ToSlash(filepath.Clean(v.Path)), exclude: []string{config.VaultExcludePattern(v.Path)}}, nil

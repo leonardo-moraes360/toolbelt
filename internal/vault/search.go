@@ -10,8 +10,9 @@ const snippetRunes = 200
 
 // SearchResult is tb vault search (R13).
 type SearchResult struct {
-	Query string      `json:"query"`
-	Hits  []SearchHit `json:"hits"`
+	Query     string      `json:"query"`
+	Hits      []SearchHit `json:"hits"`
+	Truncated bool        `json:"truncated,omitempty"` // more notes matched than limit
 }
 
 // SearchHit is one matching note.
@@ -47,12 +48,15 @@ func (v *Vault) Search(query string, limit int) (*SearchResult, error) {
 	}
 	res := &SearchResult{Query: Redact(query), Hits: []SearchHit{}}
 	for _, n := range sc.notes {
+		h, ok := searchNote(n, q)
+		if !ok {
+			continue
+		}
 		if len(res.Hits) == limit {
+			res.Truncated = true
 			break
 		}
-		if h, ok := searchNote(n, q); ok {
-			res.Hits = append(res.Hits, h)
-		}
+		res.Hits = append(res.Hits, h)
 	}
 	return res, nil
 }
@@ -63,14 +67,15 @@ func searchNote(n *Note, q string) (SearchHit, bool) {
 	fields := []struct {
 		name string
 		text string
+		line int
 	}{
-		{"title", title},
-		{"aliases", strings.Join(redactAll(n.Aliases), "\n")},
-		{"tags", strings.Join(redactAll(n.Tags), "\n")},
+		{"title", title, n.titleLine},
+		{"aliases", strings.Join(redactAll(n.Aliases), "\n"), n.fieldLines["aliases"]},
+		{"tags", strings.Join(redactAll(n.Tags), "\n"), n.fieldLines["tags"]},
 	}
 	for _, f := range fields {
 		if at := matchAt(f.text, q); at >= 0 {
-			h.Field, h.Line, h.Data.Snippet = f.name, 1, snippet(f.text, at, q)
+			h.Field, h.Line, h.Data.Snippet = f.name, max(1, f.line), snippet(f.text, at, q)
 			return h, true
 		}
 	}
@@ -98,6 +103,9 @@ func bodyStartLine(n *Note) int {
 // normalized query q, walking text rune by rune so the offset is valid in
 // text itself; -1 when there is none.
 func matchAt(text, q string) int {
+	// The redaction placeholder is not searchable: a query for "redacted"
+	// must not reveal which notes hold a secret.
+	text = strings.ReplaceAll(text, redacted, strings.Repeat(" ", len(redacted)))
 	// Cheap pre-check on the whole text: most notes do not match, and the
 	// rune-by-rune walk below only runs for those that do.
 	if !strings.Contains(mdparse.NormalizeForSearch(text), q) {
@@ -106,6 +114,10 @@ func matchAt(text, q string) int {
 	rs := []rune(text)
 	norm := make([]string, len(rs))
 	for i, r := range rs {
+		if r < 0x80 { // ASCII needs no decomposition
+			norm[i] = asciiLower[r]
+			continue
+		}
 		norm[i] = mdparse.NormalizeForSearch(string(r))
 	}
 	for i := range rs {
@@ -136,3 +148,11 @@ func snippet(text string, at int, q string) string {
 	start = max(0, end-snippetRunes)
 	return strings.TrimSpace(string(rs[start:end]))
 }
+
+// asciiLower holds the one-byte lower-cased strings of ASCII runes.
+var asciiLower = func() (t [128]string) {
+	for i := range t {
+		t[i] = strings.ToLower(string(rune(i)))
+	}
+	return t
+}()

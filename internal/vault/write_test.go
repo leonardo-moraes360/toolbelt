@@ -1,6 +1,7 @@
 package vault
 
 import (
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -126,4 +127,77 @@ func TestSearch(t *testing.T) {
 	}
 	_, err := v.Search("  ", 0)
 	wantReason(t, err, "usage", ExitError)
+}
+
+func TestNewReviewRegressions(t *testing.T) {
+	root, v := newRepo(t, nil)
+	nan, inf := math.NaN(), math.Inf(1)
+	for _, c := range []*float64{&nan, &inf} {
+		_, err := v.New(&NewOptions{Title: "a", Source: SourceInferred, Confidence: c})
+		wantReason(t, err, "usage", ExitError)
+	}
+	for _, title := range []string{"evil‮TXT", "zero​width", "line sep"} {
+		_, err := v.New(&NewOptions{Title: title})
+		wantReason(t, err, "bad_title", ExitError)
+	}
+	// Raw size is checked before redaction can shrink it.
+	pem := "-----BEGIN RSA PRIVATE KEY-----\n" + strings.Repeat("A", 300<<10) + "\n-----END RSA PRIVATE KEY-----"
+	_, err := v.New(&NewOptions{Title: "big", Body: pem})
+	wantReason(t, err, "note_too_large", ExitError)
+	if r, err := v.New(&NewOptions{Title: "CON"}); err != nil || r.Path != "con-note" {
+		t.Fatalf("reserved: %+v %v", r, err)
+	}
+	for _, dir := range []string{"C:foo", "a:b", "nul", "x/aux", "end.", "end "} {
+		_, err := v.New(&NewOptions{Title: "d", Dir: dir})
+		wantReason(t, err, "dir_outside_vault", ExitError)
+	}
+	// A refused note leaves no directory behind.
+	_, _ = v.New(&NewOptions{Title: "big", Dir: "made", Body: strings.Repeat("x", 300<<10)})
+	if _, err := os.Stat(filepath.Join(root, ".toolbelt", "vault", "made")); !os.IsNotExist(err) {
+		t.Fatalf("debris dir: %v", err)
+	}
+}
+
+func TestEnsureDirRefusesSymlink(t *testing.T) {
+	root := t.TempDir()
+	outside := t.TempDir()
+	if err := os.Symlink(outside, filepath.Join(root, "docs")); err != nil {
+		t.Fatal(err)
+	}
+	err := EnsureDir(root, "docs/notes")
+	wantReason(t, err, "vault_path_outside_repo", ExitError)
+	if entries, _ := os.ReadDir(outside); len(entries) != 0 {
+		t.Fatalf("created outside: %v", entries)
+	}
+	if err := EnsureDir(root, "real/notes"); err != nil {
+		t.Fatal(err)
+	}
+	if fi, err := os.Stat(filepath.Join(root, "real", "notes")); err != nil || !fi.IsDir() {
+		t.Fatalf("not created: %v", err)
+	}
+}
+
+func TestSearchReviewRegressions(t *testing.T) {
+	_, v := newRepo(t, map[string]string{
+		"a.md": "---\nx: 1\ntitle: Alpha\n---\n",
+		"b.md": "\r\n\r\n# Beta heading\r\nbody\r\n",
+		"c.md": "token ghp_" + strings.Repeat("k", 30) + "\n",
+		"d.md": "word\n", "e.md": "word\n", "f.md": "word\n",
+	})
+	if r, _ := v.Search("redacted", 0); len(r.Hits) != 0 {
+		t.Fatalf("placeholder probe: %+v", r.Hits)
+	}
+	if r, _ := v.Search("alpha", 0); r.Hits[0].Line != 3 {
+		t.Fatalf("frontmatter title line %d", r.Hits[0].Line)
+	}
+	if r, _ := v.Search("beta heading", 0); r.Hits[0].Line != 3 || r.Hits[0].Field != "title" {
+		t.Fatalf("H1 title line %+v", r.Hits[0])
+	}
+	r, _ := v.Search("word", 2)
+	if len(r.Hits) != 2 || !r.Truncated || r.Hits[0].Path != "d" || r.Hits[1].Path != "e" {
+		t.Fatalf("limit: %+v", r)
+	}
+	if r, _ := v.Search("word", 3); r.Truncated {
+		t.Fatal("exact limit reported as truncated")
+	}
 }

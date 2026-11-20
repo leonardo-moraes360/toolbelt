@@ -2,6 +2,7 @@ package vault
 
 import (
 	"errors"
+	"math"
 	"os"
 	"path"
 	"path/filepath"
@@ -48,21 +49,25 @@ type newFrontmatter struct {
 }
 
 // New creates a note (R10): it never overwrites, never follows symlinks and
-// writes only redacted text.
+// writes only redacted text. Directory creation and the write go through
+// os.Root, so no symlink swapped in meanwhile can take them outside the
+// vault.
 func (v *Vault) New(o *NewOptions) (*NewResult, error) {
+	if int64(len(o.Title)+len(o.Body)) > v.Cfg.MaxNoteBytes {
+		return nil, errorf(ExitError, "note_too_large", "title and body exceed vault.max_note_bytes (%d)", v.Cfg.MaxNoteBytes)
+	}
 	fm, err := v.newFields(o)
 	if err != nil {
 		return nil, err
 	}
-	title, body := Redact(o.Title), Redact(o.Body)
-	redactedAny := title != o.Title || body != o.Body
-	slug := truncateSlug(mdparse.Slugify(title))
-	if slug == "" {
-		return nil, errorf(ExitError, "bad_title", "the title has no letters or digits")
-	}
-	dir, rel, err := v.ensureDir(o.Dir)
+	rel, err := cleanDir(o.Dir)
 	if err != nil {
 		return nil, err
+	}
+	title, body := Redact(o.Title), Redact(o.Body)
+	slug := safeSlug(truncateSlug(mdparse.Slugify(title)))
+	if slug == "" {
+		return nil, errorf(ExitError, "bad_title", "the title has no letters or digits")
 	}
 	fm.Title = title
 	content, err := noteContent(fm, title, body)
@@ -73,27 +78,119 @@ func (v *Vault) New(o *NewOptions) (*NewResult, error) {
 		return nil, errorf(ExitError, "note_too_large", "the note would be larger than vault.max_note_bytes (%d)", v.Cfg.MaxNoteBytes)
 	}
 	notePath := path.Join(rel, slug)
-	file := filepath.Join(dir, slug+".md")
-	f, err := os.OpenFile(file, os.O_WRONLY|os.O_CREATE|os.O_EXCL|openFlags, 0o644)
+	if err := writeNew(v.Dir, rel, slug+".md", content); err != nil {
+		var e *Error
+		if errors.As(err, &e) && e.Reason == "note_exists" {
+			e.Msg = path.Join(v.Rel, notePath) + ".md already exists"
+		}
+		return nil, err
+	}
+	return &NewResult{Path: notePath, File: path.Join(v.Rel, notePath) + ".md", Redacted: title != o.Title || body != o.Body}, nil
+}
+
+// writeNew creates rel's directories (refusing any existing component that
+// is not a real directory) and the file name with O_EXCL, all inside an
+// os.Root at dir; a failed write removes the partial file.
+func writeNew(dir, rel, name, content string) error {
+	r, err := os.OpenRoot(dir)
+	if err != nil {
+		return err
+	}
+	defer r.Close()
+	if err := mkdirsNoFollow(r, rel); err != nil {
+		return err
+	}
+	file := path.Join(rel, name)
+	if rel == "" {
+		file = name
+	}
+	f, err := r.OpenFile(file, os.O_WRONLY|os.O_CREATE|os.O_EXCL|openFlags, 0o644)
 	if errors.Is(err, os.ErrExist) {
-		return nil, errorf(ExitFail, "note_exists", "%s already exists", path.Join(v.Rel, notePath)+".md")
+		return errorf(ExitFail, "note_exists", "%s already exists", file)
 	}
 	if err != nil {
-		return nil, err
+		return err
 	}
-	if _, err := f.WriteString(content); err != nil {
-		f.Close()
-		return nil, err
+	_, werr := f.WriteString(content)
+	cerr := f.Close()
+	if werr != nil || cerr != nil {
+		_ = r.Remove(file)
+		return errors.Join(werr, cerr)
 	}
-	if err := f.Close(); err != nil {
-		return nil, err
+	return nil
+}
+
+// mkdirsNoFollow creates rel under r one component at a time and refuses a
+// component that exists but is not a real directory (symlink or file).
+func mkdirsNoFollow(r *os.Root, rel string) error {
+	if rel == "" {
+		return nil
 	}
-	return &NewResult{Path: notePath, File: path.Join(v.Rel, notePath) + ".md", Redacted: redactedAny}, nil
+	cur := ""
+	for _, part := range strings.Split(rel, "/") {
+		cur = path.Join(cur, part)
+		fi, err := r.Lstat(cur)
+		switch {
+		case errors.Is(err, os.ErrNotExist):
+			if err := r.Mkdir(cur, 0o755); err != nil {
+				return err
+			}
+		case err != nil:
+			return err
+		case !fi.IsDir():
+			return errorf(ExitError, "dir_outside_vault", "%s is not a directory (symlink or file)", Redact(part))
+		}
+	}
+	return nil
+}
+
+// EnsureDir creates rel (a validated vault.path) under root for tb init,
+// one component at a time, refusing symlinked or non-directory components,
+// so a cloned repository cannot make tb init create directories elsewhere.
+func EnsureDir(root, rel string) error {
+	clean := filepath.ToSlash(filepath.Clean(filepath.FromSlash(rel)))
+	if !filepath.IsLocal(filepath.FromSlash(clean)) {
+		return errorf(ExitError, "vault_path_outside_repo", "vault.path %s is not inside the repository", rel)
+	}
+	r, err := os.OpenRoot(root)
+	if err != nil {
+		return err
+	}
+	defer r.Close()
+	if err := mkdirsNoFollow(r, clean); err != nil {
+		var e *Error
+		if errors.As(err, &e) {
+			e.Reason = "vault_path_outside_repo"
+		}
+		return err
+	}
+	return nil
+}
+
+// reservedNames are Windows device names: a note named con.md could map to
+// a device there, so such slugs get a suffix.
+var reservedNames = map[string]bool{"con": true, "prn": true, "aux": true, "nul": true}
+
+func safeSlug(s string) string {
+	if s == "" {
+		return ""
+	}
+	if reservedNames[s] || (len(s) == 4 && (strings.HasPrefix(s, "com") || strings.HasPrefix(s, "lpt")) && s[3] >= '0' && s[3] <= '9') {
+		return s + "-note"
+	}
+	return s
+}
+
+// badTitleRune is a control character or an invisible one that could spoof
+// a title: format characters (bidi overrides, zero-width) and line or
+// paragraph separators.
+func badTitleRune(r rune) bool {
+	return unicode.IsControl(r) || unicode.In(r, unicode.Cf, unicode.Zl, unicode.Zp)
 }
 
 func (v *Vault) newFields(o *NewOptions) (*newFrontmatter, error) {
-	if strings.TrimSpace(o.Title) == "" || strings.IndexFunc(o.Title, unicode.IsControl) >= 0 {
-		return nil, errorf(ExitError, "bad_title", "the title must be non-empty and have no control characters (newlines included)")
+	if strings.TrimSpace(o.Title) == "" || strings.IndexFunc(o.Title, badTitleRune) >= 0 {
+		return nil, errorf(ExitError, "bad_title", "the title must be non-empty and have no control or invisible characters (newlines included)")
 	}
 	fm := &newFrontmatter{Type: o.Type, Source: o.Source, Confidence: o.Confidence}
 	if fm.Type == "" {
@@ -130,7 +227,7 @@ func checkProvenance(source string, confidence *float64) error {
 		return errorf(ExitError, "usage", "source inferred needs --confidence")
 	case source != SourceInferred && confidence != nil:
 		return errorf(ExitError, "usage", "--confidence only goes with source inferred")
-	case confidence != nil && (*confidence < 0 || *confidence > 1):
+	case confidence != nil && (math.IsNaN(*confidence) || math.IsInf(*confidence, 0) || *confidence < 0 || *confidence > 1):
 		return errorf(ExitError, "usage", "--confidence must be in [0, 1]")
 	}
 	return nil
@@ -168,62 +265,25 @@ func truncateSlug(s string) string {
 	return strings.TrimRight(s[:cut], "-")
 }
 
-// ensureDir creates --dir under the vault one component at a time, refusing
-// symlinks, dot components and anything resolving outside the vault (R10).
-func (v *Vault) ensureDir(sub string) (abs, rel string, err error) {
-	clean, err := cleanDir(sub)
-	if err != nil || clean == "" {
-		return v.Dir, "", err
-	}
-	cur := v.Dir
-	for _, part := range strings.Split(clean, "/") {
-		if cur, err = mkdirNoFollow(cur, part); err != nil {
-			return "", "", err
-		}
-	}
-	resolved, err := filepath.EvalSymlinks(cur)
-	if err != nil {
-		return "", "", err
-	}
-	if r, err := filepath.Rel(v.Dir, resolved); err != nil || r == ".." || strings.HasPrefix(r, ".."+string(filepath.Separator)) {
-		return "", "", errorf(ExitError, "dir_outside_vault", "--dir resolves outside the vault")
-	}
-	return cur, clean, nil
-}
-
-// cleanDir validates --dir: relative, inside the vault, no dot or control
-// characters in a component; "" is the vault itself.
+// cleanDir validates --dir (R10): relative and local, no component that
+// starts with a dot, holds a control character or a ":" (a Windows drive or
+// stream), or ends with a dot or a space; "" is the vault itself.
 func cleanDir(sub string) (string, error) {
 	if sub == "" {
 		return "", nil
 	}
 	clean := filepath.ToSlash(filepath.Clean(sub))
-	if filepath.IsAbs(sub) || clean == ".." || strings.HasPrefix(clean, "../") || strings.ContainsAny(sub, "\\") {
-		return "", errorf(ExitError, "dir_outside_vault", "--dir must be a relative path inside the vault")
-	}
 	if clean == "." {
 		return "", nil
 	}
+	if strings.ContainsAny(sub, "\\:") || !filepath.IsLocal(filepath.FromSlash(clean)) {
+		return "", errorf(ExitError, "dir_outside_vault", "--dir must be a relative path inside the vault")
+	}
 	for _, part := range strings.Split(clean, "/") {
-		if strings.HasPrefix(part, ".") || strings.IndexFunc(part, unicode.IsControl) >= 0 {
-			return "", errorf(ExitError, "dir_outside_vault", "--dir components cannot start with a dot or hold control characters")
+		if strings.HasPrefix(part, ".") || strings.HasSuffix(part, ".") || strings.HasSuffix(part, " ") ||
+			strings.IndexFunc(part, unicode.IsControl) >= 0 || safeSlug(strings.ToLower(part)) != strings.ToLower(part) {
+			return "", errorf(ExitError, "dir_outside_vault", "--dir has a component that is hidden, reserved or ends with a dot or space")
 		}
 	}
 	return clean, nil
-}
-
-// mkdirNoFollow creates parent/part when missing and refuses a part that
-// exists but is not a real directory (a symlink or a file).
-func mkdirNoFollow(parent, part string) (string, error) {
-	cur := filepath.Join(parent, part)
-	fi, err := os.Lstat(cur)
-	switch {
-	case errors.Is(err, os.ErrNotExist):
-		return cur, os.Mkdir(cur, 0o755)
-	case err != nil:
-		return "", err
-	case !fi.IsDir():
-		return "", errorf(ExitError, "dir_outside_vault", "%s is not a directory (symlink or file)", Redact(part))
-	}
-	return cur, nil
 }

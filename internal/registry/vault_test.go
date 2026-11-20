@@ -38,3 +38,20 @@ func TestVaultToolsNewIsInferred(t *testing.T) {
 		t.Fatalf("relative cwd accepted: %+v %v", res, err)
 	}
 }
+
+func TestVaultNewRejectsStringConfidence(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, ".toolbelt", "vault"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []any{"NaN", "0.5"} {
+		res, err := Default().Call(context.Background(), "tb_vault_new", map[string]any{"cwd": root, "title": "x", "confidence": c})
+		if err != nil || !res.IsError {
+			t.Fatalf("confidence %v accepted: %+v %v", c, res, err)
+		}
+	}
+	res, err := Default().Call(context.Background(), "tb_vault_new", map[string]any{"cwd": root, "title": "x", "confidence": 0.5, "dir": "../out"})
+	if err != nil || !res.IsError {
+		t.Fatalf("dir escape accepted: %+v %v", res, err)
+	}
+}

@@ -56,7 +56,7 @@ func EnsureLocalGitExclude(repoRoot string, extra ...string) (string, error) {
 	}
 
 	section := buildExcludeSection(extra)
-	updated := upsertExcludeSection(string(existing), section)
+	updated := upsertExcludeSectionWith(string(existing), section, extra)
 	if updated == string(existing) {
 		return excludePath, nil
 	}
@@ -125,6 +125,10 @@ func buildExcludeSection(extra []string) string {
 }
 
 func upsertExcludeSection(existing, section string) string {
+	return upsertExcludeSectionWith(existing, section, nil)
+}
+
+func upsertExcludeSectionWith(existing, section string, extra []string) string {
 	start := strings.Index(existing, gitExcludeBegin)
 	if start < 0 {
 		if existing == "" {
@@ -135,7 +139,7 @@ func upsertExcludeSection(existing, section string) string {
 	}
 	end := strings.Index(existing[start:], gitExcludeEnd)
 	if end < 0 {
-		return repairOrphanBegin(existing, start, section)
+		return repairOrphanBegin(existing, start, section, extra)
 	}
 	end = start + end + len(gitExcludeEnd)
 	for end < len(existing) && (existing[end] == '\n' || existing[end] == '\r') {
@@ -154,15 +158,17 @@ func upsertExcludeSection(existing, section string) string {
 // repairOrphanBegin handles a begin marker without its end marker: the
 // orphan marker and, after it, the lines tb writes or wrote are dropped;
 // every other line (the user's) is kept, and a fresh section is appended.
-func repairOrphanBegin(existing string, start int, section string) string {
+func repairOrphanBegin(existing string, start int, section string, extra []string) string {
 	known := map[string]bool{gitExcludeBegin: true, excludeComment: true}
-	for _, p := range append(append([]string{}, LocalCacheExcludePatterns...), legacyExcludePatterns...) {
-		known[p] = true
+	for _, list := range [][]string{LocalCacheExcludePatterns, legacyExcludePatterns, extra} {
+		for _, p := range list {
+			known[p] = true
+		}
 	}
 	var kept []string
 	for _, l := range strings.Split(existing[start:], "\n") {
 		t := strings.TrimRight(l, "\r")
-		if known[t] || strings.HasSuffix(t, "/.obsidian/") {
+		if known[t] {
 			continue
 		}
 		kept = append(kept, l)
