@@ -54,8 +54,9 @@ type Harness struct {
 	expiredLog  bool      // channel_expired already audited for this expiry
 	expiredAt   time.Time // last check that found the channel expired
 
-	auditMu sync.Mutex      // the heartbeat goroutine audits too
-	lost    map[string]bool // lease_lost already audited, per thread
+	auditMu sync.Mutex        // the heartbeat goroutine audits too
+	lost    map[string]string // thread -> new owner of the lease_lost already audited
+	hbErr   string            // last heartbeat error audited, to log each change once
 }
 
 // With the channel expired and the store quiet, recheck only at this interval
@@ -208,8 +209,9 @@ func fatal(err error) bool {
 // lease (docs/bus-lease.md R6); after Run returns nothing heartbeats.
 func (h *Harness) Run(ctx context.Context, once bool) error {
 	hbCtx, stopHB := context.WithCancel(ctx)
-	defer stopHB()
-	go h.runHeartbeats(hbCtx)
+	hbDone := make(chan struct{})
+	go func() { defer close(hbDone); h.runHeartbeats(hbCtx) }()
+	defer func() { stopHB(); <-hbDone }() // no heartbeat after Run returns (R6)
 	t := time.NewTicker(h.opts.Poll)
 	defer t.Stop()
 	for {

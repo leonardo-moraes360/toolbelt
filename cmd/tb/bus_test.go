@@ -204,3 +204,43 @@ func TestBusChannelExtendCLI(t *testing.T) {
 		t.Fatalf("sem --ttl: %v %s", err, out)
 	}
 }
+
+// AC12: channel show (JSON and text) and watchdog output carry no Agent
+// Card session, token, invite code or payload.
+func TestBusStatusNoSecretsCLI(t *testing.T) {
+	tbBin := buildTB(t)
+	dir := t.TempDir()
+	workerCode := busCLISetup(t, tbBin, dir)
+	runBus(t, tbBin, dir, "join", "fx", "--invite", workerCode, "--name", "grok-1", "--role", "worker", "--session", "resume-handle-xyz")
+	runBus(t, tbBin, dir, "send", "--channel", "fx", "--as", "claude-main", "--to", "agent:grok-1", "--type", "query", "--payload", `{"secret":"payload-xyz"}`)
+	runBus(t, tbBin, dir, "claim", "T1", "--channel", "fx", "--as", "grok-1")
+	agentDir, err := bus.AgentDir(dir, "fx", "grok-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	token, err := os.ReadFile(filepath.Join(agentDir, "token"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := exec.Command(tbBin, "bus", "channel", "show", "fx")
+	text.Dir = dir
+	textOut, err := text.Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	outs := map[string][]byte{
+		"show --json":     runBus(t, tbBin, dir, "channel", "show", "fx"),
+		"show":            textOut,
+		"watchdog --json": runBus(t, tbBin, dir, "watchdog", "fx", "--dry-run"),
+	}
+	for name, out := range outs {
+		for _, secret := range []string{strings.TrimSpace(string(token)), workerCode, "resume-handle-xyz", "payload-xyz"} {
+			if strings.Contains(string(out), secret) {
+				t.Fatalf("%s leaks a secret:\n%s", name, out)
+			}
+		}
+	}
+	if !strings.Contains(string(outs["show --json"]), `"T1"`) {
+		t.Fatalf("show lacks the claim:\n%s", outs["show --json"])
+	}
+}

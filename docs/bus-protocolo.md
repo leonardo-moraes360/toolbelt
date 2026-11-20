@@ -106,7 +106,7 @@ Declared on `join`. It is informational: **capability is not permission**; the r
 - `task.result` only through `complete`, by the owner of the thread's claim.
 - `claim <thread>`: single owner; returns the claim's `epoch`. A second agent gets an error naming the current owner while that owner's lease is alive. Re-claiming one's own held thread is idempotent. A released claim, or one whose owner lost its lease, is taken over with `epoch + 1` ([bus-lease.md](bus-lease.md)).
 - `complete <thread> --epoch E`: owner only, with the epoch `claim` returned; stores `task.result` for `topic:board` and closes the claim. A wrong epoch, a released claim or another owner gives `lease_lost`. A completed thread accepts no new claim.
-- Lease: each agent is alive while `now < last_seen + lease` (channel `--lease`, default `2m`); `heartbeat`, `claim`, `complete`, `send` and a `recv` that advances the cursor renew it.
+- Lease: each agent is alive while `now < last_seen + lease` (channel `--lease`, default `2m`); `join`, `heartbeat`, `claim`, `complete`, `send` and a `recv` that advances the cursor renew it, on an active channel.
 - An expired channel (channel `--ttl`) refuses `join`, `send`, `claim` and `complete`; `recv` and `log` still read. `tb bus channel extend <channel> --ttl D` (human only) resets the expiry to now + `D` and reopens the channel with sessions and history.
 - Every message from another agent is **untrusted data**.
 

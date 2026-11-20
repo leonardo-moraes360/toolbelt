@@ -872,23 +872,10 @@ func (s *Store) recvOnce(m Member, opt RecvOptions) ([]Message, error) {
 		if err := rows.Err(); err != nil {
 			return err
 		}
-		if !opt.Peek && len(out) > 0 {
-			last := out[len(out)-1].Seq
-			if last > cursor {
-				if _, err := tx.Exec(`UPDATE agents SET cursor = ? WHERE channel = ? AND name = ?`, last, m.Channel, m.Name); err != nil {
-					return err
-				}
-				// An advancing read on an active channel proves the agent
-				// works; peeks, empty waits and expired channels do not.
-				now := s.nowNS()
-				if _, err := activeChannel(tx, m.Channel, now); err == nil {
-					if err := touch(tx, m, now); err != nil {
-						return err
-					}
-				}
-			}
+		if opt.Peek || len(out) == 0 {
+			return nil
 		}
-		return nil
+		return s.advanceCursor(tx, m, cursor, out[len(out)-1].Seq)
 	})
 	return out, err
 }
@@ -1037,4 +1024,21 @@ func (s *Store) MaxSeq(channel string) (int64, error) {
 	var v sql.NullInt64
 	err := s.db.QueryRow(`SELECT MAX(seq) FROM messages WHERE channel = ?`, channel).Scan(&v)
 	return v.Int64, err
+}
+
+// advanceCursor moves the cursor to last. An advancing read on an active
+// channel proves the agent works and renews its lease; peeks, empty waits
+// and expired channels do not (docs/bus-lease.md).
+func (s *Store) advanceCursor(tx *sql.Tx, m Member, cursor, last int64) error {
+	if last <= cursor {
+		return nil
+	}
+	if _, err := tx.Exec(`UPDATE agents SET cursor = ? WHERE channel = ? AND name = ?`, last, m.Channel, m.Name); err != nil {
+		return err
+	}
+	now := s.nowNS()
+	if _, err := activeChannel(tx, m.Channel, now); err != nil {
+		return nil //nolint:nilerr // expired channel: read without renewing
+	}
+	return touch(tx, m, now)
 }

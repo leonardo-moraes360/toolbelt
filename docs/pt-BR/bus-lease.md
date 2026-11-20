@@ -46,7 +46,7 @@ No B1 um claim nunca expira. Se o dono de um thread trava, perde a sessão ou s�
 - **R2, claim:** o resultado traz o `epoch`.
   - Um thread que ninguém segura recebe claim com `epoch` 1.
   - Um thread cujo dono está vivo mantém o erro do B1, com o nome do dono e a hora em que o lease dele acaba. Repetir o claim de um thread seguro pelo próprio agente é idempotente.
-  - Um thread cujo claim foi liberado, ou cujo dono não está vivo, é tomado por quem chama, inclusive o mesmo agente. O claim ganha `epoch + 1`, `prev_owner` = o dono anterior (quando era outro agente) e `released_at` limpo. Se o claim ainda não tinha sido liberado, a tomada publica o evento de liberação do R5.
+  - Um thread cujo claim foi liberado, ou cujo dono não está vivo, é tomado por quem chama (inclusive o mesmo agente, para um claim liberado; um dono que chama `claim` volta a estar vivo e mantém o epoch). O claim ganha `epoch + 1`, `prev_owner` = o dono anterior (quando era outro agente) e `released_at` limpo. Se o claim ainda não tinha sido liberado, a tomada publica o evento de liberação do R5.
   - Duas tomadas concorrentes rodam em transações `IMMEDIATE`: exatamente uma vence, a outra recebe o erro de "já tem claim".
 - **R3, complete:** exige o epoch (`tb bus complete --epoch E`, `epoch` no `tb_bus_complete`). É recusado com `lease_lost`, sem gravar nada, quando:
   - quem chama não é o dono atual;
@@ -80,7 +80,7 @@ No B1 um claim nunca expira. Se o dono de um thread trava, perde a sessão ou s�
   - A tool MCP `tb_bus_status` devolve o mesmo para o canal de quem chama.
 
   Nenhum dos dois devolve Agent Cards (o campo `session` é um handle de retomada do vendor), tokens nem payloads.
-- **R9, canal expirado:** um canal depois do `--ttl` recusa `heartbeat`, `claim` e `complete` como qualquer escrita, e nada renova `last_seen` ali. O `channel extend` o reabre com os timestamps antigos, então agentes que não mandaram heartbeat nesse meio-tempo voltam como não vivos.
+- **R9, canal expirado:** um canal depois do `--ttl` recusa `heartbeat`, `claim`, `complete` e `watchdog` como qualquer escrita, e nada renova `last_seen` ali. O `channel extend` o reabre com os timestamps antigos, então agentes que não mandaram heartbeat nesse meio-tempo voltam como não vivos.
 
 ## Schema e upgrade
 

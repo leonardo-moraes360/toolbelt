@@ -46,7 +46,7 @@ In B1 a claim never expires. If the owner of a thread crashes, loses its session
 - **R2, claim:** the result includes the `epoch`.
   - A thread nobody holds is claimed with `epoch` 1.
   - A thread whose owner is alive keeps B1's error, naming the owner and the time its lease ends. Re-claiming one's own held thread is idempotent.
-  - A thread whose claim is released, or whose owner is not alive, is taken by the caller, the same agent included. The claim gets `epoch + 1`, `prev_owner` = the old owner (when it was another agent), `released_at` cleared. If the claim was not yet released, the takeover publishes the release event of R5.
+  - A thread whose claim is released, or whose owner is not alive, is taken by the caller (the same agent included, for a released claim; an owner that calls `claim` is alive again and keeps its epoch). The claim gets `epoch + 1`, `prev_owner` = the old owner (when it was another agent), `released_at` cleared. If the claim was not yet released, the takeover publishes the release event of R5.
   - Two concurrent takeovers run in `IMMEDIATE` transactions: exactly one wins, the other gets the "already claimed" error.
 - **R3, complete:** requires the epoch (`tb bus complete --epoch E`, `epoch` in `tb_bus_complete`). It is refused with `lease_lost` and stores nothing when:
   - the caller is not the current owner;
@@ -80,7 +80,7 @@ In B1 a claim never expires. If the owner of a thread crashes, loses its session
   - The MCP tool `tb_bus_status` returns the same for the caller's channel.
 
   Neither returns Agent Cards (the `session` field is a vendor resume handle), tokens or payloads.
-- **R9, expired channel:** a channel past its `--ttl` refuses `heartbeat`, `claim` and `complete` like any write, and nothing renews `last_seen` there. `channel extend` reopens it with the old timestamps, so agents that did not heartbeat meanwhile come back as not alive.
+- **R9, expired channel:** a channel past its `--ttl` refuses `heartbeat`, `claim`, `complete` and `watchdog` like any write, and nothing renews `last_seen` there. `channel extend` reopens it with the old timestamps, so agents that did not heartbeat meanwhile come back as not alive.
 
 ## Schema and upgrade
 

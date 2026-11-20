@@ -95,3 +95,53 @@ func TestHarnessAuditsLeaseLost(t *testing.T) {
 		t.Fatalf("audit:\n%s", audit)
 	}
 }
+
+// A takeover by another agent is audited with the new owner, once, and a
+// thread held again and lost again is audited again.
+func TestHarnessAuditsTakeover(t *testing.T) {
+	e := newEnv(t)
+	e.writeConfig(t, fastCfg)
+	h := e.open(t, &fakeAdapter{})
+	clock := time.Now()
+	now := func() time.Time { return clock }
+	e.store.SetClock(now)
+	h.store.SetClock(now)
+	claim := func(m bus.Member) {
+		t.Helper()
+		if _, err := e.store.ClaimThread(m, "T"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	claim(e.worker)
+	h.heartbeat()
+	for range 2 {
+		clock = clock.Add(bus.DefaultLease + time.Minute)
+		claim(e.owner) // w is silent: takeover
+		h.heartbeat()
+		h.heartbeat()
+		clock = clock.Add(bus.DefaultLease + time.Minute)
+		claim(e.worker) // boss is silent: w takes it back
+		h.heartbeat()
+	}
+	if n := strings.Count(readAudit(t, e), "taken over by agent:boss"); n != 2 {
+		t.Fatalf("lease_lost audited %d times, want 2:\n%s", n, readAudit(t, e))
+	}
+}
+
+func TestHarnessHeartbeatFailureAuditedOnce(t *testing.T) {
+	e := newEnv(t)
+	e.writeConfig(t, fastCfg)
+	h := e.open(t, &fakeAdapter{})
+	if _, err := e.store.ExtendChannel("ch", time.Nanosecond); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(time.Millisecond)
+	for range 3 {
+		if d, stop := h.heartbeat(); stop || d != time.Minute {
+			t.Fatalf("expired channel: %v %v", d, stop)
+		}
+	}
+	if n := strings.Count(readAudit(t, e), "heartbeat_failed"); n != 1 {
+		t.Fatalf("heartbeat_failed logged %d times", n)
+	}
+}

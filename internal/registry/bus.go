@@ -270,26 +270,27 @@ func heartbeatDue(now time.Time, due map[string]time.Time) {
 		if next, ok := due[key]; ok && now.Before(next) {
 			continue
 		}
-		interval := heartbeatOnce(sess)
+		interval := heartbeatOnce(&sess)
 		due[key] = now.Add(interval)
 	}
 }
 
-// heartbeatOnce renews one session and returns when to do it again; on an
-// error (expired channel, replaced token) it retries after a minute.
-func heartbeatOnce(sess busSession) time.Duration {
+// heartbeatOnce renews one session and returns when to do it again. A
+// transient error retries after heartbeatRetry, below the minimum lease's
+// interval; an expired channel or a replaced token waits a minute.
+func heartbeatOnce(sess *busSession) time.Duration {
 	s, err := bus.Open(sess.root)
 	if err != nil {
-		return time.Minute
+		return heartbeatRetry
 	}
 	defer s.Close()
 	m, err := s.Auth(sess.member.Channel, sess.member.Name, sess.token)
 	if err != nil {
-		return time.Minute
+		return heartbeatBackoff(err)
 	}
 	hb, err := s.Heartbeat(m)
 	if err != nil {
-		return time.Minute
+		return heartbeatBackoff(err)
 	}
 	if d, err := time.ParseDuration(hb.HeartbeatInterval); err == nil && d > 0 {
 		return d
@@ -448,4 +449,13 @@ func BindBusSession(root, channel, name string) error {
 	busState.sessions[channel] = busSession{root: root, member: m, token: token}
 	busState.mu.Unlock()
 	return nil
+}
+
+const heartbeatRetry = 5 * time.Second
+
+func heartbeatBackoff(err error) time.Duration {
+	if errors.Is(err, bus.ErrUnauthorized) || errors.Is(err, bus.ErrChannelExpired) {
+		return time.Minute
+	}
+	return heartbeatRetry
 }

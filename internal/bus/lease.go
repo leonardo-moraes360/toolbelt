@@ -144,7 +144,7 @@ type expiredEvent struct {
 	Thread        string `json:"thread"`
 	PreviousOwner string `json:"previous_owner"`
 	Epoch         int64  `json:"epoch"`
-	LastSeen      string `json:"last_seen"`
+	LastSeen      string `json:"last_seen,omitempty"`
 }
 
 // publishExpired releases cur and publishes lease_expired to topic:board
@@ -153,8 +153,11 @@ func publishExpired(tx *sql.Tx, cur *Claim, lastSeen, now int64) error {
 	if _, err := tx.Exec(`UPDATE claims SET released_at = ? WHERE channel = ? AND thread = ?`, now, cur.Channel, cur.Thread); err != nil {
 		return err
 	}
-	payload, err := json.Marshal(expiredEvent{State: "lease_expired", Thread: cur.Thread, PreviousOwner: cur.Owner,
-		Epoch: cur.Epoch, LastSeen: fromNS(lastSeen).Format(time.RFC3339)})
+	ev := expiredEvent{State: "lease_expired", Thread: cur.Thread, PreviousOwner: cur.Owner, Epoch: cur.Epoch}
+	if lastSeen > 0 {
+		ev.LastSeen = fromNS(lastSeen).Format(time.RFC3339)
+	}
+	payload, err := json.Marshal(ev)
 	if err != nil {
 		return err
 	}
@@ -305,8 +308,8 @@ func (s *Store) Watchdog(channel string, dryRun bool) ([]Expired, error) {
 	err := s.tx(func(tx *sql.Tx) error {
 		now := s.nowNS()
 		ch, err := activeChannel(tx, channel, now)
-		if err != nil && !errors.Is(err, ErrChannelExpired) {
-			return err
+		if err != nil {
+			return err // an expired channel refuses writes, the watchdog's too (R9)
 		}
 		claims, err := openClaims(tx, channel)
 		if err != nil {
@@ -383,44 +386,30 @@ type LeaseStatus struct {
 	Claims  []ClaimLease `json:"claims"`
 }
 
-// Status lists agents' liveness and open claims (R8), reading only.
+// Status lists agents' liveness and open claims (R8), reading only. Both
+// reads share one transaction so a heartbeat cannot land between them.
 func (s *Store) Status(channel string) (LeaseStatus, error) {
-	now := s.nowNS()
-	ch, err := activeChannel(s.db, channel, now)
-	if err != nil && !errors.Is(err, ErrChannelExpired) {
-		return LeaseStatus{}, err
-	}
-	st := LeaseStatus{Channel: channel, Lease: ch.Lease.String(), Agents: []AgentLease{}, Claims: []ClaimLease{}}
-	rows, err := s.db.Query(`SELECT name, role, last_seen FROM agents WHERE channel = ? ORDER BY name`, channel)
-	if err != nil {
-		return LeaseStatus{}, err
-	}
-	alive := map[string]bool{}
-	for rows.Next() {
-		var a AgentLease
-		var ls sql.NullInt64
-		if err := rows.Scan(&a.Name, &a.Role, &ls); err != nil {
-			rows.Close()
-			return LeaseStatus{}, err
-		}
-		v := min(ls.Int64, now)
-		a.LastSeen, a.Alive = fromNS(v), ls.Valid && now < v+int64(ch.Lease)
-		alive[AgentID(a.Name)] = a.Alive
-		st.Agents = append(st.Agents, a)
-	}
-	if err := rows.Close(); err != nil {
-		return LeaseStatus{}, err
-	}
 	tx, err := s.db.Begin()
 	if err != nil {
 		return LeaseStatus{}, err
 	}
 	defer tx.Rollback() //nolint:errcheck // read-only
+	now := s.nowNS()
+	ch, err := activeChannel(tx, channel, now)
+	if err != nil && !errors.Is(err, ErrChannelExpired) {
+		return LeaseStatus{}, err
+	}
+	st := LeaseStatus{Channel: channel, Lease: ch.Lease.String(), Agents: []AgentLease{}, Claims: []ClaimLease{}}
+	alive, err := agentLeases(tx, &st, ch.Lease, now)
+	if err != nil {
+		return LeaseStatus{}, err
+	}
 	claims, err := openClaims(tx, channel)
 	if err != nil {
 		return LeaseStatus{}, err
 	}
-	for _, c := range claims {
+	for i := range claims {
+		c := &claims[i]
 		state := "held"
 		switch {
 		case c.ReleasedAt != nil:
@@ -431,4 +420,26 @@ func (s *Store) Status(channel string) (LeaseStatus, error) {
 		st.Claims = append(st.Claims, ClaimLease{Thread: c.Thread, Owner: c.Owner, Epoch: c.Epoch, State: state})
 	}
 	return st, nil
+}
+
+// agentLeases fills st.Agents and returns liveness by agent ID.
+func agentLeases(tx *sql.Tx, st *LeaseStatus, lease time.Duration, now int64) (map[string]bool, error) {
+	rows, err := tx.Query(`SELECT name, role, last_seen FROM agents WHERE channel = ? ORDER BY name`, st.Channel)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	alive := map[string]bool{}
+	for rows.Next() {
+		var a AgentLease
+		var ls sql.NullInt64
+		if err := rows.Scan(&a.Name, &a.Role, &ls); err != nil {
+			return nil, err
+		}
+		v := min(ls.Int64, now)
+		a.LastSeen, a.Alive = fromNS(v), ls.Valid && now < v+int64(lease)
+		alive[AgentID(a.Name)] = a.Alive
+		st.Agents = append(st.Agents, a)
+	}
+	return alive, rows.Err()
 }

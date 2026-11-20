@@ -206,6 +206,7 @@ func TestMigrateV1(t *testing.T) {
 		`INSERT INTO channels VALUES ('c', 'boss', 1, NULL)`,
 		`INSERT INTO agents VALUES ('c', 'boss', 'supervisor', '{"name":"boss"}', 'h', 1, 7)`,
 		`INSERT INTO claims VALUES ('c', 'T', 'agent:boss', 1, NULL, NULL)`,
+		`INSERT INTO messages (id, channel, sender, recipient, type, payload, created_at) VALUES ('m1', 'c', 'agent:boss', 'topic:board', 'query', '{}', 1)`,
 		`PRAGMA user_version = 1`,
 	} {
 		if _, err := db.Exec(q); err != nil {
@@ -213,6 +214,7 @@ func TestMigrateV1(t *testing.T) {
 		}
 	}
 	must(t, db.Close())
+	before := time.Now()
 	s, err := Open(dir)
 	must(t, err)
 	defer s.Close()
@@ -226,6 +228,25 @@ func TestMigrateV1(t *testing.T) {
 	if cursor != 7 {
 		t.Fatalf("cursor %d", cursor)
 	}
+	if ls := st.Agents[0].LastSeen; ls.Before(before.Add(-time.Second)) || ls.After(time.Now()) {
+		t.Fatalf("last_seen %v is not the migration time", ls)
+	}
+	msgs, err := s.Log("c", "", 10)
+	must(t, err)
+	if len(msgs) != 1 {
+		t.Fatalf("messages after migration: %+v", msgs)
+	}
+	must(t, s.Close())
+
+	db, err = sql.Open("sqlite", filepath.Join(dir, ".toolbelt", "bus", "bus.db"))
+	must(t, err)
+	_, err = db.Exec(`PRAGMA user_version = 3`)
+	must(t, err)
+	must(t, db.Close())
+	if s3, err := Open(dir); err == nil {
+		s3.Close()
+		t.Fatal("a v3 store was accepted")
+	}
 }
 
 func TestChannelLeaseBounds(t *testing.T) {
@@ -237,5 +258,70 @@ func TestChannelLeaseBounds(t *testing.T) {
 	must(t, err)
 	if ch.Lease != time.Minute {
 		t.Fatalf("lease %s", ch.Lease)
+	}
+}
+
+func aliveOf(t *testing.T, s *Store, name string) AgentLease {
+	t.Helper()
+	st, err := s.Status("feature-x")
+	must(t, err)
+	for _, a := range st.Agents {
+		if a.Name == name {
+			return a
+		}
+	}
+	t.Fatalf("agent %s missing", name)
+	return AgentLease{}
+}
+
+// AC5: send and an advancing recv renew; an empty recv --wait and calls on
+// an expired channel do not. R9: extend brings agents back not alive.
+func TestLeaseRenewalSources(t *testing.T) {
+	s, c, owner, a := setup(t)
+	c.add(time.Minute)
+	_, err := s.Recv(context.Background(), a, RecvOptions{Wait: time.Millisecond})
+	must(t, err)
+	if got := aliveOf(t, s, a.Name).LastSeen; !got.Before(c.now()) {
+		t.Fatal("an empty recv --wait renewed last_seen")
+	}
+	_, err = s.Send(owner, &SendInput{To: a.ID(), Type: TypeQuery, Payload: json.RawMessage(`{}`)})
+	must(t, err)
+	if !aliveOf(t, s, owner.Name).LastSeen.Equal(c.now()) {
+		t.Fatal("send did not renew last_seen")
+	}
+	c.add(time.Second)
+	msgs, err := s.Recv(context.Background(), a, RecvOptions{})
+	must(t, err)
+	if len(msgs) == 0 || !aliveOf(t, s, a.Name).LastSeen.Equal(c.now()) {
+		t.Fatal("an advancing recv did not renew last_seen")
+	}
+
+	c.add(3 * time.Hour) // past the channel --ttl
+	if _, err := s.Heartbeat(a); !errors.Is(err, ErrChannelExpired) {
+		t.Fatalf("heartbeat on an expired channel: %v", err)
+	}
+	if _, err := s.Watchdog("feature-x", false); !errors.Is(err, ErrChannelExpired) {
+		t.Fatalf("watchdog on an expired channel: %v", err)
+	}
+	_, err = s.ExtendChannel("feature-x", time.Hour)
+	must(t, err)
+	if aliveOf(t, s, a.Name).Alive {
+		t.Fatal("extend revived an agent that did not heartbeat")
+	}
+}
+
+// AC7: the watchdog leaves claims of alive owners alone.
+func TestWatchdogSparesAliveOwners(t *testing.T) {
+	s, c, _, a := setup(t)
+	b := third(t, s, "b-agent")
+	_, err := s.ClaimThread(a, "dead")
+	must(t, err)
+	c.add(DefaultLease + time.Second)
+	_, err = s.ClaimThread(b, "live")
+	must(t, err)
+	got, err := s.Watchdog("feature-x", false)
+	must(t, err)
+	if len(got) != 1 || got[0].Thread != "dead" {
+		t.Fatalf("watchdog released %+v", got)
 	}
 }
