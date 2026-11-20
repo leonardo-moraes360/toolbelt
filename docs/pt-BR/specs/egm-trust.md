@@ -47,7 +47,7 @@ A Fase A deixa três lacunas:
 ### Requisitos
 
 - **T-R1 (recibo).** `tb egm receipt <doc>` grava `.toolbelt/egm/receipts/<slug>.json` (o slug do R14), mais a ferramenta MCP `tb_egm_receipt`.
-  - **Quando roda:** só se o `status` no worktree for `PASS` ou `PASS_PARTIAL`.
+  - **Quando roda:** só se o `status` no worktree for `PASS` ou `PASS_PARTIAL`, e o documento e as fontes incluídas forem iguais aos blobs em `HEAD` (senão `receipt_uncommitted`, porque o CI recalcula os hashes a partir do commit).
   - **Formato:** chaves ordenadas e quebra de linha no fim. Não contém prompts nem credenciais, e as mensagens passam pela redação do R8.
   - **Campos:** `version`, `doc`, `doc_sha256`, `sources` (caminho → sha256, os mesmos da última rodada) e `claims`.
   - **O que entra em `claims`:** toda linhagem de severidade `major` para cima que se encaixe num de dois casos. No primeiro, o árbitro a retirou (o R29 leva um `major` ou `blocker` retirado a `fixed`) e ela não foi aberta nem reaberta depois. A confirmação posterior do dono mantém a alegação. No segundo, o status dela é `declined` ou `settled` com downgrade `forced` ou `forced_blocker`.

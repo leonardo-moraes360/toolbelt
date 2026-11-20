@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -63,6 +64,9 @@ func TestReceiptFixedLineageIsNoClaim(t *testing.T) {
 	f.edit("`internal/missing.go`", "`internal/kept.go` again")
 	f.must(Resolve(ctx, &ResolveOptions{Options: f.opts(), Fix: []string{"F-1"}}))
 	f.converge(ctx)
+	_, err := WriteReceipt(ctx, f.optsP())
+	wantReason(t, err, "receipt_uncommitted")
+	gitT(t, f.root, "commit", "-qam", "fix")
 	out := f.must(WriteReceipt(ctx, f.optsP()))
 	if out.ExitCode != ExitOK || out.Receipt != ReceiptPath(f.doc) {
 		t.Fatalf("%+v", out)
@@ -176,5 +180,48 @@ func TestReceiptSymlinkRefused(t *testing.T) {
 	wantReason(t, err, "receipt_path_untrusted")
 	if entries, _ := os.ReadDir(outside); len(entries) != 0 {
 		t.Fatalf("wrote outside the repository: %v", entries)
+	}
+}
+
+func TestReceiptFileAndDirMustBeRegular(t *testing.T) {
+	f := newFlow(t, "")
+	ctx := context.Background()
+	f.must(Review(ctx, f.optsP()))
+	f.must(Resolve(ctx, &ResolveOptions{Options: f.opts(), Decline: []string{"F-1"}}))
+	f.converge(ctx)
+	outside := filepath.Join(t.TempDir(), "target")
+	dir := filepath.Join(f.root, ".toolbelt", "egm", "receipts")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(f.root, filepath.FromSlash(ReceiptPath(f.doc)))
+	if err := os.Symlink(outside, link); err != nil {
+		t.Fatal(err)
+	}
+	_, err := WriteReceipt(ctx, f.optsP())
+	wantReason(t, err, "receipt_path_untrusted")
+	if _, err := os.Lstat(outside); !os.IsNotExist(err) {
+		t.Fatalf("wrote through the symlink: %v", err)
+	}
+	if err := os.RemoveAll(dir); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, dir, "not a dir")
+	_, err = WriteReceipt(ctx, f.optsP())
+	wantReason(t, err, "receipt_path_untrusted")
+}
+
+func TestReceiptUncommittedSource(t *testing.T) {
+	f := newFlow(t, "")
+	ctx := context.Background()
+	writeFile(t, filepath.Join(f.root, "internal", "kept.go"), "package internal // edited\n")
+	gitT(t, f.root, "add", "internal/kept.go") // staged, not committed
+	f.must(Review(ctx, f.optsP()))
+	f.must(Resolve(ctx, &ResolveOptions{Options: f.opts(), Decline: []string{"F-1"}}))
+	f.converge(ctx)
+	_, err := WriteReceipt(ctx, f.optsP())
+	wantReason(t, err, "receipt_uncommitted")
+	if err == nil || !strings.Contains(err.Error(), "internal/kept.go") {
+		t.Fatalf("error should name the source: %v", err)
 	}
 }

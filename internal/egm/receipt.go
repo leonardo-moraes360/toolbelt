@@ -3,11 +3,13 @@ package egm
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"io/fs"
 	"os"
 	"path"
-	"path/filepath"
 	"sort"
 	"strings"
+	"syscall"
 )
 
 // Receipt (T-R1, docs/specs/egm-trust.md): the author's claims about a
@@ -64,6 +66,16 @@ func WriteReceipt(ctx context.Context, o *Options) (*Outcome, error) {
 	if err != nil {
 		return nil, err
 	}
+	if len(s.doc.Lines) == 0 {
+		return nil, errorf(ExitError, "usage", "%s is empty", s.rel)
+	}
+	// The lock keeps a concurrent resolve or loop next from changing the
+	// state between the verdict and the claims.
+	unlock, err := lockState(s.stateDir)
+	if err != nil {
+		return nil, err
+	}
+	defer unlock()
 	st, err := loadState(s.stateDir)
 	if err != nil {
 		return nil, err
@@ -80,6 +92,9 @@ func WriteReceipt(ctx context.Context, o *Options) (*Outcome, error) {
 		return &Outcome{Report: rep, ExitCode: statusExit(rep.Verdict, false),
 			Message: "no receipt written: the verdict is " + rep.Verdict + " (needs PASS or PASS_PARTIAL)"}, nil
 	}
+	if err := s.committedAtHead(ctx); err != nil {
+		return nil, err
+	}
 	rc, err := s.buildReceipt(ctx, st)
 	if err != nil {
 		return nil, err
@@ -91,17 +106,57 @@ func WriteReceipt(ctx context.Context, o *Options) (*Outcome, error) {
 	return &Outcome{Report: rep, ExitCode: ExitOK, Receipt: rel, Message: "wrote " + rel}, nil
 }
 
+// committedAtHead refuses when the document or an included source differs
+// from HEAD's blob: CI recomputes the hashes from the commit (R7a), so a
+// receipt over uncommitted bytes (or bytes an eol/LFS filter rewrites) would
+// always be receipt_stale there.
+func (s *snapshot) committedAtHead(ctx context.Context) error {
+	head, err := s.repo.RevParse(ctx, "HEAD")
+	if err != nil {
+		return err
+	}
+	b, _, err := readBlobFile(ctx, s.repo, head, s.rel, s.set.MaxPacketBytes)
+	if err != nil {
+		return err
+	}
+	if b == nil || sha256Hex(b) != s.docSHA {
+		return errorf(ExitError, "receipt_uncommitted", "%s differs from HEAD: commit it first, then write the receipt", s.rel)
+	}
+	at, err := CollectSourcesAt(ctx, s.repo, &s.set, head, s.rel, s.text)
+	if err != nil {
+		return err
+	}
+	want := map[string]string{}
+	for _, src := range at.Included {
+		want[src.Path] = src.SHA256
+	}
+	for _, src := range s.sources.Included {
+		if want[src.Path] != src.SHA256 {
+			return errorf(ExitError, "receipt_uncommitted", "source %s differs from HEAD: commit it first, then write the receipt", src.Path)
+		}
+		delete(want, src.Path)
+	}
+	for p := range want {
+		return errorf(ExitError, "receipt_uncommitted", "source %s is included at HEAD but not in the worktree", p)
+	}
+	return nil
+}
+
+// buildReceipt computes sources from the current snapshot: PASS and
+// PASS_PARTIAL pin the content hash to the converged round (R25), so they
+// equal the last round's sources (T-R1).
 func (s *snapshot) buildReceipt(ctx context.Context, st *State) (*Receipt, error) {
 	rc := &Receipt{Version: receiptVersion, Doc: s.rel, DocSHA256: s.docSHA, Sources: map[string]string{}, Claims: []Claim{}}
 	for _, src := range s.sources.Included {
 		rc.Sources[src.Path] = src.SHA256
 	}
+	maps := map[int]*LineMap{}
 	for _, l := range st.Lineages {
 		kind := claimKind(st, l)
 		if kind == "" {
 			continue
 		}
-		lines, err := s.claimLines(ctx, l)
+		lines, err := s.claimLines(ctx, l, maps)
 		if err != nil {
 			return nil, err
 		}
@@ -137,7 +192,7 @@ func arbiterWithdrew(st *State, id string) bool {
 	for _, t := range st.Transitions {
 		switch {
 		case t.Lineage != id:
-		case t.By == "arbiter" && strings.HasPrefix(t.Reason, "withdrawn"):
+		case t.By == "arbiter" && strings.HasPrefix(t.Reason, reasonWithdrawn):
 			withdrew = true
 		case t.To == StOpen || t.To == StReopened:
 			withdrew = false
@@ -150,16 +205,22 @@ func arbiterWithdrew(st *State, id string) bool {
 // without lines (or one that no longer fits) falls back to its heading's
 // section, and an unknown heading to the whole document: a claim always
 // carries lines (T-R1).
-func (s *snapshot) claimLines(ctx context.Context, l *Lineage) ([]int, error) {
+func (s *snapshot) claimLines(ctx context.Context, l *Lineage, maps map[int]*LineMap) ([]int, error) {
 	n := len(s.doc.Lines)
 	if len(l.Scope.Lines) == 2 {
-		old, err := s.readRound(l.ScopeRound, s.rel)
-		if err != nil {
-			return nil, err
-		}
-		lm, err := DiffSnapshots(ctx, s.stateDir, old, s.text)
-		if err != nil {
-			return nil, err
+		lm, ok := maps[l.ScopeRound]
+		if !ok {
+			old, err := s.readRound(l.ScopeRound, s.rel)
+			if err != nil {
+				return nil, err
+			}
+			if old == "" {
+				return nil, errorf(ExitError, "state", "round %d snapshot of %s is missing", l.ScopeRound, s.rel)
+			}
+			if lm, err = DiffSnapshots(ctx, s.stateDir, old, s.text); err != nil {
+				return nil, err
+			}
+			maps[l.ScopeRound] = lm
 		}
 		if m := lm.MapScope(l.Scope).Lines; len(m) == 2 && m[0] >= 1 && m[1] <= n {
 			return m, nil
@@ -198,32 +259,54 @@ func lineageLess(a, b string) bool {
 	return a < b
 }
 
-// writeReceiptFile writes rel under root, refusing a path component that is
-// a symlink or not a directory: the receipt must land inside the repository.
+// writeReceiptFile writes rel under root through os.Root, so no symlink
+// can take the write outside the repository; a path component that is a
+// symlink or not a directory is refused outright.
 func writeReceiptFile(root, rel string, data []byte) error {
+	r, err := os.OpenRoot(root)
+	if err != nil {
+		return err
+	}
+	defer r.Close()
 	dir := path.Dir(rel)
 	parts := strings.Split(dir, "/")
 	for i := range parts {
-		p := filepath.Join(root, filepath.FromSlash(strings.Join(parts[:i+1], "/")))
-		fi, err := os.Lstat(p)
+		p := strings.Join(parts[:i+1], "/")
+		fi, err := r.Lstat(p)
 		switch {
-		case os.IsNotExist(err):
-			if err := os.Mkdir(p, 0o755); err != nil { //nolint:gosec // a committed directory
+		case errors.Is(err, fs.ErrNotExist):
+			if err := r.Mkdir(p, 0o755); err != nil {
 				return err
 			}
 		case err != nil:
 			return err
 		case !fi.IsDir():
-			return errorf(ExitError, "receipt_path_untrusted", "%s is not a directory (symlink or file)", strings.Join(parts[:i+1], "/"))
+			return errorf(ExitError, "receipt_path_untrusted", "%s is not a directory (symlink or file)", p)
 		}
 	}
-	full := filepath.Join(root, filepath.FromSlash(dir))
-	name := path.Base(rel)
-	if fi, err := os.Lstat(filepath.Join(full, name)); err == nil && !fi.Mode().IsRegular() {
+	if fi, err := r.Lstat(rel); err == nil && !fi.Mode().IsRegular() {
 		return errorf(ExitError, "receipt_path_untrusted", "%s is not a regular file", rel)
 	}
-	if err := writeAtomic(full, name, data); err != nil {
+	tmp := path.Join(dir, "."+path.Base(rel)+".tmp")
+	f, err := r.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_TRUNC|syscall.O_NOFOLLOW, 0o644)
+	if err != nil {
 		return err
 	}
-	return os.Chmod(filepath.Join(full, name), 0o644) //nolint:gosec // a committed file
+	defer r.Remove(tmp) //nolint:errcheck // no-op after the rename
+	if _, err := f.Write(data); err != nil {
+		f.Close()
+		return err
+	}
+	if err := f.Chmod(0o644); err != nil {
+		f.Close()
+		return err
+	}
+	if err := f.Sync(); err != nil {
+		f.Close()
+		return err
+	}
+	if err := f.Close(); err != nil {
+		return err
+	}
+	return r.Rename(tmp, rel)
 }

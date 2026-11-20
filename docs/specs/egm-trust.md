@@ -47,7 +47,7 @@ Phase A leaves three gaps:
 ### Requirements
 
 - **T-R1 (receipt).** `tb egm receipt <doc>` writes `.toolbelt/egm/receipts/<slug>.json` (R14's slug), plus the MCP tool `tb_egm_receipt`.
-  - **When it runs:** only if `status` on the worktree is `PASS` or `PASS_PARTIAL`.
+  - **When it runs:** only if `status` on the worktree is `PASS` or `PASS_PARTIAL`, and the document and its included sources equal their blobs at `HEAD` (otherwise `receipt_uncommitted`, since CI recomputes the hashes from the commit).
   - **Format:** sorted keys and a trailing newline. It contains no prompts and no credentials, and messages go through R8 redaction.
   - **Fields:** `version`, `doc`, `doc_sha256`, `sources` (path → sha256, the same as the last round's), and `claims`.
   - **What goes in `claims`:** every lineage of `major` severity or above that falls in one of two cases. In the first, the arbiter withdrew it (R29 moves a withdrawn `major` or `blocker` to `fixed`) and it has not been opened or reopened since. The owner's later confirmation keeps the claim. In the second, its status is `declined` or `settled` with a `forced` or `forced_blocker` downgrade.

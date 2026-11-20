@@ -10,6 +10,10 @@ import (
 const arbiterWindow = 20
 
 // moveLineage records a status change of l (R21).
+// reasonWithdrawn prefixes the reason of an arbiter withdraw; the receipt
+// keys its arbiter_withdrawn claims on it (T-R1).
+const reasonWithdrawn = "withdrawn"
+
 func (s *State) moveLineage(l *Lineage, cmd, to, by, reason string, round int) {
 	s.Transitions = append(s.Transitions, Transition{Command: cmd, Lineage: l.ID, From: l.Status, To: to, Round: round, Reason: reason, By: by})
 	l.Status, l.RefRound = to, round
@@ -116,12 +120,12 @@ func (rc *roundCtx) applyVerdict(l *Lineage, out *ArbiterOutput, round int) {
 	case out.Verdict == "uphold":
 		rc.st.moveLineage(l, "arbiter", StOpen, "arbiter", "upheld: "+out.Rationale, round)
 	case l.Severity == SevNit || isChecker(l.Owner):
-		rc.st.moveLineage(l, "arbiter", StSettled, "arbiter", "withdrawn: "+out.Rationale, round)
+		rc.st.moveLineage(l, "arbiter", StSettled, "arbiter", reasonWithdrawn+": "+out.Rationale, round)
 	default:
 		// A withdrawn blocker or major goes back to its owner, who confirms
 		// in the next round (still_holds: false) or reopens it.
 		l.Confirmed = false
-		rc.st.moveLineage(l, "arbiter", StFixed, "arbiter", "withdrawn: "+out.Rationale, round)
+		rc.st.moveLineage(l, "arbiter", StFixed, "arbiter", reasonWithdrawn+": "+out.Rationale, round)
 	}
 }
 
