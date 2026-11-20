@@ -70,15 +70,19 @@ type GoldfishResult struct {
 // Runner runs goldfish under one Registry and one subreaper (R3). It is safe
 // for concurrent use.
 type Runner struct {
-	prof      *Profile
-	bin       string // resolved agent binary
-	args      []string
-	path      string
-	pass      []string
-	readOnly  []string
-	copies    []string // egm.home.copy, relative to realHome
-	realHome  string
-	credPath  string // claude only
+	prof     *Profile
+	bin      string // resolved agent binary
+	args     []string
+	path     string
+	pass     []string
+	readOnly []string
+	copies   []string // egm.home.copy, relative to realHome
+	realHome string
+	credPath string // claude only
+	// apiKey: a claude API key or token reaches the goldfish through
+	// egm.env.pass (the spike's first auth preference, R0), so no credential
+	// file is checked or copied.
+	apiKey    bool
 	timeout   time.Duration
 	maxStdout int
 
@@ -115,7 +119,7 @@ func NewRunner(set *Settings, p *Profile) (*Runner, error) {
 	if err != nil {
 		return nil, err
 	}
-	if p.Vendor == VendorClaude {
+	if p.Vendor == VendorClaude && !r.apiKey {
 		if err := checkClaudeAuth(r.credPath); err != nil {
 			return nil, err
 		}
@@ -169,6 +173,7 @@ func newRunnerConfig(set *Settings, p *Profile) (*Runner, error) {
 	}
 	if p.Vendor == VendorClaude {
 		r.credPath = filepath.Join(home, ".claude", ".credentials.json")
+		r.apiKey = claudeAPIKey(set.Env.Pass)
 	}
 	r.readOnly = readOnlyPaths(bin, home, set.Home.ReadOnly)
 	return r, nil
@@ -255,6 +260,13 @@ func (r *Runner) prepareHome(home string) ([]string, error) {
 	}
 	if r.prof.Vendor != VendorClaude {
 		return nil, nil
+	}
+	if r.apiKey {
+		dir := filepath.Join(home, ".claude")
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			return nil, err
+		}
+		return []string{"CLAUDE_CONFIG_DIR=" + dir}, nil
 	}
 	if err := installClaudeCredential(r.credPath, home); err != nil {
 		return nil, fmt.Errorf("installing the claude credential: %w", err)

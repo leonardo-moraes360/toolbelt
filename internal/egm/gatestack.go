@@ -65,12 +65,16 @@ func Gate(ctx context.Context, o *GateOptions) (*GateResult, error) {
 		return nil, err
 	}
 	ci := o.Mode == GateModeCI
+	// ci implies --strict for each document's verdict; an empty selection
+	// only fails with an explicit --strict, so the gate can be a required
+	// check on PRs that touch no gated document.
+	emptyStrict := o.Strict
 	if ci {
 		c := *o
 		c.Strict = true
 		o = &c
 	}
-	sel, err := gateSelect(ctx, o)
+	sel, err := gateSelect(ctx, o, ci)
 	if err != nil {
 		return nil, err
 	}
@@ -87,7 +91,7 @@ func Gate(ctx context.Context, o *GateOptions) (*GateResult, error) {
 	}
 	switch {
 	case len(docs) == 0:
-		return res, emptySelection(ctx, repo, head, sel.set.GateDocGlobs, o.Strict, res)
+		return res, emptySelection(ctx, repo, head, sel.set.GateDocGlobs, emptyStrict, res)
 	case ci:
 		return res, gateCI(ctx, repo, head, sel.set, o, docs, res)
 	}
@@ -114,7 +118,7 @@ type gateSelection struct {
 	removed []string
 }
 
-func gateSelect(ctx context.Context, o *GateOptions) (*gateSelection, error) {
+func gateSelect(ctx context.Context, o *GateOptions, ci bool) (*gateSelection, error) {
 	repo, err := DiscoverRepo(filepath.Join(o.RepoDir, ".egm-gate"))
 	if err != nil {
 		return nil, err
@@ -130,6 +134,15 @@ func gateSelect(ctx context.Context, o *GateOptions) (*gateSelection, error) {
 	set, err := gateSettings(ctx, repo, head, o.ConfigFile)
 	if err != nil {
 		return nil, err
+	}
+	if ci {
+		// The PR's own .toolbelt/config.yaml must not narrow the gate: in
+		// ci mode the globs are the union of the merge-base's and head's.
+		old, err := gateSettings(ctx, repo, mb, o.ConfigFile)
+		if err != nil {
+			return nil, err
+		}
+		set.GateDocGlobs = appendNew(set.GateDocGlobs, old.GateDocGlobs)
 	}
 	diff, err := repo.DiffNameStatus(ctx, mb, head)
 	if err != nil {

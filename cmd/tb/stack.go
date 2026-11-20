@@ -57,8 +57,8 @@ func init() {
 	stackCmd.Flags().Int("reviewers", 0, "review: maximum goldfish")
 	stackCmd.Flags().String("standards", "", "review: roles CSV (scope,quality,acceptance)")
 	stackCmd.Flags().StringArray("egm-doc", nil, "egm: document added to the selection (repeatable)")
-	stackCmd.Flags().Bool("strict", false, "egm: PASS_PARTIAL and an empty selection fail")
-	stackCmd.Flags().String("egm-mode", "local", "egm: local | ci (ci needs -c, implies --strict and runs a fresh round with CI's credential)")
+	stackCmd.Flags().Bool("strict", false, "egm: PASS_PARTIAL and an empty selection fail (in ci, PASS_PARTIAL always fails; an empty selection only with --strict)")
+	stackCmd.Flags().String("egm-mode", "local", "egm: local | ci (ci needs -c, fails PASS_PARTIAL and runs a fresh round with CI's credential)")
 	stackCmd.Flags().Bool("egm-allow-offline", false, "egm ci: without a credential, run a deterministic-only round capped at PASS_PARTIAL")
 }
 

@@ -4,6 +4,9 @@ package egm
 
 import (
 	"context"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -101,5 +104,25 @@ func TestCIForcedClaim(t *testing.T) {
 	})
 	if r := lf.ciGate(ctx, "HEAD~2", false); r.OK || ciResult(r) != "ci_downgrade" {
 		t.Fatalf("forced: %+v", r.Docs)
+	}
+}
+
+// TestCIClaudeAPIKey: with ANTHROPIC_API_KEY in egm.env.pass and set, the
+// claude profile needs no credential file (CI's auth, T-R5); unset, the CI
+// gate is ci_offline.
+func TestCIClaudeAPIKey(t *testing.T) {
+	lf := newLLMFlow(t, "  env: {pass: [ANTHROPIC_API_KEY]}\n")
+	ctx := context.Background()
+	if err := os.Remove(filepath.Join(os.Getenv("HOME"), ".claude", ".credentials.json")); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("ANTHROPIC_API_KEY", "sk-test-not-a-key")
+	lf.llmConverged(ctx, nil)
+	if r := lf.ciGate(ctx, "HEAD~2", false); !r.OK || r.Docs[0].Verdict != VerdictPass {
+		t.Fatalf("api key: %+v", r.Docs)
+	}
+	t.Setenv("ANTHROPIC_API_KEY", "")
+	if r := lf.ciGate(ctx, "HEAD~2", false); r.OK || !strings.HasPrefix(docReason(r), "ci_offline") {
+		t.Fatalf("unset key: %+v", r.Docs)
 	}
 }
