@@ -9,6 +9,9 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Não Lançado]
 
+### Adicionado
+- Restante do B3 do barramento (`docs/bus-notify-discover.md`): o adapter de wake `notify` para agentes só de GUI (`desktop` via `notify-send` do root ou `osascript`, `terminal` no próprio processo; texto fixo em inglês só com contagens, tipos e nomes de remetente entre aspas; ambiente mínimo no filho; `urgent_urgency`; aviso `wake_mismatch`; campo `backend` na auditoria) e o `tb bus discover` (CLIs de agente conhecidas no `PATH` e configs de cliente MCP que rodam `tb mcp`, lidas com segurança; não executa nada). O packet de wake ganha as contagens `types` e `senders`
+
 ### Alterado
 - Spec em rascunho do restante do B3 do barramento (`docs/bus-notify-discover.md`): um adapter de wake `notify` que avisa o humano (desktop via `notify-send`/`osascript`, ou terminal) só com nomes validados e contagens, e um catálogo `tb bus discover` só de leitura com CLIs de agente conhecidas e configs de cliente MCP (só a entrada do `tb mcp` é lida; nada é executado)
 

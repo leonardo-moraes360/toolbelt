@@ -2,7 +2,7 @@
 
 # Bus `notify` adapter and `tb bus discover` — B3 remainder spec
 
-Status: **draft, round 2** (one fresh-context review applied; not implemented).
+Status: **implemented** (B3 remainder).
 
 Closes stage **B3** of [ADR-013](adr/013-barramento-multi-vendor.md). It extends the harness ([bus-harness.md](bus-harness.md)), whose first cut delivered the `exec` and `harness` adapters, and builds on the lease of B2 ([bus-lease.md](bus-lease.md)).
 
@@ -56,7 +56,7 @@ timeout: 10s               # default for notify (30s for exec)
 | Backend | Platform | Runs |
 |---|---|---|
 | `desktop` | Linux | `<command> --app-name toolbelt --urgency <u> -- <summary> <body>` |
-| `desktop` | macOS | `/usr/bin/osascript -e 'on run argv' -e 'display notification (item 1 of argv) with title (item 2 of argv)' -e 'end run' -- <body> <summary>` |
+| `desktop` | macOS | `/usr/bin/osascript -e 'on run argv' -e 'display notification (item 1 of argv) with title (item 2 of argv)' -e 'end run' <body> <summary>` (no `--`: the body starts with a count, never with `-`) |
 | `terminal` | any | no child: one line written by the harness itself |
 
 **Desktop binary.**
@@ -127,7 +127,7 @@ The wake packet `messages` list stops at 20 items, so the text cannot be built f
 
 - `wake: notify` already exists as a card value.
 - When the wake file says `adapter: notify` and the agent's card says another `wake`, both `--check` and the opening of `tb bus run` print `warning: wake_mismatch (card says harness, wake file says notify)` to stderr and go on with exit 0. The card is informational for the channel; the wake file rules.
-- Warnings are a new channel of `Check()`: it returns the list of warnings next to its error.
+- Warnings come from a new `Warnings()` call next to `Check()`; the CLI prints them for both.
 
 ## Part 2: `tb bus discover`
 
@@ -161,7 +161,7 @@ tb bus discover --cwd ~/src/app   # read that directory's .mcp.json instead of t
 
 | `client` | Path | Read |
 |---|---|---|
-| `claude-code` | `~/.claude.json` | `mcpServers` at the top level and in each `projects.<path>` |
+| `claude-code` | `~/.claude.json` | `mcpServers` at the top level (`scope: user`) and in each `projects.<path>` that has at least one server |
 | `claude-desktop` | `~/.config/Claude/claude_desktop_config.json` (Linux), `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) | `mcpServers` |
 | `cursor` | `~/.cursor/mcp.json` | `mcpServers` |
 | `project` | `<cwd or repo root>/.mcp.json` | `mcpServers` |
@@ -205,7 +205,7 @@ A bare `tb` is reported as `"path": "tb"` with `"same_tb": null`, because it res
      "scope": "user", "tb": [{"server": "toolbelt", "path": "/home/leonardo/go/bin/tb", "same_tb": true, "bus_as": null}],
      "other_servers": 2},
     {"client": "claude-code", "path": "/home/leonardo/.claude.json", "kind": "file", "parses": true,
-     "scope": "project:/home/leonardo/src/app", "tb": [], "other_servers": 0},
+     "scope": "project:/home/leonardo/src/app", "tb": [], "other_servers": 1},
     {"client": "claude-desktop", "path": "/home/leonardo/.config/Claude/claude_desktop_config.json", "kind": "missing"},
     {"client": "codex", "path": "/home/leonardo/.codex/config.toml", "kind": "file", "parsed": false}
   ],

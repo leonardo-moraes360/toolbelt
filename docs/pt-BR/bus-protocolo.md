@@ -112,4 +112,4 @@ Declarado no `join`. É informativo: **capacidade não é permissão**; o papel 
 
 ## Fora do B1
 
-Lease, heartbeat e watchdog chegaram no B2 ([bus-lease.md](bus-lease.md)). Ainda fora: `tb bus discover` e o restante do B3 (`tb bus run` com adapters `exec`/`harness` já existe, spec em [bus-harness.md](bus-harness.md)); integração com o Router (B4).
+Lease, heartbeat e watchdog chegaram no B2 ([bus-lease.md](bus-lease.md)). O B3 está completo: `tb bus run` ([bus-harness.md](bus-harness.md)), o adapter `notify` e o `tb bus discover` ([bus-notify-discover.md](bus-notify-discover.md)). Ainda fora: integração com o Router (B4).

@@ -259,7 +259,7 @@ tb bus recv --channel feature-x --as grok-1 --wait 20s
 - [x] B0 — spec `bus/0.1`: envelope, Agent Card e convite ([docs/pt-BR/bus-protocolo.md](bus-protocolo.md))
 - [x] B1 — store SQLite, CLI + MCP, convite de uso único, `join`/`send`/`recv`/`claim`/`complete`/`log`
 - [x] B2 — lease, heartbeat e watchdog no barramento ([spec](bus-lease.md))
-- [ ] B3 (parcial) — `tb bus run` com adapters `exec` e `harness` feito ([docs/pt-BR/bus-harness.md](bus-harness.md)); falta adapter `notify` e `tb bus discover` ([spec em rascunho](bus-notify-discover.md))
+- [x] B3 — `tb bus run` com adapters `exec`, `harness` e `notify` e `tb bus discover` ([docs/pt-BR/bus-harness.md](bus-harness.md), [bus-notify-discover.md](bus-notify-discover.md))
 - [ ] B4 — router/board da Fase 3 sobre o barramento
 
 ## 🤝 Contribuindo
@@ -315,5 +315,5 @@ Este projeto está na **Fase 3 (em andamento)**: além de verify/guard/mem/graph
 | `tb router` | ✅ | Scheduler em primeiro plano (`run`/`status`/`config`) com entrega direta; sandbox fail-closed (`--allow-unsandboxed`) |
 | `tb watchdog` | ✅ | Alertas e controle dos workers (`status`/`alerts`/`kill`); roda dentro do loop do router |
 | `tb merge` | ✅ | Integra tickets `done` de forma atômica; `fail` (padrão) ou `last_wins` (MCP `tb_merge`); `prompt`/`semantic` não implementadas |
-| `tb bus` | 🟡 | Barramento local entre agentes (ADR-013): `channel`/`invite`/`join`/`send`/`recv`/`claim`/`complete`/`heartbeat`/`watchdog`/`log` sobre `.toolbelt/bus/bus.db`; lease com fencing por epoch (B2); `tb bus run` acorda o agente (adapters `exec`/`harness`); `notify` e `discover` pendentes |
+| `tb bus` | 🟡 | Barramento local entre agentes (ADR-013): `channel`/`invite`/`join`/`send`/`recv`/`claim`/`complete`/`heartbeat`/`watchdog`/`log` sobre `.toolbelt/bus/bus.db`; lease com fencing por epoch (B2); `tb bus run` acorda o agente (adapters `exec`/`harness`/`notify`); `tb bus discover` cataloga os agentes locais |
 | `tb mcp` | ✅ | Servidor MCP stateless (stdio); 48 tools na v0.0.8: mem/verify/review/drift/guard/stack, vault (`tb_vault_*`), graph (`search`/`callers`/`deps`/`impact`/`explain`/`path`/`index`; exige `TB_GRAPH=on`), ticket/board/router/watchdog/merge e bus (`tb_bus_join`/`send`/`recv`/`claim`/`complete`/`heartbeat`/`status`); `--bus-as` prende a conexão a uma sessão do bus |

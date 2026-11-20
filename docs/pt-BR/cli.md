@@ -93,7 +93,7 @@ tb  (implemented today)
 ├── router       Foreground scheduler (run|status|config)           ✓ Phase 3
 ├── watchdog     Worker alerts and control (status|alerts|kill)       ✓ Phase 3
 ├── merge        Merges done tickets (fail|last_wins)                     ✓ Phase 3
-└── bus          Agent bus (channel|invite|join|send|recv|claim|complete|log|run)  ✓ B1
+└── bus          Agent bus (channel|invite|join|send|recv|claim|complete|heartbeat|watchdog|log|run|discover)  ✓ B1–B3
 
 tb  (planned)
 ├── run / proc / md / agent
@@ -1869,6 +1869,7 @@ tb bus channel extend feature-x --ttl 2h
 tb bus run --channel feature-x --as marin --check
 tb bus run --channel feature-x --as marin
 tb bus run --channel feature-x --as claude-code --once
+tb bus discover
 ```
 
 | Comando | Quem | Função |
@@ -1885,7 +1886,8 @@ tb bus run --channel feature-x --as claude-code --once
 | `heartbeat` | agente | renova o lease; lista threads seguras (com epochs) e perdidas (com o novo dono) |
 | `watchdog <channel>` | humano | libera claims de agentes não vivos e publica `task.status` `lease_expired` de `system:watchdog` em `topic:board`; `--dry-run` só lista. Não exposto no MCP |
 | `log <channel>` | humano | trilha de auditoria (payload redigido); `--thread`, `--limit` |
-| `run --channel C --as N` | humano | harness B3: espera sem LLM e acorda o agente pelo arquivo de wake (`exec` ou `harness`); `--once`, `--check`, `--dry-run`, `--invite`, `--role`, `--config`, `--allow-unsandboxed`. Spec: [bus-harness.md](bus-harness.md) |
+| `run --channel C --as N` | humano | harness B3: espera sem LLM e acorda o agente pelo arquivo de wake (`exec`, `harness` ou `notify`, que avisa o humano para agentes só de GUI); `--once`, `--check`, `--dry-run`, `--invite`, `--role`, `--config`, `--allow-unsandboxed`. Spec: [bus-harness.md](bus-harness.md), [bus-notify-discover.md](bus-notify-discover.md) |
+| `discover` | humano | catálogo só de leitura das CLIs de agente conhecidas no `PATH` e das configs de cliente MCP que rodam `tb mcp` (outros servidores só contados), com próximos passos; não executa nada; `--cwd`, `--json` |
 
 Comandos de agente exigem `--channel` e `--as`. O token de sessão nunca é impresso. `--json` devolve envelopes JSON-RPC.
 

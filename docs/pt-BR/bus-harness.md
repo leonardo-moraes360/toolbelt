@@ -2,7 +2,7 @@
 
 # Harness do barramento (`tb bus run`) — spec B3
 
-Status: **implementado** (B3, primeiro corte). Itens em "Fora deste corte" seguem pendentes.
+Status: **implementado** (B3). O adapter `notify` e o `tb bus discover` estão em [bus-notify-discover.md](bus-notify-discover.md); itens em "Fora deste corte" seguem pendentes.
 
 Especificação da etapa **B3** do [ADR-013](adr/013-barramento-multi-vendor.md): o processo que espera mensagens no lugar do agente e o acorda só quando há trabalho. Pressupõe o protocolo [`bus/0.1`](bus-protocolo.md) (B1). Este primeiro corte define dois adapters de despertar, `exec` e `harness`.
 
@@ -73,7 +73,7 @@ Entregue ao adapter. Nunca contém payload de mensagem.
 }
 ```
 
-`reason` é `messages` ou `rewake`. `messages` lista no máximo 20 itens; `count` traz o total.
+`reason` é `messages` ou `rewake`. `messages` lista no máximo 20 itens; `count` traz o total. `types` (contagem por tipo) e `senders` (contagem por remetente, no máximo 20, mais `senders_more`) cobrem todas as mensagens do lote.
 
 ## Arquivo de wake
 
@@ -82,7 +82,7 @@ Entregue ao adapter. Nunca contém payload de mensagem.
 Campos comuns:
 
 ```yaml
-adapter: exec            # exec | harness
+adapter: exec            # exec | harness | notify (docs/bus-notify-discover.md)
 wake_on: [task.assign, query, reply, urgent, task.result]
 wake_topics: true       # false: mensagens para topic:* nunca acordam
 coalesce:
@@ -175,8 +175,6 @@ Outros vendors entram como novos presets do mesmo adapter quando tiverem modo he
 - **L1 (RAG):** wake packet com top-K da thread via FTS5. Este corte manda só cabeçalhos.
 - **L0 autônomo:** responder `ack`/status a partir do estado sem acordar o agente.
 - **L2:** triagem e resumo por modelo local.
-- **Adapter `notify` próprio:** coberto por `exec` (ex.: `notify-send`).
-- **`tb bus discover`.**
 
 ## Critérios de aceite
 

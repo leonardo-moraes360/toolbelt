@@ -1,0 +1,7 @@
+//go:build !unix
+
+package busdiscover
+
+// openFlags is 0 where O_NOFOLLOW/O_NONBLOCK do not exist; Lstat and the
+// fstat after opening still refuse anything but a regular file.
+const openFlags = 0

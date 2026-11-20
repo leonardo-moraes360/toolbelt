@@ -2,7 +2,7 @@
 
 # Adapter `notify` do barramento e `tb bus discover` — spec do restante do B3
 
-Status: **rascunho, rodada 2** (uma revisão em contexto novo aplicada; não implementado).
+Status: **implementado** (restante do B3).
 
 Fecha a etapa **B3** do [ADR-013](adr/013-barramento-multi-vendor.md). Estende o harness ([bus-harness.md](bus-harness.md)), cujo primeiro corte entregou os adapters `exec` e `harness`, e se apoia no lease do B2 ([bus-lease.md](bus-lease.md)).
 
@@ -56,7 +56,7 @@ timeout: 10s               # padrão para notify (30s no exec)
 | Backend | Plataforma | Roda |
 |---|---|---|
 | `desktop` | Linux | `<command> --app-name toolbelt --urgency <u> -- <resumo> <corpo>` |
-| `desktop` | macOS | `/usr/bin/osascript -e 'on run argv' -e 'display notification (item 1 of argv) with title (item 2 of argv)' -e 'end run' -- <corpo> <resumo>` |
+| `desktop` | macOS | `/usr/bin/osascript -e 'on run argv' -e 'display notification (item 1 of argv) with title (item 2 of argv)' -e 'end run' <corpo> <resumo>` (sem `--`: o corpo começa com uma contagem, nunca com `-`) |
 | `terminal` | qualquer | sem filho: uma linha escrita pelo próprio harness |
 
 **Binário do desktop.**
@@ -129,7 +129,7 @@ A lista `messages` do packet de wake para em 20 itens, então o texto não pode 
 
 - `wake: notify` já existe como valor no card.
 - Quando o arquivo de wake diz `adapter: notify` e o card do agente diz outro `wake`, tanto o `--check` quanto a abertura do `tb bus run` imprimem `warning: wake_mismatch (card says harness, wake file says notify)` no stderr e seguem com exit 0. O card é informativo para o canal; quem manda é o arquivo de wake.
-- Avisos são um canal novo do `Check()`: ele devolve a lista de avisos junto com o erro.
+- Os avisos vêm de uma chamada nova `Warnings()` ao lado do `Check()`; a CLI os imprime nos dois casos.
 
 ## Parte 2: `tb bus discover`
 
@@ -163,7 +163,7 @@ O `discover` não precisa de `.toolbelt/` nem de barramento. Sem `--cwd`, ele l�
 
 | `client` | Caminho | Lido |
 |---|---|---|
-| `claude-code` | `~/.claude.json` | `mcpServers` no nível de cima e em cada `projects.<path>` |
+| `claude-code` | `~/.claude.json` | `mcpServers` no nível de cima (`scope: user`) e em cada `projects.<path>` que tenha ao menos um servidor |
 | `claude-desktop` | `~/.config/Claude/claude_desktop_config.json` (Linux), `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) | `mcpServers` |
 | `cursor` | `~/.cursor/mcp.json` | `mcpServers` |
 | `project` | `<cwd ou raiz do repo>/.mcp.json` | `mcpServers` |
@@ -207,7 +207,7 @@ O `--json` imprime o schema abaixo: chaves estáveis, arrays ordenados por nome 
      "scope": "user", "tb": [{"server": "toolbelt", "path": "/home/leonardo/go/bin/tb", "same_tb": true, "bus_as": null}],
      "other_servers": 2},
     {"client": "claude-code", "path": "/home/leonardo/.claude.json", "kind": "file", "parses": true,
-     "scope": "project:/home/leonardo/src/app", "tb": [], "other_servers": 0},
+     "scope": "project:/home/leonardo/src/app", "tb": [], "other_servers": 1},
     {"client": "claude-desktop", "path": "/home/leonardo/.config/Claude/claude_desktop_config.json", "kind": "missing"},
     {"client": "codex", "path": "/home/leonardo/.codex/config.toml", "kind": "file", "parsed": false}
   ],

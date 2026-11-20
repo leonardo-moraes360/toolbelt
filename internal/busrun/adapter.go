@@ -322,6 +322,8 @@ func newAdapter(h *Harness) (Adapter, error) {
 		return execAdapter{h}, nil
 	case AdapterHarness:
 		return claudeAdapter{h}, nil
+	case AdapterNotify:
+		return newNotifyAdapter(h)
 	default:
 		return nil, errors.New("invalid adapter")
 	}

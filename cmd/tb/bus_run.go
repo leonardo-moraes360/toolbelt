@@ -21,8 +21,9 @@ var busRunCmd = &cobra.Command{
 	Long: `Local process, one per agent, that waits for messages in the store without
 spending tokens and wakes the agent through the adapter in the wake file
 (.toolbelt/bus/wake/<channel>/<name>.yaml, mode 0600): exec (local command with
-the wake packet on stdin) or harness (claude -p --resume). The wake packet only
-carries headers; the agent reads the content with recv. Spec: docs/bus-harness.md.`,
+the wake packet on stdin), harness (claude -p --resume) or notify (desktop or
+terminal notification for the human, for GUI-only agents). The wake packet only
+carries headers; the agent reads the content with recv. Specs: docs/bus-harness.md, docs/bus-notify-discover.md.`,
 	Args: cobra.NoArgs,
 	RunE: runBusRun,
 }
@@ -58,6 +59,13 @@ func runBusRun(cmd *cobra.Command, _ []string) error {
 	defer h.Close()
 	if err := h.Check(); err != nil {
 		return err
+	}
+	warnings, err := h.Warnings()
+	if err != nil {
+		return err
+	}
+	for _, w := range warnings {
+		fmt.Fprintln(os.Stderr, "warning: "+w)
 	}
 	switch {
 	case check:

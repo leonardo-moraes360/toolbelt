@@ -93,7 +93,7 @@ tb  (implemented today)
 ├── router       Foreground scheduler (run|status|config)           ✓ Phase 3
 ├── watchdog     Worker alerts and control (status|alerts|kill)       ✓ Phase 3
 ├── merge        Merges done tickets (fail|last_wins)                     ✓ Phase 3
-└── bus          Agent bus (channel|invite|join|send|recv|claim|complete|log|run)  ✓ B1
+└── bus          Agent bus (channel|invite|join|send|recv|claim|complete|heartbeat|watchdog|log|run|discover)  ✓ B1–B3
 
 tb  (planned)
 ├── run / proc / md / agent
@@ -1846,6 +1846,7 @@ tb bus channel extend feature-x --ttl 2h
 tb bus run --channel feature-x --as marin --check
 tb bus run --channel feature-x --as marin
 tb bus run --channel feature-x --as claude-code --once
+tb bus discover
 ```
 
 | Command | Who | Purpose |
@@ -1862,7 +1863,8 @@ tb bus run --channel feature-x --as claude-code --once
 | `heartbeat` | agent | renews the lease; lists held threads (with epochs) and lost ones (with the new owner) |
 | `watchdog <channel>` | human | releases claims of agents that are not alive and publishes `task.status` `lease_expired` from `system:watchdog` to `topic:board`; `--dry-run` lists only. Not exposed over MCP |
 | `log <channel>` | human | audit trail (redacted payload); `--thread`, `--limit` |
-| `run --channel C --as N` | human | B3 harness: waits without an LLM and wakes the agent through the wake file (`exec` or `harness`); `--once`, `--check`, `--dry-run`, `--invite`, `--role`, `--config`, `--allow-unsandboxed`. Spec: [bus-harness.md](bus-harness.md) |
+| `run --channel C --as N` | human | B3 harness: waits without an LLM and wakes the agent through the wake file (`exec`, `harness` or `notify`, which pings the human for GUI-only agents); `--once`, `--check`, `--dry-run`, `--invite`, `--role`, `--config`, `--allow-unsandboxed`. Spec: [bus-harness.md](bus-harness.md), [bus-notify-discover.md](bus-notify-discover.md) |
+| `discover` | human | read-only catalog of known agent CLIs on `PATH` and MCP client configs that run `tb mcp` (other servers only counted), with next steps; executes nothing; `--cwd`, `--json` |
 
 Agent commands require `--channel` and `--as`. The session token is never printed. `--json` returns JSON-RPC envelopes.
 
