@@ -105,23 +105,23 @@ func runVault(fn func(*vault.Vault) (any, int, error), text func(any)) error {
 		return err
 	}
 	v, err := vault.Open(cwd)
-	if err == nil {
-		var out any
-		var code int
-		if out, code, err = fn(v); err == nil {
-			if jsonOutput {
-				b, _ := json.MarshalIndent(out, "", "  ")
-				fmt.Println(string(b))
-			} else {
-				text(out)
-			}
-			if code != 0 {
-				os.Exit(code)
-			}
-			return nil
-		}
+	if err != nil {
+		return vaultFail(err)
 	}
-	return vaultFail(err)
+	out, code, err := fn(v)
+	if err != nil {
+		return vaultFail(err)
+	}
+	if jsonOutput {
+		b, _ := json.MarshalIndent(out, "", "  ")
+		fmt.Println(string(b))
+	} else {
+		text(out)
+	}
+	if code != 0 {
+		os.Exit(code)
+	}
+	return nil
 }
 
 func vaultFail(err error) error {
@@ -171,7 +171,8 @@ func ones(list []string) string {
 
 func printVaultList(v any) {
 	r := v.(*vault.ListResult)
-	for _, n := range r.Notes {
+	for i := range r.Notes {
+		n := &r.Notes[i]
 		fmt.Printf("%s\t%s\t%s\t%s\t%s\t%s\n", one(n.Path), one(n.Data.Title), n.Type, ones(n.Data.Tags), n.Source, n.Updated)
 	}
 }
@@ -201,7 +202,8 @@ func printVaultShow(v any) {
 
 func printVaultLinks(v any) {
 	r := v.(*vault.LinksResult)
-	for _, l := range r.Links {
+	for i := range r.Links {
+		l := &r.Links[i]
 		fmt.Printf("%d:%d\t%s\t%s\t%s\n", l.Line, l.Col, l.State, one(linkLabel(l.Data)), one(l.To))
 	}
 }

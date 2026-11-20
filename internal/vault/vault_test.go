@@ -1,6 +1,7 @@
 package vault
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -229,7 +230,7 @@ func TestCheckEmptyAndDeterministic(t *testing.T) {
 	_, v = newRepo(t, map[string]string{"b.md": "[[x]] [[y]]\n", "a.md": "---\ntype: zz\n---\n[[q]]\n"})
 	a, _ := json.Marshal(check(t, v))
 	b, _ := json.Marshal(check(t, v))
-	if string(a) != string(b) {
+	if !bytes.Equal(a, b) {
 		t.Fatal("check output is not deterministic")
 	}
 	r := check(t, v)
@@ -312,7 +313,8 @@ func TestDeterministicCommands(t *testing.T) {
 		out, _ := json.Marshal([]any{s, l, b})
 		return string(out)
 	}
-	if run() != run() {
+	first, second := run(), run()
+	if first != second {
 		t.Fatal("show/links/backlinks are not deterministic")
 	}
 }
