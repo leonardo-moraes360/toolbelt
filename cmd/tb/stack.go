@@ -14,20 +14,23 @@ import (
 
 var stackCmd = &cobra.Command{
 	Use:   "stack <op> [<op>...]",
-	Short: "Stacks verification operations (verify/review/drift/guard/vault/egm), not branches",
+	Short: "Stacks verification operations (verify/review/drift/guard/vault/egm/seccheck), not branches",
 	Long: `Stacks verification operations in a single run with shared context
 (diff, index of changed files, memory and config).
 
 Not a branch stack (like Graphite or git-stack): it only orchestrates verify,
 review, drift, guard and/or egm in the given order.
 
-Operations: verify, review, drift, guard, vault, egm.
+Operations: verify, review, drift, guard, vault, egm, seccheck.
 egm gates the specs/ADRs (egm.doc_globs) added or modified in
 merge-base(base, head)..head with tb egm status --at head; it is local (state
 lives in $XDG_STATE_HOME), not parallel, and always runs last. With
 --egm-mode ci (needs -c) it instead checks each document's committed receipt
 and runs one fresh review round with CI's own config (docs/specs/egm-trust.md).
-Read-only stages (guard, drift, review) run in parallel; verify stays isolated
+seccheck runs the registered AppSec checks (.toolbelt/secchecks.yaml, from
+tb blue apply) over the working tree; regex-only, read-only, and fails on
+error-severity findings unless --warn-only.
+Read-only stages (guard, drift, review, vault, seccheck) run in parallel; verify stays isolated
 (build/test). The JSON output preserves the requested order. --jobs N limits concurrency
 (default = number of CPUs, max 32; --jobs 1 = serial). --fail-fast cancels the others
 via context. The output is always a single aggregated JSON.

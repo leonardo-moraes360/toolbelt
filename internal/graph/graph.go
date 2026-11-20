@@ -30,6 +30,7 @@ const (
 	NodeComponent NodeType = "component"
 	NodeHook      NodeType = "hook"
 	NodeRoute     NodeType = "route"
+	NodePlaybook  NodeType = "playbook"
 )
 
 type EdgeType string
@@ -42,6 +43,7 @@ const (
 	EdgeMentions EdgeType = "mentions"
 	EdgeRenders  EdgeType = "renders"
 	EdgeTemplate EdgeType = "template"
+	EdgeMirror   EdgeType = "mirror"
 )
 
 type Node struct {

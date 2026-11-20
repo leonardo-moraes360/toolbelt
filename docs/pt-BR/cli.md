@@ -83,7 +83,7 @@ tb  (implemented today)
 ├── mem          Invariants (add|list|show|edit|retire|search|check|init)
 ├── review       Fresh-context review (Elephant-Goldfish)
 ├── sandbox      Execution with Landlock isolation (check|run)
-├── stack        Stacks verification operations (verify/review/drift/guard/vault/egm), not branches
+├── stack        Stacks verification operations (verify/review/drift/guard/vault/egm/seccheck), not branches
 ├── vault        Markdown vault of notes (new|list|show|search|links|backlinks|check)
 ├── verify       Adversarial verification (run; rulers tests|visual)
 ├── workspace    Isolated workspaces via git worktree (create|list|remove; alias: ws)
@@ -546,6 +546,8 @@ tb blue check
 ```
 
 Paridade MCP: `tb_red_search`, `tb_blue_search`, `tb_red_load`, `tb_blue_load`, `tb_sec_pair` (somente leitura), `tb_blue_apply` (grava `secchecks.yaml`). Ver [docs/specs/appsec-playbooks.md](specs/appsec-playbooks.md).
+
+Com `TB_GRAPH=on`, cada playbook é um nó `playbook:<nome>` no grafo e todo playbook red tem uma aresta `mirror` para o par blue, então `tb graph path playbook:red-sqli playbook:blue-sqli` e `tb graph explain` ligam ataque e defesa. `tb stack seccheck` roda os checks registrados como op somente-leitura do stack (falha em achados de severidade error, a menos que `--warn-only`).
 
 ---
 

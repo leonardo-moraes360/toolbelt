@@ -65,7 +65,7 @@ func newBlueCheckCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			cwd, _ := os.Getwd()
 			tb := secToolbeltDir()
-			vs, err := secplay.Run(cwd, tb)
+			vs, err := secplay.Run(cmd.Context(), cwd, tb)
 			if err != nil {
 				return err
 			}

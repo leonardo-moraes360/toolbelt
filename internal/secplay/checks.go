@@ -1,6 +1,7 @@
 package secplay
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -244,11 +245,9 @@ func compileChecks(checks []Check) ([]compiledCheck, error) {
 	return cs, nil
 }
 
-// Run scans the working tree under repoDir against the registered checks and
-// returns the violations. It only reads files and matches regexes — it never
-// executes anything. Files are matched against each check's include_globs (by
-// base name); a check with no globs applies to every text file.
-func Run(repoDir, toolbeltDir string) ([]Violation, error) {
+// loadCompiled loads secchecks.yaml and compiles every check. It returns nil
+// checks (and nil error) when the store is empty.
+func loadCompiled(toolbeltDir string) ([]compiledCheck, error) {
 	sc, err := LoadSecChecks(SecChecksPath(toolbeltDir))
 	if err != nil {
 		return nil, err
@@ -256,13 +255,24 @@ func Run(repoDir, toolbeltDir string) ([]Violation, error) {
 	if len(sc.Checks) == 0 {
 		return nil, nil
 	}
-	cs, err := compileChecks(sc.Checks)
-	if err != nil {
+	return compileChecks(sc.Checks)
+}
+
+// Run scans the whole working tree under repoDir against the registered checks
+// and returns the violations. It only reads files and matches regexes — it
+// never executes anything. Files are matched against each check's include_globs
+// (by base name); a check with no globs applies to every text file. ctx
+// cancellation is checked per entry.
+func Run(ctx context.Context, repoDir, toolbeltDir string) ([]Violation, error) {
+	cs, err := loadCompiled(toolbeltDir)
+	if err != nil || len(cs) == 0 {
 		return nil, err
 	}
-
 	var out []Violation
 	walkErr := filepath.WalkDir(repoDir, func(path string, d os.DirEntry, err error) error {
+		if cerr := ctx.Err(); cerr != nil {
+			return cerr
+		}
 		proceed, ctrl := scanDecision(repoDir, path, d, err)
 		if !proceed {
 			return ctrl
@@ -271,12 +281,47 @@ func Run(repoDir, toolbeltDir string) ([]Violation, error) {
 		if relErr != nil {
 			rel = path
 		}
-		out = append(out, scanFile(path, rel, d, cs)...)
+		info, infoErr := d.Info()
+		if infoErr != nil {
+			return nil
+		}
+		out = append(out, scanFileInfo(path, filepath.ToSlash(rel), d.Name(), info, cs)...)
 		return nil
 	})
 	if walkErr != nil {
 		return nil, walkErr
 	}
+	sortViolations(out)
+	return out, nil
+}
+
+// RunPaths scans only the given repo-relative paths (e.g. a stack's changed
+// files). Non-regular files (symlinks, FIFOs, devices) and missing paths are
+// skipped, so it shares Run's no-escape, no-exec guarantees. ctx cancellation
+// is checked per path.
+func RunPaths(ctx context.Context, repoDir, toolbeltDir string, rel []string) ([]Violation, error) {
+	cs, err := loadCompiled(toolbeltDir)
+	if err != nil || len(cs) == 0 {
+		return nil, err
+	}
+	var out []Violation
+	for _, r := range rel {
+		if cerr := ctx.Err(); cerr != nil {
+			return nil, cerr
+		}
+		r = filepath.ToSlash(r)
+		abs := filepath.Join(repoDir, filepath.FromSlash(r))
+		info, lerr := os.Lstat(abs)
+		if lerr != nil || !info.Mode().IsRegular() {
+			continue
+		}
+		out = append(out, scanFileInfo(abs, r, filepath.Base(r), info, cs)...)
+	}
+	sortViolations(out)
+	return out, nil
+}
+
+func sortViolations(out []Violation) {
 	sort.SliceStable(out, func(i, j int) bool {
 		if out[i].File != out[j].File {
 			return out[i].File < out[j].File
@@ -286,7 +331,6 @@ func Run(repoDir, toolbeltDir string) ([]Violation, error) {
 		}
 		return out[i].CheckID < out[j].CheckID
 	})
-	return out, nil
 }
 
 // scanDecision interprets one WalkDir callback entry: whether to scan the file,
@@ -316,21 +360,16 @@ func scanDecision(repoDir, path string, d os.DirEntry, err error) (proceed bool,
 	return true, nil
 }
 
-// scanFile matches the applicable checks against one regular file's lines. It
-// reads the file; it never executes its content.
-func scanFile(path, rel string, d os.DirEntry, cs []compiledCheck) []Violation {
-	base := d.Name()
+// scanFileInfo matches the applicable checks against one regular file's lines.
+// It reads the file; it never executes its content.
+func scanFileInfo(path, rel, base string, info os.FileInfo, cs []compiledCheck) []Violation {
 	var applicable []compiledCheck
 	for _, cc := range cs {
 		if globsMatch(cc.check.IncludeGlobs, base) {
 			applicable = append(applicable, cc)
 		}
 	}
-	if len(applicable) == 0 {
-		return nil
-	}
-	info, err := d.Info()
-	if err != nil || info.Size() > maxScanBytes {
+	if len(applicable) == 0 || info.Size() > maxScanBytes {
 		return nil
 	}
 	raw, err := os.ReadFile(path)
