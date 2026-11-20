@@ -37,3 +37,16 @@ func TestStackVaultOp(t *testing.T) {
 		t.Fatalf("fixed: %+v %v", res, err)
 	}
 }
+
+func TestStackVaultOpWithoutToolbelt(t *testing.T) {
+	dir := gitRepo(t)
+	writeFile(t, filepath.Join(dir, "a.txt"), "a\n")
+	runGit(t, dir, "add", "-A")
+	runGit(t, dir, "commit", "-qm", "base")
+	writeFile(t, filepath.Join(dir, "a.txt"), "b\n")
+	runGit(t, dir, "commit", "-qam", "change")
+	res, err := Run(context.Background(), &Options{RepoDir: dir, Base: "HEAD~1", Head: "HEAD", Ops: []Op{OpVault}})
+	if err != nil || res.OK || res.Steps[0].ExitCode != 2 || !strings.Contains(res.Steps[0].Reason, "no_toolbelt_dir") {
+		t.Fatalf("%+v %v", res, err)
+	}
+}

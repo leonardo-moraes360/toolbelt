@@ -24,7 +24,10 @@ const (
 	LevelWarning = "warning"
 )
 
-var reTag = regexp.MustCompile(`^[a-z0-9][a-z0-9/_-]*$`)
+var (
+	reTag      = regexp.MustCompile(`^[a-z0-9][a-z0-9/_-]*$`)
+	reYAMLLine = regexp.MustCompile(`line (\d+)`)
+)
 
 // Issue is a check finding. Everything derived from note content sits in
 // Data (R18); the other fields are tb-generated.
@@ -61,7 +64,8 @@ type Note struct {
 	Links      []mdparse.Wikilink
 	Issues     []Issue
 
-	line int // the frontmatter line being parsed
+	line   int  // the frontmatter line being parsed
+	unread bool // too large or not regular: linkable, never parsed
 }
 
 // parseNote parses src as the note at file (repository-relative) with note
@@ -110,7 +114,12 @@ func (n *Note) issue(code, level string, line int, target, detail string) {
 func (n *Note) frontmatter(src string, types []string) {
 	var doc yaml.Node
 	if err := yaml.Unmarshal([]byte(src), &doc); err != nil {
-		n.issue("bad_frontmatter", LevelError, 1, "", err.Error())
+		line := 1
+		if m := reYAMLLine.FindStringSubmatch(err.Error()); m != nil {
+			l, _ := strconv.Atoi(m[1])
+			line = l + 1 // YAML line 1 is file line 2
+		}
+		n.issue("bad_frontmatter", LevelError, line, "", err.Error())
 		return
 	}
 	if len(doc.Content) == 0 {
@@ -121,20 +130,18 @@ func (n *Note) frontmatter(src string, types []string) {
 		n.issue("bad_frontmatter", LevelError, m.Line+1, "", "frontmatter is not a mapping")
 		return
 	}
-	sourceLine := 0
+	lines := map[string]int{}
 	for i := 0; i+1 < len(m.Content); i += 2 {
 		k, v := m.Content[i], m.Content[i+1]
 		line := k.Line + 1 // YAML line 1 is file line 2
-		if k.Value == "source" {
-			sourceLine = line
-		}
+		lines[k.Value] = line
 		n.field(k.Value, v, line, types)
 	}
 	switch {
 	case n.Source == SourceInferred && n.Confidence == nil:
-		n.issue("missing_confidence", LevelError, sourceLine, "", "")
+		n.issue("missing_confidence", LevelError, lines["source"], "", "")
 	case n.Source != SourceInferred && n.Confidence != nil:
-		n.issue("unused_confidence", LevelWarning, sourceLine, "", "")
+		n.issue("unused_confidence", LevelWarning, lines["confidence"], "", "")
 	}
 }
 

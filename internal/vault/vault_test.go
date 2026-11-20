@@ -258,3 +258,88 @@ func TestListFilter(t *testing.T) {
 		}
 	}
 }
+
+func TestReviewRegressions(t *testing.T) {
+	root, v := newRepo(t, map[string]string{
+		"big.md":  strings.Repeat("y", 300<<10),
+		"two.png": "", "x/two.png": "",
+		"src.md": "[[Dr. Smith]] [[v2.0 release]] [[gone.pdf]] [[big]] [[big#any]] [[two.png]] " +
+			"[[a|ghp_" + strings.Repeat("c", 30) + "]] [[a#sk-" + strings.Repeat("d", 24) + "]]\n",
+		"a.md":      "",
+		"bad.md":    "---\ntitle: x\nsource: manual\n\tb: 2\n---\n",
+		"unused.md": "---\ntitle: x\nconfidence: 0.4\n---\n",
+	})
+	_ = root
+	r, err := v.Links("src")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, l := range r.Links {
+		got = append(got, l.State)
+	}
+	want := "broken broken missing_attachment ok ok ambiguous_attachment ok broken_fragment"
+	if strings.Join(got, " ") != want {
+		t.Fatalf("states %v", got)
+	}
+	out, _ := json.Marshal(r)
+	if strings.Contains(string(out), "ghp_cccc") || strings.Contains(string(out), "sk-dddd") {
+		t.Fatalf("label/fragment not redacted: %s", out)
+	}
+	c := check(t, v)
+	if cs := codes(c); cs["broken_link"] != 2 || cs["ambiguous_attachment"] != 1 || cs["note_too_large"] != 1 {
+		t.Fatalf("codes %v", cs)
+	}
+	checkIssueLines(t, c)
+}
+
+func TestFindForms(t *testing.T) {
+	_, v := newRepo(t, map[string]string{"dir/a.md": "# H\n", "b.md": ""})
+	for _, target := range []string{"a", "[[a]]", "a#H", "[[a|label]]", "dir/a", "dir/a.md", "DIR/A"} {
+		r, err := v.Show(target)
+		if err != nil || r.Note.Path != "dir/a" {
+			t.Errorf("%q: %+v %v", target, r, err)
+		}
+	}
+}
+
+func TestDeterministicCommands(t *testing.T) {
+	_, v := newRepo(t, map[string]string{"a.md": "# A\n[[b]] [[c]]\n", "b.md": "[[a]]\n", "c.md": "[[a#a]]\n"})
+	run := func() string {
+		s, _ := v.Show("a")
+		l, _ := v.Links("a")
+		b, _ := v.Backlinks("a")
+		out, _ := json.Marshal([]any{s, l, b})
+		return string(out)
+	}
+	if run() != run() {
+		t.Fatal("show/links/backlinks are not deterministic")
+	}
+}
+
+func TestSymlinkedVaultInsideRepo(t *testing.T) {
+	root := t.TempDir()
+	write(t, filepath.Join(root, "real", "a.md"), "# A\n")
+	write(t, filepath.Join(root, ".toolbelt", "config.yaml"), "vault:\n  path: notes\n")
+	if err := os.Symlink(filepath.Join(root, "real"), filepath.Join(root, "notes")); err != nil {
+		t.Fatal(err)
+	}
+	v, err := Open(root)
+	if err != nil || v.Rel != "real" {
+		t.Fatalf("%+v %v", v, err)
+	}
+}
+
+func checkIssueLines(t *testing.T, c *CheckResult) {
+	t.Helper()
+	for _, is := range c.Issues {
+		switch {
+		case is.File == ".toolbelt/vault/bad.md" && is.Code == "bad_frontmatter" && (is.Line < 2 || is.Line > 4):
+			// yaml.v3 reports the line where it noticed the problem, which can be
+			// the one before; it must at least be inside the frontmatter.
+			t.Errorf("yaml error line %d, want 2..4", is.Line)
+		case is.File == ".toolbelt/vault/unused.md" && is.Code == "unused_confidence" && is.Line != 3:
+			t.Errorf("unused_confidence line %d, want 3", is.Line)
+		}
+	}
+}

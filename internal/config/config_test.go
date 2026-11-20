@@ -305,3 +305,32 @@ func TestRouterConfigValidate(t *testing.T) {
 		}
 	}
 }
+
+func TestVaultConfigValidate(t *testing.T) {
+	ok := DefaultConfig().Vault
+	if err := ok.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	for name, mut := range map[string]func(*VaultConfig){
+		"absolute":   func(v *VaultConfig) { v.Path = "/tmp/v" },
+		"dotdot":     func(v *VaultConfig) { v.Path = "../v" },
+		"dot":        func(v *VaultConfig) { v.Path = "." },
+		"glob":       func(v *VaultConfig) { v.Path = "v*" },
+		"newline":    func(v *VaultConfig) { v.Path = "v\nx" },
+		"backslash":  func(v *VaultConfig) { v.Path = `a\b` },
+		"spaces":     func(v *VaultConfig) { v.Path = " v" },
+		"hash":       func(v *VaultConfig) { v.Path = "#v" },
+		"zero bytes": func(v *VaultConfig) { v.MaxNoteBytes = 0 },
+		"too big":    func(v *VaultConfig) { v.MaxNoteBytes = 5 << 20 },
+		"no types":   func(v *VaultConfig) { v.Types = nil },
+		"dup types":  func(v *VaultConfig) { v.Types = []string{"a", "a"} },
+		"bad type":   func(v *VaultConfig) { v.Types = []string{"A"} },
+	} {
+		c := ok
+		c.Types = append([]string(nil), ok.Types...)
+		mut(&c)
+		if c.Validate() == nil {
+			t.Errorf("%s: accepted", name)
+		}
+	}
+}

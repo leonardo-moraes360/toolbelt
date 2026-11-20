@@ -110,8 +110,10 @@ func validVaultPath(p string) error {
 	switch {
 	case p == "" || filepath.IsAbs(p) || strings.HasPrefix(p, "/") || strings.HasPrefix(p, `\`):
 		return fmt.Errorf("vault.path must be a relative path inside the repository")
-	case strings.ContainsAny(p, "*?[]!") || strings.HasPrefix(p, "#") || strings.IndexFunc(p, unicode.IsControl) >= 0:
-		return fmt.Errorf("vault.path must not contain control or glob characters")
+	case strings.ContainsAny(p, "*?[]!\\") || strings.HasPrefix(p, "#") || strings.IndexFunc(p, unicode.IsControl) >= 0:
+		return fmt.Errorf("vault.path must not contain control, glob or backslash characters")
+	case strings.TrimSpace(p) != p:
+		return fmt.Errorf("vault.path must not start or end with spaces")
 	}
 	if c := filepath.ToSlash(filepath.Clean(p)); c == "." || c == ".." || strings.HasPrefix(c, "../") {
 		return fmt.Errorf("vault.path must stay inside the repository")

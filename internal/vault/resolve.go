@@ -2,6 +2,7 @@ package vault
 
 import (
 	"path"
+	"regexp"
 	"strings"
 
 	"github.com/leonardo-moraes360/toolbelt/internal/mdparse"
@@ -15,7 +16,14 @@ const (
 	StateBrokenFragment    = "broken_fragment"
 	StateAttachment        = "attachment"
 	StateMissingAttachment = "missing_attachment"
+	// StateAmbiguousAttachment is several attachments matching one target:
+	// a warning, since attachments are never errors (R8).
+	StateAmbiguousAttachment = "ambiguous_attachment"
 )
+
+// reAttachmentExt is an extension that makes a target an attachment
+// candidate: "pic.png", "v1.2", but not "Dr. Smith" or "v2.0 release".
+var reAttachmentExt = regexp.MustCompile(`^\.[A-Za-z0-9]{1,8}$`)
 
 // index resolves wikilink targets over one scan (R8).
 type index struct {
@@ -31,7 +39,7 @@ type index struct {
 func newIndex(sc *scan) *index {
 	ix := &index{notes: sc.notes, byPath: map[string][]*Note{}, byName: map[string][]*Note{},
 		attPath: map[string][]string{}, attName: map[string][]string{}, headings: map[*Note]map[string]bool{}}
-	for _, n := range sc.notes {
+	for _, n := range append(append([]*Note{}, sc.notes...), sc.unread...) {
 		for _, s := range pathKeys(n.Path) {
 			ix.byPath[s] = append(ix.byPath[s], n)
 		}
@@ -127,7 +135,7 @@ func (ix *index) resolve(from *Note, w mdparse.Wikilink) (Link, *Note) {
 		case len(cands) > 1:
 			l.State = StateAmbiguous
 			return l, nil
-		case path.Ext(w.Target) != "":
+		case len(ix.attachmentsFor(w.Target)) > 0 || reAttachmentExt.MatchString(path.Ext(w.Target)):
 			ix.attachment(&l, w.Target)
 			return l, nil
 		default:
@@ -136,7 +144,7 @@ func (ix *index) resolve(from *Note, w mdparse.Wikilink) (Link, *Note) {
 		}
 	}
 	l.To, l.State = to.Path, StateOK
-	if w.Fragment != "" && !strings.HasPrefix(w.Fragment, "^") && !ix.headings[to][mdparse.Slugify(w.Fragment)] {
+	if w.Fragment != "" && !to.unread && !strings.HasPrefix(w.Fragment, "^") && !ix.headings[to][mdparse.Slugify(w.Fragment)] {
 		l.State = StateBrokenFragment
 	}
 	return l, to
@@ -149,7 +157,7 @@ func (ix *index) attachment(l *Link, t string) {
 	case 1:
 		l.State, l.To = StateAttachment, a[0]
 	default:
-		l.State = StateAmbiguous
+		l.State = StateAmbiguousAttachment
 	}
 }
 
@@ -176,19 +184,26 @@ func (ix *index) computeBacklinks() {
 	}
 }
 
-// find resolves a command's <target>: a note path (with or without .md),
-// else R8 (R12).
+// find resolves a command's <target> (R12): the text of a wikilink with or
+// without its brackets, label and fragment, or a note path with or without
+// ".md". Two notes whose paths differ only in case are ambiguous.
 func (ix *index) find(target string) (*Note, error) {
 	t := strings.TrimSpace(target)
-	if len(t) >= 3 && strings.EqualFold(t[len(t)-3:], ".md") {
-		t = t[:len(t)-3]
+	t = strings.TrimSuffix(strings.TrimPrefix(t, "[["), "]]")
+	if ws := mdparse.Wikilinks("[[" + t + "]]"); len(ws) == 1 && ws[0].Target != "" {
+		t = ws[0].Target
 	}
+	var exact []*Note
 	for _, n := range ix.notes {
 		if strings.EqualFold(n.Path, t) {
-			return n, nil
+			exact = append(exact, n)
 		}
 	}
-	switch c := ix.notesFor(t); len(c) {
+	c := exact
+	if len(c) == 0 {
+		c = ix.notesFor(t)
+	}
+	switch len(c) {
 	case 1:
 		return c[0], nil
 	case 0:

@@ -14,15 +14,16 @@ type CheckResult struct {
 }
 
 var linkIssue = map[string]string{
-	StateBroken:            "broken_link",
-	StateAmbiguous:         "ambiguous_link",
-	StateBrokenFragment:    "broken_fragment",
-	StateMissingAttachment: "missing_attachment",
+	StateBroken:              "broken_link",
+	StateAmbiguous:           "ambiguous_link",
+	StateBrokenFragment:      "broken_fragment",
+	StateMissingAttachment:   "missing_attachment",
+	StateAmbiguousAttachment: "ambiguous_attachment",
 }
 
 var issueLevel = map[string]string{
 	"broken_link": LevelError, "ambiguous_link": LevelError,
-	"broken_fragment": LevelWarning, "missing_attachment": LevelWarning,
+	"broken_fragment": LevelWarning, "missing_attachment": LevelWarning, "ambiguous_attachment": LevelWarning,
 }
 
 // Check validates the whole vault (R16): errors give exit 1, warnings

@@ -12,9 +12,10 @@ var (
 )
 
 // readNote reads a note without following a final symlink or blocking on a
-// FIFO, checks with fstat that the open descriptor is a regular file (a file
-// swapped after the scan's Lstat is refused), and reads at most limit bytes.
-func readNote(path string, limit int64) ([]byte, error) {
+// FIFO, checks with fstat that the open descriptor is the regular file the
+// walk listed (a swap after the listing is refused), and reads at most limit
+// bytes.
+func readNote(path string, listed os.FileInfo, limit int64) ([]byte, error) {
 	f, err := os.OpenFile(path, os.O_RDONLY|openFlags, 0)
 	if err != nil {
 		return nil, err
@@ -24,7 +25,10 @@ func readNote(path string, limit int64) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	if !fi.Mode().IsRegular() {
+	// The open descriptor must be the very file the walk listed: a swap for
+	// a symlink (on Windows, where O_NOFOLLOW does not exist) or of an
+	// intermediate directory after the listing is refused.
+	if !fi.Mode().IsRegular() || (listed != nil && !os.SameFile(listed, fi)) {
 		return nil, errNotRegular
 	}
 	b, err := io.ReadAll(io.LimitReader(f, limit+1))

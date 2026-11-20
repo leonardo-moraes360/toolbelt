@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/spf13/cobra"
 
@@ -138,10 +140,39 @@ func vaultFail(err error) error {
 	return nil
 }
 
+// one quotes a single-line field that holds control characters (a file
+// name or title with a newline or an ANSI escape would otherwise forge
+// output lines); JSON output is escaped already.
+func one(s string) string {
+	if strings.IndexFunc(s, unicode.IsControl) >= 0 {
+		return strconv.Quote(s)
+	}
+	return s
+}
+
+// block keeps newlines and tabs of a multi-line text and drops every other
+// control character.
+func block(s string) string {
+	return strings.Map(func(r rune) rune {
+		if r != '\n' && r != '\t' && unicode.IsControl(r) {
+			return -1
+		}
+		return r
+	}, s)
+}
+
+func ones(list []string) string {
+	out := make([]string, len(list))
+	for i, s := range list {
+		out[i] = one(s)
+	}
+	return strings.Join(out, ",")
+}
+
 func printVaultList(v any) {
 	r := v.(*vault.ListResult)
 	for _, n := range r.Notes {
-		fmt.Printf("%s\t%s\t%s\t%s\t%s\t%s\n", n.Path, n.Data.Title, n.Type, strings.Join(n.Data.Tags, ","), n.Source, n.Updated)
+		fmt.Printf("%s\t%s\t%s\t%s\t%s\t%s\n", one(n.Path), one(n.Data.Title), n.Type, ones(n.Data.Tags), n.Source, n.Updated)
 	}
 }
 
@@ -154,10 +185,10 @@ func printVaultShow(v any) {
 		fmt.Printf("confidence: %g\n", *n.Confidence)
 	}
 	if len(n.Data.Tags) > 0 {
-		fmt.Printf("tags: [%s]\n", strings.Join(n.Data.Tags, ", "))
+		fmt.Printf("tags: [%s]\n", ones(n.Data.Tags))
 	}
 	if len(n.Data.Aliases) > 0 {
-		fmt.Printf("aliases: [%s]\n", strings.Join(n.Data.Aliases, ", "))
+		fmt.Printf("aliases: [%s]\n", ones(n.Data.Aliases))
 	}
 	for _, kv := range [][2]string{{"created", n.Created}, {"updated", n.Updated}} {
 		if kv[1] != "" {
@@ -165,13 +196,13 @@ func printVaultShow(v any) {
 		}
 	}
 	fmt.Println("---")
-	fmt.Println(n.Data.Body)
+	fmt.Println(block(n.Data.Body))
 }
 
 func printVaultLinks(v any) {
 	r := v.(*vault.LinksResult)
 	for _, l := range r.Links {
-		fmt.Printf("%d:%d\t%s\t%s\t%s\n", l.Line, l.Col, l.State, linkLabel(l.Data), l.To)
+		fmt.Printf("%d:%d\t%s\t%s\t%s\n", l.Line, l.Col, l.State, one(linkLabel(l.Data)), one(l.To))
 	}
 }
 
@@ -186,14 +217,14 @@ func linkLabel(d vault.LinkData) string {
 func printVaultBacklinks(v any) {
 	r := v.(*vault.BacklinksResult)
 	for _, b := range r.Backlinks {
-		fmt.Printf("%s\t%s:%d:%d\n", b.Path, b.File, b.Line, b.Col)
+		fmt.Printf("%s\t%s:%d:%d\n", one(b.Path), one(b.File), b.Line, b.Col)
 	}
 }
 
 func printVaultCheck(v any) {
 	r := v.(*vault.CheckResult)
 	for _, is := range r.Issues {
-		loc := is.File
+		loc := one(is.File)
 		if is.Line > 0 {
 			loc = fmt.Sprintf("%s:%d", loc, is.Line)
 			if is.Col > 0 {
@@ -202,7 +233,7 @@ func printVaultCheck(v any) {
 		}
 		detail := ""
 		if is.Data != nil {
-			detail = strings.TrimSpace(is.Data.Target + " " + is.Data.Detail)
+			detail = one(strings.TrimSpace(is.Data.Target + " " + is.Data.Detail))
 		}
 		fmt.Printf("%s: %s %s %s\n", loc, is.Level, is.Code, detail)
 	}
