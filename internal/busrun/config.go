@@ -232,10 +232,7 @@ func (c *Config) validateCommon() error {
 	if err := absPaths("secret_files", c.SecretFiles); err != nil {
 		return err
 	}
-	if err := absPaths("sandbox", append(append([]string{}, c.Sandbox.Read...), c.Sandbox.Write...)); err != nil {
-		return err
-	}
-	return nil
+	return absPaths("sandbox", append(append([]string{}, c.Sandbox.Read...), c.Sandbox.Write...))
 }
 
 // foreignBlocks refuses mixing notify with another adapter's block: a

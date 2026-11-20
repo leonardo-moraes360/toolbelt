@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -274,7 +275,7 @@ func TestBusGUIOnboardingBusAs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(before) != string(after) {
+	if !bytes.Equal(before, after) {
 		t.Fatal("the CLI session token changed")
 	}
 	c.must("tb_bus_recv", map[string]any{})

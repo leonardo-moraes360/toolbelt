@@ -217,7 +217,7 @@ func inspect(t target, self string) []MCPConfig {
 
 // safeRead never follows a symlink, never opens a non-regular file (a FIFO
 // would block) and never reads more than maxConfigBytes.
-func safeRead(path string) ([]byte, string) {
+func safeRead(path string) (raw []byte, kind string) {
 	st, err := os.Lstat(path)
 	switch {
 	case errors.Is(err, fs.ErrNotExist):
@@ -239,7 +239,7 @@ func safeRead(path string) ([]byte, string) {
 	if fst, err := f.Stat(); err != nil || !fst.Mode().IsRegular() {
 		return nil, KindOther
 	}
-	raw, err := io.ReadAll(io.LimitReader(f, maxConfigBytes+1))
+	raw, err = io.ReadAll(io.LimitReader(f, maxConfigBytes+1))
 	if err != nil {
 		return nil, KindOther
 	}
