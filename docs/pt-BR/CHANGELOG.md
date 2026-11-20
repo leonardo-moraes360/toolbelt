@@ -10,6 +10,7 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 ## [Não Lançado]
 
 ### Adicionado
+- `tb vault list|show|links|backlinks|check` e a op `vault` do `tb stack` (fatia 2 da Fase A do vault, só leitura): raiz e config lidas de `<raiz>/.toolbelt/config.yaml`; varredura segura (sem seguir symlinks, diretórios com ponto pulados, FIFOs nunca abertos, `O_NOFOLLOW|O_NONBLOCK` + `fstat`, `vault.max_note_bytes`); frontmatter tipado com número de linha; resolução de wikilinks do Obsidian com caminho parcial, anexos e `ambiguous_link` como erro; texto das notas dentro de objetos `data` e redigido; saída determinística. Chaves novas `vault.max_note_bytes`, `vault.types`, `vault.graph` com `VaultConfig.Validate`
 - `internal/mdparse` (fatia 1 da Fase A do vault): parser Markdown folha com `Slugify`, `Headings` ATX cientes de cerca e de frontmatter, `SplitFrontmatter`, `Wikilinks` do Obsidian (rótulos, `\|` em tabela, fragmentos, embeds, fora de código inline) e `NormalizeForSearch`; ainda sem comando para o usuário
 
 ### Alterado

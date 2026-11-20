@@ -83,7 +83,8 @@ tb  (implemented today)
 ├── mem          Invariants (add|list|show|edit|retire|search|check|init)
 ├── review       Fresh-context review (Elephant-Goldfish)
 ├── sandbox      Execution with Landlock isolation (check|run)
-├── stack        Stacks verification operations (verify/review/drift/guard), not branches
+├── stack        Stacks verification operations (verify/review/drift/guard/vault/egm), not branches
+├── vault        Markdown vault of notes (list|show|links|backlinks|check)
 ├── verify       Adversarial verification (run; rulers tests|visual)
 ├── workspace    Isolated workspaces via git worktree (create|list|remove; alias: ws)
 ├── version      Shows the toolbelt version (also: tb --version)
@@ -436,14 +437,9 @@ Subcommands:
   search    Searches invariants
   check     Checks the integrity of the invariants file
   init      Creates default anti-cheat invariants
-
-Subcommands (planned — Markdown vault):
-  link      Creates a link between entries
-  tag       Manages tags
-  export    Exports memory
-  import    Imports memory
-  sync      Syncs vault → SQLite
 ```
+
+Notas que não são invariantes ficam no vault Markdown: ver [`tb vault`](#tb-vault--vault-markdown-fase-a). As invariantes nunca são espelhadas lá ([ADR-016](adr/016-vault-fase-a.md)).
 
 Subcomando desconhecido (`tb mem foo`) sai com código ≠ 0 e mensagem `unknown command`.
 
@@ -534,7 +530,7 @@ tb mem init --json
 
 ### `tb md` — TUI Markdown (planejado — Fase 3+)
 
-> **Não implementado.** A CLI atual não expõe `tb md`.
+> **Não implementado, e fora da Fase A do vault** ([ADR-016](adr/016-vault-fase-a.md)): qualquer editor, inclusive o Obsidian, edita o vault; ver [`tb vault`](#tb-vault--vault-markdown-fase-a).
 
 Interface TUI para navegar e editar o vault.
 
@@ -1052,6 +1048,28 @@ tb egm review docs/specs/x.md --restart   # novo ciclo depois do teto (exige edi
 - **Exit 2** para erros de uso e recusas: `state_exists`, `no_state`, `no_change`, `locked`, `invalid_transition`, `contest_refused`, `restart_needs_change`, `budget`, `owner_unavailable`, `auth_expired`, `forbidden_flag`, `env_forbidden`, `no_repository`, `hostile_git_dir`.
 
 ---
+
+### `tb vault` — Vault Markdown (Fase A)
+
+Notas de conhecimento do projeto que não são invariantes (fatos, decisões, contexto, registros), como arquivos Markdown com frontmatter YAML opcional e `[[wikilinks]]` em `vault.path` (default `.toolbelt/vault/`), editáveis no Obsidian ou em qualquer editor ([spec](specs/vault.md), [ADR-016](adr/016-vault-fase-a.md)). Os arquivos são o único armazenamento: todo comando varre o vault do disco.
+
+```bash
+tb vault list [--type T] [--tag t] [--source manual|extracted|inferred]
+tb vault show <nota>          # frontmatter normalizado + corpo; --json acrescenta links e backlinks
+tb vault links <nota>         # wikilinks de saída com estado
+tb vault backlinks <nota>     # notas que apontam para <nota>
+tb vault check                # exit 1 com erros; avisos mantêm exit 0
+```
+
+- **Raiz e config:** a raiz é o pai do `.toolbelt/` encontrado a partir do diretório atual, e a config é lida de `<raiz>/.toolbelt/config.yaml` (`vault.path`, `vault.max_note_bytes` default 256 KiB, `vault.types` default `fact, decision, context, log`). O `vault.path` precisa resolver dentro do repositório (`vault_path_outside_repo`, exit 2); vault inexistente é `vault_not_found` (exit 1).
+- **Varredura:** symlinks nunca são seguidos, diretórios que começam com `.` (`.obsidian/`, `.trash/`) são pulados, FIFOs e outros arquivos não regulares viram avisos `not_regular` e nunca são abertos; a leitura usa `O_NOFOLLOW|O_NONBLOCK` mais uma checagem com `fstat`.
+- **Frontmatter:** `title`, `type`, `tags`, `aliases`, `source` (default `manual`), `confidence` (obrigatório com `source: inferred`), `created`, `updated`; campos desconhecidos são mantidos e ignorados.
+- **Wikilinks:** `[[nota]]`, `[[pasta/nota]]` (também caminho parcial, como no Obsidian), `[[nota#heading]]`, `[[nota|rótulo]]`, `![[embed]]`. O casamento ignora maiúsculas. Duas notas com o mesmo nome são `ambiguous_link` (erro, onde o Obsidian escolhe o caminho mais curto); aliases não resolvem links. Um alvo sem nota correspondente é anexo quando um anexo casa com ele ou a extensão tem 1–8 letras/dígitos (`pic.png`, não `Dr. Smith`): encontrado é `attachment`, ausente é aviso `missing_attachment`, vários são aviso `ambiguous_attachment`. Notas grandes demais ou ilegíveis continuam resolvendo como alvo de link.
+- **`<nota>`** em `show`/`links`/`backlinks` é um caminho de nota (com ou sem `.md`) ou um link (`a`, `[[a]]`, `a#heading`, `[[a|rótulo]]`).
+- **Check:** erros `bad_frontmatter`, `missing_confidence`, `note_too_large`, `broken_link`, `ambiguous_link`; avisos `not_regular`, `unreadable`, `bad_tag`, `unused_confidence`, `broken_fragment`, `missing_attachment`, `ambiguous_attachment`. A saída em texto põe entre aspas nomes de arquivo e títulos com caracteres de controle.
+- **Saída:** com `--json`, o texto das notas (título, tags, aliases, corpo, alvos de link) fica dentro de objetos `data`, e toda saída é redigida (GitHub, AWS, Slack, `Bearer`, PEM, `*_TOKEN=`, `sk-`, `password:`/`secret=`). Mesmas notas, mesmos bytes.
+- **Stack:** `tb stack vault` roda o `check` como op paralela, só de leitura.
+- Ainda não: `tb vault new`, `search`, as tools MCP, versionar o vault pelo `tb init` e a integração com o grafo (próximas fatias da spec).
 
 ### `tb verify` — Verificação Adversarial (✓ Fase 1/2)
 
