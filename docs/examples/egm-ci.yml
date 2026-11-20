@@ -1,0 +1,78 @@
+# Example workflow: the EGM gate in CI (docs/egm-ci.md, docs/specs/egm-trust.md T-R7).
+#
+# Copy to .github/workflows/egm.yml. The check only means something with the
+# repository settings of docs/egm-ci.md: a required status check, branch
+# protection with "include administrators", and CODEOWNERS on
+# /.github/CODEOWNERS, /.github/workflows/** and /.toolbelt/config.yaml.
+#
+# Secrets: ANTHROPIC_API_KEY (the reviewers' credential). A PR from a fork
+# gets no secrets: the gate then reports ci_offline and fails.
+name: egm
+
+on:
+  # No paths filter: a required check filtered out by paths stays pending.
+  # A PR without gated documents passes with a no_gated_docs warning.
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  egm:
+    runs-on: ubuntu-24.04 # Linux with Landlock: the reviewers run in a sandbox
+    # Until the flakiness of a fresh round is measured (spec, Open Questions).
+    continue-on-error: true
+    timeout-minutes: 30
+    env:
+      # First release with --egm-mode ci; TB_SHA256 is its line in checksums.txt.
+      TB_VERSION: "0.0.7"
+      TB_SHA256: "<sha256 of toolbelt_0.0.7_linux_amd64.tar.gz>"
+      CLAUDE_CODE_VERSION: "2.1.326"
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # The PR head, not the merge commit: a base-side change to a source
+          # would make every receipt stale.
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0 # merge-base(base, head) needs both histories
+          persist-credentials: false
+
+      - name: Install a pinned tb
+        run: |
+          asset="toolbelt_${TB_VERSION}_linux_amd64.tar.gz"
+          curl -fsSLo "$RUNNER_TEMP/$asset" \
+            "https://github.com/leonardo-moraes360/toolbelt/releases/download/v${TB_VERSION}/${asset}"
+          echo "${TB_SHA256}  $RUNNER_TEMP/$asset" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/bin"
+          tar -xzf "$RUNNER_TEMP/$asset" -C "$RUNNER_TEMP/bin" tb
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+
+      - name: Install a pinned claude
+        run: npm install -g --ignore-scripts "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}"
+
+      # CI's own user config (T-R5): defined here, never read from the
+      # repository. The repository's .toolbelt/config.yaml can only tighten it.
+      # claude from npm is a node script: the goldfish PATH and the sandbox's
+      # read-only rules must include node's install prefix (R4).
+      - name: Write the egm config
+        run: |
+          node_dir="$(dirname "$(readlink -f "$(command -v node)")")"
+          cat > "$RUNNER_TEMP/egm.yaml" <<EOF
+          egm:
+            agent_cmd: ["$(command -v claude)"]
+            path: "${node_dir}:/usr/bin:/bin"
+            home:
+              read_only: ["$(dirname "$node_dir")"]
+            env:
+              pass: [ANTHROPIC_API_KEY]
+          EOF
+
+      - name: tb stack egm --egm-mode ci
+        shell: bash # -eo pipefail: tee must not hide the gate's exit code
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          tb stack egm --egm-mode ci -c "$RUNNER_TEMP/egm.yaml" \
+            --base "$BASE_SHA" --head "$HEAD_SHA" | tee "$RUNNER_TEMP/egm.json"

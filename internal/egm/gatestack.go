@@ -65,6 +65,10 @@ func Gate(ctx context.Context, o *GateOptions) (*GateResult, error) {
 		return nil, err
 	}
 	ci := o.Mode == GateModeCI
+	// ci implies --strict for each document's verdict; an empty selection
+	// only fails with an explicit --strict, so the gate can be a required
+	// check on PRs that touch no gated document.
+	emptyStrict := o.Strict
 	if ci {
 		c := *o
 		c.Strict = true
@@ -87,7 +91,7 @@ func Gate(ctx context.Context, o *GateOptions) (*GateResult, error) {
 	}
 	switch {
 	case len(docs) == 0:
-		return res, emptySelection(ctx, repo, head, sel.set.GateDocGlobs, o.Strict, res)
+		return res, emptySelection(ctx, repo, head, sel.set.GateDocGlobs, emptyStrict, res)
 	case ci:
 		return res, gateCI(ctx, repo, head, sel.set, o, docs, res)
 	}

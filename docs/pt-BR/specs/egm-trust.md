@@ -2,7 +2,7 @@
 
 # Spec: EGM trust, Fase A.2 (CI como fronteira de confiança)
 
-Autor: toolbelt · Status: Rascunho, rodada 2 (reescrito depois da Fase A, com uma revisão em contexto novo aplicada); fatias 1 (recibo) e 2 (modo CI) de implementação feitas · Data: 2026-11-19 · Decisão: [ADR-015](../adr/015-egm-nativo.md) · Depende de: [núcleo](egm-nativo.md) (Fase A, implementada)
+Autor: toolbelt · Status: Rascunho, rodada 2 (reescrito depois da Fase A, com uma revisão em contexto novo aplicada); fatias 1 (recibo), 2 (modo CI) e 3 (workflow de exemplo e guia) de implementação feitas; a medição de instabilidade está pendente · Data: 2026-11-19 · Decisão: [ADR-015](../adr/015-egm-nativo.md) · Depende de: [núcleo](egm-nativo.md) (Fase A, implementada)
 
 ## Visão geral
 
@@ -57,7 +57,7 @@ A Fase A deixa três lacunas:
   `.toolbelt/**` já fica fora das fontes (R7 do núcleo), então um recibo nunca muda o conteúdo revisado.
 
   Um recibo é uma alegação, não uma prova. O CI não confia em nenhum campo sem conferir (T-R2).
-- **T-R2 (modo CI).** O `tb stack` ganha a flag `--egm-mode local|ci` (padrão `local`). O schema da `tb_stack` (`internal/registry/parity.go`) ganha `egm_mode`. O modo `ci` implica `--strict`, exige `-c` e roda a rodada nova com `--engine llm` (R12). Sem `-c`, falha com exit 2.
+- **T-R2 (modo CI).** O `tb stack` ganha a flag `--egm-mode local|ci` (padrão `local`). O schema da `tb_stack` (`internal/registry/parity.go`) ganha `egm_mode`. O modo `ci` implica `--strict` no veredito de cada documento, exige `-c` e roda a rodada nova com `--engine llm` (R12). Sem `-c`, falha com exit 2. Uma seleção vazia continua só avisando (`no_gated_docs`), a menos que `--strict` seja passado explicitamente, para que o gate possa ser um check obrigatório em PRs que não tocam documento sob gate.
   - **Seleção:** a do R33, sobre `merge-base(--base, --head)..--head`.
   - **Ordem das verificações:** cada documento selecionado é verificado na ordem abaixo, e a primeira falha decide o resultado:
     1. **Recibo presente e válido.** O blob do recibo existe em `--head` e é lido sem erro. Toda alegação tem `lines` dentro do documento. Senão, o resultado é `no_receipt` ou `receipt_invalid`, com `ok: false`.
@@ -76,12 +76,12 @@ A Fase A deixa três lacunas:
 - **T-R4 (CI sem credencial).** Quando não há credencial, o resultado é `ci_offline` e `ok: false`: uma variável do `egm.env.pass` está vazia (um PR de fork sem secrets), ou a credencial do claude não serve (`auth_expired`). Qualquer outro motivo para a engine `llm` não rodar (sem `egm.agent_cmd`, sem Landlock) é CI mal configurado e um erro (exit 2), nunca offline. A flag `--egm-allow-offline` troca isso por uma rodada só determinística, com teto `PASS_PARTIAL` e `warn`. A flag serve para workflows que aceitam esse teto.
 - **T-R5 (settings do CI).** A config de usuário vem de `-c <arquivo>`. O workflow escreve esse arquivo a partir da própria definição, e o `stack.Options` o repassa ao op `egm` (hoje o op não o recebe).
   - Chaves só de usuário continuam valendo só a partir desse arquivo (R34). O `.toolbelt/config.yaml` do repositório continua podendo só apertar.
-  - A credencial chega ao revisor por `egm.env.pass`, por exemplo `ANTHROPIC_API_KEY` de um secret do CI. É a primeira preferência de autenticação do spike.
+  - A credencial chega ao revisor por `egm.env.pass`, por exemplo `ANTHROPIC_API_KEY` de um secret do CI. É a primeira preferência de autenticação do spike: com `ANTHROPIC_API_KEY` ou `CLAUDE_CODE_OAUTH_TOKEN` no `egm.env.pass` e preenchida, o perfil `claude` não verifica nem copia arquivo de credencial.
 - **T-R6 (custo).** `egm.ci.max_docs` (padrão 5) entra nas chaves de limite do R34, que o repositório só pode baixar.
   - **Acima do teto:** o resultado é `ci_budget` e `ok: false`, nunca um pulo silencioso.
   - **Custo por documento:** uma rodada (uma execução de agente por revisor obrigatório), mais no máximo uma rodada do árbitro por casamento com `arbiter_withdrawn`.
   - **Orçamento:** como o estado do CI é novo, o `max_agent_runs` por ciclo do núcleo (R27) limita o passo inteiro.
-- **T-R7 (proteção do repositório, documentada).** `docs/examples/egm-ci.yml` traz um workflow que:
+- **T-R7 (proteção do repositório, documentada).** [`docs/egm-ci.md`](../egm-ci.md) é o guia. `docs/examples/egm-ci.yml` traz um workflow que:
   - roda em `pull_request`;
   - instala uma release fixada do tb e confere com `sha256sum -c`;
   - escreve a config do CI em `$RUNNER_TEMP`;

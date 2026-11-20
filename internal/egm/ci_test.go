@@ -179,3 +179,22 @@ func TestCIRenameInsideGate(t *testing.T) {
 		t.Fatalf("rename inside the gate: %+v", r.Warnings)
 	}
 }
+
+// TestCIEmptySelection: ci implies --strict per document, but a range with
+// no gated document only warns, so the gate can be a required check.
+func TestCIEmptySelection(t *testing.T) {
+	f, ctx := convergedAtHead(t)
+	writeFile(t, f.cfg, "egm:\n  clean_rounds: 1\n  env: {pass: [TB_EGM_TEST_KEY]}\n")
+	t.Setenv("TB_EGM_TEST_KEY", "")
+	writeFile(t, filepath.Join(f.root, "internal", "other.go"), "package internal\n")
+	gitT(t, f.root, "add", ".")
+	gitT(t, f.root, "commit", "-qm", "code only")
+	r := f.ciGate(ctx, "HEAD~1", false)
+	if !r.OK || !r.Warn || !hasGateWarning(r, "no_gated_docs") {
+		t.Fatalf("empty: %+v", r)
+	}
+	r, err := Gate(ctx, &GateOptions{RepoDir: f.root, Base: "HEAD~1", Head: "HEAD", ConfigFile: f.cfg, Mode: GateModeCI, Strict: true})
+	if err != nil || r.OK {
+		t.Fatalf("empty with --strict: %+v %v", r, err)
+	}
+}

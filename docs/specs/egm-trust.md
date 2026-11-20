@@ -2,7 +2,7 @@
 
 # Spec: EGM trust, Phase A.2 (CI as the trust boundary)
 
-Author: toolbelt · Status: Draft, round 2 (rewritten after Phase A, one fresh-context review applied); implementation slices 1 (receipt) and 2 (CI mode) done · Date: 2026-11-19 · Decision: [ADR-015](../adr/015-egm-nativo.md) · Depends on: [core](egm-nativo.md) (Phase A, implemented)
+Author: toolbelt · Status: Draft, round 2 (rewritten after Phase A, one fresh-context review applied); implementation slices 1 (receipt), 2 (CI mode) and 3 (example workflow and guide) done; the flakiness measurement is pending · Date: 2026-11-19 · Decision: [ADR-015](../adr/015-egm-nativo.md) · Depends on: [core](egm-nativo.md) (Phase A, implemented)
 
 ## Overview
 
@@ -57,7 +57,7 @@ Phase A leaves three gaps:
   `.toolbelt/**` is already excluded from sources (core R7), so a receipt never changes the reviewed content.
 
   A receipt is a claim, not a proof. CI trusts no field without checking it (T-R2).
-- **T-R2 (CI mode).** `tb stack` gains the `--egm-mode local|ci` flag (default `local`). The `tb_stack` schema (`internal/registry/parity.go`) gains `egm_mode`. The `ci` mode implies `--strict`, requires `-c`, and runs the fresh round with `--engine llm` (R12). Without `-c`, it fails with exit 2.
+- **T-R2 (CI mode).** `tb stack` gains the `--egm-mode local|ci` flag (default `local`). The `tb_stack` schema (`internal/registry/parity.go`) gains `egm_mode`. The `ci` mode implies `--strict` for each document's verdict, requires `-c`, and runs the fresh round with `--engine llm` (R12). Without `-c`, it fails with exit 2. An empty selection still only warns (`no_gated_docs`) unless `--strict` is passed explicitly, so the gate can be a required check on PRs that touch no gated document.
   - **Selection:** R33's, over `merge-base(--base, --head)..--head`.
   - **Order of checks:** each selected document is checked in the order below, and the first failure decides its result:
     1. **Receipt present and valid.** The receipt blob exists at `--head` and parses. Every claim has `lines` inside the document. Otherwise the result is `no_receipt` or `receipt_invalid`, with `ok: false`.
@@ -76,12 +76,12 @@ Phase A leaves three gaps:
 - **T-R4 (CI without a credential).** When there is no credential, the result is `ci_offline` and `ok: false`: a variable of `egm.env.pass` is unset (a PR from a fork without secrets), or the claude credential is unusable (`auth_expired`). Any other reason the `llm` engine cannot run (no `egm.agent_cmd`, no Landlock) is a broken CI setup and an error (exit 2), never offline. The `--egm-allow-offline` flag turns this into a deterministic-only round capped at `PASS_PARTIAL` with `warn`. The flag is meant for workflows that accept that ceiling.
 - **T-R5 (CI settings).** The user config comes from `-c <file>`. The workflow writes that file from its own definition, and `stack.Options` passes it to the `egm` op (today the op does not receive it).
   - Repository-only keys still only count from that file (R34). The repository's `.toolbelt/config.yaml` can still only tighten.
-  - The credential reaches the reviewer through `egm.env.pass`, for example `ANTHROPIC_API_KEY` from a CI secret. This is the spike's first auth preference.
+  - The credential reaches the reviewer through `egm.env.pass`, for example `ANTHROPIC_API_KEY` from a CI secret. This is the spike's first auth preference: with `ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN` in `egm.env.pass` and set, the `claude` profile checks and copies no credential file.
 - **T-R6 (cost).** `egm.ci.max_docs` (default 5) joins R34's limit keys, which the repository can only lower.
   - **Over the cap:** the result is `ci_budget` and `ok: false`, never a silent skip.
   - **Cost per document:** one round (one agent run per required reviewer), plus at most one arbiter run per `arbiter_withdrawn` match.
   - **Budget:** since the CI state is fresh, the core per-cycle `max_agent_runs` (R27) bounds the whole step.
-- **T-R7 (repository protection, documented).** `docs/examples/egm-ci.yml` ships a workflow that:
+- **T-R7 (repository protection, documented).** [`docs/egm-ci.md`](../egm-ci.md) is the guide. `docs/examples/egm-ci.yml` ships a workflow that:
   - runs on `pull_request`;
   - installs a pinned tb release and checks it with `sha256sum -c`;
   - writes the CI config to `$RUNNER_TEMP`;

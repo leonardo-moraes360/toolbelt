@@ -214,3 +214,18 @@ func installClaudeCredential(credPath, home string) error {
 	}
 	return os.WriteFile(filepath.Join(dir, ".credentials.json"), out, 0o600)
 }
+
+// claudeAuthVars are the variables claude reads for an API key or a
+// long-lived token instead of a credential file.
+var claudeAuthVars = []string{"ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN"}
+
+// claudeAPIKey reports whether egm.env.pass hands claude a non-empty API key
+// or token.
+func claudeAPIKey(pass []string) bool {
+	for _, k := range claudeAuthVars {
+		if containsStr(pass, k) && os.Getenv(k) != "" {
+			return true
+		}
+	}
+	return false
+}
