@@ -248,7 +248,7 @@ tb bus recv --channel feature-x --as grok-1 --wait 20s
 - [ ] Índice vetorial opcional
 - [x] Graphify: reimplementação própria ([ADR-014](adr/014-graphify-reimplementacao.md)) — `tb graph explain`/`path`
 - [x] `tb graph search` com ranking BM25 (título/path/pacote, quebra de camelCase/`snake_case`, multi-termo)
-- [ ] Vault Markdown compatível com Obsidian (`tb vault`, Fase A) — spec em rascunho ([docs/pt-BR/specs/vault.md](specs/vault.md)), sem código
+- [x] Vault Markdown compatível com Obsidian, Fase A (`tb vault`, [ADR-016](adr/016-vault-fase-a.md), [spec](specs/vault.md)): notas com frontmatter e wikilinks, `new`/`list`/`show`/`search`/`links`/`backlinks`/`check`, tools MCP, `tb stack vault`, nós no grafo; Q4 (fixture dourada conferida no Obsidian real) aberta
 - [x] Reimplementação do Elephant-Goldfish Model, Fase A (`tb egm`, [ADR-015](adr/015-egm-nativo.md) aceito): spike R0; engines determinística e `llm`, árbitro, gate no `tb stack` (`status --at`) e tools MCP
 - [ ] Próximas fases do `tb egm`: CI como fronteira de confiança contra fraude ativa (Fase A.2, [spec em rascunho](specs/egm-trust.md)), `drift-report` e `bootstrap` (Fase B); item 8 do R0 aberto
 - [ ] Componentes opcionais em Rust para inferência local

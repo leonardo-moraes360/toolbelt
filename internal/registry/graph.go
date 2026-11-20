@@ -73,7 +73,7 @@ func RegisterGraphTools() {
 		InputSchema: &InputSchema{
 			Type: "object",
 			Properties: map[string]Property{
-				"node":  {Type: "string", Description: "ID, title, function, or file"},
+				"node":  {Type: "string", Description: "ID (file:, section:, note:, tag:...), title, function, or file"},
 				"limit": {Type: "integer", Description: "Maximum nodes explained", Default: graph.DefaultExplainLimit},
 			},
 			Required: []string{"node"},

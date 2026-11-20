@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -36,8 +37,8 @@ func TestDefaultConfig(t *testing.T) {
 	if len(cfg.Graph.Languages) < 12 {
 		t.Errorf("expected default graph languages, got %v", cfg.Graph.Languages)
 	}
-	if len(cfg.Graph.Docs) != 3 {
-		t.Errorf("expected markdown/html/txt docs, got %v", cfg.Graph.Docs)
+	if strings.Join(cfg.Graph.Docs, ",") != "markdown,vault,html,txt" {
+		t.Errorf("expected markdown/vault/html/txt docs, got %v", cfg.Graph.Docs)
 	}
 	if len(cfg.Graph.Frameworks) < 7 {
 		t.Errorf("expected default frameworks, got %v", cfg.Graph.Frameworks)

@@ -28,6 +28,9 @@ type BuildOptions struct {
 	Frameworks   []string
 	MaxFileBytes int64
 	SkipDirs     []string
+
+	// vault is the vault resolved for one build (R20); nil without one.
+	vault *vaultState
 }
 
 func DefaultBuildOptions() BuildOptions {
@@ -36,7 +39,7 @@ func DefaultBuildOptions() BuildOptions {
 			"go", "javascript", "python", "java", "kotlin", "csharp",
 			"cpp", "rust", "php", "ruby", "swift", "shell",
 		},
-		Docs: []string{"markdown", "html", "txt"},
+		Docs: []string{"markdown", "vault", "html", "txt"},
 		Frameworks: []string{
 			"react", "vue", "svelte", "astro", "angular", "routes", "mdx",
 		},
@@ -149,12 +152,16 @@ func BuildFromRootOpts(root string, opts *BuildOptions) (*Index, error) {
 	for _, d := range opts.SkipDirs {
 		skip[d] = true
 	}
+	opts.vault = resolveVault(abs, opts)
 
 	err = filepath.Walk(abs, func(path string, info os.FileInfo, err error) error {
 		return walkSourceFile(abs, path, info, err, nodes, &edges, opts, skip)
 	})
 	if err != nil {
 		return nil, err
+	}
+	if vs := opts.vault; vs != nil && vs.index {
+		indexVault(vs.v, nodes, &edges)
 	}
 
 	edges = resolveSoftMentions(nodes, edges)
@@ -191,7 +198,7 @@ func walkSourceFile(
 		return err
 	}
 	if info.IsDir() {
-		if path != root && skipDirs[info.Name()] {
+		if path != root && (skipDirs[info.Name()] || opts.vault.skipDir(root, path, info)) {
 			return filepath.SkipDir
 		}
 		return nil
@@ -199,11 +206,11 @@ func walkSourceFile(
 	if info.Size() > opts.MaxFileBytes {
 		return nil
 	}
+	rel, _ := filepath.Rel(root, path)
 	idxs := indexersFor(path, opts)
 	if len(idxs) == 0 {
 		return nil
 	}
-	rel, _ := filepath.Rel(root, path)
 	for _, lang := range idxs {
 		fileNodes, fileEdges, err := lang.IndexFile(root, rel)
 		if err != nil {

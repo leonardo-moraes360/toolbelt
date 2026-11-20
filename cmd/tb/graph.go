@@ -18,7 +18,12 @@ var graphCmd = &cobra.Command{
 	Long: `Queries and indexes the code graph on demand.
 
 Disabled by default. Enable with TB_GRAPH=on (or --enable) to
-measure ROI via A/B (bench/ab/graph-on.yaml vs graph-off.yaml).`,
+measure ROI via A/B (bench/ab/graph-on.yaml vs graph-off.yaml).
+
+Vault notes (tb vault) become note:<path> nodes with their headings as
+sections, resolved wikilinks as links edges and tags as tag:<tag> nodes;
+the vault is read without following symlinks, and vault.graph: false
+keeps it out.`,
 }
 
 var graphEnable bool

@@ -267,7 +267,7 @@ func DefaultConfig() *Config {
 				"go", "javascript", "python", "java", "kotlin", "csharp",
 				"cpp", "rust", "php", "ruby", "swift", "shell",
 			},
-			Docs: []string{"markdown", "html", "txt"},
+			Docs: []string{"markdown", "vault", "html", "txt"},
 			Frameworks: []string{
 				"react", "vue", "svelte", "astro", "angular", "routes", "mdx",
 			},
