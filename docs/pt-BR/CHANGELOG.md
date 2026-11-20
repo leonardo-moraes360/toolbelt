@@ -9,6 +9,9 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Não Lançado]
 
+### Alterado
+- Spec em rascunho do B4 do barramento (`docs/bus-router.md`): slots do barramento `b1..bN` no router que mandam assigns `router-task/0.1` em threads únicas por execução, aceitam só claims válidos de workers, leem resultados da tabela de claims e fazem eles mesmos o commit do worktree depois de checar HEAD, branch e pai; novas operações do barramento `Claim`, `Message` e `Revoke`; um modo `router_tasks` do harness que confina o agente ao worktree do ticket; `trust: unconfined` como opt-in explícito
+
 ### Adicionado
 - Restante do B3 do barramento (`docs/bus-notify-discover.md`): o adapter de wake `notify` para agentes só de GUI (`desktop` via `notify-send` do root ou `osascript`, `terminal` no próprio processo; texto fixo em inglês só com contagens, tipos e nomes de remetente entre aspas; ambiente mínimo no filho; `urgent_urgency`; aviso `wake_mismatch`; campo `backend` na auditoria) e o `tb bus discover` (CLIs de agente conhecidas no `PATH` e configs de cliente MCP que rodam `tb mcp`, lidas com segurança; não executa nada). O packet de wake ganha as contagens `types` e `senders`
 

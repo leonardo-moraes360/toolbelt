@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Bus B4 draft spec (`docs/bus-router.md`): router bus slots `b1..bN` that send `router-task/0.1` assigns on unique per-run threads, accept only valid worker claims, read results from the claims table, and commit the worktree themselves after HEAD/branch/parent checks; new bus operations `Claim`, `Message` and `Revoke`; a harness `router_tasks` mode that confines the agent to the ticket worktree; `trust: unconfined` as an explicit opt-in
+
 ### Added
 - Bus B3 remainder (`docs/bus-notify-discover.md`): the `notify` wake adapter for GUI-only agents (`desktop` via a root-owned `notify-send` or `osascript`, `terminal` in-process; fixed English text with counts, types and quoted sender names only; minimal child env; `urgent_urgency`; `wake_mismatch` warning; audit `backend` field) and `tb bus discover` (known agent CLIs on `PATH` and MCP client configs running `tb mcp`, read safely; executes nothing). The wake packet gains `types` and `senders` counts
 
