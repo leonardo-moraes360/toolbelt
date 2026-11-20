@@ -3,6 +3,7 @@ package busrun
 import (
 	"bufio"
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -12,6 +13,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/leonardo-moraes360/toolbelt/internal/bus"
 	"github.com/leonardo-moraes360/toolbelt/internal/execenv"
@@ -83,9 +85,10 @@ type childSpec struct {
 	stdin      []byte
 	env        []string
 	workdir    string
-	extraBins  []string // binaries besides argv[0] the child runs (tb mcp)
-	extraRead  []string // read-only
-	extraWrite []string // writable
+	extraBins  []string      // binaries besides argv[0] the child runs (tb mcp)
+	extraRead  []string      // read-only
+	extraWrite []string      // writable
+	timeout    time.Duration // 0 = the config's timeout
 }
 
 // runChild resolves argv[0] on PATH because the sandbox needs the real path
@@ -101,7 +104,7 @@ func runChild(ctx context.Context, h *Harness, c *childSpec) (Outcome, error) {
 	cfg := sandbox.Config{
 		WorkDir:          c.workdir,
 		AllowedPaths:     sandboxPaths(h.cfg, append([]string{bin}, c.extraBins...), c.extraRead, c.extraWrite),
-		Timeout:          h.cfg.Timeout,
+		Timeout:          cmp.Or(c.timeout, h.cfg.Timeout),
 		AllowUnsandboxed: h.opts.AllowUnsandboxed,
 		Env:              c.env,
 		ProcessGroup:     true,

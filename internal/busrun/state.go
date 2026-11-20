@@ -33,6 +33,9 @@ type State struct {
 	// the config, it wins over the saved session.
 	ConfigSession string      `json:"config_session,omitempty"`
 	Wakes         []time.Time `json:"wakes,omitempty"`
+	// TaskSeq: with router_tasks, the last assign seq the harness handled or
+	// skipped; its own cursor, so a restart never handles a task twice.
+	TaskSeq int64 `json:"task_seq,omitempty"`
 }
 
 func loadState(path string) (State, error) {

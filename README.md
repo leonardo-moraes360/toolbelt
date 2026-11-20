@@ -260,7 +260,7 @@ tb bus recv --channel feature-x --as grok-1 --wait 20s
 - [x] B1 — SQLite store, CLI + MCP, single-use invite, `join`/`send`/`recv`/`claim`/`complete`/`log`
 - [x] B2 — lease, heartbeat and watchdog on the bus ([spec](docs/bus-lease.md))
 - [x] B3 — `tb bus run` with `exec`, `harness` and `notify` adapters and `tb bus discover` ([docs/bus-harness.md](docs/bus-harness.md), [docs/bus-notify-discover.md](docs/bus-notify-discover.md))
-- [ ] B4 — Phase 3 router/board on top of the bus ([draft spec](docs/bus-router.md))
+- [ ] B4 — Phase 3 router/board on top of the bus ([spec](docs/bus-router.md)): B4a (bus operations and harness `router_tasks`) done; B4b (router bus slots) pending
 
 ## 🤝 Contributing
 

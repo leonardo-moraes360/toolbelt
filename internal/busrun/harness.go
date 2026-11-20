@@ -29,6 +29,10 @@ type Options struct {
 	Adapter          Adapter       // tests: overrides the config's adapter
 	// HeartbeatEvery overrides the channel's heartbeat interval (tests).
 	HeartbeatEvery time.Duration
+	// TaskPoll is how often a router task's claim is checked (default 1s).
+	TaskPoll time.Duration
+	// unconfinedTasks lets package tests run router tasks without Landlock.
+	unconfinedTasks bool
 }
 
 type Harness struct {
@@ -57,6 +61,7 @@ type Harness struct {
 	auditMu sync.Mutex        // the heartbeat goroutine audits too
 	lost    map[string]string // thread -> new owner of the lease_lost already audited
 	hbErr   string            // last heartbeat error audited, to log each change once
+	canon   string            // canonical root (symlinks resolved), for router-task checks
 }
 
 // With the channel expired and the store quiet, recheck only at this interval
@@ -143,6 +148,14 @@ func (h *Harness) init() error {
 func (h *Harness) Check() error {
 	if h.opts.Adapter != nil {
 		return nil
+	}
+	if h.cfg.RouterTasks != nil {
+		if h.opts.AllowUnsandboxed || !landlockOn() {
+			return errors.New("router_tasks needs the Landlock sandbox (--allow-unsandboxed is not allowed)")
+		}
+		if err := h.taskSandboxOK(); err != nil {
+			return err
+		}
 	}
 	if h.cfg.Adapter == AdapterNotify {
 		if h.cfg.Notify.Backend == BackendTerminal {
@@ -291,6 +304,9 @@ func (h *Harness) step(ctx context.Context, once bool) (bool, error) {
 	if cursor >= h.st.NotifiedSeq {
 		h.st.Read = true
 	}
+	if h.cfg.RouterTasks != nil {
+		return false, h.stepTasks(ctx, cursor, now)
+	}
 	msgs, err := h.pending(max(cursor, h.st.NotifiedSeq), 0)
 	if err != nil {
 		return false, err
@@ -299,13 +315,7 @@ func (h *Harness) step(ctx context.Context, once bool) (bool, error) {
 		h.firstSeen = time.Time{}
 		return h.maybeRewake(ctx, cursor, now)
 	}
-	last := msgs[len(msgs)-1].Seq
-	if h.firstSeen.IsZero() {
-		h.firstSeen = now
-	}
-	if last != h.lastMax {
-		h.lastMax, h.lastArrival = last, now
-	}
+	h.noteArrival(msgs, now)
 	if !once && !h.ready(msgs, now) {
 		return false, nil
 	}
@@ -463,4 +473,16 @@ func (h *Harness) fail(p *Packet) error {
 	payload, _ := json.Marshal(map[string]any{"state": "wake_failed", "agent": h.member.ID(), "last_seq": p.LastSeq})
 	_, err := h.store.Send(h.member, &bus.SendInput{To: "topic:board", Type: bus.TypeTaskStatus, Payload: payload})
 	return errors.Join(err, h.save())
+}
+
+// noteArrival tracks the coalescing window: when the first waking message
+// was seen and when the latest one arrived.
+func (h *Harness) noteArrival(msgs []bus.Message, now time.Time) {
+	last := msgs[len(msgs)-1].Seq
+	if h.firstSeen.IsZero() {
+		h.firstSeen = now
+	}
+	if last != h.lastMax {
+		h.lastMax, h.lastArrival = last, now
+	}
 }

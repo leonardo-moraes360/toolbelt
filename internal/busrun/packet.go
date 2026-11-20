@@ -27,7 +27,9 @@ type Packet struct {
 	Types       map[bus.Type]int `json:"types"`
 	Senders     []SenderCount    `json:"senders"`
 	SendersMore int              `json:"senders_more,omitempty"`
-	Recv        string           `json:"recv"`
+	// Task is set only for a router-task wake (reason "router_task").
+	Task *PacketTask `json:"task,omitempty"`
+	Recv string      `json:"recv"`
 }
 
 type SenderCount struct {

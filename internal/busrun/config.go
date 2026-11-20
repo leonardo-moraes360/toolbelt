@@ -34,7 +34,19 @@ type Config struct {
 	Exec        ExecConfig    `yaml:"exec"`
 	Harness     HarnessConfig `yaml:"harness"`
 	Notify      NotifyConfig  `yaml:"notify"`
+	// RouterTasks: tasks from the router run confined to the ticket worktree,
+	// with the harness doing the bus work (docs/bus-router.md, B4a).
+	RouterTasks *RouterTasksConfig `yaml:"router_tasks"`
 }
+
+type RouterTasksConfig struct {
+	From         string        `yaml:"from"`          // the only router agent whose tasks are honored
+	Timeout      time.Duration `yaml:"timeout"`       // cap per task (default 30m)
+	AllowedTools []string      `yaml:"allowed_tools"` // claude preset; never tb_bus_*
+}
+
+// DefaultRouterTaskTools: file tools only; no shell and no bus tools.
+var DefaultRouterTaskTools = []string{"Read", "Edit", "Write", "Glob", "Grep"}
 
 // Coalesce batches nearby messages into one wake.
 type Coalesce struct {
@@ -135,6 +147,20 @@ func (c *Config) applyDefaults() {
 	}
 	c.timingDefaults()
 	c.adapterDefaults()
+	c.routerTaskDefaults()
+}
+
+func (c *Config) routerTaskDefaults() {
+	rt := c.RouterTasks
+	if rt == nil {
+		return
+	}
+	if rt.Timeout == 0 {
+		rt.Timeout = 30 * time.Minute
+	}
+	if len(rt.AllowedTools) == 0 {
+		rt.AllowedTools = append([]string(nil), DefaultRouterTaskTools...)
+	}
 }
 
 // timingDefaults: notify waits longer for a human and times out sooner.
@@ -144,6 +170,9 @@ func (c *Config) timingDefaults() {
 		if c.Adapter == AdapterNotify {
 			c.RewakeAfter = time.Hour // a human may take a while
 		}
+	}
+	if c.Timeout == 0 && c.RouterTasks != nil {
+		c.Timeout = time.Hour // tasks are capped by router_tasks.timeout and the payload's
 	}
 	if c.Timeout == 0 {
 		switch c.Adapter {
@@ -202,6 +231,9 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("adapter %q invalid (use exec, harness or notify)", c.Adapter)
 	}
 	if err := c.foreignBlocks(); err != nil {
+		return err
+	}
+	if err := c.validateRouterTasks(); err != nil {
 		return err
 	}
 	switch c.Adapter {
@@ -313,6 +345,28 @@ func (h *HarnessConfig) validate() error {
 	}
 	if h.Workdir != "" && !filepath.IsAbs(h.Workdir) {
 		return errors.New("harness.workdir must be an absolute path")
+	}
+	return nil
+}
+
+func (c *Config) validateRouterTasks() error {
+	rt := c.RouterTasks
+	if rt == nil {
+		return nil
+	}
+	if c.Adapter == AdapterNotify {
+		return errors.New("router_tasks is not allowed with adapter notify (the agent cannot be confined)")
+	}
+	if err := bus.ValidName("router_tasks.from", rt.From); err != nil {
+		return err
+	}
+	if rt.Timeout <= 0 {
+		return errors.New("router_tasks.timeout must be positive")
+	}
+	for _, t := range rt.AllowedTools {
+		if strings.HasPrefix(t, "mcp__") {
+			return fmt.Errorf("router_tasks.allowed_tools: %q not allowed (a confined task has no MCP or bus tools)", t)
+		}
 	}
 	return nil
 }

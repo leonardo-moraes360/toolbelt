@@ -2,7 +2,7 @@
 
 # Router on the bus — B4 spec
 
-Status: **draft, round 3** (two fresh-context reviews applied; not implemented).
+Status: **B4a implemented**, B4b not implemented (spec round 3, after two fresh-context reviews).
 
 Specification for stage **B4** of [ADR-013](adr/013-barramento-multi-vendor.md) (§8): the Phase 3 router ([ADR-009](adr/009-router-e-workers.md)) gains a second worker type, an agent registered on a bus channel. It builds on the protocol ([bus-protocolo.md](bus-protocolo.md)), the lease ([bus-lease.md](bus-lease.md)) and the harness ([bus-harness.md](bus-harness.md), [bus-notify-discover.md](bus-notify-discover.md)).
 
@@ -53,7 +53,7 @@ The store schema goes from v2 to v3: `claims` gains `revoked_at`, `revoked_by`, 
 
 **`marker`** is a small JSON object, `{"router_tasks":true,"landlock":true}`. The router (B4b) accepts only claims that carry it.
 
-- A member that calls the ordinary `tb bus claim` or `tb_bus_claim` gets no marker.
+- A member that calls the ordinary `tb bus claim` or `tb_bus_claim` gets no marker, and a thread it already holds that way never gains one: `ClaimConfined` on it fails.
 - The marker states what the `tb` harness process enforced; it is not a credential. Within the B1 trust boundary (a hostile process of the same user is out of scope), it answers whether a misconfigured harness took the task.
 
 ### Harness `router_tasks`
@@ -74,38 +74,43 @@ router_tasks:
 - the sender is `agent:<from>`, and its role in the store is `router`;
 - the payload is `router-task/0.1`;
 - `ticket` matches `^TKT-\d{3,}$`;
-- `workspace` is exactly `<root>/.toolbelt/workspaces/<ticket>`, and `Lstat` shows a real directory, not a symlink;
-- `ticket_file` is exactly `<root>/.toolbelt/tickets/<ticket>.yaml`, a regular file;
+- `workspace` resolves (all symlinks followed) to exactly `<canonical root>/.toolbelt/workspaces/<ticket>`, a real directory;
+- `ticket_file` resolves to exactly `<canonical root>/.toolbelt/tickets/<ticket>.yaml`, a regular file;
+- these paths are checked again right before the child starts, and the child gets the canonical ones;
 - `thread` equals the message thread, and `Claim(thread)` shows it neither completed nor revoked.
 
 Any other `task.assign` is an ordinary message.
 
-**Batching.** Router tasks are split out of the pending batch and handled one at a time, before the ordinary messages. They never wake the agent through the ordinary path and never trigger a rewake. The harness records handled router-task message IDs in its state, so a restart does not handle one twice, and it leaves the agent's cursor alone.
+**A dedicated task worker.** A harness with `router_tasks` runs no ordinary wakes: ordinary messages stay queued, untouched. Otherwise the agent's ordinary wakes would run with the repository root writable and with bus tools, and a `recv` in one of them could consume a task. The harness reads `task.assign` messages from its own task cursor (`task_seq` in its state, advanced before each claim), in order and at most 50 per tick. A restart never handles a task twice, and a flood of invalid assigns cannot starve a valid one. `wake_on` does not apply to router tasks.
 
 **Handling one task:**
 
 1. **Claim.** `ClaimConfined(thread, marker)`. If the claim fails (another worker won, or the thread was revoked), the harness logs `router_task_lost` and stops: no child, no workspace access.
 2. **Prepare.**
    - It copies `ticket_file` to `<agent tmp>/task/ticket.yaml`. The live file is not granted, because ticket writes rename it.
-   - It creates an empty `<agent tmp>/task/verdict.json` path.
+   - It creates a fresh per-task tmp dir; the child writes `<task dir>/verdict.json` itself.
+   - It refuses to run at all without Landlock, however the harness was opened (`router_task_refused`).
 3. **Run the child**, confined. Its grants:
-   - **write:** the workspace (its workdir), the agent tmp dir and the `sandbox.write` entries;
+   - **write:** the workspace (its workdir), the task dir (with its own tmp) and the `sandbox.write` entries;
    - **read:** `<root>/.git` (so `git status` and `git diff` work; the index may stay unwritable), the task copy and the `sandbox.read` entries;
-   - **refused, at `--check` and at wake time:** any `sandbox.write` entry that equals, contains or lies inside `<root>`, `<root>/.git` or `<root>/.toolbelt`, and any `sandbox.read` entry that contains `<root>/.toolbelt`;
-   - **no bus access:** the `claude` preset gets no MCP config and `allowed_tools` without `tb_bus_*`, and `exec` gets no session token;
+   - **refused, at `--check` and at wake time:** any `sandbox.write` entry that equals, contains or lies inside `<root>`, `<root>/.git` or `<root>/.toolbelt`, and any read grant (`sandbox.read` or the adapter binary's directories) that contains or lies inside `<root>/.toolbelt`. Paths are compared after resolving symlinks on both sides;
+   - **no bus access:** the `claude` preset gets an empty MCP config, `router_tasks.allowed_tools` (default `Read`, `Edit`, `Write`, `Glob`, `Grep`; `mcp__*` refused) and `--disallowedTools Bash,WebFetch,WebSearch,Task`, and `exec` gets no session token;
+   - **environment:** `TB_TASK_TICKET`, `TB_TASK_TICKET_FILE` (the copy), `TB_TASK_VERDICT` and `TMPDIR` (the task's tmp);
    - **a fresh session:** the `claude` preset starts a new session per task, with no `--resume`, so one ticket's context never leaks into the next;
-   - **timeout:** the smallest of `router_tasks.timeout`, the payload's `timeout` and the adapter's `timeout`.
+   - **timeout:** the smallest of `router_tasks.timeout`, the payload's `timeout` and the adapter's `timeout` (which defaults to 1h when `router_tasks` is set).
 4. **Fixed prompt** (`claude`), or a packet with `reason: "router_task"` and a `task` object `{ticket, thread, workspace, ticket_copy, verdict_file}` (`exec`). It tells the agent to:
    - work only in the current directory;
    - read the ticket from the copy;
    - not commit (git can read but the repository is not writable);
    - write `{"verdict":"PASS"}` or `{"verdict":"FAIL","summary":"..."}` to `verdict_file`, then exit.
-5. **Watch.** While the child runs, a watcher goroutine (next to the heartbeat one) polls `Claim(thread)` every second. If it sees a revoke, or an owner or epoch other than the harness's, it kills the child's process group and logs `router_task_revoked`.
+5. **Watch.** While the child runs, a watcher goroutine (next to the heartbeat one) polls `Claim(thread)` every second. If it sees a revoke, a release, or an owner or epoch other than the harness's, it kills the child's process group and logs `router_task_revoked`.
 6. **Complete.** After the child's process group has exited (the harness kills what is left of the group), the harness reads `verdict_file`. It must be a regular file of at most 4 KiB holding one JSON object.
    - It calls `Complete(thread, epoch, verdict)`.
-   - A missing, oversized or malformed verdict, a crash or a timeout completes with `{"verdict":"FAIL","summary":"<reason>"}`. Here `<reason>` is fixed text from the harness, not the child's output.
+   - Only `PASS` and `FAIL` are accepted; the summary is cut to 500 bytes on a rune boundary and redacted.
+   - A missing, oversized, symlinked or malformed verdict, a crash or a timeout completes with `{"verdict":"FAIL","summary":"<reason>"}`. Here `<reason>` is fixed text from the harness, not the child's output.
    - A `lease_lost` on complete (revoked meanwhile) is logged, and nothing else happens.
-7. **Audit.** `router_task_start`, `router_task_ok`, `router_task_failed`, `router_task_lost` and `router_task_revoked`, with ticket, thread and epoch. Never a payload or the verdict summary.
+   - On harness shutdown the child is stopped and nothing is completed (`router_task_canceled`): the lease runs out or the router revokes.
+7. **Audit.** `router_task_start`, `router_task_ok`, `router_task_failed`, `router_task_lost`, `router_task_revoked`, `router_task_canceled` and `router_task_refused`, with ticket, thread and epoch. Never a payload or the verdict summary.
 
 - The harness heartbeat keeps the claim's lease while the child runs, as in B2.
 - `task.status` messages play no part: revokes are read from the claim row.
