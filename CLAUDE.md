@@ -11,7 +11,7 @@ tb mem check            # invariants intact (fail-closed)
 TB_GRAPH=on tb graph index
 ```
 
-The `toolbelt` MCP server (`.mcp.json`) exposes `tb_*` with `TB_GRAPH=on` (36 tools in v0.0.5).
+The `toolbelt` MCP server (`.mcp.json`) exposes `tb_*` with `TB_GRAPH=on` (48 tools in v0.0.8).
 
 ## Map
 

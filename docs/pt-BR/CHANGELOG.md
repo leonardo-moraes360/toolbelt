@@ -9,6 +9,8 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Não Lançado]
 
+## [0.0.8] - 2026-11-20
+
 ### Adicionado
 - B2 do barramento (lease, heartbeat, watchdog; spec `docs/bus-lease.md`): lease por agente (`tb bus channel create --lease`, padrão `2m`), fencing por epoch nos claims, tomada de claims liberados ou expirados, `tb bus heartbeat`, `tb bus watchdog` (só CLI, publica `lease_expired` do remetente exclusivo do broker `system:watchdog`), `channel show` com agentes e claims, tools MCP `tb_bus_heartbeat` e `tb_bus_status`, heartbeats em segundo plano do `tb mcp` para sessões ligadas e do harness `tb bus run` (auditoria `lease_lost`)
 - Vault no `tb graph` (fatia 4 da Fase A do vault): com `TB_GRAPH=on`, notas viram nós `note:<caminho>` (títulos redigidos, proveniência de `source`/`confidence`), headings viram seções, wikilinks resolvidos viram arestas `links` e tags viram nós `tag:` com arestas `tagged`; os links Markdown e menções do corpo mantêm a nota como origem. O vault é lido só pelo `internal/vault`, nunca pelo indexador genérico, e as entradas dele (menos as com ponto) entram no fingerprint do índice; `vault.graph: false` desliga; `vault` entra no `graph.docs` padrão. Quebra consultas ao grafo: notas do vault eram nós `file:.toolbelt/vault/...` e agora são `note:<caminho>` (links para elas são remapeados); o indexador genérico deixa de percorrer o `.toolbelt/` do repositório

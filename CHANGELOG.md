@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.0.8] - 2026-11-20
+
 ### Added
 - Bus B2 (lease, heartbeat, watchdog; spec `docs/bus-lease.md`): per-agent lease (`tb bus channel create --lease`, default `2m`), epoch fencing on claims, takeover of released or expired claims, `tb bus heartbeat`, `tb bus watchdog` (CLI only, publishes `lease_expired` from the broker-only `system:watchdog`), `channel show` with agents and claims, MCP tools `tb_bus_heartbeat` and `tb_bus_status`, background heartbeats from `tb mcp` for bound sessions and from the `tb bus run` harness (`lease_lost` audit)
 - Vault in `tb graph` (vault Phase A slice 4): with `TB_GRAPH=on`, notes become `note:<path>` nodes (redacted titles, provenance from `source`/`confidence`), headings sections, resolved wikilinks `links` edges and tags `tag:` nodes with `tagged` edges; the body's Markdown links and mentions keep the note as source. The vault is read through `internal/vault` only, never by the generic indexer, and its entries (minus dot ones) are in the index fingerprint; `vault.graph: false` opts out; `vault` joins the default `graph.docs`. Breaking for graph queries: vault notes were `file:.toolbelt/vault/...` nodes and are now `note:<path>` (links to them are remapped); the generic indexer no longer walks the repository's `.toolbelt/`
