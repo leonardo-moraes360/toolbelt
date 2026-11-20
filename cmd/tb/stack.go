@@ -24,7 +24,9 @@ review, drift, guard and/or egm in the given order.
 Operations: verify, review, drift, guard, egm.
 egm gates the specs/ADRs (egm.doc_globs) added or modified in
 merge-base(base, head)..head with tb egm status --at head; it is local (state
-lives in $XDG_STATE_HOME), not parallel, and always runs last.
+lives in $XDG_STATE_HOME), not parallel, and always runs last. With
+--egm-mode ci (needs -c) it instead checks each document's committed receipt
+and runs one fresh review round with CI's own config (docs/specs/egm-trust.md).
 Read-only stages (guard, drift, review) run in parallel; verify stays isolated
 (build/test). The JSON output preserves the requested order. --jobs N limits concurrency
 (default = number of CPUs, max 32; --jobs 1 = serial). --fail-fast cancels the others
@@ -56,6 +58,8 @@ func init() {
 	stackCmd.Flags().String("standards", "", "review: roles CSV (scope,quality,acceptance)")
 	stackCmd.Flags().StringArray("egm-doc", nil, "egm: document added to the selection (repeatable)")
 	stackCmd.Flags().Bool("strict", false, "egm: PASS_PARTIAL and an empty selection fail")
+	stackCmd.Flags().String("egm-mode", "local", "egm: local | ci (ci needs -c, implies --strict and runs a fresh round with CI's credential)")
+	stackCmd.Flags().Bool("egm-allow-offline", false, "egm ci: without a credential, run a deterministic-only round capped at PASS_PARTIAL")
 }
 
 func runStack(cmd *cobra.Command, args []string) error {
@@ -104,6 +108,8 @@ func runStack(cmd *cobra.Command, args []string) error {
 	standardsCSV, _ := cmd.Flags().GetString("standards")
 	egmDocs, _ := cmd.Flags().GetStringArray("egm-doc")
 	strict, _ := cmd.Flags().GetBool("strict")
+	egmMode, _ := cmd.Flags().GetString("egm-mode")
+	egmOffline, _ := cmd.Flags().GetBool("egm-allow-offline")
 
 	opts := &stack.Options{
 		RepoDir:            cwd,
@@ -134,6 +140,9 @@ func runStack(cmd *cobra.Command, args []string) error {
 		EnvPass:            envPass,
 		EgmDocs:            egmDocs,
 		Strict:             strict,
+		EgmMode:            egmMode,
+		EgmConfig:          cfgFile,
+		EgmAllowOffline:    egmOffline,
 	}
 	res, err := stack.Run(context.Background(), opts)
 	if err != nil {

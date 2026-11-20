@@ -39,6 +39,12 @@ type EgmConfig struct {
 	MaxParallel         int               `yaml:"max_parallel"`
 	TimeoutPerReviewer  string            `yaml:"timeout_per_reviewer"`
 	MaxStdoutBytes      int64             `yaml:"max_stdout_bytes"`
+	CI                  EgmCI             `yaml:"ci"`
+}
+
+// EgmCI tunes the CI mode of the egm gate (docs/specs/egm-trust.md, T-R6).
+type EgmCI struct {
+	MaxDocs int `yaml:"max_docs" json:"max_docs"`
 }
 
 // EgmMatch tunes R18; defaults calibrated in R0 (dogfood #31).
@@ -73,6 +79,7 @@ func DefaultEgmConfig() EgmConfig {
 		MaxParallel:        4,
 		TimeoutPerReviewer: "5m",
 		MaxStdoutBytes:     1 << 20,
+		CI:                 EgmCI{MaxDocs: 5},
 	}
 }
 
@@ -93,6 +100,7 @@ func (e *EgmConfig) Validate() error {
 		{e.MaxRounds < 1, "egm.max_rounds must be >= 1"},
 		{e.CleanRounds < 1 || e.CleanRounds > e.MaxRounds, "egm.clean_rounds must be between 1 and max_rounds"},
 		{e.MaxAgentRuns < 1, "egm.max_agent_runs must be >= 1"},
+		{e.CI.MaxDocs < 1, "egm.ci.max_docs must be >= 1"},
 		{e.MaxParallel < 1, "egm.max_parallel must be >= 1"},
 		{e.MaxSourceBytes < 1 || e.MaxPacketBytes < 1 || e.MaxStdoutBytes < 1, "egm.max_*_bytes must be >= 1"},
 	}

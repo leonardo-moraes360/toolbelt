@@ -2,6 +2,7 @@ package egm
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path"
 	"path/filepath"
@@ -16,6 +17,12 @@ type GateOptions struct {
 	Docs       []string
 	Strict     bool
 	ConfigFile string
+	// Mode is local (default) or ci (docs/specs/egm-trust.md, T-R2); ci
+	// implies Strict and needs ConfigFile.
+	Mode string
+	// AllowOffline turns ci_offline into a deterministic-only round capped
+	// at PASS_PARTIAL (T-R4).
+	AllowOffline bool
 }
 
 // GateDoc is one evaluated document.
@@ -27,6 +34,8 @@ type GateDoc struct {
 	ExitCode   int      `json:"exit_code"`
 	Downgrades []string `json:"downgrades,omitempty"`
 	Reason     string   `json:"reason,omitempty"`
+	// CIFindings are the fresh round's findings in ci mode (T-R3).
+	CIFindings []CIFinding `json:"ci_findings,omitempty"`
 }
 
 // GateWarning is a stack-level warning (no_gated_docs, sources_changed,
@@ -41,6 +50,7 @@ type GateWarning struct {
 type GateResult struct {
 	OK       bool          `json:"ok"`
 	Warn     bool          `json:"warn"`
+	Trust    string        `json:"trust"` // local or ci (T-R8)
 	Head     string        `json:"head"`
 	Docs     []GateDoc     `json:"docs"`
 	Warnings []GateWarning `json:"warnings"`
@@ -48,8 +58,63 @@ type GateResult struct {
 
 // Gate is R33: it selects the gated documents added or modified in
 // merge-base(base, head)..head, plus opts.Docs, and evaluates each with
-// status --at head.
+// status --at head. In ci mode it checks receipts and runs a fresh round
+// instead (docs/specs/egm-trust.md).
 func Gate(ctx context.Context, o *GateOptions) (*GateResult, error) {
+	if err := ciPreflight(o); err != nil {
+		return nil, err
+	}
+	ci := o.Mode == GateModeCI
+	if ci {
+		c := *o
+		c.Strict = true
+		o = &c
+	}
+	sel, err := gateSelect(ctx, o)
+	if err != nil {
+		return nil, err
+	}
+	repo, head, docs := sel.repo, sel.head, sel.docs
+	res := &GateResult{OK: true, Trust: GateModeLocal, Head: head, Docs: []GateDoc{}, Warnings: []GateWarning{}}
+	if ci {
+		res.Trust = GateModeCI
+	}
+	res.Warnings = append(res.Warnings, sourcesChanged(repo, docs, sel.changed)...)
+	for _, p := range sel.removed {
+		// A gated path deleted or renamed out of the gate (T-R2).
+		res.Warnings = append(res.Warnings, GateWarning{Code: "gated_doc_removed", Path: p})
+		res.OK = res.OK && !ci
+	}
+	switch {
+	case len(docs) == 0:
+		return res, emptySelection(ctx, repo, head, sel.set.GateDocGlobs, o.Strict, res)
+	case ci:
+		return res, gateCI(ctx, repo, head, sel.set, o, docs, res)
+	}
+	for _, d := range docs {
+		gd := gateDoc(ctx, repo.Root, d, head, o)
+		res.OK = res.OK && gd.OK
+		res.Warn = res.Warn || gd.Warn
+		res.Docs = append(res.Docs, gd)
+		if code := localReceipt(ctx, repo.Root, d, head, o.ConfigFile); code != "" {
+			res.Warnings = append(res.Warnings, GateWarning{Code: code, Doc: d})
+		}
+	}
+	return res, nil
+}
+
+// gateSelection is R33's selection: the repository, head, settings at head,
+// the selected documents, every changed path and the removed gated paths.
+type gateSelection struct {
+	repo    *Repo
+	head    string
+	set     *Settings
+	docs    []string
+	changed map[string]bool
+	removed []string
+}
+
+func gateSelect(ctx context.Context, o *GateOptions) (*gateSelection, error) {
 	repo, err := DiscoverRepo(filepath.Join(o.RepoDir, ".egm-gate"))
 	if err != nil {
 		return nil, err
@@ -70,7 +135,11 @@ func Gate(ctx context.Context, o *GateOptions) (*GateResult, error) {
 	if err != nil {
 		return nil, err
 	}
-	docs, changed := selectGated(diff, set.GateDocGlobs)
+	sel := &gateSelection{repo: repo, head: head, set: set}
+	sel.docs, sel.changed, sel.removed = selectGated(diff, set.GateDocGlobs)
+	if sel.removed, err = movedInGate(ctx, repo, mb, head, sel.removed, sel.docs); err != nil {
+		return nil, err
+	}
 	cwd, err := filepath.EvalSymlinks(o.RepoDir)
 	if err != nil {
 		return nil, errorf(ExitError, "usage", "%s: %v", o.RepoDir, err)
@@ -80,21 +149,46 @@ func Gate(ctx context.Context, o *GateOptions) (*GateResult, error) {
 		if err != nil {
 			return nil, err
 		}
-		docs = appendNew(docs, []string{rel})
+		sel.docs = appendNew(sel.docs, []string{rel})
 	}
-	sort.Strings(docs)
-	res := &GateResult{OK: true, Head: head, Docs: []GateDoc{}, Warnings: []GateWarning{}}
-	res.Warnings = append(res.Warnings, sourcesChanged(repo, docs, changed)...)
-	if len(docs) == 0 {
-		return res, emptySelection(ctx, repo, head, set.GateDocGlobs, o.Strict, res)
+	sort.Strings(sel.docs)
+	return sel, nil
+}
+
+// gateCI evaluates docs in ci mode (T-R2, T-R6).
+func gateCI(ctx context.Context, repo *Repo, head string, set *Settings, o *GateOptions, docs []string, res *GateResult) error {
+	if len(docs) > set.CI.MaxDocs {
+		res.OK = false
+		res.Warnings = append(res.Warnings, GateWarning{Code: "ci_budget", Path: fmt.Sprintf("%d documents > egm.ci.max_docs %d", len(docs), set.CI.MaxDocs)})
+		return nil
 	}
+	offline, err := ciEngine(set)
+	if err != nil {
+		return err
+	}
+	c := &ciRun{o: o, root: repo.Root, head: head, offline: offline, runsLeft: set.MaxAgentRuns}
 	for _, d := range docs {
-		gd := gateDoc(ctx, repo.Root, d, head, o)
+		gd := c.doc(ctx, d)
 		res.OK = res.OK && gd.OK
 		res.Warn = res.Warn || gd.Warn
 		res.Docs = append(res.Docs, gd)
 	}
-	return res, nil
+	return nil
+}
+
+// localReceipt is T-R8: in local mode a missing, invalid or stale receipt
+// is a warning, never a failure.
+func localReceipt(ctx context.Context, root, rel, head, cfg string) string {
+	_, _, code, err := receiptCheck(ctx, root, rel, head, cfg)
+	switch {
+	case err != nil:
+		return ""
+	case code == "no_receipt":
+		return "receipt_missing"
+	case code != "":
+		return code
+	}
+	return ""
 }
 
 func gateSettings(ctx context.Context, repo *Repo, head, cfgFile string) (*Settings, error) {
@@ -110,17 +204,22 @@ func gateSettings(ctx context.Context, repo *Repo, head, cfgFile string) (*Setti
 	return &set, nil
 }
 
-// selectGated returns the added or modified gated documents and every
-// changed path of the range.
-func selectGated(diff []NameStatus, globs []string) (docs []string, changed map[string]bool) {
+// selectGated returns the added or modified gated documents, every changed
+// path of the range, and the gated paths deleted in it (--no-renames: a
+// rename out of the gate is a deletion).
+func selectGated(diff []NameStatus, globs []string) (docs []string, changed map[string]bool, removed []string) {
 	changed = map[string]bool{}
 	for _, e := range diff {
 		changed[e.Path] = true
-		if (strings.HasPrefix(e.Status, "A") || strings.HasPrefix(e.Status, "M") || strings.HasPrefix(e.Status, "T")) && IsGated(globs, e.Path) {
+		switch {
+		case !IsGated(globs, e.Path):
+		case strings.HasPrefix(e.Status, "A") || strings.HasPrefix(e.Status, "M") || strings.HasPrefix(e.Status, "T"):
 			docs = append(docs, e.Path)
+		case strings.HasPrefix(e.Status, "D"):
+			removed = append(removed, e.Path)
 		}
 	}
-	return docs, changed
+	return docs, changed, removed
 }
 
 func gateDoc(ctx context.Context, root, doc, head string, o *GateOptions) GateDoc {
@@ -289,6 +388,38 @@ func changedFromHead(ctx context.Context, repo *Repo, head string, globs, dirs [
 	}
 	for i, p := range present {
 		if at[p] != hashes[i] {
+			out = append(out, p)
+		}
+	}
+	return out, nil
+}
+
+// movedInGate drops the removed gated paths whose blob at the merge-base is
+// the blob of a selected document at head: a rename inside the gate (the
+// diff has --no-renames). A rename with an edit still counts as removed.
+func movedInGate(ctx context.Context, repo *Repo, mb, head string, removed, docs []string) ([]string, error) {
+	if len(removed) == 0 || len(docs) == 0 {
+		return removed, nil
+	}
+	old, err := repo.LsTree(ctx, mb, removed...)
+	if err != nil {
+		return nil, err
+	}
+	cur, err := repo.LsTree(ctx, head, docs...)
+	if err != nil {
+		return nil, err
+	}
+	added := map[string]bool{}
+	for _, e := range cur {
+		added[e.Object] = true
+	}
+	moved := map[string]bool{}
+	for _, e := range old {
+		moved[e.Path] = added[e.Object]
+	}
+	var out []string
+	for _, p := range removed {
+		if !moved[p] {
 			out = append(out, p)
 		}
 	}

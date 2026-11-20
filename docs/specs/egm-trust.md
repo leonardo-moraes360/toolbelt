@@ -2,7 +2,7 @@
 
 # Spec: EGM trust, Phase A.2 (CI as the trust boundary)
 
-Author: toolbelt · Status: Draft, round 2 (rewritten after Phase A, one fresh-context review applied); implementation slice 1 (receipt) done · Date: 2026-11-19 · Decision: [ADR-015](../adr/015-egm-nativo.md) · Depends on: [core](egm-nativo.md) (Phase A, implemented)
+Author: toolbelt · Status: Draft, round 2 (rewritten after Phase A, one fresh-context review applied); implementation slices 1 (receipt) and 2 (CI mode) done · Date: 2026-11-19 · Decision: [ADR-015](../adr/015-egm-nativo.md) · Depends on: [core](egm-nativo.md) (Phase A, implemented)
 
 ## Overview
 
@@ -62,18 +62,18 @@ Phase A leaves three gaps:
   - **Order of checks:** each selected document is checked in the order below, and the first failure decides its result:
     1. **Receipt present and valid.** The receipt blob exists at `--head` and parses. Every claim has `lines` inside the document. Otherwise the result is `no_receipt` or `receipt_invalid`, with `ok: false`.
     2. **Receipt fresh.** `doc_sha256` and `sources` equal what R7a recomputes at `--head`. Otherwise the result is `receipt_stale`, with `ok: false`.
-    3. **Fresh round.** CI runs one round with CI's settings. The state goes to a temporary directory and is discarded. If a required reviewer ends `not_run`, or the budget (T-R6) runs out, the result is `ok: false`. Otherwise, CI's findings of `major` or above go to T-R3.
-  - **Deleted or moved documents:** a gated path that is deleted in the range, or renamed to a path that is not gated (for example an index `README.md`), produces `gated_doc_removed` and `ok: false`.
-- **T-R3 (fresh-round outcome).** A CI finding matches a claim when R18's `region` holds (same heading, line gap at most `match.gap`) and `sim(message) ≥ match.sim`. Owner and persona are ignored: CI has no snapshots for R19's owner rule or for R20's scope mapping, and the claim's `lines` already refer to the content under check. If the CI finding's severity is higher than the claim's, it counts as unmatched (R20).
+    3. **Fresh round.** CI runs one round with CI's settings. The state goes to a temporary directory and is discarded. If a required reviewer ends `not_run` (`ci_not_run`), or the budget (T-R6) runs out (`ci_budget`), the result is `ok: false`. Since `ci` implies `--strict`, a fresh round with a downgrade (for example `max_exclusion` or `no_detailed_section`) is `ci_partial`, `ok: false`. Otherwise, CI's findings of `major` or above go to T-R3.
+  - **Deleted or moved documents:** a gated path that is deleted in the range, or renamed to a path that is not gated (for example an index `README.md`), produces `gated_doc_removed` and `ok: false`. A move between two gated paths with the same blob is not a removal; a move with an edit is.
+- **T-R3 (fresh-round outcome).** A CI finding matches a claim when R18's `region` holds with lines on both sides (same heading, line gap at most `match.gap`) and `sim(message) ≥ match.sim`; a CI finding without lines never matches. When a finding matches both a `declined`/`forced` claim and an `arbiter_withdrawn` one, the first kind wins, so the order of the claims cannot buy an arbiter run. Owner and persona are ignored: CI has no snapshots for R19's owner rule or for R20's scope mapping, and the claim's `lines` already refer to the content under check. If the CI finding's severity is higher than the claim's, it counts as unmatched (R20).
 
   | CI finding (`major` or above) | Result |
   |-------------------------------|--------|
-  | Matches an `arbiter_withdrawn` claim | CI runs its own arbiter on the CI finding. `uphold` → `ci_upheld`, `ok: false`. `withdraw` → passes |
+  | Matches an `arbiter_withdrawn` claim | If the CI finding is contestable under R28 (an LLM reviewer's, not comprehension; never a checker or `injection-scan`), CI runs its own arbiter on it, with the finding's own first evidence. `uphold`, `not_run` or a dropped contest → `ci_upheld`, `ok: false`. `withdraw` → passes. A non-contestable finding is `ci_finding` |
   | Matches a `declined` or a `forced` claim | `ci_downgrade`, `ok: false`, with the claim listed for the human |
   | Anything else | `ci_finding`, `ok: false` |
 
-  CI lists findings below `major` under `warn`, and they never fail the check. A human who accepts a `ci_downgrade` merges through the repository's own override (T-R7), which is outside tb.
-- **T-R4 (CI without a credential).** When the vendor profile cannot authenticate, for example in a PR from a fork without secrets or with `auth_expired`, the result is `ci_offline` and `ok: false`. The `--egm-allow-offline` flag turns this into a deterministic-only round capped at `PASS_PARTIAL` with `warn`. The flag is meant for workflows that accept that ceiling.
+  CI lists findings below `major` under `warn`, and they never fail the check: they are the one case where `ci` returns `PASS_PARTIAL` with `ok: true` (besides T-R4's opt-in). A human who accepts a `ci_downgrade` merges through the repository's own override (T-R7), which is outside tb.
+- **T-R4 (CI without a credential).** When there is no credential, the result is `ci_offline` and `ok: false`: a variable of `egm.env.pass` is unset (a PR from a fork without secrets), or the claude credential is unusable (`auth_expired`). Any other reason the `llm` engine cannot run (no `egm.agent_cmd`, no Landlock) is a broken CI setup and an error (exit 2), never offline. The `--egm-allow-offline` flag turns this into a deterministic-only round capped at `PASS_PARTIAL` with `warn`. The flag is meant for workflows that accept that ceiling.
 - **T-R5 (CI settings).** The user config comes from `-c <file>`. The workflow writes that file from its own definition, and `stack.Options` passes it to the `egm` op (today the op does not receive it).
   - Repository-only keys still only count from that file (R34). The repository's `.toolbelt/config.yaml` can still only tighten.
   - The credential reaches the reviewer through `egm.env.pass`, for example `ANTHROPIC_API_KEY` from a CI secret. This is the spike's first auth preference.
