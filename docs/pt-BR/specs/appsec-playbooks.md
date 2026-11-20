@@ -165,4 +165,9 @@ Implementado em `internal/secplay` com a CLI `tb red` / `tb blue` e os seis tool
 - **Checks executáveis.** `guard` é Go hardcoded e `verify` são quatro strings de comando — nenhum hospeda uma lista de checks nomeados. Então os checks blue vivem num **`.toolbelt/secchecks.yaml`** dedicado e versionado, gravado por `tb blue apply` e rodado por **`tb blue check`** (um scanner grep/regex). O "um `tb guard`/`tb stack` seguinte os roda" do critério A4 vira `tb blue check` na Fase 1; uma op seccheck no `tb stack` é **Fase 2**.
 - **Local do corpus.** Escrito e **embutido** em `internal/secplay/corpus/{red,blue}/<classe>.md` via `go:embed` — nosso, embarcado no binário e fora de `docs/` (sem ônus de espelho pt-BR).
 
-**Corpus entregue (núcleo, 10 pares):** sql-injection, xss, ssrf, ssti, xxe, idor, rce, insecure-deserialization, jwt, oauth. Checks blue entram para todas menos as duas classes só-lógica (idor, oauth). **Adiado:** formatos SIEM (Sigma/KQL/YARA), a aresta mirror no grafo + op no `tb stack`, e o resto da taxonomia.
+**Corpus entregue (núcleo, 10 pares):** sql-injection, xss, ssrf, ssti, xxe, idor, rce, insecure-deserialization, jwt, oauth. Checks blue entram para todas menos as duas classes só-lógica (idor, oauth). **Adiado:** formatos SIEM (Sigma/KQL/YARA) e o resto da taxonomia.
+
+## Status de implementação (Fase 2)
+
+- **Aresta mirror no grafo.** O corpus embutido agora contribui para o grafo de código via um hook `graph.RegisterNodeSource` (`internal/secplay/graphsource.go`): cada playbook é um nó `playbook:<nome>` (tipo `playbook`) e cada playbook red emite uma aresta `mirror` para o par blue. Com `TB_GRAPH=on`, `tb graph path playbook:red-sqli playbook:blue-sqli` e `tb graph explain` ligam ataque e defesa. Os arquivos `.md` do corpus também são indexados como docs comuns; o node source acrescenta os nós tipados e as arestas mirror por cima.
+- **`tb stack seccheck`.** Uma op nova do stack, somente leitura e paralela, roda `secplay.Run` sobre a árvore de trabalho (os checks registrados por `tb blue apply`). É só regex — nunca executa o conteúdo casado — e falha o passo em achados de severidade error, a menos que `--warn-only`.

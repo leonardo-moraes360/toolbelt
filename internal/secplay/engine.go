@@ -55,6 +55,11 @@ func loadFS(fsys fs.FS) (*Corpus, error) {
 	if err != nil {
 		return nil, err
 	}
+	for name := range c.Red {
+		if _, dup := c.Blue[name]; dup {
+			return nil, fmt.Errorf("playbook name %q used by both a red and a blue playbook; names must be unique across colors", name)
+		}
+	}
 	if err := c.validateMirrors(); err != nil {
 		return nil, err
 	}

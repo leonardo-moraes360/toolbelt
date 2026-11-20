@@ -19,29 +19,32 @@ import (
 	"github.com/leonardo-moraes360/toolbelt/internal/guard"
 	"github.com/leonardo-moraes360/toolbelt/internal/mem"
 	"github.com/leonardo-moraes360/toolbelt/internal/review"
+	"github.com/leonardo-moraes360/toolbelt/internal/secplay"
 	"github.com/leonardo-moraes360/toolbelt/internal/verify"
 )
 
 type Op string
 
 const (
-	OpVerify Op = "verify"
-	OpReview Op = "review"
-	OpDrift  Op = "drift"
-	OpGuard  Op = "guard"
-	OpEgm    Op = "egm"
-	OpVault  Op = "vault"
+	OpVerify   Op = "verify"
+	OpReview   Op = "review"
+	OpDrift    Op = "drift"
+	OpGuard    Op = "guard"
+	OpEgm      Op = "egm"
+	OpVault    Op = "vault"
+	OpSecCheck Op = "seccheck"
 
 	maxJobs = 32
 )
 
 var knownOps = map[string]Op{
-	"verify": OpVerify,
-	"review": OpReview,
-	"drift":  OpDrift,
-	"guard":  OpGuard,
-	"egm":    OpEgm,
-	"vault":  OpVault,
+	"verify":   OpVerify,
+	"review":   OpReview,
+	"drift":    OpDrift,
+	"guard":    OpGuard,
+	"egm":      OpEgm,
+	"vault":    OpVault,
+	"seccheck": OpSecCheck,
 }
 
 func ParseOp(name string) (Op, error) {
@@ -187,7 +190,7 @@ func ResolveJobs(n int) int {
 }
 
 func isParallelOp(op Op) bool {
-	return op == OpGuard || op == OpDrift || op == OpReview || op == OpVault
+	return op == OpGuard || op == OpDrift || op == OpReview || op == OpVault || op == OpSecCheck
 }
 
 func validateOptions(opts *Options) error {
@@ -564,6 +567,8 @@ func runOp(ctx context.Context, op Op, opts *Options, shared *Shared) (StepResul
 		return runEgm(ctx, opts, shared)
 	case OpVault:
 		return runVault(ctx, shared)
+	case OpSecCheck:
+		return runSecCheck(ctx, opts, shared)
 	default:
 		return StepResult{}, fmt.Errorf("unknown operation: %q", op)
 	}
@@ -738,6 +743,44 @@ func runGuard(ctx context.Context, opts *Options, shared *Shared) (StepResult, e
 		exit = 1
 	}
 	return StepResult{Op: string(OpGuard), OK: ok, ExitCode: exit, Result: res}, nil
+}
+
+// runSecCheck runs the registered AppSec checks (.toolbelt/secchecks.yaml) over
+// the working tree. It is read-only and regex-only: it never executes matched
+// content. Error-severity findings fail the step unless --warn-only.
+func runSecCheck(ctx context.Context, opts *Options, shared *Shared) (StepResult, error) {
+	if err := ctx.Err(); err != nil {
+		return StepResult{}, err
+	}
+	// Scan the git work tree root (not the caller's cwd) and scope to the
+	// stack's changed files, so the op gates the diff — like guard/drift — and
+	// never fails on untouched legacy code.
+	root := secCheckRoot(shared.RepoDir)
+	tb := mem.LocateRepoToolbeltDir(root)
+	vs, err := secplay.RunPaths(ctx, root, tb, shared.Changed)
+	if err != nil {
+		return StepResult{}, err
+	}
+	ok := true
+	exit := 0
+	if secplay.HasError(vs) && !opts.WarnOnly {
+		ok = false
+		exit = 1
+	}
+	return StepResult{Op: string(OpSecCheck), OK: ok, ExitCode: exit, Result: vs}, nil
+}
+
+// secCheckRoot resolves the git work-tree root for repoDir, falling back to
+// repoDir when it is not inside a git repo.
+func secCheckRoot(repoDir string) string {
+	out, err := git.Output(repoDir, "rev-parse", "--show-toplevel")
+	if err != nil {
+		return repoDir
+	}
+	if top := strings.TrimSpace(string(out)); top != "" {
+		return top
+	}
+	return repoDir
 }
 
 func reviewShared(shared *Shared) *review.Shared {

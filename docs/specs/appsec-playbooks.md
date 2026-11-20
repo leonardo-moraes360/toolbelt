@@ -165,4 +165,9 @@ Implemented in `internal/secplay` with CLI `tb red` / `tb blue` and the six MCP 
 - **Runnable checks.** `guard` is hardcoded Go and `verify` is four command strings — neither hosts a list of named checks. So blue checks live in a dedicated, versioned **`.toolbelt/secchecks.yaml`** written by `tb blue apply` and run by **`tb blue check`** (a grep/regex scanner). Acceptance A4's "a subsequent `tb guard`/`tb stack` runs them" becomes `tb blue check` for Phase 1; a `tb stack` seccheck op is **Phase 2**.
 - **Corpus location.** Authored and **embedded** at `internal/secplay/corpus/{red,blue}/<class>.md` via `go:embed` — owned, shipped in the binary, and outside `docs/` (no pt-BR mirror burden).
 
-**Shipped corpus (core, 10 pairs):** sql-injection, xss, ssrf, ssti, xxe, idor, rce, insecure-deserialization, jwt, oauth. Blue checks ship for all but the two logic-only classes (idor, oauth). **Deferred:** SIEM rule formats (Sigma/KQL/YARA), the graph mirror edge + `tb stack` op, and the rest of the taxonomy.
+**Shipped corpus (core, 10 pairs):** sql-injection, xss, ssrf, ssti, xxe, idor, rce, insecure-deserialization, jwt, oauth. Blue checks ship for all but the two logic-only classes (idor, oauth). **Deferred:** SIEM rule formats (Sigma/KQL/YARA) and the rest of the taxonomy.
+
+## Implementation status (Phase 2)
+
+- **Graph mirror edge.** The embedded corpus now contributes to the code graph through a `graph.RegisterNodeSource` hook (`internal/secplay/graphsource.go`): each playbook is a `playbook:<name>` node (type `playbook`) and each red playbook emits a `mirror` edge to its blue counterpart. With `TB_GRAPH=on`, `tb graph path playbook:red-sqli playbook:blue-sqli` and `tb graph explain` link attack and defense. The corpus `.md` files are also indexed as ordinary docs; the node source adds the typed nodes and the mirror edges on top.
+- **`tb stack seccheck`.** A new read-only, parallel stack op runs `secplay.Run` over the working tree (the checks registered by `tb blue apply`). It is regex-only — it never executes matched content — and fails the step on error-severity findings unless `--warn-only`.

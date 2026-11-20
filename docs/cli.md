@@ -83,7 +83,7 @@ tb  (implemented today)
 ├── mem          Invariants (add|list|show|edit|retire|search|check|init)
 ├── review       Fresh-context review (Elephant-Goldfish)
 ├── sandbox      Execution with Landlock isolation (check|run)
-├── stack        Stacks verification operations (verify/review/drift/guard/vault/egm), not branches
+├── stack        Stacks verification operations (verify/review/drift/guard/vault/egm/seccheck), not branches
 ├── vault        Markdown vault of notes (new|list|show|search|links|backlinks|check)
 ├── verify       Adversarial verification (run; rulers tests|visual)
 ├── workspace    Isolated workspaces via git worktree (create|list|remove; alias: ws)
@@ -546,6 +546,8 @@ tb blue check
 ```
 
 MCP parity: `tb_red_search`, `tb_blue_search`, `tb_red_load`, `tb_blue_load`, `tb_sec_pair` (read-only), `tb_blue_apply` (writes `secchecks.yaml`). See [docs/specs/appsec-playbooks.md](specs/appsec-playbooks.md).
+
+With `TB_GRAPH=on`, each playbook is a `playbook:<name>` graph node and every red playbook has a `mirror` edge to its blue counterpart, so `tb graph path playbook:red-sqli playbook:blue-sqli` and `tb graph explain` link attack and defense. `tb stack seccheck` runs the registered checks as a read-only stack op (fails on error-severity findings unless `--warn-only`).
 
 ---
 

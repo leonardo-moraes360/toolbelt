@@ -100,6 +100,24 @@ func RegisterIndexer(idx LanguageIndexer) {
 	languageIndexers = append(languageIndexers, idx)
 }
 
+// NodeSource contributes nodes and edges that do not come from walking a file
+// (for example the embedded AppSec playbook corpus and its red/blue mirror
+// edges). It receives the resolved index root and must return a self-consistent
+// set: every edge endpoint it references is either a node it also returns or a
+// node the file walk produced.
+type NodeSource func(root string) ([]Node, []Edge, error)
+
+var nodeSources []NodeSource
+
+// RegisterNodeSource registers a NodeSource run once per build, after the file
+// walk and vault indexing.
+func RegisterNodeSource(s NodeSource) {
+	if s == nil {
+		return
+	}
+	nodeSources = append(nodeSources, s)
+}
+
 func Indexers() []LanguageIndexer {
 	out := make([]LanguageIndexer, len(languageIndexers))
 	copy(out, languageIndexers)
@@ -162,6 +180,24 @@ func BuildFromRootOpts(root string, opts *BuildOptions) (*Index, error) {
 	}
 	if vs := opts.vault; vs != nil && vs.index {
 		indexVault(vs.v, nodes, &edges)
+	}
+
+	for _, src := range nodeSources {
+		ns, es, srcErr := src(abs)
+		if srcErr != nil {
+			// A broken node source must not break the whole graph build (and
+			// every TB_GRAPH=on command that depends on it); skip it.
+			log.Warn("graph node source failed; skipping", "error", srcErr)
+			continue
+		}
+		for _, n := range ns {
+			if _, exists := nodes[n.ID]; exists {
+				log.Warn("graph node source id collides with an indexed node; skipping", "id", n.ID)
+				continue
+			}
+			nodes[n.ID] = n
+		}
+		edges = append(edges, es...)
 	}
 
 	edges = resolveSoftMentions(nodes, edges)

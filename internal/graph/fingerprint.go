@@ -41,6 +41,17 @@ func SourceFingerprint(root string, opts *BuildOptions) (string, error) {
 			return "", err
 		}
 	}
+	// Mix in the node sources' output (e.g. the embedded playbook corpus), so a
+	// corpus change is detected as stale even though those nodes are not files.
+	for _, src := range nodeSources {
+		ns, _, srcErr := src(abs)
+		if srcErr != nil {
+			continue
+		}
+		for _, n := range ns {
+			fw.lines = append(fw.lines, "nodesource|"+n.ID+"|"+string(n.Type))
+		}
+	}
 	lines := fw.lines
 	sort.Strings(lines)
 	sum := sha256.Sum256([]byte(strings.Join(lines, "\n")))

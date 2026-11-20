@@ -1,6 +1,7 @@
 package secplay
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -174,7 +175,7 @@ func TestRunFlagsPlantedPattern(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "clean.go"), []byte("package x\nfunc f() {}\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	vs, err := Run(dir, tb)
+	vs, err := Run(context.Background(), dir, tb)
 	if err != nil {
 		t.Fatalf("run: %v", err)
 	}
@@ -204,7 +205,7 @@ func TestRunSkipsSymlinks(t *testing.T) {
 	if err := saveSecChecks(SecChecksPath(tb), sc); err != nil {
 		t.Fatal(err)
 	}
-	vs, err := Run(dir, tb)
+	vs, err := Run(context.Background(), dir, tb)
 	if err != nil {
 		t.Fatalf("run: %v", err)
 	}
@@ -256,7 +257,7 @@ func TestRunDoesNotExecute(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "evil.py"), []byte(payload), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Run(dir, tb); err != nil {
+	if _, err := Run(context.Background(), dir, tb); err != nil {
 		t.Fatalf("run: %v", err)
 	}
 	if _, err := os.Stat(sentinel); !os.IsNotExist(err) {
