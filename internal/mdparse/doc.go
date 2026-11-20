@@ -6,8 +6,10 @@ package mdparse
 
 import "strings"
 
-// Lines splits src into lines without their "\n" or "\r\n" terminators.
+// Lines splits src into lines without their "\n" or "\r\n" terminators;
+// a leading UTF-8 BOM (written by some Windows editors) is dropped.
 func Lines(src string) []string {
+	src = strings.TrimPrefix(src, "\ufeff")
 	if src == "" {
 		return nil
 	}

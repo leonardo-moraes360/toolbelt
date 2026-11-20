@@ -1,6 +1,9 @@
 package mdparse
 
-import "strings"
+import (
+	"strings"
+	"unicode/utf8"
+)
 
 // Wikilink is one [[...]] link (R7).
 type Wikilink struct {
@@ -32,6 +35,8 @@ func Wikilinks(src string) []Wikilink {
 func lineLinks(n int, line string) []Wikilink {
 	code := codeSpans(line)
 	var out []Wikilink
+	// col counts runes incrementally, so many links on one line stay linear.
+	colAt, colPos := 1, 0
 	for i := 0; i+1 < len(line); {
 		if line[i] != '[' || line[i+1] != '[' || code[i] {
 			i++
@@ -50,7 +55,13 @@ func lineLinks(n int, line string) []Wikilink {
 		if w, ok := parseInner(inner); ok {
 			w.Line = n
 			w.Embed = i > 0 && line[i-1] == '!'
-			w.Col = runeCol(line, i)
+			start := i
+			if w.Embed {
+				start = i - 1 // diagnostics point at the start of the token
+			}
+			colAt += utf8.RuneCountInString(line[colPos:start])
+			colPos = start
+			w.Col = colAt
 			out = append(out, w)
 		}
 		i = next
@@ -65,10 +76,6 @@ func anyIn(code []bool, from, to int) bool {
 		}
 	}
 	return false
-}
-
-func runeCol(line string, byteIdx int) int {
-	return len([]rune(line[:byteIdx])) + 1
 }
 
 // parseInner applies R7's steps: label at the first "|" ("\|", the table
@@ -87,7 +94,7 @@ func parseInner(inner string) (Wikilink, bool) {
 	}
 	t := strings.TrimSpace(rest)
 	if len(t) >= 3 && strings.EqualFold(t[len(t)-3:], ".md") {
-		t = t[:len(t)-3]
+		t = strings.TrimSpace(t[:len(t)-3])
 	}
 	w.Target = t
 	if w.Target == "" && w.Fragment == "" {
@@ -107,6 +114,12 @@ func codeSpans(line string) []bool {
 			continue
 		}
 		n := run(line, i)
+		if escaped(line, i) {
+			// A backslash-escaped backtick is literal; the rest of its run
+			// can still open a span.
+			i++
+			continue
+		}
 		closeAt := -1
 		for j := i + n; j < len(line); {
 			if line[j] != '`' {
@@ -138,4 +151,13 @@ func run(s string, i int) int {
 		n++
 	}
 	return n
+}
+
+// escaped reports whether line[i] is preceded by an odd number of "\".
+func escaped(line string, i int) bool {
+	k := 0
+	for j := i - 1; j >= 0 && line[j] == '\\'; j-- {
+		k++
+	}
+	return k%2 == 1
 }

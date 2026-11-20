@@ -113,7 +113,7 @@ human (Obsidian/editor) ──┐                 ┌── agent (MCP tb_vault_
 
 **Note format**
 
-- R4: a note may start with YAML frontmatter: the first line is `---` (accepts `\r\n`) and the frontmatter ends at the next line that is only `---` or `...`. Recognized fields:
+- R4: a note may start with YAML frontmatter: the first line is `---` (accepts `\r\n`, a leading UTF-8 BOM and trailing spaces or tabs) and the frontmatter ends at the next line that is only `---` or `...` (trailing spaces or tabs allowed). A file that starts with a `---` thematic break is read as frontmatter, as in Obsidian. Recognized fields:
 
   | Field | Type | Default |
   |-------|------|---------|
@@ -146,7 +146,7 @@ human (Obsidian/editor) ──┐                 ┌── agent (MCP tb_vault_
   2. split the fragment at the first `#` of what remains;
   3. target = the rest, `TrimSpace`d, without a `.md` suffix (case-insensitive).
 
-  An empty target with a fragment links to the same note. An empty target without a fragment is dropped. Each link stores line (1-based), column, target, fragment, label and `embed`.
+  An empty target with a fragment links to the same note. An empty target without a fragment is dropped. Each link stores line (1-based), column (1-based, in runes, of the `!` for an embed and of the first `[` otherwise), target, fragment, label and `embed`. A backslash-escaped backtick does not open a code span. Phase A limits: code spans and wikilinks are recognized within one line, and fences inside list items or blockquotes are not recognized, so links inside them are extracted.
 - R8: resolution of a non-empty target `t`, case-insensitive (`strings.EqualFold`):
   - **Attachment:** if `t` has an extension other than `.md` (for example `img.png`, `doc.pdf`), it is an attachment link. It resolves against the vault's regular non-note files by the same two steps below; zero candidates is `missing_attachment` (warning), never an error, because Obsidian vaults routinely embed files tb does not manage.
   - **Note**, in order, stopping at the first step with candidates:

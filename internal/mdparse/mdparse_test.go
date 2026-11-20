@@ -2,7 +2,9 @@ package mdparse
 
 import (
 	"reflect"
+	"strings"
 	"testing"
+	"time"
 )
 
 func TestWikilinkForms(t *testing.T) {
@@ -16,7 +18,15 @@ func TestWikilinkForms(t *testing.T) {
 		{"[[a#h]]", []Wikilink{{Line: 1, Col: 1, Target: "a", Fragment: "h"}}},
 		{"[[a#^x]]", []Wikilink{{Line: 1, Col: 1, Target: "a", Fragment: "^x"}}},
 		{"[[#h]]", []Wikilink{{Line: 1, Col: 1, Fragment: "h"}}},
-		{"![[a]]", []Wikilink{{Line: 1, Col: 2, Target: "a", Embed: true}}},
+		{"![[a]]", []Wikilink{{Line: 1, Col: 1, Target: "a", Embed: true}}},
+		{"é ![[a]] [[b]]", []Wikilink{{Line: 1, Col: 3, Target: "a", Embed: true}, {Line: 1, Col: 10, Target: "b"}}},
+		{"[[[a]]", []Wikilink{{Line: 1, Col: 2, Target: "a"}}},
+		{"[[a]]]", []Wikilink{{Line: 1, Col: 1, Target: "a"}}},
+		{"[[a|]]", []Wikilink{{Line: 1, Col: 1, Target: "a"}}},
+		{"[[a#h|b]]", []Wikilink{{Line: 1, Col: 1, Target: "a", Fragment: "h", Label: "b"}}},
+		{"[[foo .md]]", []Wikilink{{Line: 1, Col: 1, Target: "foo"}}},
+		{"[[.md#x]]", []Wikilink{{Line: 1, Col: 1, Fragment: "x"}}},
+		{"\\`[[esc]]\\`", []Wikilink{{Line: 1, Col: 3, Target: "esc"}}},
 		{"[[folder/a]]", []Wikilink{{Line: 1, Col: 1, Target: "folder/a"}}},
 		{"[[a.md]] [[b.MD]]", []Wikilink{{Line: 1, Col: 1, Target: "a"}, {Line: 1, Col: 10, Target: "b"}}},
 		{"[[ a ]]", []Wikilink{{Line: 1, Col: 1, Target: "a"}}},
@@ -124,5 +134,60 @@ func TestLines(t *testing.T) {
 	}
 	if Lines("") != nil {
 		t.Fatal("empty")
+	}
+}
+
+func TestWikilinksDropped(t *testing.T) {
+	for _, in := range []string{"[[.md]]", "[[a `]]` b]]", "`[[a]]`"} {
+		if got := Wikilinks(in); len(got) != 0 {
+			t.Errorf("%q: %+v", in, got)
+		}
+	}
+}
+
+func TestFenceRules(t *testing.T) {
+	src := "```\n``` x\n[[in1]]\n   ```\n[[out1]]\n" + // info string does not close; 3-space indent does
+		"``` a`b\n[[out2]]\n" + // a backtick info string does not open a fence
+		"~~~\n[[in2]]\n" // unclosed fence masks to EOF
+	var got []string
+	for _, w := range Wikilinks(src) {
+		got = append(got, w.Target)
+	}
+	if !reflect.DeepEqual(got, []string{"out1", "out2"}) {
+		t.Fatalf("%v", got)
+	}
+}
+
+func TestHeadingEdgeCases(t *testing.T) {
+	got := Headings("#\tTab\n# Title\t#\n# \\#\n")
+	if len(got) != 3 || got[0].Text != "Tab" || got[1].Text != "Title" || got[2].Text != `\#` || got[2].Slug != "" {
+		t.Fatalf("%+v", got)
+	}
+}
+
+func TestFrontmatterBOMAndMarkers(t *testing.T) {
+	fm, ok, err := SplitFrontmatter("\ufeff---  \ntitle: x\n--- \nbody\n")
+	if err != nil || !ok || fm.YAML != "title: x" || fm.EndLine != 3 {
+		t.Fatalf("bom/trailing: %+v %v %v", fm, ok, err)
+	}
+	if _, ok, _ := SplitFrontmatter("\n---\ntitle: x\n---\n"); ok {
+		t.Fatal("a leading blank line is not frontmatter")
+	}
+	if got := Wikilinks("# T\n---\n[[a]]\n...\n"); len(got) != 1 {
+		t.Fatalf("a later --- is a thematic break, not frontmatter: %+v", got)
+	}
+}
+
+// TestWikilinksManyOnOneLine guards the linear column count (a 256 KiB
+// note can hold ~40k links on one line).
+func TestWikilinksManyOnOneLine(t *testing.T) {
+	line := strings.Repeat("é [[a]] ", 40000)
+	start := time.Now()
+	got := Wikilinks(line)
+	if len(got) != 40000 || got[39999].Col != 39999*8+3 {
+		t.Fatalf("%d links, last col %d", len(got), got[len(got)-1].Col)
+	}
+	if d := time.Since(start); d > 300*time.Millisecond {
+		t.Fatalf("too slow: %s", d)
 	}
 }
