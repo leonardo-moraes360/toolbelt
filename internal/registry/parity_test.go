@@ -38,6 +38,12 @@ func TestDefaultHasCLIParityTools(t *testing.T) {
 		"tb_graph_impact",
 		"tb_graph_explain",
 		"tb_graph_path",
+		"tb_red_search",
+		"tb_blue_search",
+		"tb_red_load",
+		"tb_blue_load",
+		"tb_sec_pair",
+		"tb_blue_apply",
 	}
 	names := map[string]bool{}
 	for _, tool := range Default().List() {

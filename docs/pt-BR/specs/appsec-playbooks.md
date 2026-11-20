@@ -156,3 +156,13 @@ Tools de leitura são `readOnlyHint: true, openWorldHint: false`. `tb_blue_apply
 2. **Detectores de check.** Quais tipos de detector `tb guard`/`verify` expor aos checks de playbook (classe-grep agora; classe-AST/semgrep depois)?
 3. **Local do corpus.** `playbooks/` na raiz do repo vs sob `docs/`? É dado consumido pelo `tb`, não prosa, então provavelmente um dir adjacente a código, indexado no build.
 4. **Estimador de token compartilhado.** Confirmar que o estimador existente é exportado para `internal/secplay`, ou extraí-lo.
+
+## Status de implementação (Fase 1)
+
+Implementado em `internal/secplay` com a CLI `tb red` / `tb blue` e os seis tools MCP. Três pontos de desenho foram resolvidos conforme o código real; eles refinam as seções acima:
+
+- **Índice.** O "grafo" do repo é um armazém JSON (`graph.json`) com BM25 em memória, não SQLite/FTS5. O corpus é pequeno, então a Fase 1 entrega um motor autocontido (corpus embutido, ranker compacto próprio, fatiador de seção próprio, estimador de token próprio `≈ runes/4`) em vez de escrever no `graph.json`. Ligar nós de playbook + uma aresta `mirror` ao grafo (para `tb graph path` ligá-los) é **Fase 2**.
+- **Checks executáveis.** `guard` é Go hardcoded e `verify` são quatro strings de comando — nenhum hospeda uma lista de checks nomeados. Então os checks blue vivem num **`.toolbelt/secchecks.yaml`** dedicado e versionado, gravado por `tb blue apply` e rodado por **`tb blue check`** (um scanner grep/regex). O "um `tb guard`/`tb stack` seguinte os roda" do critério A4 vira `tb blue check` na Fase 1; uma op seccheck no `tb stack` é **Fase 2**.
+- **Local do corpus.** Escrito e **embutido** em `internal/secplay/corpus/{red,blue}/<classe>.md` via `go:embed` — nosso, embarcado no binário e fora de `docs/` (sem ônus de espelho pt-BR).
+
+**Corpus entregue (núcleo, 10 pares):** sql-injection, xss, ssrf, ssti, xxe, idor, rce, insecure-deserialization, jwt, oauth. Checks blue entram para todas menos as duas classes só-lógica (idor, oauth). **Adiado:** formatos SIEM (Sigma/KQL/YARA), a aresta mirror no grafo + op no `tb stack`, e o resto da taxonomia.
