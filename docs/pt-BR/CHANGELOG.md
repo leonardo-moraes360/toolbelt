@@ -9,6 +9,9 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Não Lançado]
 
+### Alterado
+- Spec em rascunho do restante do B3 do barramento (`docs/bus-notify-discover.md`): um adapter de wake `notify` que avisa o humano (desktop via `notify-send`/`osascript`, ou terminal) só com nomes validados e contagens, e um catálogo `tb bus discover` só de leitura com CLIs de agente conhecidas e configs de cliente MCP (só a entrada do `tb mcp` é lida; nada é executado)
+
 ## [0.0.8] - 2026-11-20
 
 ### Adicionado

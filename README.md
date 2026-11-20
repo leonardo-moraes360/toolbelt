@@ -259,7 +259,7 @@ tb bus recv --channel feature-x --as grok-1 --wait 20s
 - [x] B0 — `bus/0.1` spec: envelope, Agent Card and invite ([docs/bus-protocolo.md](docs/bus-protocolo.md))
 - [x] B1 — SQLite store, CLI + MCP, single-use invite, `join`/`send`/`recv`/`claim`/`complete`/`log`
 - [x] B2 — lease, heartbeat and watchdog on the bus ([spec](docs/bus-lease.md))
-- [ ] B3 (partial) — `tb bus run` with `exec` and `harness` adapters done ([docs/bus-harness.md](docs/bus-harness.md)); `notify` adapter and `tb bus discover` pending
+- [ ] B3 (partial) — `tb bus run` with `exec` and `harness` adapters done ([docs/bus-harness.md](docs/bus-harness.md)); `notify` adapter and `tb bus discover` pending ([draft spec](docs/bus-notify-discover.md))
 - [ ] B4 — Phase 3 router/board on top of the bus
 
 ## 🤝 Contributing
