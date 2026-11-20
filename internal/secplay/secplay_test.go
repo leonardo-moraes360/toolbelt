@@ -117,10 +117,18 @@ func TestEstimateTokens(t *testing.T) {
 	}
 }
 
-func TestApplyWritesSecChecksAndRunFlags(t *testing.T) {
+func fileHit(vs []Violation, name string) bool {
+	for _, v := range vs {
+		if v.File == name {
+			return true
+		}
+	}
+	return false
+}
+
+func TestApplyWritesSecChecks(t *testing.T) {
 	c := mustLoad(t)
-	dir := t.TempDir()
-	tb := filepath.Join(dir, ".toolbelt")
+	tb := filepath.Join(t.TempDir(), ".toolbelt")
 
 	// Dry run writes nothing.
 	if _, err := c.Apply(tb, "sql-injection", true); err != nil {
@@ -141,6 +149,7 @@ func TestApplyWritesSecChecksAndRunFlags(t *testing.T) {
 	if _, err := os.Stat(SecChecksPath(tb)); err != nil {
 		t.Fatalf("secchecks.yaml not written: %v", err)
 	}
+
 	// Idempotent: second apply adds nothing new.
 	res2, err := c.Apply(tb, "sql-injection", false)
 	if err != nil {
@@ -149,33 +158,30 @@ func TestApplyWritesSecChecksAndRunFlags(t *testing.T) {
 	if len(res2.Added) != 0 {
 		t.Errorf("re-apply added %d (want 0, idempotent)", len(res2.Added))
 	}
+}
 
-	// Run flags a planted vulnerable line and ignores clean code.
+func TestRunFlagsPlantedPattern(t *testing.T) {
+	c := mustLoad(t)
+	dir := t.TempDir()
+	tb := filepath.Join(dir, ".toolbelt")
+	if _, err := c.Apply(tb, "sql-injection", false); err != nil {
+		t.Fatalf("apply: %v", err)
+	}
 	vuln := "db.query(\"SELECT * FROM users WHERE id=\" + id)\n"
-	if err := os.WriteFile(filepath.Join(dir, "handler.go"), []byte(vuln), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "handler.go"), []byte(vuln), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	clean := "package x\nfunc f() {}\n"
-	if err := os.WriteFile(filepath.Join(dir, "clean.go"), []byte(clean), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "clean.go"), []byte("package x\nfunc f() {}\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	vs, err := Run(dir, tb)
 	if err != nil {
 		t.Fatalf("run: %v", err)
 	}
-	var hitVuln, hitClean bool
-	for _, v := range vs {
-		if v.File == "handler.go" {
-			hitVuln = true
-		}
-		if v.File == "clean.go" {
-			hitClean = true
-		}
-	}
-	if !hitVuln {
+	if !fileHit(vs, "handler.go") {
 		t.Error("expected a violation in handler.go")
 	}
-	if hitClean {
+	if fileHit(vs, "clean.go") {
 		t.Error("clean.go should not match")
 	}
 }

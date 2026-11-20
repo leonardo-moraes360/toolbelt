@@ -30,5 +30,5 @@ func RecordAck(toolbeltDir string) error {
 	if err := os.MkdirAll(toolbeltDir, 0o755); err != nil {
 		return err
 	}
-	return os.WriteFile(AckPath(toolbeltDir), []byte("acknowledged\n"), 0o644)
+	return os.WriteFile(AckPath(toolbeltDir), []byte("acknowledged\n"), 0o600)
 }

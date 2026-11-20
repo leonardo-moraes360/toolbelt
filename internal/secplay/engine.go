@@ -213,7 +213,7 @@ type budgetBlock struct {
 }
 
 // budgetBlocks returns the renderable blocks of a body in order: an optional
-// preamble (text before the first `##`) labelled "(intro)", then each section
+// preamble (text before the first `##`) labeled "(intro)", then each section
 // as a re-headed block. full is the whole body passed in to avoid recomputing.
 func (p *Playbook) budgetBlocks(full string) []budgetBlock {
 	var out []budgetBlock

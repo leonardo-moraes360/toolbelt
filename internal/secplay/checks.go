@@ -43,7 +43,11 @@ type Check struct {
 	Severity     Severity `yaml:"severity,omitempty" json:"severity,omitempty"`
 }
 
-func (c Check) compile() (*regexp.Regexp, error) {
+// versionedFileMode is the mode for team-shared, versioned files like
+// secchecks.yaml. A named const (not a literal) keeps the intent explicit.
+const versionedFileMode os.FileMode = 0o644
+
+func (c *Check) compile() (*regexp.Regexp, error) {
 	for _, g := range c.IncludeGlobs {
 		if strings.Contains(strings.TrimPrefix(g, "**/"), "/") {
 			return nil, fmt.Errorf("check %q: include_glob %q matches by base name only; a %q path separator never matches", c.ID, g, "/")
@@ -101,7 +105,7 @@ func saveSecChecks(path string, sc *SecChecks) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, data, 0o644)
+	return os.WriteFile(path, data, versionedFileMode)
 }
 
 // ApplyResult reports what Apply did.
@@ -117,6 +121,34 @@ type ApplyResult struct {
 // toolbeltDir (load-mutate-save, deduped by check ID). With dryRun it computes
 // the diff without writing.
 func (c *Corpus) Apply(toolbeltDir, class string, dryRun bool) (*ApplyResult, error) {
+	pb, err := c.blueForClass(class)
+	if err != nil {
+		return nil, err
+	}
+	for i := range pb.Checks {
+		if _, err := pb.Checks[i].compile(); err != nil {
+			return nil, err
+		}
+	}
+
+	path := SecChecksPath(toolbeltDir)
+	sc, err := LoadSecChecks(path)
+	if err != nil {
+		return nil, err
+	}
+	res := mergeChecks(sc, pb.Checks, class, path, dryRun)
+	if dryRun || (len(res.Added) == 0 && len(res.Updated) == 0) {
+		return res, nil
+	}
+	if err := saveSecChecks(path, sc); err != nil {
+		return nil, err
+	}
+	return res, nil
+}
+
+// blueForClass returns the single blue playbook with checks for class, erroring
+// on an ambiguous class or one with no checks.
+func (c *Corpus) blueForClass(class string) (*Playbook, error) {
 	var pb *Playbook
 	for _, name := range sortedNames(c.Blue) {
 		b := c.Blue[name]
@@ -134,51 +166,36 @@ func (c *Corpus) Apply(toolbeltDir, class string, dryRun bool) (*ApplyResult, er
 	if len(pb.Checks) == 0 {
 		return nil, fmt.Errorf("blue playbook %q declares no checks", pb.Name)
 	}
-	for _, ch := range pb.Checks {
-		if _, err := ch.compile(); err != nil {
-			return nil, err
-		}
-	}
+	return pb, nil
+}
 
-	path := SecChecksPath(toolbeltDir)
-	sc, err := LoadSecChecks(path)
-	if err != nil {
-		return nil, err
-	}
+// mergeChecks folds checks into sc (deduped by ID), recording what changed.
+func mergeChecks(sc *SecChecks, checks []Check, class, path string, dryRun bool) *ApplyResult {
 	idx := make(map[string]int, len(sc.Checks))
-	for i, ch := range sc.Checks {
-		idx[ch.ID] = i
+	for i := range sc.Checks {
+		idx[sc.Checks[i].ID] = i
 	}
 	res := &ApplyResult{Class: class, DryRun: dryRun, Path: path}
-	for _, ch := range pb.Checks {
+	for _, ch := range checks {
 		ch.Severity = ch.Severity.norm()
 		if ch.Class == "" {
 			ch.Class = class
 		}
-		if i, ok := idx[ch.ID]; ok {
-			if !checkEqual(sc.Checks[i], ch) {
-				sc.Checks[i] = ch
-				res.Updated = append(res.Updated, ch)
-			}
-		} else {
+		i, ok := idx[ch.ID]
+		switch {
+		case !ok:
 			sc.Checks = append(sc.Checks, ch)
 			idx[ch.ID] = len(sc.Checks) - 1
 			res.Added = append(res.Added, ch)
+		case !checkEqual(&sc.Checks[i], &ch):
+			sc.Checks[i] = ch
+			res.Updated = append(res.Updated, ch)
 		}
 	}
-	if dryRun {
-		return res, nil
-	}
-	if len(res.Added) == 0 && len(res.Updated) == 0 {
-		return res, nil
-	}
-	if err := saveSecChecks(path, sc); err != nil {
-		return nil, err
-	}
-	return res, nil
+	return res
 }
 
-func checkEqual(a, b Check) bool {
+func checkEqual(a, b *Check) bool {
 	if a.ID != b.ID || a.Class != b.Class || a.Description != b.Description ||
 		a.Pattern != b.Pattern || a.Severity.norm() != b.Severity.norm() ||
 		len(a.IncludeGlobs) != len(b.IncludeGlobs) {
@@ -209,6 +226,24 @@ var skipDirs = map[string]bool{
 	".venv": true, "dist": true, "build": true,
 }
 
+type compiledCheck struct {
+	check Check
+	re    *regexp.Regexp
+}
+
+// compileChecks compiles every check once, up front.
+func compileChecks(checks []Check) ([]compiledCheck, error) {
+	cs := make([]compiledCheck, 0, len(checks))
+	for i := range checks {
+		re, err := checks[i].compile()
+		if err != nil {
+			return nil, err
+		}
+		cs = append(cs, compiledCheck{checks[i], re})
+	}
+	return cs, nil
+}
+
 // Run scans the working tree under repoDir against the registered checks and
 // returns the violations. It only reads files and matches regexes — it never
 // executes anything. Files are matched against each check's include_globs (by
@@ -221,93 +256,26 @@ func Run(repoDir, toolbeltDir string) ([]Violation, error) {
 	if len(sc.Checks) == 0 {
 		return nil, nil
 	}
-	type compiled struct {
-		check Check
-		re    *regexp.Regexp
-	}
-	cs := make([]compiled, 0, len(sc.Checks))
-	for _, ch := range sc.Checks {
-		re, err := ch.compile()
-		if err != nil {
-			return nil, err
-		}
-		cs = append(cs, compiled{ch, re})
+	cs, err := compileChecks(sc.Checks)
+	if err != nil {
+		return nil, err
 	}
 
 	var out []Violation
-	err = filepath.WalkDir(repoDir, func(path string, d os.DirEntry, err error) error {
-		if err != nil {
-			// A single unreadable entry must not abort the whole scan; only a
-			// failure to read the root itself is fatal.
-			if path == repoDir {
-				return err
-			}
-			if d != nil && d.IsDir() {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if d.IsDir() {
-			// Skip vendored/build dirs, but never treat the scan root as one
-			// just because its own basename matches (e.g. running from ./build).
-			if path != repoDir && skipDirs[d.Name()] {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		// Only scan regular files. Symlinks, FIFOs, devices and sockets are
-		// skipped before any open, so a planted link cannot make the scanner
-		// read outside the tree or block on a device.
-		if !d.Type().IsRegular() {
-			return nil
+	walkErr := filepath.WalkDir(repoDir, func(path string, d os.DirEntry, err error) error {
+		proceed, ctrl := scanDecision(repoDir, path, d, err)
+		if !proceed {
+			return ctrl
 		}
 		rel, relErr := filepath.Rel(repoDir, path)
 		if relErr != nil {
 			rel = path
 		}
-		base := d.Name()
-		var applicable []compiled
-		for _, cc := range cs {
-			if globsMatch(cc.check.IncludeGlobs, base) {
-				applicable = append(applicable, cc)
-			}
-		}
-		if len(applicable) == 0 {
-			return nil
-		}
-		info, err := d.Info()
-		if err != nil {
-			return nil
-		}
-		if info.Size() > maxScanBytes {
-			return nil
-		}
-		raw, err := os.ReadFile(path)
-		if err != nil {
-			return nil
-		}
-		if isBinary(raw) {
-			return nil
-		}
-		lines := strings.Split(string(raw), "\n")
-		for _, cc := range applicable {
-			for i, ln := range lines {
-				if cc.re.MatchString(ln) {
-					out = append(out, Violation{
-						CheckID:  cc.check.ID,
-						Class:    cc.check.Class,
-						File:     rel,
-						Line:     i + 1,
-						Severity: cc.check.Severity.norm(),
-						Match:    strings.TrimSpace(ln),
-					})
-				}
-			}
-		}
+		out = append(out, scanFile(path, rel, d, cs)...)
 		return nil
 	})
-	if err != nil {
-		return nil, err
+	if walkErr != nil {
+		return nil, walkErr
 	}
 	sort.SliceStable(out, func(i, j int) bool {
 		if out[i].File != out[j].File {
@@ -319,6 +287,73 @@ func Run(repoDir, toolbeltDir string) ([]Violation, error) {
 		return out[i].CheckID < out[j].CheckID
 	})
 	return out, nil
+}
+
+// scanDecision interprets one WalkDir callback entry: whether to scan the file,
+// and the control error (SkipDir / fatal / nil) to return otherwise. Symlinks,
+// FIFOs, devices and sockets are not regular, so they are never opened; a single
+// unreadable entry is skipped (only a root error is fatal); and the scan root is
+// never treated as a skip dir because its own basename matches.
+func scanDecision(repoDir, path string, d os.DirEntry, err error) (proceed bool, ctrl error) {
+	if err != nil {
+		if path == repoDir {
+			return false, err
+		}
+		if d != nil && d.IsDir() {
+			return false, filepath.SkipDir
+		}
+		return false, nil
+	}
+	if d.IsDir() {
+		if path != repoDir && skipDirs[d.Name()] {
+			return false, filepath.SkipDir
+		}
+		return false, nil
+	}
+	if !d.Type().IsRegular() {
+		return false, nil
+	}
+	return true, nil
+}
+
+// scanFile matches the applicable checks against one regular file's lines. It
+// reads the file; it never executes its content.
+func scanFile(path, rel string, d os.DirEntry, cs []compiledCheck) []Violation {
+	base := d.Name()
+	var applicable []compiledCheck
+	for _, cc := range cs {
+		if globsMatch(cc.check.IncludeGlobs, base) {
+			applicable = append(applicable, cc)
+		}
+	}
+	if len(applicable) == 0 {
+		return nil
+	}
+	info, err := d.Info()
+	if err != nil || info.Size() > maxScanBytes {
+		return nil
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil || isBinary(raw) {
+		return nil
+	}
+	var out []Violation
+	lines := strings.Split(string(raw), "\n")
+	for _, cc := range applicable {
+		for i, ln := range lines {
+			if cc.re.MatchString(ln) {
+				out = append(out, Violation{
+					CheckID:  cc.check.ID,
+					Class:    cc.check.Class,
+					File:     rel,
+					Line:     i + 1,
+					Severity: cc.check.Severity.norm(),
+					Match:    strings.TrimSpace(ln),
+				})
+			}
+		}
+	}
+	return out
 }
 
 // globsMatch reports whether base matches any glob (by base name). An empty

@@ -68,7 +68,7 @@ type Playbook struct {
 
 // parsePlaybook parses one SKILL/PLAYBOOK Markdown file. path is only used in
 // error messages.
-func parsePlaybook(path string, src string) (*Playbook, error) {
+func parsePlaybook(path, src string) (*Playbook, error) {
 	fm, ok, err := mdparse.SplitFrontmatter(src)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", path, err)
@@ -161,13 +161,14 @@ func splitSections(body string) []Section {
 // Section returns the section whose heading or slug matches q (case-insensitive,
 // exact on slug or heading, else prefix on heading). ok is false when none match.
 func (p *Playbook) Section(q string) (Section, bool) {
-	want := strings.ToLower(strings.TrimSpace(q))
-	if want == "" {
+	qTrim := strings.TrimSpace(q)
+	if qTrim == "" {
 		return Section{}, false
 	}
+	want := strings.ToLower(qTrim)
 	wantSlug := mdparse.Slugify(q)
 	for _, s := range p.Sections {
-		if s.Slug == wantSlug || strings.ToLower(s.Heading) == want {
+		if s.Slug == wantSlug || strings.EqualFold(s.Heading, qTrim) {
 			return s, true
 		}
 	}
