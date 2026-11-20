@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.0.8] - 2026-11-20
+
 ### Added
 - Security CI workflows: CodeQL (`go` with a manual build, `actions`, `security-extended` queries; on PR and weekly), OpenSSF Scorecard (weekly and on branch protection changes, published results, SARIF to code scanning) and zizmor (GitHub Actions audit on PRs that change workflows); none of them runs after merge. Their actions are pinned by commit SHA
 - Bus B2 (lease, heartbeat, watchdog; spec `docs/bus-lease.md`): per-agent lease (`tb bus channel create --lease`, default `2m`), epoch fencing on claims, takeover of released or expired claims, `tb bus heartbeat`, `tb bus watchdog` (CLI only, publishes `lease_expired` from the broker-only `system:watchdog`), `channel show` with agents and claims, MCP tools `tb_bus_heartbeat` and `tb_bus_status`, background heartbeats from `tb mcp` for bound sessions and from the `tb bus run` harness (`lease_lost` audit)
