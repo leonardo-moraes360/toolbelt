@@ -96,6 +96,15 @@ jobs:
           go build -v -o bin/tb ./cmd/tb
           go build -v -o bin/fake-agent ./cmd/fake-agent
 
+      # The release builds these targets (.goreleaser.yaml); a Linux-only
+      # build missed a unix-only syscall in v0.0.7.
+      - name: Cross-build the release targets
+        run: |
+          for t in linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64; do
+            echo "== $t"
+            GOOS="${t%/*}" GOARCH="${t#*/}" go build ./...
+          done
+
       - name: Verify binaries
         run: |
           ./bin/tb version
