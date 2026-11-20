@@ -139,3 +139,20 @@ func hasEdgeType(idx *Index, typ EdgeType) bool {
 	}
 	return false
 }
+
+// TestIndexMarkdownHeadingsSkipFencesAndFrontmatter: "#" lines in a YAML
+// comment or a fenced block are not sections (vault spec R6).
+func TestIndexMarkdownHeadingsSkipFencesAndFrontmatter(t *testing.T) {
+	root := t.TempDir()
+	mustWrite(t, filepath.Join(root, "docs", "n.md"), "---\n# yaml comment\ntitle: n\n---\n# Real\n\n```sh\n# shell comment\n```\n## Also Real ##\n")
+	opts := DefaultBuildOptions()
+	opts.Docs = []string{"markdown"}
+	idx, err := BuildFromRootOpts(root, &opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := titles(idx, NodeSection)
+	if len(got) != 2 || !hasNode(idx, NodeSection, "Real") || !hasNode(idx, NodeSection, "Also Real") {
+		t.Fatalf("sections %v", got)
+	}
+}

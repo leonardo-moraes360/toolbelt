@@ -4,11 +4,11 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
-	"unicode"
+
+	"github.com/leonardo-moraes360/toolbelt/internal/mdparse"
 )
 
 var (
-	reMDHeading   = mustRE(`(?m)^(#{1,6})\s+(.+?)\s*$`)
 	reMDLink      = mustRE(`\[([^\]]*)\]\(([^)]+)\)`)
 	reMDAutolink  = mustRE(`(?m)<([^>]+\.(?:md|mdx|html?|txt|go|py|rs|java|ts|tsx|js|mjs))>`)
 	reHTMLHeading = mustRE(`(?is)<h([1-6])[^>]*>(.*?)</h[1-6]>`)
@@ -83,10 +83,10 @@ func indexMarkupDoc(rel, src string, markdown bool) ([]Node, []Edge, error) {
 	}}
 	var edges []Edge
 
-	for _, m := range reMDHeading.FindAllStringSubmatch(src, -1) {
-		title := strings.TrimSpace(m[2])
-		slug := slugify(title)
-		secID := "section:" + slash + "#" + slug
+	// Headings outside the frontmatter and fenced code (vault spec R6).
+	for _, h := range mdparse.Headings(src) {
+		title := h.Text
+		secID := "section:" + slash + "#" + slugify(title)
 		nodes = append(nodes, Node{
 			ID: secID, Type: NodeSection, Path: slash, Title: title,
 			Source: "extracted", Confidence: 0.9,
@@ -285,26 +285,12 @@ func looksLikeSymbol(s string) bool {
 	return reSymLike.MatchString(s)
 }
 
+// slugify is mdparse.Slugify with the graph's fallback for an empty slug.
 func slugify(s string) string {
-	s = strings.ToLower(strings.TrimSpace(s))
-	var b strings.Builder
-	prevDash := false
-	for _, r := range s {
-		if unicode.IsLetter(r) || unicode.IsDigit(r) {
-			b.WriteRune(r)
-			prevDash = false
-			continue
-		}
-		if !prevDash {
-			b.WriteByte('-')
-			prevDash = true
-		}
+	if out := mdparse.Slugify(s); out != "" {
+		return out
 	}
-	out := strings.Trim(b.String(), "-")
-	if out == "" {
-		return "section"
-	}
-	return out
+	return "section"
 }
 
 func stripTags(s string) string {

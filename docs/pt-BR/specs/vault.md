@@ -113,7 +113,7 @@ humano (Obsidian/editor) ──┐                 ┌── agente (MCP tb_vaul
 
 **Formato da nota**
 
-- R4: a nota pode começar com frontmatter YAML: a primeira linha é `---` (aceita `\r\n`) e o frontmatter termina na próxima linha que é só `---` ou `...`. Campos reconhecidos:
+- R4: a nota pode começar com frontmatter YAML: a primeira linha é `---` (aceita `\r\n`, um BOM UTF-8 no início e espaços ou tabs no fim) e o frontmatter termina na próxima linha que é só `---` ou `...` (com espaços ou tabs no fim). Um arquivo que começa com uma quebra temática `---` é lido como frontmatter, como no Obsidian. Campos reconhecidos:
 
   | Campo | Tipo | Default |
   |-------|------|---------|
@@ -146,7 +146,7 @@ humano (Obsidian/editor) ──┐                 ┌── agente (MCP tb_vaul
   2. separa o fragmento no primeiro `#` do que sobrou;
   3. alvo = o resto, com `TrimSpace` e sem sufixo `.md` (sem diferenciar maiúsculas).
 
-  Alvo vazio com fragmento é link para a própria nota. Alvo vazio sem fragmento é descartado. Cada link guarda linha (1-based), coluna, alvo, fragmento, rótulo e `embed`.
+  Alvo vazio com fragmento é link para a própria nota. Alvo vazio sem fragmento é descartado. Cada link guarda linha (1-based), coluna (1-based, em runas, do `!` num embed e do primeiro `[` nos outros casos), alvo, fragmento, rótulo e `embed`. Uma crase escapada com barra invertida não abre span de código. Limites da Fase A: spans de código e wikilinks são reconhecidos dentro de uma linha, e cercas dentro de itens de lista ou de citações não são reconhecidas, então os links dentro delas são extraídos.
 - R8: resolução de um alvo `t` não vazio, sem diferenciar maiúsculas (`strings.EqualFold`):
   - **Anexo:** se `t` tem extensão diferente de `.md` (por exemplo `img.png`, `doc.pdf`), é um link para anexo. Resolve contra os arquivos regulares do vault que não são nota, pelas mesmas duas etapas abaixo; zero candidatos é `missing_attachment` (aviso), nunca erro, porque vaults do Obsidian embutem com frequência arquivos que o tb não gerencia.
   - **Nota**, na ordem, parando na primeira etapa com candidatos:
