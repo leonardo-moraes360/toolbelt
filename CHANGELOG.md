@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- `tb lab` red+blue isolated labs, Phase 1 sandbox tier (ADR-017, spec `docs/specs/red-blue-labs.md`): `tb lab new|list|status|up|run|logs|down|verify` over a versioned `labs/<name>/lab.yaml` manifest, with tier resolution (`auto|sandbox|podman`). The sandbox tier drives an in-process, pure-Go scenario (no containers, no sockets, no host env — enforced by an import-guard test) that reproduces a vulnerability class and runs the paired blue check, so `tb lab run sqli` reports `attack=reproduced defense=detected`. The Podman topology tier fails closed with remediation when rootless Podman is absent (never downgrades isolation); runtime state lives outside the repo; the authorized-use notice is shared with `tb red`. New exported `secplay.Corpus.ChecksForClass`. Podman topology driver, cgroups caps, egress-ns test, Containerfile seeds, `tb lab export` and MCP `tb_lab_*` are Phase 2
 - Bus B3 remainder (`docs/bus-notify-discover.md`): the `notify` wake adapter for GUI-only agents (`desktop` via a root-owned `notify-send` or `osascript`, `terminal` in-process; fixed English text with counts, types and quoted sender names only; minimal child env; `urgent_urgency`; `wake_mismatch` warning; audit `backend` field) and `tb bus discover` (known agent CLIs on `PATH` and MCP client configs running `tb mcp`, read safely; executes nothing). The wake packet gains `types` and `senders` counts
 
 ## [0.0.8] - 2026-11-20

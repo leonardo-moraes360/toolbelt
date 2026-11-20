@@ -1,0 +1,19 @@
+name: sqli
+class: sql-injection
+# Sandbox tier: the red technique and blue detection for sql-injection run as an
+# in-process, pure-Go scenario (no containers). Set red/blue nodes + internal
+# networking to opt into the Podman topology tier (Phase 2).
+tier: sandbox
+network:
+  egress: deny
+  internal: false
+nodes:
+  target:
+    build: builtin:sql-injection
+    expose: [8080]
+    playbook: red-sqli
+limits:
+  cpus: "1.0"
+  memory: "512m"
+  pids: 256
+  timeout: "10m"

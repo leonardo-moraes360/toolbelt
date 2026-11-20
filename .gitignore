@@ -40,6 +40,7 @@ Thumbs.db
 .toolbelt/bench/
 .toolbelt/router/
 .toolbelt/bus/
+.toolbelt/secplay-red-ack
 .toolbelt/tickets/.lock
 .toolbelt/tickets/.tmp-*
 

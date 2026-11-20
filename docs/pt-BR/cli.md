@@ -551,6 +551,26 @@ Com `TB_GRAPH=on`, cada playbook é um nó `playbook:<nome>` no grafo e todo pla
 
 ---
 
+### `tb lab` — Labs red+blue isolados (✓ Fase 1 tier sandbox, ADR-017)
+
+Ambientes efêmeros e isolados que provam que uma técnica red funciona **e** que o check blue par detecta, contra um alvo local do lab — nunca o host, nunca um terceiro. O isolamento é escalonado: um lab de passo único roda no sandbox existente (Landlock, alvo Go puro in-process); uma topologia multi-serviço roda em Podman rootless. A Fase 1 implementa o **tier sandbox**; o **tier Podman falha fechado** (remediação clara) quando o Podman não está disponível, em vez de degradar o isolamento. Os manifestos ficam em `labs/<nome>/lab.yaml` (versionados); o estado de execução fica fora do repo. `tb lab` compartilha o aviso único de uso autorizado com `tb red`.
+
+```bash
+tb lab new demo --class sql-injection
+tb lab list
+tb lab status sqli
+tb lab up sqli
+tb lab up sqli --tier podman
+tb lab run sqli
+tb lab logs sqli
+tb lab down sqli
+tb lab verify
+```
+
+`tb lab run` reporta um veredito acionável: `attack=reproduced|failed` e `defense=detected|missed`. O seed `labs/sqli/lab.yaml` reporta `attack=reproduced defense=detected`. O tier de topologia Podman, os limites de recursos por cgroups, o export de artefatos e as ferramentas MCP `tb_lab_*` são Fase 2. Veja [docs/specs/red-blue-labs.md](specs/red-blue-labs.md).
+
+---
+
 ### `tb md` — TUI Markdown (planejado — Fase 3+)
 
 > **Não implementado, e fora da Fase A do vault** ([ADR-016](adr/016-vault-fase-a.md)): qualquer editor, inclusive o Obsidian, edita o vault; ver [`tb vault`](#tb-vault--vault-markdown-fase-a).
