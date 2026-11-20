@@ -154,7 +154,7 @@ Criar e remover worktrees não afeta o estado.
   - **Se o árbitro mantém**, o finding volta a `open`.
 - **Severidade não some por casamento.** Um finding novo mais grave que uma linhagem já encerrada vira linhagem nova.
 - **`--decline` não serve para fugir.** Vale para `nit`. Para `major`, rebaixa o veredito. Para `blocker`, não existe.
-- **O gate avalia o commit.** O op `egm` do `tb stack` verifica os documentos sob gate tocados no range do stack, pelo conteúdo em `head` e não pelo worktree. Um documento cujas fontes mudaram sem ele ser tocado gera só aviso; a detecção de deriva fica para a Fase B. Uma seleção vazia gera aviso, e uma seleção vazia com documentos sob gate não commitados falha. Um blocker resolvido com settle forçado falha o gate mesmo sem `--strict`. A escolha do range por ref de confiança fica na spec de trust.
+- **O gate avalia o commit.** O op `egm` do `tb stack` verifica os documentos sob gate tocados no range do stack, pelo conteúdo em `head` e não pelo worktree. Um documento cujas fontes mudaram sem ele ser tocado gera só aviso; a detecção de deriva fica para a Fase B. Uma seleção vazia gera aviso, e uma seleção vazia com documentos sob gate não commitados falha. Um blocker resolvido com settle forçado falha o gate mesmo sem `--strict`. Tirar o range do evento do CI, num modo CI, fica para a spec de trust.
 
 ### 7. Gates viram transições explícitas
 
@@ -194,7 +194,7 @@ As perguntas interativas do upstream viram subcomandos idempotentes do `tb egm r
 ### Negativas
 
 - Mexer no `internal/sandbox`, um componente crítico de segurança.
-- O egm ganha um endurecimento de git próprio. O router e o merge ficam com os deles, e a unificação fica para a spec de trust.
+- O egm ganha um endurecimento de git próprio. O router e o merge ficam com os deles, e a unificação fica para uma mudança separada.
 - **Credenciais do vendor:**
   - a cópia da chave `claudeAiOauth` cria uma janela curta de exposição local (um arquivo `0600` no HOME descartável `0700`, apagado no fim);
   - a cópia não pode ser renovada, então com menos de 10 minutos restantes o tb se recusa a rodar e o usuário roda a CLI do vendor uma vez fora do tb;

@@ -13,7 +13,7 @@ This spec is the **core** of Phase A:
 - review, loop, resolve and arbiter;
 - defenses against **third-party content** (cloned repository, downloaded file, reviewed document).
 
-The protections against active fraud by the author itself, who runs as the same user, live in the [egm trust](egm-trust.md) spec: hash chain, anchor, pins, TTY confirmation and gate by trust ref.
+The protections against active fraud by the author itself, who runs as the same user, live in the [egm trust](egm-trust.md) spec, which makes CI the trust boundary: a committed receipt and an independent fresh round in CI.
 
 ## Assumed Threat Model
 
@@ -556,7 +556,7 @@ The result goes in `docs/campo/dogfood.md` (PT and EN).
   | `PASS_PARTIAL` | `ok: true, warn: true` (`ok: false` with `--strict` or `require_full_coverage`) |
   | others | `ok: false` |
 
-  `Result.warn` is the OR of the steps' `warn`. The `egm` op is not parallel. If it appears before other ops, the stack moves it to the end, and the description of `ops` in the `tb_stack` schema says so. A document with `forced_blocker` gives `ok: false` even without `--strict`. With `warn`, the stack lists the downgrades, and the `ExitCode` stays 0. In Phase A, choosing the range is up to whoever calls the stack. Selection by trust ref is in [egm trust](egm-trust.md).
+  `Result.warn` is the OR of the steps' `warn`. The `egm` op is not parallel. If it appears before other ops, the stack moves it to the end, and the description of `ops` in the `tb_stack` schema says so. A document with `forced_blocker` gives `ok: false` even without `--strict`. With `warn`, the stack lists the downgrades, and the `ExitCode` stays 0. In Phase A, choosing the range is up to whoever calls the stack. The CI mode, with the range taken from the CI event, is in [egm trust](egm-trust.md).
 - R33a (CI): the gate is local. In a CI checkout there is no state, so the result is `NO_STATE` and `ok: false`. CI can run the loop with its own credentials or not include the `egm` op.
 - R33b (report): `report.json` follows `internal/egm/schema/report.schema.json`, with the fields:
   - `slug`, `doc`, `doc_type`, `cycle`, `round`, `verdict`, `loop_state`, `content` and `target` (`worktree` or `<rev>`);

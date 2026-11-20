@@ -13,7 +13,7 @@ Esta spec é o **núcleo** da Fase A:
 - revisão, loop, resolve e árbitro;
 - defesas contra **conteúdo de terceiros** (repositório clonado, arquivo baixado, documento revisado).
 
-As proteções contra fraude ativa do próprio autor, que roda como o mesmo usuário, ficam na spec [egm trust](egm-trust.md): cadeia de hash, âncora, pins, confirmação por TTY e gate por ref de confiança.
+As proteções contra fraude ativa do próprio autor, que roda como o mesmo usuário, ficam na spec [egm trust](egm-trust.md), que torna o CI a fronteira de confiança: um recibo commitado e uma rodada nova e independente no CI.
 
 ## Modelo de ameaças assumido
 
@@ -556,7 +556,7 @@ O resultado vai em `docs/campo/dogfood.md` (PT e EN).
   | `PASS_PARTIAL` | `ok: true, warn: true` (`ok: false` com `--strict` ou `require_full_coverage`) |
   | demais | `ok: false` |
 
-  `Result.warn` é o OR dos `warn` dos passos. O op `egm` não é paralelo. Se aparecer antes de outros ops, o stack o move para o fim, e a descrição de `ops` no schema da `tb_stack` diz isso. Um documento com `forced_blocker` dá `ok: false` mesmo sem `--strict`. Com `warn`, o stack lista os rebaixamentos, e o `ExitCode` continua 0. Na Fase A, a escolha do range fica com quem chama o stack. A seleção por ref de confiança está em [egm trust](egm-trust.md).
+  `Result.warn` é o OR dos `warn` dos passos. O op `egm` não é paralelo. Se aparecer antes de outros ops, o stack o move para o fim, e a descrição de `ops` no schema da `tb_stack` diz isso. Um documento com `forced_blocker` dá `ok: false` mesmo sem `--strict`. Com `warn`, o stack lista os rebaixamentos, e o `ExitCode` continua 0. Na Fase A, a escolha do range fica com quem chama o stack. O modo CI, com o range tirado do evento do CI, está em [egm trust](egm-trust.md).
 - R33a (CI): o gate é local. Num checkout de CI não há estado, então o resultado é `NO_STATE` e `ok: false`. O CI pode rodar o loop com credenciais próprias ou não incluir o op `egm`.
 - R33b (relatório): o `report.json` segue `internal/egm/schema/report.schema.json`, com os campos:
   - `slug`, `doc`, `doc_type`, `cycle`, `round`, `verdict`, `loop_state`, `content` e `target` (`worktree` ou `<rev>`);
