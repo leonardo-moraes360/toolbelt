@@ -1,9 +1,11 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -27,7 +29,12 @@ aligned with stateless MCP. The same tools as the CLI are available via tools/li
 		}
 		log.Info("MCP server started", "transport", "stdio")
 		srv := mcp.NewServer(registry.Default())
-		return srv.Run(cmd.Context(), os.Stdin, os.Stdout)
+		// Bus sessions bound to this connection keep their leases while it
+		// is open (docs/bus-lease.md R7).
+		ctx, cancel := context.WithCancel(cmd.Context())
+		defer cancel()
+		go registry.RunBusHeartbeats(ctx, 5*time.Second)
+		return srv.Run(ctx, os.Stdin, os.Stdout)
 	},
 }
 

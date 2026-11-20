@@ -60,6 +60,9 @@ var toolAnnotations = map[string]ToolAnnotations{
 	"tb_bus_recv":     annBus, // advances the cursor: a repeat returns another batch
 	"tb_bus_claim":    annBus,
 	"tb_bus_complete": annBus,
+	// heartbeat renews the caller's own lease; status only reads.
+	"tb_bus_heartbeat": annBus,
+	"tb_bus_status":    annReadOnly,
 
 	"tb_mem_add":    annAppend,
 	"tb_mem_edit":   annOverwrite,

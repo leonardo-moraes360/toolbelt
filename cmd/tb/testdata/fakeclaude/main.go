@@ -110,10 +110,17 @@ func run() error {
 		if e.Params.Type != "task.assign" || e.Params.Thread == "" {
 			continue
 		}
-		if _, err := call("tb_bus_claim", map[string]any{"thread": e.Params.Thread}); err != nil {
+		claimed, err := call("tb_bus_claim", map[string]any{"thread": e.Params.Thread})
+		if err != nil {
 			return err
 		}
-		if _, err := call("tb_bus_complete", map[string]any{"thread": e.Params.Thread,
+		var claim struct {
+			Epoch int64 `json:"epoch"`
+		}
+		if err := json.Unmarshal([]byte(claimed), &claim); err != nil {
+			return fmt.Errorf("claim result %q: %w", claimed, err)
+		}
+		if _, err := call("tb_bus_complete", map[string]any{"thread": e.Params.Thread, "epoch": claim.Epoch,
 			"result": map[string]any{"verdict": "PASS", "by": "fakeclaude"}}); err != nil {
 			return err
 		}

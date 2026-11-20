@@ -258,7 +258,7 @@ tb bus recv --channel feature-x --as grok-1 --wait 20s
 ### Multi-vendor bus (`tb bus`, [ADR-013](docs/adr/013-barramento-multi-vendor.md))
 - [x] B0 — `bus/0.1` spec: envelope, Agent Card and invite ([docs/bus-protocolo.md](docs/bus-protocolo.md))
 - [x] B1 — SQLite store, CLI + MCP, single-use invite, `join`/`send`/`recv`/`claim`/`complete`/`log`
-- [ ] B2 — lease, heartbeat and watchdog on the bus ([draft spec](docs/bus-lease.md))
+- [x] B2 — lease, heartbeat and watchdog on the bus ([spec](docs/bus-lease.md))
 - [ ] B3 (partial) — `tb bus run` with `exec` and `harness` adapters done ([docs/bus-harness.md](docs/bus-harness.md)); `notify` adapter and `tb bus discover` pending
 - [ ] B4 — Phase 3 router/board on top of the bus
 
@@ -315,5 +315,5 @@ This project is in **Phase 3 (in progress)**: besides verify/guard/mem/graph/rev
 | `tb router` | ✅ | Foreground scheduler (`run`/`status`/`config`) with direct delivery; fail-closed sandbox (`--allow-unsandboxed`) |
 | `tb watchdog` | ✅ | Worker alerts and control (`status`/`alerts`/`kill`); runs inside the router loop |
 | `tb merge` | ✅ | Atomically merges `done` tickets; `fail` (default) or `last_wins` (MCP `tb_merge`); `prompt`/`semantic` not implemented |
-| `tb bus` | 🟡 | Local bus between agents (ADR-013): `channel`/`invite`/`join`/`send`/`recv`/`claim`/`complete`/`log` over `.toolbelt/bus/bus.db`; `tb bus run` wakes the agent (`exec`/`harness` adapters); lease/heartbeat (B2), `notify` and `discover` pending |
-| `tb mcp` | ✅ | Stateless MCP server (stdio); 36 tools in v0.0.5: mem/verify/review/drift/guard/stack, graph (`search`/`callers`/`deps`/`impact`/`explain`/`path`/`index`; requires `TB_GRAPH=on`), ticket/board/router/watchdog/merge and bus (`tb_bus_join`/`send`/`recv`/`claim`/`complete`); `--bus-as` binds the connection to a bus session |
+| `tb bus` | 🟡 | Local bus between agents (ADR-013): `channel`/`invite`/`join`/`send`/`recv`/`claim`/`complete`/`heartbeat`/`watchdog`/`log` over `.toolbelt/bus/bus.db`; lease with epoch fencing (B2); `tb bus run` wakes the agent (`exec`/`harness` adapters); `notify` and `discover` pending |
+| `tb mcp` | ✅ | Stateless MCP server (stdio); 36 tools in v0.0.5: mem/verify/review/drift/guard/stack, graph (`search`/`callers`/`deps`/`impact`/`explain`/`path`/`index`; requires `TB_GRAPH=on`), ticket/board/router/watchdog/merge and bus (`tb_bus_join`/`send`/`recv`/`claim`/`complete`/`heartbeat`/`status`); `--bus-as` binds the connection to a bus session |

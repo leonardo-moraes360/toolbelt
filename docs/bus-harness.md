@@ -49,7 +49,7 @@ One harness per agent: exclusive lock on `<private>/run/<channel>/<name>.lock`. 
 6. **Confirm.** When the adapter succeeds, the harness stores `notified_seq` = the packet's last `seq` in `<private>/run/<channel>/<name>.state`. If after `rewake_after` (default `10m`) the agent's cursor is still below that `seq`, the agent did not read: the harness resends the same packet exactly once (whether that works or not) and, if it stays unread, logs `wake_unread` and stops resending until a new message arrives. State whose `notified_seq` is above the channel's highest `seq` (database recreated) is discarded on open.
 7. **Failure.** An adapter that exits with an error or times out is retried with backoff (1s, 2s, 4s, 8s, 16s; 5 attempts). When exhausted, the harness logs `wake_failed`, publishes `task.status` to `topic:board` with `{"state":"wake_failed","agent":"agent:<name>","last_seq":N}` (once per `last_seq`, without the child's output) and tries again after `rewake_after`. Transient store errors (e.g. `SQLITE_BUSY`) are logged as `error` and the loop goes on; only an invalid session stops the harness.
 
-No lease in this stage: once B2 exists, the same loop renews the lease and sends heartbeats.
+**Heartbeat (B2).** A separate goroutine heartbeats every `lease / 3`, independent of the loop and of a wake, so a wake blocked for its whole timeout keeps the lease. When a heartbeat reports a thread the agent lost, the harness logs `lease_lost` once (thread and new owner). With `--once` nothing heartbeats after the run ends. The harness never claims or completes on its own ([bus-lease.md](bus-lease.md)).
 
 ## Wake packet
 
@@ -176,7 +176,6 @@ Other vendors come in as new presets of the same adapter once they have a headle
 - **Autonomous L0:** answering `ack`/status from state without waking the agent.
 - **L2:** triage and summaries by a local model.
 - **Dedicated `notify` adapter:** covered by `exec` (e.g. `notify-send`).
-- **Lease/heartbeat:** arrives with B2.
 - **`tb bus discover`.**
 
 ## Acceptance criteria
