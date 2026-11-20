@@ -89,3 +89,17 @@ func TestCIArbiterClaim(t *testing.T) {
 		t.Fatalf("uphold: %+v", g.Docs)
 	}
 }
+
+// TestCIForcedClaim: a CI finding matching a forced claim fails as
+// ci_downgrade, like a declined one.
+func TestCIForcedClaim(t *testing.T) {
+	lf := newLLMFlow(t, "")
+	ctx := context.Background()
+	lf.setModes(map[string][]string{"*": {"clean"}, "design": {"findings"}})
+	lf.llmConverged(ctx, func(r *Report) {
+		lf.must(Resolve(ctx, &ResolveOptions{Options: lf.opts(), ForceSettle: r.Findings[0].ID, Reason: "accepted risk"}))
+	})
+	if r := lf.ciGate(ctx, "HEAD~2", false); r.OK || ciResult(r) != "ci_downgrade" {
+		t.Fatalf("forced: %+v", r.Docs)
+	}
+}

@@ -746,13 +746,14 @@ Exige `-c` (a config de usuário do egm do próprio CI) e implica `--strict`. Pa
 documento selecionado verifica, em ordem: o recibo commitado em head (`tb egm receipt`)
 existe e é válido (`no_receipt`, `receipt_invalid`); os hashes do documento e das fontes
 batem com os do commit (`receipt_stale`); depois roda **uma rodada nova** com
-`--engine llm` num estado descartável. Um finding novo de `major` para cima reprova como
-`ci_finding`, a menos que case com uma alegação do recibo (mesmo heading, distância de
-linhas até `egm.match.gap`, `sim ≥ egm.match.sim`, sem severidade maior): uma alegação
-`declined` ou `forced` reprova como `ci_downgrade`; uma `arbiter_withdrawn` passa de novo
-pelo árbitro do próprio CI (`withdraw` passa, qualquer outra coisa é `ci_upheld`).
+`--engine llm` num estado descartável. Uma rodada nova com downgrade é `ci_partial`. Um finding novo de `major` para cima reprova como
+`ci_finding`, a menos que case com uma alegação do recibo (mesmo heading, os dois com linhas
+até `egm.match.gap`, `sim ≥ egm.match.sim`, sem severidade maior): uma alegação
+`declined` ou `forced` reprova como `ci_downgrade`; uma `arbiter_withdrawn` sobre um finding
+contestável (não checker, `injection-scan` nem comprehension) passa de novo pelo árbitro do
+próprio CI (`withdraw` passa, qualquer outra coisa é `ci_upheld`).
 Findings abaixo de `major` só avisam. Um revisor obrigatório que não completa reprova
-(`ci_not_run`). Sem credencial que funcione o resultado é `ci_offline`, a menos que
+(`ci_not_run`). Sem credencial (variável do `egm.env.pass` vazia, ou `auth_expired`) o resultado é `ci_offline`; CI mal configurado (sem `agent_cmd`, sem Landlock) é exit 2, a menos que
 `--egm-allow-offline` rode uma rodada só determinística com teto `PASS_PARTIAL`. Mais
 documentos selecionados que `egm.ci.max_docs` (padrão 5), ou um passo além de
 `egm.max_agent_runs`, é `ci_budget`; um documento sob gate removido reprova. O

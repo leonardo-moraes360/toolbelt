@@ -137,6 +137,9 @@ func gateSelect(ctx context.Context, o *GateOptions) (*gateSelection, error) {
 	}
 	sel := &gateSelection{repo: repo, head: head, set: set}
 	sel.docs, sel.changed, sel.removed = selectGated(diff, set.GateDocGlobs)
+	if sel.removed, err = movedInGate(ctx, repo, mb, head, sel.removed, sel.docs); err != nil {
+		return nil, err
+	}
 	cwd, err := filepath.EvalSymlinks(o.RepoDir)
 	if err != nil {
 		return nil, errorf(ExitError, "usage", "%s: %v", o.RepoDir, err)
@@ -159,7 +162,11 @@ func gateCI(ctx context.Context, repo *Repo, head string, set *Settings, o *Gate
 		res.Warnings = append(res.Warnings, GateWarning{Code: "ci_budget", Path: fmt.Sprintf("%d documents > egm.ci.max_docs %d", len(docs), set.CI.MaxDocs)})
 		return nil
 	}
-	c := &ciRun{o: o, root: repo.Root, head: head, offline: ciEngine(set), runsLeft: set.MaxAgentRuns}
+	offline, err := ciEngine(set)
+	if err != nil {
+		return err
+	}
+	c := &ciRun{o: o, root: repo.Root, head: head, offline: offline, runsLeft: set.MaxAgentRuns}
 	for _, d := range docs {
 		gd := c.doc(ctx, d)
 		res.OK = res.OK && gd.OK
@@ -381,6 +388,38 @@ func changedFromHead(ctx context.Context, repo *Repo, head string, globs, dirs [
 	}
 	for i, p := range present {
 		if at[p] != hashes[i] {
+			out = append(out, p)
+		}
+	}
+	return out, nil
+}
+
+// movedInGate drops the removed gated paths whose blob at the merge-base is
+// the blob of a selected document at head: a rename inside the gate (the
+// diff has --no-renames). A rename with an edit still counts as removed.
+func movedInGate(ctx context.Context, repo *Repo, mb, head string, removed, docs []string) ([]string, error) {
+	if len(removed) == 0 || len(docs) == 0 {
+		return removed, nil
+	}
+	old, err := repo.LsTree(ctx, mb, removed...)
+	if err != nil {
+		return nil, err
+	}
+	cur, err := repo.LsTree(ctx, head, docs...)
+	if err != nil {
+		return nil, err
+	}
+	added := map[string]bool{}
+	for _, e := range cur {
+		added[e.Object] = true
+	}
+	moved := map[string]bool{}
+	for _, e := range old {
+		moved[e.Path] = added[e.Object]
+	}
+	var out []string
+	for _, p := range removed {
+		if !moved[p] {
 			out = append(out, p)
 		}
 	}

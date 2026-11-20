@@ -746,13 +746,14 @@ gated path deleted or renamed out of the gate.
 For each selected document it checks, in order: the receipt committed at head
 (`tb egm receipt`) exists and is valid (`no_receipt`, `receipt_invalid`); its document
 and source hashes equal the commit's (`receipt_stale`); then it runs **one fresh
-round** with `--engine llm` in a throwaway state. A fresh finding at `major` or above
-fails as `ci_finding`, unless it matches a receipt claim (same heading, line gap at most
-`egm.match.gap`, `sim ≥ egm.match.sim`, not more severe): a `declined` or `forced`
-claim fails as `ci_downgrade`; an `arbiter_withdrawn` claim is re-arbitrated by CI's
-own arbiter (`withdraw` passes, anything else is `ci_upheld`). Findings below `major`
+round** with `--engine llm` in a throwaway state. A fresh round with a downgrade is `ci_partial`. A fresh finding at `major` or above
+fails as `ci_finding`, unless it matches a receipt claim (same heading, both with lines
+within `egm.match.gap`, `sim ≥ egm.match.sim`, not more severe): a `declined` or `forced`
+claim fails as `ci_downgrade`; an `arbiter_withdrawn` claim on a contestable finding
+(not a checker, `injection-scan` or comprehension) is re-arbitrated by CI's own arbiter
+(`withdraw` passes, anything else is `ci_upheld`). Findings below `major`
 only warn. A required reviewer that does not complete fails (`ci_not_run`). Without a
-working credential the result is `ci_offline`, unless `--egm-allow-offline` runs a
+credential (an unset `egm.env.pass` variable, or `auth_expired`) the result is `ci_offline`; a broken setup (no `agent_cmd`, no Landlock) is exit 2, unless `--egm-allow-offline` runs a
 deterministic-only round capped at `PASS_PARTIAL`. More selected documents than
 `egm.ci.max_docs` (default 5), or a step past `egm.max_agent_runs`, is `ci_budget`; a
 removed gated document fails. Each document's `ci_findings` lists the fresh findings

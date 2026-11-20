@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/leonardo-moraes360/toolbelt/internal/config"
 )
 
 func (f *flow) ciGate(ctx context.Context, base string, offline bool) *GateResult {
@@ -37,6 +39,12 @@ func docReason(r *GateResult) string {
 // receipt_stale and receipt_invalid.
 func TestCIReceiptChecks(t *testing.T) {
 	f, ctx := convergedAtHead(t)
+	if _, err := Gate(ctx, &GateOptions{RepoDir: f.root, Base: "HEAD~1", Head: "HEAD", ConfigFile: f.cfg, Mode: GateModeCI, AllowOffline: true}); err == nil {
+		t.Fatal("ci without agent_cmd is a broken setup, not offline")
+	}
+	// A credential named in egm.env.pass but unset is offline (T-R4).
+	writeFile(t, f.cfg, "egm:\n  clean_rounds: 1\n  env: {pass: [TB_EGM_TEST_KEY]}\n")
+	t.Setenv("TB_EGM_TEST_KEY", "")
 	if r := f.ciGate(ctx, "HEAD~1", false); r.OK || docReason(r) != "no_receipt" || r.Trust != GateModeCI {
 		t.Fatalf("no receipt: %+v", r)
 	}
@@ -92,7 +100,8 @@ func TestCIUsageBudgetAndRemoved(t *testing.T) {
 	if _, err := Gate(ctx, &GateOptions{RepoDir: f.root, Base: "HEAD~1", Head: "HEAD", ConfigFile: f.cfg, Mode: "remote"}); err == nil {
 		t.Fatal("unknown mode accepted")
 	}
-	writeFile(t, f.cfg, "egm:\n  clean_rounds: 1\n  ci: {max_docs: 1}\n")
+	writeFile(t, f.cfg, "egm:\n  clean_rounds: 1\n  env: {pass: [TB_EGM_TEST_KEY]}\n  ci: {max_docs: 1}\n")
+	t.Setenv("TB_EGM_TEST_KEY", "")
 	r, err := Gate(ctx, &GateOptions{RepoDir: f.root, Base: "HEAD~1", Head: "HEAD", ConfigFile: f.cfg, Mode: GateModeCI, Docs: []string{"docs/specs/x.md", "docs/adr/001-y.md"}})
 	if err != nil || r.OK || !hasGateWarning(r, "ci_budget") {
 		t.Fatalf("max_docs: %+v", r)
@@ -118,5 +127,55 @@ func TestGateLocalReceiptWarnings(t *testing.T) {
 	f.commitReceipt(ctx)
 	if r := f.gate(ctx, "HEAD~2", false); hasGateWarning(r, "receipt_missing") || hasGateWarning(r, "receipt_stale") {
 		t.Fatalf("fresh: %+v", r.Warnings)
+	}
+}
+
+func TestCIMatchClaim(t *testing.T) {
+	set := &Settings{EgmConfig: mustDefault()}
+	msg := "the design reviewer finds this statement unverifiable as written"
+	f := &ReportFinding{ID: "F-1", Severity: SevMajor, Owner: "design", Scope: Scope{Heading: "## Goals", Lines: []int{10, 10}}, Message: msg}
+	arb := Claim{ID: "F-1", Kind: ClaimArbiterWithdrawn, Severity: SevMajor, Heading: "## Goals", Lines: []int{9, 11}, Message: msg}
+	dec := arb
+	dec.ID, dec.Kind = "F-2", ClaimDeclined
+	if c := matchClaim(f, []Claim{arb, dec}, set); c == nil || c.ID != "F-2" {
+		t.Fatalf("declined must win over arbiter_withdrawn: %+v", c)
+	}
+	if c := matchClaim(f, []Claim{arb}, set); c == nil || c.ID != "F-1" {
+		t.Fatalf("arbiter claim: %+v", c)
+	}
+	blocker := *f
+	blocker.Severity = SevBlocker
+	if c := matchClaim(&blocker, []Claim{dec}, set); c != nil {
+		t.Fatalf("more severe finding matched: %+v", c)
+	}
+	lineless := *f
+	lineless.Scope.Lines = nil
+	if c := matchClaim(&lineless, []Claim{dec}, set); c != nil {
+		t.Fatalf("finding without lines matched: %+v", c)
+	}
+	far := dec
+	far.Lines = []int{40, 50}
+	if c := matchClaim(f, []Claim{far}, set); c != nil {
+		t.Fatalf("far claim matched: %+v", c)
+	}
+	if !contestable(f) || contestable(&ReportFinding{Owner: injectionChecker}) || contestable(&ReportFinding{Owner: "comprehension"}) {
+		t.Fatal("contestable")
+	}
+	r := Receipt{Version: 1, Doc: "d.md", DocSHA256: "x", Sources: map[string]string{}, Claims: []Claim{dec, dec}}
+	if r.valid("d.md", 60) {
+		t.Fatal("duplicate claim ids accepted")
+	}
+}
+
+func mustDefault() config.EgmConfig { return config.DefaultEgmConfig() }
+
+// TestCIRenameInsideGate: a gated document moved to another gated path
+// without an edit is not gated_doc_removed.
+func TestCIRenameInsideGate(t *testing.T) {
+	f, ctx := convergedAtHead(t)
+	gitT(t, f.root, "mv", f.doc, "docs/specs/y.md")
+	gitT(t, f.root, "commit", "-qm", "move")
+	if r := f.gate(ctx, "HEAD~1", false); hasGateWarning(r, "gated_doc_removed") {
+		t.Fatalf("rename inside the gate: %+v", r.Warnings)
 	}
 }

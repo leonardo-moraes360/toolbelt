@@ -61,10 +61,12 @@ func (r *Receipt) valid(rel string, docLines int) bool {
 	if r.Version != receiptVersion || r.Doc != rel || r.DocSHA256 == "" || r.Sources == nil {
 		return false
 	}
+	seen := map[string]bool{}
 	for i := range r.Claims {
-		if !r.Claims[i].valid(docLines) {
+		if !r.Claims[i].valid(docLines) || seen[r.Claims[i].ID] {
 			return false
 		}
+		seen[r.Claims[i].ID] = true
 	}
 	return true
 }
@@ -110,14 +112,25 @@ func receiptCheck(ctx context.Context, root, rel, head, cfg string) (*Receipt, *
 	return rc, s, "", nil
 }
 
-// ciEngine reports why the llm engine cannot run with set, or "" (T-R4).
-func ciEngine(set *Settings) string {
+// ciEngine is T-R4: offline is a missing credential (an egm.env.pass
+// variable unset, or an unusable claude credential); any other reason the
+// llm engine cannot run is a broken CI setup, reported as an error.
+func ciEngine(set *Settings) (offline string, err error) {
+	for _, k := range set.Env.Pass {
+		if os.Getenv(k) == "" {
+			return k + " is not set (egm.env.pass)", nil
+		}
+	}
 	_, _, env, err := resolveEngine(&Options{Engine: EngineLLM}, set)
-	if err != nil {
-		return err.Error()
+	var e *Error
+	switch {
+	case errors.As(err, &e) && e.Reason == "auth_expired":
+		return err.Error(), nil
+	case err != nil:
+		return "", err
 	}
 	env.close()
-	return ""
+	return "", nil
 }
 
 // ciRun carries the step-wide state of a CI gate.
@@ -125,8 +138,12 @@ type ciRun struct {
 	o        *GateOptions
 	root     string
 	head     string
-	offline  string // why the llm engine cannot run; "" when it can
+	offline  string // why there is no credential; "" when there is one
 	runsLeft int    // egm.max_agent_runs across the whole step (T-R6)
+}
+
+func errDoc(rel string, err error) GateDoc {
+	return GateDoc{Doc: rel, Verdict: "ERROR", ExitCode: ExitError, Reason: err.Error()}
 }
 
 // doc is T-R2 for one document.
@@ -134,7 +151,7 @@ func (c *ciRun) doc(ctx context.Context, rel string) GateDoc {
 	gd := GateDoc{Doc: rel, Verdict: VerdictFail, ExitCode: ExitFail}
 	rc, s, code, err := receiptCheck(ctx, c.root, rel, c.head, c.o.ConfigFile)
 	if err != nil {
-		return GateDoc{Doc: rel, Verdict: "ERROR", ExitCode: ExitError, Reason: err.Error()}
+		return errDoc(rel, err)
 	}
 	if code != "" {
 		gd.Reason = code
@@ -154,7 +171,7 @@ func (c *ciRun) doc(ctx context.Context, rel string) GateDoc {
 	}
 	tmp, err := os.MkdirTemp("", "tb-egm-ci-")
 	if err != nil {
-		return GateDoc{Doc: rel, Verdict: "ERROR", ExitCode: ExitError, Reason: err.Error()}
+		return errDoc(rel, err)
 	}
 	defer os.RemoveAll(tmp)
 	o := &Options{Doc: rel, Cwd: c.root, ConfigFile: c.o.ConfigFile, At: c.head, Engine: engine, stateRoot: tmp, maxRuns: c.runsLeft}
@@ -165,21 +182,40 @@ func (c *ciRun) doc(ctx context.Context, rel string) GateDoc {
 		gd.Reason = "ci_budget"
 		return gd
 	case err != nil:
-		return GateDoc{Doc: rel, Verdict: "ERROR", ExitCode: ExitError, Reason: err.Error()}
+		return errDoc(rel, err)
 	}
 	c.runsLeft -= out.Report.Budget.Used
-	if why := notRun(out.Report.Coverage); why != "" && engine == EngineLLM {
-		gd.Reason = "ci_not_run: " + why
-		return gd
+	if engine == EngineLLM {
+		if gd.Reason = roundFailure(out.Report); gd.Reason != "" {
+			gd.Downgrades = out.Report.Downgrades
+			return gd
+		}
 	}
 	return c.classify(ctx, o, s, rc, out.Report, engine)
+}
+
+// roundFailure is T-R2 step 3 before T-R3: a required reviewer that did not
+// complete (ci_not_run, or ci_budget when the budget stopped it), or a
+// downgraded round (ci_partial: ci implies --strict, and a partial round,
+// e.g. max_exclusion or no_detailed_section, is not an independent review).
+func roundFailure(rep *Report) string {
+	if why := notRun(rep.Coverage); why != "" {
+		if strings.HasSuffix(why, "(budget)") {
+			return "ci_budget: " + why
+		}
+		return "ci_not_run: " + why
+	}
+	if len(rep.Downgrades) > 0 {
+		return "ci_partial: " + strings.Join(rep.Downgrades, ",")
+	}
+	return ""
 }
 
 // notRun names a required reviewer that did not complete.
 func notRun(cv Coverage) string {
 	for _, r := range cv.Reviewers {
 		if containsStr(cv.Required, r.Name) && r.Status != "completed" {
-			return r.Name + " " + r.Status
+			return r.Name + " " + r.Status + " (" + r.Reason + ")"
 		}
 	}
 	return ""
@@ -190,32 +226,57 @@ func (c *ciRun) classify(ctx context.Context, o *Options, s *snapshot, rc *Recei
 	gd := GateDoc{Doc: rc.Doc, Verdict: VerdictPass, OK: true, ExitCode: ExitOK, CIFindings: []CIFinding{}}
 	var arbitrate []string
 	for i := range rep.Findings {
-		f := &rep.Findings[i]
-		cf := CIFinding{ID: f.ID, Severity: f.Severity, Heading: f.Scope.Heading, Lines: f.Scope.Lines, Message: f.Message}
-		if sevRank(f.Severity) < sevRank(SevMajor) {
-			cf.Result = "warn"
-			gd.Warn = true
-			gd.CIFindings = append(gd.CIFindings, cf)
-			continue
-		}
-		claim := matchClaim(f, rc.Claims, &s.set)
-		switch {
-		case claim == nil:
-			cf.Result = "ci_finding"
-		case claim.Kind == ClaimArbiterWithdrawn:
-			cf.Claim, cf.Result = claim.ID, "arbiter"
-			arbitrate = append(arbitrate, f.ID)
-		default:
-			cf.Claim, cf.Result = claim.ID, "ci_downgrade"
+		cf := sortFinding(&rep.Findings[i], rc.Claims, &s.set)
+		if cf.Result == "arbiter" {
+			arbitrate = append(arbitrate, cf.ID)
 		}
 		gd.CIFindings = append(gd.CIFindings, cf)
 	}
 	if len(arbitrate) > 0 {
-		c.arbitrate(ctx, o, engine, arbitrate, gd.CIFindings)
+		if err := c.arbitrate(ctx, o, engine, arbitrate, gd.CIFindings); err != nil {
+			return errDoc(rc.Doc, err)
+		}
 	}
+	finalize(&gd, engine)
+	return gd
+}
+
+// sortFinding is one row of T-R3: warn below major, then the matched claim.
+func sortFinding(f *ReportFinding, claims []Claim, set *Settings) CIFinding {
+	cf := CIFinding{ID: f.ID, Severity: f.Severity, Heading: f.Scope.Heading, Lines: f.Scope.Lines, Message: f.Message}
+	if sevRank(f.Severity) < sevRank(SevMajor) {
+		cf.Result = "warn"
+		return cf
+	}
+	claim := matchClaim(f, claims, set)
+	switch {
+	case claim == nil:
+		cf.Result = "ci_finding"
+	case claim.Kind == ClaimArbiterWithdrawn && !contestable(f):
+		// Local mode could never have contested it (R28): the claim is
+		// made up, and CI does not re-roll the finding.
+		cf.Claim, cf.Result = claim.ID, "ci_finding"
+	case claim.Kind == ClaimArbiterWithdrawn:
+		cf.Claim, cf.Result = claim.ID, "arbiter"
+	default:
+		cf.Claim, cf.Result = claim.ID, "ci_downgrade"
+	}
+	return cf
+}
+
+// finalize sets the document's verdict from its CI findings: the first
+// failing one decides; minor findings or the offline opt-in give
+// PASS_PARTIAL with warn.
+func finalize(gd *GateDoc, engine string) {
 	for _, cf := range gd.CIFindings {
-		if cf.Result != "warn" && cf.Result != "withdrawn" && gd.OK {
-			gd.OK, gd.Verdict, gd.ExitCode, gd.Reason = false, VerdictFail, ExitFail, cf.Result+": "+cf.ID
+		switch cf.Result {
+		case "warn":
+			gd.Warn = true
+		case "withdrawn":
+		default:
+			if gd.OK {
+				gd.OK, gd.Verdict, gd.ExitCode, gd.Reason = false, VerdictFail, ExitFail, cf.Result+": "+cf.ID
+			}
 		}
 	}
 	if gd.OK && (gd.Warn || engine != EngineLLM) {
@@ -224,33 +285,52 @@ func (c *ciRun) classify(ctx context.Context, o *Options, s *snapshot, rc *Recei
 			gd.Downgrades = append(gd.Downgrades, "ci_offline")
 		}
 	}
-	return gd
 }
 
-// matchClaim is T-R3's match: R18's region and sim, owner and persona
-// ignored; a finding more severe than the claim is unmatched (R20).
+// matchClaim is T-R3's match: same heading, both sides with lines within
+// egm.match.gap, and sim ≥ egm.match.sim; owner and persona ignored; a
+// finding more severe than the claim is unmatched (R20). A declined or
+// forced claim wins over an arbiter_withdrawn one, so the claims' order
+// cannot buy an arbiter run (fail-closed).
 func matchClaim(f *ReportFinding, claims []Claim, set *Settings) *Claim {
+	if len(f.Scope.Lines) != 2 {
+		return nil
+	}
+	var arb *Claim
 	for i := range claims {
 		cl := &claims[i]
 		if sevRank(f.Severity) > sevRank(cl.Severity) {
 			continue
 		}
-		if Region(f.Scope, Scope{Heading: cl.Heading, Lines: cl.Lines}, set.Match.Gap) && Sim(f.Message, cl.Message, set.Match.Stem) >= set.Match.Sim {
+		if !Region(f.Scope, Scope{Heading: cl.Heading, Lines: cl.Lines}, set.Match.Gap) || Sim(f.Message, cl.Message, set.Match.Stem) < set.Match.Sim {
+			continue
+		}
+		if cl.Kind != ClaimArbiterWithdrawn {
 			return cl
 		}
+		if arb == nil {
+			arb = cl
+		}
 	}
-	return nil
+	return arb
+}
+
+// contestable is R28's contest rule for a fresh CI finding: an LLM
+// reviewer's finding, not comprehension. Checker and injection-scan
+// findings never reach an arbiter.
+func contestable(f *ReportFinding) bool {
+	return !isChecker(f.Owner) && personaOf(f.Owner) != "comprehension"
 }
 
 // arbitrate runs CI's own arbiter on each CI lineage matched to an
 // arbiter_withdrawn claim (T-R3), in the same throwaway state, and records
 // the verdict in cfs.
-func (c *ciRun) arbitrate(ctx context.Context, o *Options, engine string, ids []string, cfs []CIFinding) {
+func (c *ciRun) arbitrate(ctx context.Context, o *Options, engine string, ids []string, cfs []CIFinding) error {
 	verdicts := map[string]string{}
 	if engine == EngineLLM {
 		var err error
 		if verdicts, err = ciArbiter(ctx, o, ids, &c.runsLeft); err != nil {
-			verdicts = map[string]string{}
+			return err
 		}
 	}
 	for i := range cfs {
@@ -268,6 +348,7 @@ func (c *ciRun) arbitrate(ctx context.Context, o *Options, engine string, ids []
 			cfs[i].Result = "ci_upheld"
 		}
 	}
+	return nil
 }
 
 // ciArbiter runs the arbiter on each lineage id of the throwaway state:
@@ -297,11 +378,18 @@ func ciArbiter(ctx context.Context, o *Options, ids []string, runsLeft *int) (ma
 		return nil, err
 	}
 	before := st.cycle().AgentRuns
+	defer func() { *runsLeft -= st.cycle().AgentRuns - before }()
 	out := map[string]string{}
 	for _, id := range ids {
 		l := st.lineage(id)
 		if l == nil {
 			continue
+		}
+		// The arbiter sees the finding's own first evidence, as a local
+		// contest would (R28), never a text the receipt chose.
+		if len(l.Evidence) > 0 {
+			e := l.Evidence[0]
+			l.ContestEvidence = &e
 		}
 		notRun := l.ArbiterNotRun
 		if _, err := rc.arbiter(ctx, l, mapper(l)); err != nil {
@@ -316,7 +404,6 @@ func ciArbiter(ctx context.Context, o *Options, ids []string, runsLeft *int) (ma
 			out[id] = "uphold"
 		}
 	}
-	*runsLeft -= st.cycle().AgentRuns - before
 	return out, nil
 }
 
