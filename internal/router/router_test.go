@@ -511,7 +511,12 @@ func TestPauseThenResume(t *testing.T) {
 	r := newRouter(t, root, nil)
 	ch := make(chan *Summary, 1)
 	go func() { s, _ := r.Run(context.Background()); ch <- s }()
-	time.Sleep(200 * time.Millisecond)
+	// state.json is written after the first step; a fixed sleep lost the race
+	// against startup (preflight, git, workspace) under -race on CI.
+	waitFor(t, "state com pause", func() bool {
+		s, err := ReadState(root)
+		return err == nil && s.Paused
+	})
 	if get(t, st, a.ID).Status != ticket.StatusPending {
 		t.Fatal("pausado: nada deveria ser atribuído")
 	}
