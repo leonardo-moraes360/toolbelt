@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/leonardo-moraes360/toolbelt/internal/bus"
@@ -26,6 +27,8 @@ type Options struct {
 	Backoff          time.Duration // retry base; default 1s
 	Attempts         int           // default 5
 	Adapter          Adapter       // tests: overrides the config's adapter
+	// HeartbeatEvery overrides the channel's heartbeat interval (tests).
+	HeartbeatEvery time.Duration
 }
 
 type Harness struct {
@@ -50,6 +53,9 @@ type Harness struct {
 	budgetLog   bool
 	expiredLog  bool      // channel_expired already audited for this expiry
 	expiredAt   time.Time // last check that found the channel expired
+
+	auditMu sync.Mutex      // the heartbeat goroutine audits too
+	lost    map[string]bool // lease_lost already audited, per thread
 }
 
 // With the channel expired and the store quiet, recheck only at this interval
@@ -169,6 +175,8 @@ func (h *Harness) Close() {
 func (h *Harness) Member() bus.Member { return h.member }
 
 func (h *Harness) audit(ev *Event) {
+	h.auditMu.Lock()
+	defer h.auditMu.Unlock()
 	ev.Time = h.now().UTC()
 	ev.Detail = h.redactor.redact(ev.Detail)
 	_ = auditLog{path: h.base + ".jsonl"}.write(ev)
@@ -195,8 +203,13 @@ func fatal(err error) bool {
 	return errors.Is(err, bus.ErrUnauthorized) || errors.Is(err, errLocked)
 }
 
-// Run: once allows at most one wake.
+// Run: once allows at most one wake. Heartbeats run in their own goroutine
+// for as long as Run does, so a wake blocked for its whole timeout keeps the
+// lease (docs/bus-lease.md R6); after Run returns nothing heartbeats.
 func (h *Harness) Run(ctx context.Context, once bool) error {
+	hbCtx, stopHB := context.WithCancel(ctx)
+	defer stopHB()
+	go h.runHeartbeats(hbCtx)
 	t := time.NewTicker(h.opts.Poll)
 	defer t.Stop()
 	for {

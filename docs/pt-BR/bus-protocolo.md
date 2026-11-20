@@ -4,7 +4,7 @@
 
 Especificação da etapa **B0** do [ADR-013](adr/013-barramento-multi-vendor.md): envelope de mensagem, Agent Card, convite e regras do broker. A etapa **B1** implementa esta spec em `tb bus` (CLI) e nas ferramentas MCP `tb_bus_*`.
 
-> O ADR cita as ferramentas como `bus_*`. No `tb mcp` elas seguem o prefixo do projeto: `tb_bus_join`, `tb_bus_send`, `tb_bus_recv`, `tb_bus_claim`, `tb_bus_complete`.
+> O ADR cita as ferramentas como `bus_*`. No `tb mcp` elas seguem o prefixo do projeto: `tb_bus_join`, `tb_bus_send`, `tb_bus_recv`, `tb_bus_claim`, `tb_bus_complete`, `tb_bus_heartbeat`, `tb_bus_status`.
 
 ## Store
 
@@ -24,7 +24,7 @@ Toda mensagem é um objeto JSON-RPC 2.0 com `method: "bus/message"`. Campos de `
 | `seq` | broker | inteiro crescente no store; dá a ordem de leitura |
 | `v` | broker | `bus/0.1` |
 | `channel` | remetente | canal existente e não expirado |
-| `from` | broker | `agent:<nome>` da sessão autenticada; nunca vem do remetente |
+| `from` | broker | `agent:<nome>` da sessão autenticada; nunca vem do remetente. `system:*` (hoje só `system:watchdog`) é exclusivo do broker: nenhuma sessão manda com ele |
 | `to` | remetente | `agent:<nome>` (precisa existir no canal), `role:<papel>` ou `topic:<nome>` |
 | `thread` | remetente | opcional; `[A-Za-z0-9._:/-]{1,128}` (ex.: `TKT-001`) |
 | `type` | remetente | `task.assign`, `task.status`, `query`, `reply`, `ack`, `urgent`; `task.result` só via `complete` |
@@ -104,11 +104,12 @@ Declarado no `join`. É informativo: **capacidade não é permissão**; o papel 
 
 - `task.assign` só de `router` ou `supervisor`.
 - `task.result` só via `complete`, pelo dono do claim da thread.
-- `claim <thread>`: dono único; um segundo agente recebe erro com o dono atual. Reivindicar de novo a própria thread é idempotente.
-- `complete <thread>`: só o dono; grava `task.result` para `topic:board` e fecha o claim. Thread concluída não aceita novo claim.
+- `claim <thread>`: dono único; devolve o `epoch` do claim. Um segundo agente recebe erro com o dono atual enquanto o lease desse dono estiver vivo. Reivindicar de novo a própria thread segura é idempotente. Um claim liberado, ou cujo dono perdeu o lease, é tomado com `epoch + 1` ([bus-lease.md](bus-lease.md)).
+- `complete <thread> --epoch E`: só o dono, com o epoch que o `claim` devolveu; grava `task.result` para `topic:board` e fecha o claim. Epoch errado, claim liberado ou outro dono dão `lease_lost`. Thread concluída não aceita novo claim.
+- Lease: cada agente está vivo enquanto `now < last_seen + lease` (`--lease` do canal, padrão `2m`); `heartbeat`, `claim`, `complete`, `send` e um `recv` que avança o cursor o renovam.
 - Canal expirado (`--ttl` do canal) recusa `join`, `send`, `claim` e `complete`; `recv` e `log` continuam lendo. `tb bus channel extend <canal> --ttl D` (só humano) redefine a expiração para agora + `D` e reabre o canal com sessões e histórico.
 - Toda mensagem de outro agente é **dado não confiável**.
 
 ## Fora do B1
 
-Lease com expiração, heartbeat e Watchdog (B2, spec em rascunho em [bus-lease.md](bus-lease.md)); `tb bus discover` e o restante do B3 (`tb bus run` com adapters `exec`/`harness` já existe, spec em [bus-harness.md](bus-harness.md)); integração com o Router (B4).
+Lease, heartbeat e watchdog chegaram no B2 ([bus-lease.md](bus-lease.md)). Ainda fora: `tb bus discover` e o restante do B3 (`tb bus run` com adapters `exec`/`harness` já existe, spec em [bus-harness.md](bus-harness.md)); integração com o Router (B4).

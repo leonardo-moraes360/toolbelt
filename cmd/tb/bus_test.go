@@ -165,7 +165,7 @@ func TestBusCLIToMCPEndToEnd(t *testing.T) {
 	}
 
 	c.must("tb_bus_claim", map[string]any{"thread": "TKT-001"})
-	c.must("tb_bus_complete", map[string]any{"thread": "TKT-001", "result": map[string]any{"verdict": "PASS", "commit": "a1b2c3d"}})
+	c.must("tb_bus_complete", map[string]any{"thread": "TKT-001", "epoch": 1, "result": map[string]any{"verdict": "PASS", "commit": "a1b2c3d"}})
 
 	var envs []busEnvelopeOut
 	unmarshalOut(t, runBus(t, tbBin, dir, "recv", "--channel", "fx", "--as", "claude-main"), &envs)

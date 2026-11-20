@@ -19,11 +19,11 @@ import (
 )
 
 // SchemaVersion is stored in PRAGMA user_version.
-const SchemaVersion = 1
+const SchemaVersion = 2
 
 // Literal so the query is static; TestSchemaVersionPragma keeps it in sync
 // with SchemaVersion.
-const setSchemaVersion = `PRAGMA user_version = 1`
+const setSchemaVersion = `PRAGMA user_version = 2`
 
 // ErrInvalidInvite is the generic answer for a missing, used, expired or
 // other-channel invite (deliberately does not reveal which).
@@ -37,7 +37,8 @@ CREATE TABLE channels (
 	name       TEXT PRIMARY KEY,
 	owner      TEXT NOT NULL,
 	created_at INTEGER NOT NULL,
-	expires_at INTEGER
+	expires_at INTEGER,
+	lease_ns   INTEGER NOT NULL DEFAULT 120000000000
 );
 CREATE TABLE invites (
 	code_hash  TEXT PRIMARY KEY,
@@ -57,6 +58,7 @@ CREATE TABLE agents (
 	token_hash TEXT NOT NULL,
 	joined_at  INTEGER NOT NULL,
 	cursor     INTEGER NOT NULL DEFAULT 0,
+	last_seen  INTEGER,
 	PRIMARY KEY (channel, name)
 );
 CREATE TABLE messages (
@@ -83,6 +85,9 @@ CREATE TABLE claims (
 	claimed_at   INTEGER NOT NULL,
 	completed_at INTEGER,
 	result_id    TEXT,
+	epoch        INTEGER NOT NULL DEFAULT 1,
+	released_at  INTEGER,
+	prev_owner   TEXT,
 	PRIMARY KEY (channel, thread)
 );
 `
@@ -179,6 +184,8 @@ func (s *Store) migrate() error {
 			}
 			_, err := tx.Exec(setSchemaVersion)
 			return err
+		case 1:
+			return migrateV1(tx, s.nowNS())
 		default:
 			return fmt.Errorf("unknown bus schema v%d (this tb supports v%d)", v, SchemaVersion)
 		}
@@ -202,10 +209,11 @@ func (s *Store) nowNS() int64 { return s.now().UTC().UnixNano() }
 func fromNS(ns int64) time.Time { return time.Unix(0, ns).UTC() }
 
 type Channel struct {
-	Name      string     `json:"name"`
-	Owner     string     `json:"owner"`
-	CreatedAt time.Time  `json:"created_at"`
-	ExpiresAt *time.Time `json:"expires_at,omitempty"`
+	Name      string        `json:"name"`
+	Owner     string        `json:"owner"`
+	CreatedAt time.Time     `json:"created_at"`
+	ExpiresAt *time.Time    `json:"expires_at,omitempty"`
+	Lease     time.Duration `json:"lease_ns"`
 }
 
 // Code exists only here: the store keeps just its hash.
@@ -217,8 +225,21 @@ type Invite struct {
 	ExpiresAt time.Time `json:"expires_at"`
 }
 
-// CreateChannel also issues a single-use invite for the owner (supervisor).
+// CreateChannel also issues a single-use invite for the owner (supervisor),
+// with the default lease.
 func (s *Store) CreateChannel(name, owner string, ttl, inviteTTL time.Duration) (Channel, Invite, error) {
+	return s.CreateChannelLease(name, owner, ttl, inviteTTL, 0)
+}
+
+// CreateChannelLease is CreateChannel with a lease duration (0 = default;
+// docs/bus-lease.md). The lease cannot change after creation.
+func (s *Store) CreateChannelLease(name, owner string, ttl, inviteTTL, lease time.Duration) (Channel, Invite, error) {
+	if lease == 0 {
+		lease = DefaultLease
+	}
+	if lease < MinLease || lease > MaxLease {
+		return Channel{}, Invite{}, fmt.Errorf("lease must be between %s and %s", MinLease, MaxLease)
+	}
 	if err := ValidName("channel", name); err != nil {
 		return Channel{}, Invite{}, err
 	}
@@ -229,7 +250,7 @@ func (s *Store) CreateChannel(name, owner string, ttl, inviteTTL time.Duration) 
 		return Channel{}, Invite{}, fmt.Errorf("ttl must be between 0 and %s", MaxChannelTTL)
 	}
 	now := s.nowNS()
-	ch := Channel{Name: name, Owner: owner, CreatedAt: fromNS(now)}
+	ch := Channel{Name: name, Owner: owner, CreatedAt: fromNS(now), Lease: lease}
 	var exp sql.NullInt64
 	if ttl > 0 {
 		exp = sql.NullInt64{Int64: now + int64(ttl), Valid: true}
@@ -245,8 +266,8 @@ func (s *Store) CreateChannel(name, owner string, ttl, inviteTTL time.Duration) 
 		if n > 0 {
 			return fmt.Errorf("channel %q already exists", name)
 		}
-		if _, err := tx.Exec(`INSERT INTO channels(name, owner, created_at, expires_at) VALUES (?, ?, ?, ?)`,
-			name, owner, now, exp); err != nil {
+		if _, err := tx.Exec(`INSERT INTO channels(name, owner, created_at, expires_at, lease_ns) VALUES (?, ?, ?, ?, ?)`,
+			name, owner, now, exp, int64(lease)); err != nil {
 			return err
 		}
 		var err error
@@ -315,10 +336,11 @@ var ErrChannelExpired = errors.New("channel expired")
 
 func activeChannel(q queryRower, name string, now int64) (Channel, error) {
 	var ch Channel
-	var created int64
+	var created, lease int64
 	var exp sql.NullInt64
-	err := q.QueryRow(`SELECT name, owner, created_at, expires_at FROM channels WHERE name = ?`, name).
-		Scan(&ch.Name, &ch.Owner, &created, &exp)
+	err := q.QueryRow(`SELECT name, owner, created_at, expires_at, lease_ns FROM channels WHERE name = ?`, name).
+		Scan(&ch.Name, &ch.Owner, &created, &exp, &lease)
+	ch.Lease = time.Duration(lease)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Channel{}, fmt.Errorf("channel %q does not exist", name)
 	}
@@ -371,7 +393,7 @@ func (s *Store) ExtendChannel(name string, ttl time.Duration) (Channel, error) {
 }
 
 func (s *Store) Channels() ([]Channel, error) {
-	rows, err := s.db.Query(`SELECT name, owner, created_at, expires_at FROM channels ORDER BY name`)
+	rows, err := s.db.Query(`SELECT name, owner, created_at, expires_at, lease_ns FROM channels ORDER BY name`)
 	if err != nil {
 		return nil, err
 	}
@@ -379,11 +401,12 @@ func (s *Store) Channels() ([]Channel, error) {
 	out := []Channel{}
 	for rows.Next() {
 		var ch Channel
-		var created int64
+		var created, lease int64
 		var exp sql.NullInt64
-		if err := rows.Scan(&ch.Name, &ch.Owner, &created, &exp); err != nil {
+		if err := rows.Scan(&ch.Name, &ch.Owner, &created, &exp, &lease); err != nil {
 			return nil, err
 		}
+		ch.Lease = time.Duration(lease)
 		ch.CreatedAt = fromNS(created)
 		if exp.Valid {
 			t := fromNS(exp.Int64)
@@ -409,6 +432,9 @@ type Session struct {
 	Card    AgentCard `json:"card"`
 	Version string    `json:"v"`
 	Token   string    `json:"-"`
+	// The session token is the lease token; join renews the lease (R1).
+	LeaseEndsAt       time.Time `json:"lease_ends_at"`
+	HeartbeatInterval string    `json:"heartbeat_interval"`
 }
 
 // Join: a non-empty wantRole must match the invite's role.
@@ -432,7 +458,8 @@ func (s *Store) Join(channel, code string, card *AgentCard, wantRole Role) (Sess
 	now := s.nowNS()
 	var sess Session
 	err = s.tx(func(tx *sql.Tx) error {
-		if _, err := activeChannel(tx, channel, now); err != nil {
+		ch, err := activeChannel(tx, channel, now)
+		if err != nil {
 			return err
 		}
 		role, rejoin, err := consumeInvite(tx, channel, code, card.Name, wantRole, now)
@@ -440,11 +467,11 @@ func (s *Store) Join(channel, code string, card *AgentCard, wantRole Role) (Sess
 			return err
 		}
 		if rejoin {
-			_, err = tx.Exec(`UPDATE agents SET role = ?, card = ?, token_hash = ? WHERE channel = ? AND name = ?`,
-				string(role), string(cardJSON), hashSecret(token), channel, card.Name)
+			_, err = tx.Exec(`UPDATE agents SET role = ?, card = ?, token_hash = ?, last_seen = ? WHERE channel = ? AND name = ?`,
+				string(role), string(cardJSON), hashSecret(token), now, channel, card.Name)
 		} else {
-			_, err = tx.Exec(`INSERT INTO agents(channel, name, role, card, token_hash, joined_at) VALUES (?, ?, ?, ?, ?, ?)`,
-				channel, card.Name, string(role), string(cardJSON), hashSecret(token), now)
+			_, err = tx.Exec(`INSERT INTO agents(channel, name, role, card, token_hash, joined_at, last_seen) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+				channel, card.Name, string(role), string(cardJSON), hashSecret(token), now, now)
 		}
 		if err != nil {
 			return err
@@ -455,6 +482,9 @@ func (s *Store) Join(channel, code string, card *AgentCard, wantRole Role) (Sess
 			Card:    *card,
 			Version: Version,
 			Token:   token,
+
+			LeaseEndsAt:       fromNS(now + int64(ch.Lease)),
+			HeartbeatInterval: (ch.Lease / 3).String(),
 		}
 		return nil
 	})
@@ -603,7 +633,10 @@ func (s *Store) Send(m Member, in *SendInput) (SendResult, error) {
 		msg, err := insertMessage(tx, m.Channel, m.ID(), strings.TrimSpace(in.To), in.Thread, in.Type,
 			in.CausationID, in.IdempotencyKey, in.TTL, v.ttl, v.payload, now)
 		res = SendResult{Message: msg}
-		return err
+		if err != nil {
+			return err
+		}
+		return touch(tx, m, now)
 	})
 	return res, err
 }
@@ -845,6 +878,14 @@ func (s *Store) recvOnce(m Member, opt RecvOptions) ([]Message, error) {
 				if _, err := tx.Exec(`UPDATE agents SET cursor = ? WHERE channel = ? AND name = ?`, last, m.Channel, m.Name); err != nil {
 					return err
 				}
+				// An advancing read on an active channel proves the agent
+				// works; peeks, empty waits and expired channels do not.
+				now := s.nowNS()
+				if _, err := activeChannel(tx, m.Channel, now); err == nil {
+					if err := touch(tx, m, now); err != nil {
+						return err
+					}
+				}
 			}
 		}
 		return nil
@@ -859,16 +900,26 @@ type Claim struct {
 	ClaimedAt   time.Time  `json:"claimed_at"`
 	CompletedAt *time.Time `json:"completed_at,omitempty"`
 	ResultID    string     `json:"result_id,omitempty"`
+	// Epoch fences complete (docs/bus-lease.md): it rises on every claim
+	// after a release or a takeover.
+	Epoch      int64      `json:"epoch"`
+	ReleasedAt *time.Time `json:"released_at,omitempty"`
+	PrevOwner  string     `json:"prev_owner,omitempty"`
 }
 
 func scanClaim(r rowScanner) (Claim, error) {
 	var c Claim
 	var claimed int64
-	var completed sql.NullInt64
-	var result sql.NullString
-	if err := r.Scan(&c.Channel, &c.Thread, &c.Owner, &claimed, &completed, &result); err != nil {
+	var completed, released sql.NullInt64
+	var result, prev sql.NullString
+	if err := r.Scan(&c.Channel, &c.Thread, &c.Owner, &claimed, &completed, &result, &c.Epoch, &released, &prev); err != nil {
 		return Claim{}, err
 	}
+	if released.Valid {
+		t := fromNS(released.Int64)
+		c.ReleasedAt = &t
+	}
+	c.PrevOwner = prev.String
 	c.ClaimedAt = fromNS(claimed)
 	if completed.Valid {
 		t := fromNS(completed.Int64)
@@ -878,95 +929,9 @@ func scanClaim(r rowScanner) (Claim, error) {
 	return c, nil
 }
 
-const selectClaim = `SELECT channel, thread, owner, claimed_at, completed_at, result_id FROM claims WHERE channel = ? AND thread = ?`
+const claimColumns = `channel, thread, owner, claimed_at, completed_at, result_id, epoch, released_at, prev_owner`
 
-// ClaimThread: single owner; repeating one's own claim is idempotent.
-func (s *Store) ClaimThread(m Member, thread string) (Claim, error) {
-	if thread == "" {
-		return Claim{}, errors.New("thread is required")
-	}
-	if err := validRef("thread", thread); err != nil {
-		return Claim{}, err
-	}
-	var c Claim
-	err := s.tx(func(tx *sql.Tx) error {
-		now := s.nowNS()
-		if _, err := activeChannel(tx, m.Channel, now); err != nil {
-			return err
-		}
-		cur, err := scanClaim(tx.QueryRow(selectClaim, m.Channel, thread))
-		switch {
-		case errors.Is(err, sql.ErrNoRows):
-			if _, err := tx.Exec(`INSERT INTO claims(channel, thread, owner, claimed_at) VALUES (?, ?, ?, ?)`,
-				m.Channel, thread, m.ID(), now); err != nil {
-				return err
-			}
-			c = Claim{Channel: m.Channel, Thread: thread, Owner: m.ID(), ClaimedAt: fromNS(now)}
-			return nil
-		case err != nil:
-			return err
-		case cur.CompletedAt != nil:
-			return fmt.Errorf("thread %q already completed by %s", thread, cur.Owner)
-		case cur.Owner != m.ID():
-			return fmt.Errorf("thread %q already claimed by %s", thread, cur.Owner)
-		default:
-			c = cur
-			return nil
-		}
-	})
-	return c, err
-}
-
-type CompleteResult struct {
-	Claim   Claim   `json:"claim"`
-	Message Message `json:"message"`
-}
-
-// Complete also publishes task.result to topic:board.
-func (s *Store) Complete(m Member, thread string, result json.RawMessage) (CompleteResult, error) {
-	if thread == "" {
-		return CompleteResult{}, errors.New("thread is required")
-	}
-	payload, err := sanitizePayload(result)
-	if err != nil {
-		return CompleteResult{}, err
-	}
-	var res CompleteResult
-	err = s.tx(func(tx *sql.Tx) error {
-		now := s.nowNS()
-		if _, err := activeChannel(tx, m.Channel, now); err != nil {
-			return err
-		}
-		cur, err := scanClaim(tx.QueryRow(selectClaim, m.Channel, thread))
-		if errors.Is(err, sql.ErrNoRows) {
-			return fmt.Errorf("thread %q was not claimed (use claim first)", thread)
-		}
-		if err != nil {
-			return err
-		}
-		if cur.Owner != m.ID() {
-			return fmt.Errorf("only the owner (%s) can complete thread %q", cur.Owner, thread)
-		}
-		if cur.CompletedAt != nil {
-			return fmt.Errorf("thread %q already completed", thread)
-		}
-		msg, err := insertMessage(tx, m.Channel, m.ID(), "topic:board", thread, TypeTaskResult, "",
-			"", "", 0, payload, now)
-		if err != nil {
-			return err
-		}
-		if _, err := tx.Exec(`UPDATE claims SET completed_at = ?, result_id = ? WHERE channel = ? AND thread = ?`,
-			now, msg.ID, m.Channel, thread); err != nil {
-			return err
-		}
-		t := fromNS(now)
-		cur.CompletedAt = &t
-		cur.ResultID = msg.ID
-		res = CompleteResult{Claim: cur, Message: msg}
-		return nil
-	})
-	return res, err
-}
+const selectClaim = `SELECT ` + claimColumns + ` FROM claims WHERE channel = ? AND thread = ?`
 
 // Log returns the last limit messages (audit trail) in ascending seq order;
 // a non-empty thread filters.

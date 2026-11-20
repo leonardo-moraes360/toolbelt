@@ -49,7 +49,7 @@ Um harness por agente: lock exclusivo em `<privado>/run/<canal>/<nome>.lock`. Um
 6. **Confirmar.** Com sucesso do adapter, o harness grava `notified_seq` = último `seq` do packet em `<privado>/run/<canal>/<nome>.state`. Se depois de `rewake_after` (padrão `10m`) o cursor do agente ainda estiver abaixo desse `seq`, o agente não leu: o harness reenvia o mesmo packet uma única vez (dando certo ou não) e, se continuar sem leitura, registra `wake_unread` e para de reenviar até chegar mensagem nova. Estado cujo `notified_seq` passa do maior `seq` do canal (banco recriado) é descartado ao abrir.
 7. **Falha.** Adapter que sai com erro ou estoura o timeout entra em retry com backoff (1s, 2s, 4s, 8s, 16s; 5 tentativas). Esgotado, registra `wake_failed`, publica `task.status` em `topic:board` com `{"state":"wake_failed","agent":"agent:<nome>","last_seq":N}` (uma vez por `last_seq`, sem saída do filho) e tenta de novo depois de `rewake_after`. Erros transitórios do store (ex.: `SQLITE_BUSY`) são registrados como `error` e o laço continua; só sessão inválida encerra o harness.
 
-Sem lease nesta etapa: quando o B2 existir, o mesmo laço renova o lease e manda heartbeat.
+**Heartbeat (B2).** Uma goroutine separada manda heartbeat a cada `lease / 3`, independente do laço e de um wake, então um wake bloqueado pelo timeout inteiro mantém o lease. Quando um heartbeat informa um thread que o agente perdeu, o harness registra `lease_lost` uma vez (thread e novo dono). Com `--once` nada manda heartbeat depois que a execução termina. O harness nunca faz claim nem complete por conta própria ([bus-lease.md](bus-lease.md)).
 
 ## Wake packet
 
@@ -176,7 +176,6 @@ Outros vendors entram como novos presets do mesmo adapter quando tiverem modo he
 - **L0 autônomo:** responder `ack`/status a partir do estado sem acordar o agente.
 - **L2:** triagem e resumo por modelo local.
 - **Adapter `notify` próprio:** coberto por `exec` (ex.: `notify-send`).
-- **Lease/heartbeat:** chega com o B2.
 - **`tb bus discover`.**
 
 ## Critérios de aceite

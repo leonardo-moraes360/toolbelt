@@ -2,7 +2,7 @@
 
 # Bus lease, heartbeat and watchdog — B2 spec
 
-Status: **draft, round 2** (one fresh-context review applied; not implemented).
+Status: **implemented** (B2).
 
 Specification for stage **B2** of [ADR-013](adr/013-barramento-multi-vendor.md). It extends the [`bus/0.1`](bus-protocolo.md) protocol (B1) and the harness ([bus-harness.md](bus-harness.md), B3 first cut).
 

@@ -181,7 +181,7 @@ func registerBusTools() {
 	})
 	Register(&Tool{
 		Name:        "tb_bus_claim",
-		Description: "Claims the thread/ticket as sole owner (parity with tb bus claim)",
+		Description: "Claims the thread/ticket as sole owner and returns its epoch, which complete needs (parity with tb bus claim)",
 		InputSchema: &InputSchema{
 			Type: "object",
 			Properties: map[string]Property{
@@ -194,18 +194,107 @@ func registerBusTools() {
 	})
 	Register(&Tool{
 		Name:        "tb_bus_complete",
-		Description: "Completes the thread (owner only) and publishes task.result to topic:board (parity with tb bus complete)",
+		Description: "Completes the thread (owner only, at the epoch claim returned; otherwise lease_lost) and publishes task.result to topic:board (parity with tb bus complete)",
 		InputSchema: &InputSchema{
 			Type: "object",
 			Properties: map[string]Property{
 				"channel": chProp,
 				"thread":  {Type: "string", Description: "Thread (e.g. TKT-001)"},
+				"epoch":   {Type: "integer", Description: "Epoch returned by tb_bus_claim"},
 				"result":  {Type: "object", Description: "Result (verdict, commit, refs)"},
 			},
-			Required: []string{"thread"},
+			Required: []string{"thread", "epoch"},
 		},
 		Handler: handleBusComplete,
 	})
+	Register(&Tool{
+		Name: "tb_bus_heartbeat",
+		Description: "Renews this connection's lease and lists held threads (with epochs) and lost ones; tb mcp already heartbeats bound sessions in the background " +
+			"(parity with tb bus heartbeat)",
+		InputSchema: &InputSchema{Type: "object", Properties: map[string]Property{"channel": chProp}},
+		Handler:     handleBusHeartbeat,
+	})
+	Register(&Tool{
+		Name:        "tb_bus_status",
+		Description: "Agents of this connection's channel (alive, last_seen; no Agent Cards) and open claims (owner, epoch, held/expired/released) (parity with tb bus channel show)",
+		InputSchema: &InputSchema{Type: "object", Properties: map[string]Property{"channel": chProp}},
+		Handler:     handleBusStatus,
+	})
+}
+
+func handleBusHeartbeat(_ context.Context, args map[string]any) (any, error) {
+	s, m, err := busMemberFromArgs(args)
+	if err != nil {
+		return nil, err
+	}
+	defer s.Close()
+	return s.Heartbeat(m)
+}
+
+func handleBusStatus(_ context.Context, args map[string]any) (any, error) {
+	s, m, err := busMemberFromArgs(args)
+	if err != nil {
+		return nil, err
+	}
+	defer s.Close()
+	return s.Status(m.Channel)
+}
+
+// RunBusHeartbeats heartbeats every bus session bound to this MCP
+// connection until ctx ends (docs/bus-lease.md R7): agents without a
+// harness keep their leases without spending tokens. tick is how often
+// sessions are checked; each one heartbeats at its channel's interval.
+func RunBusHeartbeats(ctx context.Context, tick time.Duration) {
+	t := time.NewTicker(tick)
+	defer t.Stop()
+	due := map[string]time.Time{}
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case now := <-t.C:
+			heartbeatDue(now, due)
+		}
+	}
+}
+
+func heartbeatDue(now time.Time, due map[string]time.Time) {
+	busState.mu.Lock()
+	sessions := make([]busSession, 0, len(busState.sessions))
+	for _, sess := range busState.sessions {
+		sessions = append(sessions, sess)
+	}
+	busState.mu.Unlock()
+	for _, sess := range sessions {
+		key := sess.member.Channel
+		if next, ok := due[key]; ok && now.Before(next) {
+			continue
+		}
+		interval := heartbeatOnce(sess)
+		due[key] = now.Add(interval)
+	}
+}
+
+// heartbeatOnce renews one session and returns when to do it again; on an
+// error (expired channel, replaced token) it retries after a minute.
+func heartbeatOnce(sess busSession) time.Duration {
+	s, err := bus.Open(sess.root)
+	if err != nil {
+		return time.Minute
+	}
+	defer s.Close()
+	m, err := s.Auth(sess.member.Channel, sess.member.Name, sess.token)
+	if err != nil {
+		return time.Minute
+	}
+	hb, err := s.Heartbeat(m)
+	if err != nil {
+		return time.Minute
+	}
+	if d, err := time.ParseDuration(hb.HeartbeatInterval); err == nil && d > 0 {
+		return d
+	}
+	return time.Minute
 }
 
 func handleBusJoin(_ context.Context, args map[string]any) (any, error) {
@@ -331,7 +420,11 @@ func handleBusComplete(_ context.Context, args map[string]any) (any, error) {
 		return nil, err
 	}
 	defer s.Close()
-	res, err := s.Complete(m, StringArg(args, "thread"), result)
+	epoch := int64(IntArg(args, "epoch", 0))
+	if epoch <= 0 {
+		return nil, errors.New("epoch is required: the epoch tb_bus_claim returned")
+	}
+	res, err := s.Complete(m, StringArg(args, "thread"), epoch, result)
 	if err != nil {
 		return nil, err
 	}

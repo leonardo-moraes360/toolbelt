@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -98,6 +99,7 @@ var busChannelCreateCmd = &cobra.Command{
 		owner, _ := cmd.Flags().GetString("owner")
 		ttl, _ := cmd.Flags().GetDuration("ttl")
 		inviteTTL, _ := cmd.Flags().GetDuration("invite-ttl")
+		lease, _ := cmd.Flags().GetDuration("lease")
 		if owner == "" {
 			return errors.New("--owner is required")
 		}
@@ -106,14 +108,14 @@ var busChannelCreateCmd = &cobra.Command{
 			return err
 		}
 		defer s.Close()
-		ch, inv, err := s.CreateChannel(args[0], owner, ttl, inviteTTL)
+		ch, inv, err := s.CreateChannelLease(args[0], owner, ttl, inviteTTL, lease)
 		if err != nil {
 			return err
 		}
 		if jsonOutput {
 			return printBusJSON(map[string]any{"channel": ch, "invite": inv})
 		}
-		fmt.Printf("channel: %s  owner: %s\n", ch.Name, ch.Owner)
+		fmt.Printf("channel: %s  owner: %s  lease: %s\n", ch.Name, ch.Owner, ch.Lease)
 		fmt.Printf("owner invite: %s (role %s, single-use, expires %s)\n", inv.Code, inv.Role, inv.ExpiresAt.Format("15:04:05Z07:00"))
 		return nil
 	},
@@ -152,7 +154,7 @@ var busChannelListCmd = &cobra.Command{
 
 var busChannelShowCmd = &cobra.Command{
 	Use:   "show <channel>",
-	Short: "Shows agents registered in the channel",
+	Short: "Shows the channel's agents (alive, last_seen) and open claims (owner, epoch, state)",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		s, err := openBusStore()
@@ -160,18 +162,22 @@ var busChannelShowCmd = &cobra.Command{
 			return err
 		}
 		defer s.Close()
-		agents, err := s.Agents(args[0])
+		st, err := s.Status(args[0])
 		if err != nil {
 			return err
 		}
 		if jsonOutput {
-			return printBusJSON(agents)
+			return printBusJSON(st) // no Agent Cards: their session is a vendor resume handle
 		}
-		if len(agents) == 0 {
+		fmt.Printf("lease: %s\n", st.Lease)
+		if len(st.Agents) == 0 {
 			fmt.Println("no agents in the channel")
 		}
-		for _, a := range agents {
-			fmt.Printf("%s\trole=%s\tvendor=%s\twake=%s\n", a.AgentID, a.Role, a.Card.Vendor, a.Card.Wake)
+		for _, a := range st.Agents {
+			fmt.Printf("agent:%s\trole=%s\talive=%t\tlast_seen=%s\n", a.Name, a.Role, a.Alive, a.LastSeen.Format(time.RFC3339))
+		}
+		for _, c := range st.Claims {
+			fmt.Printf("claim %s\towner=%s\tepoch=%d\t%s\n", c.Thread, c.Owner, c.Epoch, c.State)
 		}
 		return nil
 	},
@@ -407,7 +413,7 @@ var busClaimCmd = &cobra.Command{
 		if jsonOutput {
 			return printBusJSON(c)
 		}
-		fmt.Printf("%s owns %s\n", c.Owner, c.Thread)
+		fmt.Printf("%s owns %s (epoch %d: pass it to complete)\n", c.Owner, c.Thread, c.Epoch)
 		return nil
 	},
 }
@@ -418,6 +424,10 @@ var busCompleteCmd = &cobra.Command{
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		resultFlag, _ := cmd.Flags().GetString("result")
+		epoch, _ := cmd.Flags().GetInt64("epoch")
+		if epoch <= 0 {
+			return errors.New("--epoch is required: the epoch claim returned (docs/bus-lease.md)")
+		}
 		result, err := readPayload(resultFlag)
 		if err != nil {
 			return err
@@ -427,7 +437,7 @@ var busCompleteCmd = &cobra.Command{
 			return err
 		}
 		defer s.Close()
-		res, err := s.Complete(m, args[0], result)
+		res, err := s.Complete(m, args[0], epoch, result)
 		if err != nil {
 			return err
 		}
@@ -435,6 +445,66 @@ var busCompleteCmd = &cobra.Command{
 			return printBusJSON(map[string]any{"claim": res.Claim, "envelope": bus.Wrap(&res.Message)})
 		}
 		fmt.Printf("%s completed by %s (task.result %s)\n", res.Claim.Thread, res.Claim.Owner, res.Message.ID)
+		return nil
+	},
+}
+
+var busHeartbeatCmd = &cobra.Command{
+	Use:   "heartbeat",
+	Short: "Renews the agent's lease; lists held threads (with epochs) and lost ones",
+	Args:  cobra.NoArgs,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		s, m, err := busMember(cmd)
+		if err != nil {
+			return err
+		}
+		defer s.Close()
+		hb, err := s.Heartbeat(m)
+		if err != nil {
+			return err
+		}
+		if jsonOutput {
+			return printBusJSON(hb)
+		}
+		fmt.Printf("lease ends %s (heartbeat every %s)\n", hb.LeaseEndsAt.Format(time.RFC3339), hb.HeartbeatInterval)
+		for _, h := range hb.Held {
+			fmt.Printf("held %s\tepoch=%d\n", h.Thread, h.Epoch)
+		}
+		for _, l := range hb.Lost {
+			fmt.Printf("lost %s\tnew_owner=%s\n", l.Thread, l.NewOwner)
+		}
+		return nil
+	},
+}
+
+var busWatchdogCmd = &cobra.Command{
+	Use:   "watchdog <channel>",
+	Short: "Releases claims of agents whose lease ended and publishes lease_expired to topic:board (human/router only)",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		dry, _ := cmd.Flags().GetBool("dry-run")
+		s, err := openBusStore()
+		if err != nil {
+			return err
+		}
+		defer s.Close()
+		exp, err := s.Watchdog(args[0], dry)
+		if err != nil {
+			return err
+		}
+		if jsonOutput {
+			return printBusJSON(map[string]any{"dry_run": dry, "expired": exp})
+		}
+		if len(exp) == 0 {
+			fmt.Println("no expired claims")
+		}
+		verb := "released"
+		if dry {
+			verb = "would release"
+		}
+		for _, e := range exp {
+			fmt.Printf("%s %s\tprevious_owner=%s\tepoch=%d\tlast_seen=%s\n", verb, e.Thread, e.PreviousOwner, e.Epoch, e.LastSeen.Format(time.RFC3339))
+		}
 		return nil
 	},
 }
@@ -467,6 +537,7 @@ func init() {
 	busChannelCreateCmd.Flags().String("owner", "", "owner agent name (receives supervisor invite)")
 	busChannelCreateCmd.Flags().Duration("ttl", 0, "channel duration (0 = no expiry)")
 	busChannelCreateCmd.Flags().Duration("invite-ttl", bus.DefaultInviteTTL, "owner invite duration")
+	busChannelCreateCmd.Flags().Duration("lease", bus.DefaultLease, "agent lease: a claim whose owner has not heartbeated for this long can be taken over (30s to 1h)")
 	busChannelExtendCmd.Flags().Duration("ttl", 0, "new duration from now (0 = no expiry)")
 	busChannelCmd.AddCommand(busChannelCreateCmd, busChannelListCmd, busChannelShowCmd, busChannelExtendCmd)
 
@@ -506,10 +577,13 @@ func init() {
 	addMemberFlags(busClaimCmd)
 	addMemberFlags(busCompleteCmd)
 	busCompleteCmd.Flags().String("result", "", "result: JSON object or @file")
+	busCompleteCmd.Flags().Int64("epoch", 0, "epoch returned by claim (required: fences a stale owner)")
+	addMemberFlags(busHeartbeatCmd)
+	busWatchdogCmd.Flags().Bool("dry-run", false, "lists expired claims without releasing them")
 
 	busLogCmd.Flags().String("thread", "", "filters by thread")
 	busLogCmd.Flags().Int("limit", 100, "last N messages")
 
-	busCmd.AddCommand(busChannelCmd, busInviteCmd, busJoinCmd, busSendCmd, busRecvCmd, busClaimCmd, busCompleteCmd, busLogCmd)
+	busCmd.AddCommand(busChannelCmd, busInviteCmd, busJoinCmd, busSendCmd, busRecvCmd, busClaimCmd, busCompleteCmd, busHeartbeatCmd, busWatchdogCmd, busLogCmd)
 	rootCmd.AddCommand(busCmd)
 }

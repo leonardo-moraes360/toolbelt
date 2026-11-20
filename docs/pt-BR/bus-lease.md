@@ -2,7 +2,7 @@
 
 # Lease, heartbeat e watchdog do barramento — spec B2
 
-Status: **rascunho, rodada 2** (uma revisão em contexto novo aplicada; não implementado).
+Status: **implementado** (B2).
 
 Especificação da etapa **B2** do [ADR-013](adr/013-barramento-multi-vendor.md). Estende o protocolo [`bus/0.1`](bus-protocolo.md) (B1) e o harness ([bus-harness.md](bus-harness.md), primeiro corte do B3).
 
