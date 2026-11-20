@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -107,9 +108,9 @@ func busCLISetup(t *testing.T, tbBin, dir string) string {
 	return workerInv.Code
 }
 
-func startMCP(t *testing.T, tbBin, dir string) *mcpClient {
+func startMCP(t *testing.T, tbBin, dir string, args ...string) *mcpClient {
 	t.Helper()
-	mcp := exec.Command(tbBin, "mcp")
+	mcp := exec.Command(tbBin, append([]string{"mcp"}, args...)...)
 	mcp.Dir = dir
 	in, err := mcp.StdinPipe()
 	if err != nil {
@@ -242,5 +243,92 @@ func TestBusStatusNoSecretsCLI(t *testing.T) {
 	}
 	if !strings.Contains(string(outs["show --json"]), `"T1"`) {
 		t.Fatalf("show lacks the claim:\n%s", outs["show --json"])
+	}
+}
+
+// AC12 (bus-notify-discover): a GUI agent joined from the CLI and bound with
+// tb mcp --bus-as reads over MCP, and tb_bus_join on that connection fails
+// without replacing the token the harness uses.
+func TestBusGUIOnboardingBusAs(t *testing.T) {
+	tbBin := buildTB(t)
+	dir := t.TempDir()
+	workerCode := busCLISetup(t, tbBin, dir)
+	agentDir, err := bus.AgentDir(dir, "fx", "claude-main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.ReadFile(filepath.Join(agentDir, "token"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := startMCP(t, tbBin, dir, "--bus-as", "fx/claude-main", "--bus-root", dir)
+	c.must("tb_bus_recv", map[string]any{})
+	for _, args := range []map[string]any{
+		{"channel": "fx", "invite": workerCode, "name": "claude-main", "cwd": dir},
+		{"channel": "fx", "invite": workerCode, "name": "other", "cwd": dir},
+	} {
+		if out, isErr := c.call("tb_bus_join", args); !isErr {
+			t.Fatalf("tb_bus_join on a bound connection succeeded: %s", out)
+		}
+	}
+	after, err := os.ReadFile(filepath.Join(agentDir, "token"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(before, after) {
+		t.Fatal("the CLI session token changed")
+	}
+	c.must("tb_bus_recv", map[string]any{})
+}
+
+// AC13 (bus-notify-discover): discover lists known CLIs and runs none.
+func TestBusDiscoverCLI(t *testing.T) {
+	tbBin := buildTB(t)
+	bin, home := t.TempDir(), t.TempDir()
+	ran := filepath.Join(t.TempDir(), "ran")
+	if err := os.WriteFile(filepath.Join(bin, "claude"), []byte("#!/bin/sh\necho x > "+ran+"\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(tbBin, "--json", "bus", "discover")
+	cmd.Dir = t.TempDir()
+	cmd.Env = append(os.Environ(), "PATH="+bin, "HOME="+home)
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("discover: %v", err)
+	}
+	var cat struct {
+		V    string `json:"v"`
+		CLIs []struct {
+			Name string `json:"name"`
+		} `json:"clis"`
+	}
+	unmarshalOut(t, out, &cat)
+	if cat.V != "bus-discover/0.1" || len(cat.CLIs) != 1 || cat.CLIs[0].Name != "claude" {
+		t.Fatalf("catalog: %s", out)
+	}
+	if _, err := os.Stat(ran); err == nil {
+		t.Fatal("discover executed a CLI")
+	}
+}
+
+// AC8 (bus-notify-discover): --check with notify on a card that says
+// manual prints one warning and exits 0.
+func TestBusRunNotifyWakeMismatchCLI(t *testing.T) {
+	tbBin := buildTB(t)
+	dir := t.TempDir()
+	busCLISetup(t, tbBin, dir)
+	cfg := filepath.Join(t.TempDir(), "wake.yaml")
+	if err := os.WriteFile(cfg, []byte("adapter: notify\nnotify:\n  backend: terminal\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(tbBin, "bus", "run", "--channel", "fx", "--as", "claude-main", "--config", cfg, "--check")
+	cmd.Dir = dir
+	var stderr strings.Builder
+	cmd.Stderr = &stderr
+	if out, err := cmd.Output(); err != nil {
+		t.Fatalf("--check: %v\n%s%s", err, out, stderr.String())
+	}
+	if n := strings.Count(stderr.String(), "warning: wake_mismatch (card says manual, wake file says notify)"); n != 1 {
+		t.Fatalf("stderr:\n%s", stderr.String())
 	}
 }

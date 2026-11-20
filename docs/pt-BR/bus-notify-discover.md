@@ -2,7 +2,7 @@
 
 # Adapter `notify` do barramento e `tb bus discover` — spec do restante do B3
 
-Status: **rascunho, rodada 2** (uma revisão em contexto novo aplicada; não implementado).
+Status: **implementado** (restante do B3).
 
 Fecha a etapa **B3** do [ADR-013](adr/013-barramento-multi-vendor.md). Estende o harness ([bus-harness.md](bus-harness.md)), cujo primeiro corte entregou os adapters `exec` e `harness`, e se apoia no lease do B2 ([bus-lease.md](bus-lease.md)).
 
@@ -48,7 +48,8 @@ timeout: 10s               # padrão para notify (30s no exec)
 - Estes são erros do `Validate`, então tanto o `tb bus run` quanto o `--check` os recusam:
   - `pass_env`, `secret_files`, `sandbox.read` ou `sandbox.write` não vazios com `adapter: notify` (o backend não precisa de nenhum deles);
   - um bloco `exec:` ou `harness:` com `adapter: notify`, e um bloco `notify:` com outro adapter;
-  - `backend: desktop` numa plataforma que não seja Linux nem macOS (`notify_unsupported`).
+  - `notify.backend` ausente (é obrigatório) ou `backend: desktop` numa plataforma que não seja Linux nem macOS (`notify_unsupported`).
+- Misturar blocos `exec:` e `harness:` continua aceito, como antes do `notify` existir.
 - Os padrões dependem do adapter: `rewake_after` é `1h` e `timeout` é `10s` para `notify`.
 
 ### Backends
@@ -56,15 +57,15 @@ timeout: 10s               # padrão para notify (30s no exec)
 | Backend | Plataforma | Roda |
 |---|---|---|
 | `desktop` | Linux | `<command> --app-name toolbelt --urgency <u> -- <resumo> <corpo>` |
-| `desktop` | macOS | `/usr/bin/osascript -e 'on run argv' -e 'display notification (item 1 of argv) with title (item 2 of argv)' -e 'end run' -- <corpo> <resumo>` |
+| `desktop` | macOS | `/usr/bin/osascript -e 'on run argv' -e 'display notification (item 1 of argv) with title (item 2 of argv)' -e 'end run' <corpo> <resumo>` (sem `--`: o corpo começa com uma contagem, nunca com `-`) |
 | `terminal` | qualquer | sem filho: uma linha escrita pelo próprio harness |
 
 **Binário do desktop.**
 
 - `command` vazio quer dizer o primeiro arquivo existente entre `/usr/bin/notify-send` e `/usr/local/bin/notify-send`. Não há busca no `PATH`; no macOS o caminho é sempre `/usr/bin/osascript`.
 - O caminho é resolvido uma vez, quando o harness abre (seguindo symlinks), e é esse arquivo que todo wake roda.
-- O `Validate` recusa o binário quando:
-  - ele, ou o diretório dele, não pertence ao root ou tem escrita para grupo ou outros;
+- Quando o harness abre (então tanto o `tb bus run` quanto o `--check` falham), o binário é recusado quando:
+  - ele, ou qualquer diretório acima dele até `/`, não pertence ao root ou tem escrita para grupo ou outros (um diretório sticky do root, como `/tmp`, é aceito). No NixOS o `/nix/store` tem escrita para o grupo, então defina `command` com um caminho que passe, ou use `backend: terminal`;
   - ele fica dentro da raiz do repositório ou de `<private>`.
   
   Um agente com acesso a shell consegue gravar `~/.local/bin/notify-send`; não consegue trocar um binário de sistema do root.
@@ -102,7 +103,7 @@ body:    2 task.assign, 1 query from "claude-code". Open marin and ask it to cal
   - Os tipos vêm do enum fechado `Type`.
   - Nenhuma thread, payload, `causation_id` ou chave de idempotência entra.
 - **Nomes de remetente são escolhidos pelo agente.** Um convite sem nome vinculado deixa quem entra escolher qualquer nome válido, então um nome pode parecer uma instrução. Por isso os remetentes aparecem entre aspas, sem o prefixo `agent:` e cada um cortado em 32 caracteres com `…`. `system:watchdog` e qualquer remetente `system:*` aparecem como `the broker`.
-- No máximo 3 remetentes, ordenados por contagem e depois por nome, seguidos de `and N others`.
+- No máximo 3 remetentes, ordenados por contagem e depois por nome, seguidos de `and 1 other` ou `and N others`. Todos os remetentes `system:*` contam como um só `the broker`.
 - Um `rewake` troca `new` por `still unread`. Quando o lote tem uma mensagem `urgent`, o resumo começa com `urgent: ` e a urgência é `urgent_urgency`. Qualquer membro pode mandar `urgent`, então no GNOME e no KDE `critical` fura o Não Perturbe; use `urgent_urgency: normal` para evitar isso. O orçamento limita isso a `max_wakes` por `per` de qualquer forma.
 - **A dica de shell usa `--peek`.** Um `recv` comum avançaria o cursor compartilhado do agente, e o `tb_bus_recv` do agente de GUI não devolveria mais nada.
 
@@ -129,7 +130,7 @@ A lista `messages` do packet de wake para em 20 itens, então o texto não pode 
 
 - `wake: notify` já existe como valor no card.
 - Quando o arquivo de wake diz `adapter: notify` e o card do agente diz outro `wake`, tanto o `--check` quanto a abertura do `tb bus run` imprimem `warning: wake_mismatch (card says harness, wake file says notify)` no stderr e seguem com exit 0. O card é informativo para o canal; quem manda é o arquivo de wake.
-- Avisos são um canal novo do `Check()`: ele devolve a lista de avisos junto com o erro.
+- Os avisos vêm de uma chamada nova `Warnings()` ao lado do `Check()`; a CLI os imprime nos dois casos.
 
 ## Parte 2: `tb bus discover`
 
@@ -163,7 +164,7 @@ O `discover` não precisa de `.toolbelt/` nem de barramento. Sem `--cwd`, ele l�
 
 | `client` | Caminho | Lido |
 |---|---|---|
-| `claude-code` | `~/.claude.json` | `mcpServers` no nível de cima e em cada `projects.<path>` |
+| `claude-code` | `~/.claude.json` | `mcpServers` no nível de cima (`scope: user`) e em cada `projects.<path>` que tenha ao menos um servidor |
 | `claude-desktop` | `~/.config/Claude/claude_desktop_config.json` (Linux), `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) | `mcpServers` |
 | `cursor` | `~/.cursor/mcp.json` | `mcpServers` |
 | `project` | `<cwd ou raiz do repo>/.mcp.json` | `mcpServers` |
@@ -184,7 +185,8 @@ Um `tb` puro é informado como `"path": "tb"` com `"same_tb": null`, porque ele 
 
 **O que é informado por entrada:**
 
-- para a entrada casada: a chave do servidor, o caminho absoluto, se é o mesmo arquivo do `tb` em execução (`os.SameFile`) e se `args` tem `--bus-as` (o valor dele é um par canal/nome, que é impresso);
+- para a entrada casada: a chave do servidor, o caminho absoluto, se é o mesmo arquivo do `tb` em execução (`os.SameFile`) e se `args` tem `--bus-as` (o valor só é impresso quando é um par canal/nome válido; senão aparece como `(invalid)`);
+- a saída em texto põe entre aspas qualquer caminho ou chave de projeto com caracteres de controle ou não imprimíveis, para que o `.mcp.json` de um repositório clonado não mande sequências de escape ao terminal;
 - `--bus-root`, os outros argumentos e o `env` da entrada `tb` nunca são impressos;
 - outros servidores só são contados (`"other_servers": N`).
 
@@ -207,7 +209,7 @@ O `--json` imprime o schema abaixo: chaves estáveis, arrays ordenados por nome 
      "scope": "user", "tb": [{"server": "toolbelt", "path": "/home/leonardo/go/bin/tb", "same_tb": true, "bus_as": null}],
      "other_servers": 2},
     {"client": "claude-code", "path": "/home/leonardo/.claude.json", "kind": "file", "parses": true,
-     "scope": "project:/home/leonardo/src/app", "tb": [], "other_servers": 0},
+     "scope": "project:/home/leonardo/src/app", "tb": [], "other_servers": 1},
     {"client": "claude-desktop", "path": "/home/leonardo/.config/Claude/claude_desktop_config.json", "kind": "missing"},
     {"client": "codex", "path": "/home/leonardo/.codex/config.toml", "kind": "file", "parsed": false}
   ],

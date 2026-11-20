@@ -144,6 +144,12 @@ func (h *Harness) Check() error {
 	if h.opts.Adapter != nil {
 		return nil
 	}
+	if h.cfg.Adapter == AdapterNotify {
+		if h.cfg.Notify.Backend == BackendTerminal {
+			return nil // no child: no binary, no sandbox
+		}
+		return sandboxCheck(h) // the notifier was resolved and checked at open
+	}
 	bin := h.cfg.Exec.Argv
 	if h.cfg.Adapter == AdapterHarness {
 		cmd := h.cfg.Harness.Command
@@ -174,6 +180,27 @@ func (h *Harness) Close() {
 }
 
 func (h *Harness) Member() bus.Member { return h.member }
+
+// Warnings are printed by tb bus run and --check; they never stop the
+// harness, so a failure to compute one becomes a warning too.
+func (h *Harness) Warnings() []string {
+	w, err := h.wakeMismatch()
+	switch {
+	case err != nil:
+		return []string{"wake_mismatch not checked: " + err.Error()}
+	case w == "":
+		return nil
+	}
+	return []string{w}
+}
+
+// backend names the notify backend for the audit; empty for other adapters.
+func (h *Harness) backend() string {
+	if h.cfg.Adapter == AdapterNotify {
+		return h.cfg.Notify.Backend
+	}
+	return ""
+}
 
 func (h *Harness) audit(ev *Event) {
 	h.auditMu.Lock()
@@ -386,12 +413,12 @@ func (h *Harness) wake(ctx context.Context, reason string, msgs []bus.Message, n
 	var err error
 	for attempt := 1; attempt <= h.opts.Attempts; attempt++ {
 		p.Attempt = attempt
-		h.audit(&Event{Event: "wake_start", FirstSeq: p.FirstSeq, LastSeq: p.LastSeq, Attempt: attempt})
+		h.audit(&Event{Event: "wake_start", Backend: h.backend(), FirstSeq: p.FirstSeq, LastSeq: p.LastSeq, Attempt: attempt})
 		start := h.now()
 		out, err = h.adapter.Wake(ctx, p, &h.st)
 		ok := err == nil && out.ExitCode == 0 && !out.TimedOut
 		code := out.ExitCode
-		ev := &Event{FirstSeq: p.FirstSeq, LastSeq: p.LastSeq, Attempt: attempt, ExitCode: &code,
+		ev := &Event{Backend: h.backend(), FirstSeq: p.FirstSeq, LastSeq: p.LastSeq, Attempt: attempt, ExitCode: &code,
 			DurationMS: h.now().Sub(start).Milliseconds(), Detail: out.Output}
 		if err != nil {
 			ev.Detail = err.Error()
@@ -426,7 +453,7 @@ func (h *Harness) wake(ctx context.Context, reason string, msgs []bus.Message, n
 }
 
 func (h *Harness) fail(p *Packet) error {
-	h.audit(&Event{Event: "wake_failed", FirstSeq: p.FirstSeq, LastSeq: p.LastSeq, Attempt: p.Attempt})
+	h.audit(&Event{Event: "wake_failed", Backend: h.backend(), FirstSeq: p.FirstSeq, LastSeq: p.LastSeq, Attempt: p.Attempt})
 	h.retryAfter = h.now().Add(h.cfg.RewakeAfter)
 	h.firstSeen = time.Time{}
 	if h.st.FailedSeq == p.LastSeq { // task.status only once per last_seq

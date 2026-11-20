@@ -2,7 +2,7 @@
 
 # Bus `notify` adapter and `tb bus discover` — B3 remainder spec
 
-Status: **draft, round 2** (one fresh-context review applied; not implemented).
+Status: **implemented** (B3 remainder).
 
 Closes stage **B3** of [ADR-013](adr/013-barramento-multi-vendor.md). It extends the harness ([bus-harness.md](bus-harness.md)), whose first cut delivered the `exec` and `harness` adapters, and builds on the lease of B2 ([bus-lease.md](bus-lease.md)).
 
@@ -48,7 +48,8 @@ timeout: 10s               # default for notify (30s for exec)
 - These are `Validate` errors, so both `tb bus run` and `--check` refuse them:
   - a non-empty `pass_env`, `secret_files`, `sandbox.read` or `sandbox.write` with `adapter: notify` (the backend needs none of them);
   - an `exec:` or `harness:` block with `adapter: notify`, and a `notify:` block with another adapter;
-  - `backend: desktop` on a platform other than Linux or macOS (`notify_unsupported`).
+  - a missing `notify.backend` (it is required) or `backend: desktop` on a platform other than Linux or macOS (`notify_unsupported`).
+- Mixing `exec:` and `harness:` blocks stays accepted, as before `notify` existed.
 - Defaults depend on the adapter: `rewake_after` is `1h` and `timeout` is `10s` for `notify`.
 
 ### Backends
@@ -56,15 +57,15 @@ timeout: 10s               # default for notify (30s for exec)
 | Backend | Platform | Runs |
 |---|---|---|
 | `desktop` | Linux | `<command> --app-name toolbelt --urgency <u> -- <summary> <body>` |
-| `desktop` | macOS | `/usr/bin/osascript -e 'on run argv' -e 'display notification (item 1 of argv) with title (item 2 of argv)' -e 'end run' -- <body> <summary>` |
+| `desktop` | macOS | `/usr/bin/osascript -e 'on run argv' -e 'display notification (item 1 of argv) with title (item 2 of argv)' -e 'end run' <body> <summary>` (no `--`: the body starts with a count, never with `-`) |
 | `terminal` | any | no child: one line written by the harness itself |
 
 **Desktop binary.**
 
 - `command` empty means the first existing file of `/usr/bin/notify-send`, `/usr/local/bin/notify-send`. There is no `PATH` search; on macOS the path is always `/usr/bin/osascript`.
 - The path is resolved once, when the harness opens (symlinks followed), and that file is what every wake runs.
-- `Validate` refuses the binary when:
-  - it, or its parent directory, is not owned by root or is group- or world-writable;
+- When the harness opens (so both `tb bus run` and `--check` fail), the binary is refused when:
+  - it, or any ancestor directory up to `/`, is not owned by root, or is group- or world-writable (a root-owned sticky directory such as `/tmp` is allowed). On NixOS `/nix/store` is group-writable, so set `command` to a path that passes, or use `backend: terminal`;
   - it sits under the repository root or under `<private>`.
   
   An agent with shell access can write `~/.local/bin/notify-send`; it cannot replace a root-owned system binary.
@@ -100,7 +101,7 @@ body:    2 task.assign, 1 query from "claude-code". Open marin and ask it to cal
   - Types come from the closed `Type` enum.
   - No thread, payload, `causation_id` or idempotency key goes in.
 - **Sender names are agent-chosen.** An unbound invite lets the joiner pick any valid name, so a name can read like an instruction. Senders are therefore shown quoted, with the `agent:` prefix stripped and each one cut to 32 characters with `…`. `system:watchdog` and any `system:*` sender show as `the broker`.
-- At most 3 senders, sorted by count and then name, followed by `and N others`.
+- At most 3 senders, sorted by count and then name, followed by `and 1 other` or `and N others`. All `system:*` senders count as one `the broker`.
 - A `rewake` replaces `new` with `still unread`. When the batch has an `urgent` message, the summary starts with `urgent: ` and the urgency is `urgent_urgency`. Any member can send `urgent`, so on GNOME and KDE `critical` bypasses Do Not Disturb; set `urgent_urgency: normal` to prevent that. The budget caps it at `max_wakes` per `per` either way.
 - **The shell hint uses `--peek`.** A plain `recv` would advance the agent's shared cursor, and the GUI agent's `tb_bus_recv` would then return nothing.
 
@@ -127,7 +128,7 @@ The wake packet `messages` list stops at 20 items, so the text cannot be built f
 
 - `wake: notify` already exists as a card value.
 - When the wake file says `adapter: notify` and the agent's card says another `wake`, both `--check` and the opening of `tb bus run` print `warning: wake_mismatch (card says harness, wake file says notify)` to stderr and go on with exit 0. The card is informational for the channel; the wake file rules.
-- Warnings are a new channel of `Check()`: it returns the list of warnings next to its error.
+- Warnings come from a new `Warnings()` call next to `Check()`; the CLI prints them for both.
 
 ## Part 2: `tb bus discover`
 
@@ -161,7 +162,7 @@ tb bus discover --cwd ~/src/app   # read that directory's .mcp.json instead of t
 
 | `client` | Path | Read |
 |---|---|---|
-| `claude-code` | `~/.claude.json` | `mcpServers` at the top level and in each `projects.<path>` |
+| `claude-code` | `~/.claude.json` | `mcpServers` at the top level (`scope: user`) and in each `projects.<path>` that has at least one server |
 | `claude-desktop` | `~/.config/Claude/claude_desktop_config.json` (Linux), `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) | `mcpServers` |
 | `cursor` | `~/.cursor/mcp.json` | `mcpServers` |
 | `project` | `<cwd or repo root>/.mcp.json` | `mcpServers` |
@@ -182,7 +183,8 @@ A bare `tb` is reported as `"path": "tb"` with `"same_tb": null`, because it res
 
 **What is reported per entry:**
 
-- for the matched entry: the server key, the absolute path, whether it is the same file as the running `tb` (`os.SameFile`), and whether `args` contains `--bus-as` (its value is a channel/name pair, which is printed);
+- for the matched entry: the server key, the absolute path, whether it is the same file as the running `tb` (`os.SameFile`), and whether `args` contains `--bus-as` (its value is printed only when it is a valid channel/name pair, otherwise as `(invalid)`);
+- the text output quotes any path or project key holding control or non-printable characters, so a cloned repository's `.mcp.json` cannot send terminal escapes;
 - `--bus-root`, other arguments and `env` of the `tb` entry are never printed;
 - other servers are only counted (`"other_servers": N`).
 
@@ -205,7 +207,7 @@ A bare `tb` is reported as `"path": "tb"` with `"same_tb": null`, because it res
      "scope": "user", "tb": [{"server": "toolbelt", "path": "/home/leonardo/go/bin/tb", "same_tb": true, "bus_as": null}],
      "other_servers": 2},
     {"client": "claude-code", "path": "/home/leonardo/.claude.json", "kind": "file", "parses": true,
-     "scope": "project:/home/leonardo/src/app", "tb": [], "other_servers": 0},
+     "scope": "project:/home/leonardo/src/app", "tb": [], "other_servers": 1},
     {"client": "claude-desktop", "path": "/home/leonardo/.config/Claude/claude_desktop_config.json", "kind": "missing"},
     {"client": "codex", "path": "/home/leonardo/.codex/config.toml", "kind": "file", "parsed": false}
   ],

@@ -201,7 +201,8 @@ func TestBusMCPHeartbeatStatus(t *testing.T) {
 		t.Fatalf("status: %s", out)
 	}
 	for _, tool := range Default().List() {
-		if strings.HasPrefix(tool.Name, "tb_bus_") && strings.Contains(tool.Name, "watchdog") {
+		if strings.HasPrefix(tool.Name, "tb_bus_") && (strings.Contains(tool.Name, "watchdog") ||
+			strings.Contains(tool.Name, "discover") || strings.Contains(tool.Name, "notify")) {
 			t.Fatalf("watchdog must not be exposed over MCP: %s", tool.Name)
 		}
 	}

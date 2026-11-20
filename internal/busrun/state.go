@@ -81,6 +81,7 @@ func (st *State) allowWake(now time.Time, b Budget) bool {
 type Event struct {
 	Time       time.Time `json:"time"`
 	Event      string    `json:"event"`
+	Backend    string    `json:"backend,omitempty"` // notify: desktop | terminal
 	FirstSeq   int64     `json:"first_seq,omitempty"`
 	LastSeq    int64     `json:"last_seq,omitempty"`
 	Attempt    int       `json:"attempt,omitempty"`

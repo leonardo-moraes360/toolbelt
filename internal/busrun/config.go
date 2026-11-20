@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
+	"runtime"
 	"strings"
 	"time"
 
@@ -31,6 +33,7 @@ type Config struct {
 	Sandbox     SandboxPaths  `yaml:"sandbox"`
 	Exec        ExecConfig    `yaml:"exec"`
 	Harness     HarnessConfig `yaml:"harness"`
+	Notify      NotifyConfig  `yaml:"notify"`
 }
 
 // Coalesce batches nearby messages into one wake.
@@ -63,6 +66,15 @@ type HarnessConfig struct {
 	AllowedTools   []string `yaml:"allowed_tools"`
 	Model          string   `yaml:"model"`
 	Workdir        string   `yaml:"workdir"`
+}
+
+// NotifyConfig: the notify adapter pings the human, never the agent
+// (docs/bus-notify-discover.md).
+type NotifyConfig struct {
+	Backend       string `yaml:"backend"`        // desktop | terminal
+	Command       string `yaml:"command"`        // desktop: absolute path; empty = default list
+	Urgency       string `yaml:"urgency"`        // low | normal | critical
+	UrgentUrgency string `yaml:"urgent_urgency"` // urgency for batches with an urgent message
 }
 
 var DefaultAllowedTools = []string{
@@ -121,14 +133,37 @@ func (c *Config) applyDefaults() {
 	if c.Budget.Per == 0 {
 		c.Budget.Per = time.Hour
 	}
+	c.timingDefaults()
+	c.adapterDefaults()
+}
+
+// timingDefaults: notify waits longer for a human and times out sooner.
+func (c *Config) timingDefaults() {
 	if c.RewakeAfter == 0 {
 		c.RewakeAfter = 10 * time.Minute
+		if c.Adapter == AdapterNotify {
+			c.RewakeAfter = time.Hour // a human may take a while
+		}
 	}
 	if c.Timeout == 0 {
-		if c.Adapter == AdapterHarness {
+		switch c.Adapter {
+		case AdapterHarness:
 			c.Timeout = 15 * time.Minute
-		} else {
+		case AdapterNotify:
+			c.Timeout = 10 * time.Second
+		default:
 			c.Timeout = 30 * time.Second
+		}
+	}
+}
+
+func (c *Config) adapterDefaults() {
+	if c.Adapter == AdapterNotify {
+		if c.Notify.Urgency == "" {
+			c.Notify.Urgency = "normal"
+		}
+		if c.Notify.UrgentUrgency == "" {
+			c.Notify.UrgentUrgency = "critical"
 		}
 	}
 	if c.Adapter == AdapterHarness {
@@ -146,12 +181,43 @@ func (c *Config) topics() bool { return c.WakeTopics == nil || *c.WakeTopics }
 const (
 	AdapterExec    = "exec"
 	AdapterHarness = "harness"
+	AdapterNotify  = "notify"
+
+	BackendDesktop  = "desktop"
+	BackendTerminal = "terminal"
 )
+
+var urgencies = map[string]bool{"low": true, "normal": true, "critical": true}
 
 var permissionModes = map[string]bool{"default": true, "acceptEdits": true, "plan": true}
 
 // Validate expects defaults already applied.
 func (c *Config) Validate() error {
+	if err := c.validateCommon(); err != nil {
+		return err
+	}
+	switch c.Adapter {
+	case AdapterExec, AdapterHarness, AdapterNotify:
+	default:
+		return fmt.Errorf("adapter %q invalid (use exec, harness or notify)", c.Adapter)
+	}
+	if err := c.foreignBlocks(); err != nil {
+		return err
+	}
+	switch c.Adapter {
+	case AdapterExec:
+		if len(c.Exec.Argv) == 0 || !filepath.IsAbs(c.Exec.Argv[0]) {
+			return errors.New("exec.argv[0] must be an absolute path")
+		}
+	case AdapterHarness:
+		return c.Harness.validate()
+	case AdapterNotify:
+		return c.validateNotify()
+	}
+	return nil
+}
+
+func (c *Config) validateCommon() error {
 	for _, t := range c.WakeOn {
 		if _, err := bus.ParseType(string(t)); err != nil {
 			return err
@@ -166,18 +232,62 @@ func (c *Config) Validate() error {
 	if err := absPaths("secret_files", c.SecretFiles); err != nil {
 		return err
 	}
-	if err := absPaths("sandbox", append(append([]string{}, c.Sandbox.Read...), c.Sandbox.Write...)); err != nil {
-		return err
-	}
-	switch c.Adapter {
-	case AdapterExec:
-		if len(c.Exec.Argv) == 0 || !filepath.IsAbs(c.Exec.Argv[0]) {
-			return errors.New("exec.argv[0] must be an absolute path")
+	return absPaths("sandbox", append(append([]string{}, c.Sandbox.Read...), c.Sandbox.Write...))
+}
+
+// foreignBlocks refuses mixing notify with another adapter's block: a
+// notify: block elsewhere, or an exec:/harness: block with notify. Mixes of
+// exec and harness stay accepted, as before notify existed.
+func (c *Config) foreignBlocks() error {
+	if c.Adapter != AdapterNotify {
+		if c.Notify != (NotifyConfig{}) {
+			return fmt.Errorf("notify: block not allowed with adapter %q", c.Adapter)
 		}
-	case AdapterHarness:
-		return c.Harness.validate()
+		return nil
+	}
+	if len(c.Exec.Argv) > 0 {
+		return errors.New("exec: block not allowed with adapter notify")
+	}
+	if !reflect.DeepEqual(c.Harness, HarnessConfig{}) {
+		return errors.New("harness: block not allowed with adapter notify")
+	}
+	return nil
+}
+
+// goos is the platform the notify backend targets (tests override it).
+var goos = runtime.GOOS
+
+func (c *Config) validateNotify() error {
+	if len(c.PassEnv) > 0 || len(c.SecretFiles) > 0 || len(c.Sandbox.Read) > 0 || len(c.Sandbox.Write) > 0 {
+		return errors.New("pass_env, secret_files and sandbox are not allowed with adapter notify")
+	}
+	n := c.Notify
+	if !urgencies[n.Urgency] || !urgencies[n.UrgentUrgency] {
+		return errors.New("notify.urgency and notify.urgent_urgency must be low, normal or critical")
+	}
+	return n.validateBackend()
+}
+
+func (n *NotifyConfig) validateBackend() error {
+	switch n.Backend {
+	case BackendTerminal:
+		if n.Command != "" {
+			return errors.New("notify.command is only for backend desktop")
+		}
+	case BackendDesktop:
+		if goos != "linux" && goos != "darwin" {
+			return fmt.Errorf("notify_unsupported: backend desktop is not available on %s (use terminal)", goos)
+		}
+		if n.Command != "" && !filepath.IsAbs(n.Command) {
+			return errors.New("notify.command must be an absolute path")
+		}
+		if goos == "darwin" && n.Command != "" {
+			return errors.New("notify.command is not used on macOS (always /usr/bin/osascript)")
+		}
+	case "":
+		return errors.New("notify.backend is required (desktop or terminal)")
 	default:
-		return fmt.Errorf("adapter %q invalid (use exec or harness)", c.Adapter)
+		return fmt.Errorf("notify.backend %q invalid (use desktop or terminal)", n.Backend)
 	}
 	return nil
 }

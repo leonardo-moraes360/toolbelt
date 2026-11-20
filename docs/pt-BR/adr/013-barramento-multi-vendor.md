@@ -6,7 +6,7 @@
 
 proposed
 
-Implementação (v0.0.5): B0 e B1 entregues; B3 parcial (`tb bus run` com adapters `exec` e `harness`; adapter `notify` e `tb bus discover` ainda não existem); B2 entregue depois da v0.0.7 (lease, heartbeat, watchdog: [bus-lease.md](../bus-lease.md)); B4 não iniciado. O status segue `proposed` até as métricas de sucesso serem medidas.
+Implementação (v0.0.5): B0 e B1 entregues; B3 entregue depois da v0.0.8 (`tb bus run` com adapters `exec`, `harness` e `notify`, e `tb bus discover`); B2 entregue depois da v0.0.7 (lease, heartbeat, watchdog: [bus-lease.md](../bus-lease.md)); B4 não iniciado. O status segue `proposed` até as métricas de sucesso serem medidas.
 
 ## Contexto
 

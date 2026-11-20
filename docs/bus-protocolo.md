@@ -112,4 +112,4 @@ Declared on `join`. It is informational: **capability is not permission**; the r
 
 ## Out of B1
 
-Lease, heartbeat and watchdog arrived in B2 ([bus-lease.md](bus-lease.md)). Still out: `tb bus discover` and the rest of B3 (`tb bus run` with `exec`/`harness` adapters already exists, spec in [bus-harness.md](bus-harness.md)); Router integration (B4).
+Lease, heartbeat and watchdog arrived in B2 ([bus-lease.md](bus-lease.md)). B3 is complete: `tb bus run` ([bus-harness.md](bus-harness.md)), the `notify` adapter and `tb bus discover` ([bus-notify-discover.md](bus-notify-discover.md)). Still out: Router integration (B4).
