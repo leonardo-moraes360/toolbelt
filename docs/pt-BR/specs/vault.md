@@ -2,25 +2,26 @@
 
 # Spec: Vault Markdown compatível com Obsidian, Fase A (`tb vault`)
 
-Autor: toolbelt · Status: Rascunho (rodada 2, após revisão em contexto novo) · Data: 2026-11-18 · Decisões de origem: [ADR-006](../adr/006-inspiracoes-graphify-obsidian.md), [ADR-003](../adr/003-sqlite-fts5-grafo.md) · Relacionadas: [ADR-010](../adr/010-invariantes-fora-compactacao.md), [ADR-011](../adr/011-grafo-sob-demanda.md)
+Autor: toolbelt · Status: Rascunho (rodada 3: atualizada contra a main, revisão em contexto novo aplicada, Q1 resolvida pela [ADR-016](../adr/016-vault-fase-a.md); Q4 aberta) · Data: 2026-11-20 · Decisão: [ADR-016](../adr/016-vault-fase-a.md) · Decisões de origem: [ADR-006](../adr/006-inspiracoes-graphify-obsidian.md), [ADR-003](../adr/003-sqlite-fts5-grafo.md) · Relacionadas: [ADR-010](../adr/010-invariantes-fora-compactacao.md), [ADR-011](../adr/011-grafo-sob-demanda.md)
 
 ## Visão geral
 
 O ADR-006 decidiu que a memória de longo prazo do toolbelt seria um vault de Markdown compatível com o Obsidian: notas com frontmatter, wikilinks, backlinks e edição direta por humanos. Nada disso foi implementado. Esta spec define a **Fase A**: o formato da nota, a resolução de wikilinks, os comandos `tb vault` e as tools MCP equivalentes, e a integração com o `tb graph`.
 
-A Fase A é deliberadamente pequena e **diverge** de partes aceitas do ADR-006 e do ADR-003 (ver Q1):
+A Fase A é deliberadamente pequena e **diverge** de partes aceitas do ADR-006 e do ADR-003 (ver Q1 e a [ADR-016](../adr/016-vault-fase-a.md)):
 - o vault é a fonte de verdade e **não há índice derivado persistente** (nem SQLite/FTS5): cada comando lê o vault do disco;
 - o vault fica em `.toolbelt/vault/`, não em `.tb/vault/`;
 - as invariantes continuam em `invariants.yaml` e não migram para o vault;
 - não há TUI (`tb md`), watcher nem sync bidirecional.
 
-## Estado atual (2026-11-18)
+## Estado atual (2026-11-20)
 
 | Item | Situação |
 |------|----------|
 | `VaultConfig{Path, SyncOnChange}` em `internal/config/config.go` | Existe, default `path: .toolbelt/vault`, `sync_on_change: true`; **nunca lido** |
 | `.toolbelt/vault/` | Criado por `tb init`, vazio |
 | `config.LocalCacheExcludePatterns` | Inclui `.toolbelt/vault/`: o vault é tratado como cache local e **não é versionado**, o que contradiz o ADR-006 |
+| `.gitignore` deste repositório | Ignora `.toolbelt/vault/`, então mesmo sem o exclude o vault não seria versionado aqui |
 | `tb mem` | Invariantes em `.toolbelt/invariants.yaml`; sem Markdown |
 | `internal/graph/index_docs.go` | Não reconhece `[[wikilink]]` nem interpreta frontmatter: o frontmatter é tratado como texto comum, então caminhos nele viram arestas `mentions` e linhas `# ` (comentários YAML, ou dentro de blocos de código) viram seções |
 | Persistência do grafo | `.toolbelt/graph.json`; não há SQLite/FTS5 no `go.mod` |
@@ -31,9 +32,10 @@ A Fase A é deliberadamente pequena e **diverge** de partes aceitas do ADR-006 e
 
 | Termo | Definição |
 |-------|-----------|
-| raiz | Diretório pai do `.toolbelt/` encontrado por `mem.LocateRepoToolbeltDir(cwd)`, com symlinks resolvidos. É a mesma raiz que o `tb mem` usa. |
+| raiz | Diretório pai do `.toolbelt/` encontrado por `mem.LocateRepoToolbeltDir(cwd)`, com symlinks resolvidos (R0). É a mesma raiz que o `tb mem` usa. |
 | vault | Diretório `vault.path` da config, relativo à raiz (default `.toolbelt/vault`). |
 | nota | Arquivo regular `.md` dentro do vault, fora dos diretórios ignorados (R3). |
+| anexo | Qualquer outro arquivo regular dentro do vault, fora dos diretórios ignorados (R3, R8). |
 | nome da nota | Nome do arquivo sem `.md`. |
 | caminho da nota | Caminho relativo ao vault, com `/`, sem `.md`. Ex.: `decisoes/sqlite-adiado`. |
 | wikilink | `[[alvo]]`, `[[alvo\|rótulo]]`, `[[alvo#heading]]`, `[[alvo#^bloco]]`, `[[#heading]]` (na própria nota) ou qualquer um deles com `!` na frente (embed). |
@@ -51,7 +53,7 @@ A Fase A é deliberadamente pequena e **diverge** de partes aceitas do ADR-006 e
 
 ## Objetivos
 
-- G1: notas legíveis e editáveis no Obsidian sem conversão. No subconjunto em que tb e Obsidian concordam (links não ambíguos, R8), o tb resolve cada wikilink para a mesma nota que o Obsidian; onde o Obsidian desempataria por caminho mais curto, o tb reporta erro. Uma fixture dourada (plano de verificação) é o oráculo.
+- G1: notas legíveis e editáveis no Obsidian sem conversão. No subconjunto em que tb e Obsidian concordam (links não ambíguos, R8), o tb resolve cada wikilink para a mesma nota que o Obsidian; onde o Obsidian desempataria por caminho mais curto, o tb reporta erro. Uma fixture dourada conferida no Obsidian real (plano de verificação, Q4) é o oráculo.
 - G2: CLI e MCP para criar, listar, ler, buscar e checar notas, e para listar links e backlinks.
 - G3: `tb vault check` falha fechado (vault ausente, frontmatter inválido, links quebrados e ambíguos) e roda no `tb stack`.
 - G4: o grafo, quando ligado, inclui notas e wikilinks com proveniência, inclusive em repositórios com `config.yaml` anterior a esta spec.
@@ -65,7 +67,7 @@ A Fase A é deliberadamente pequena e **diverge** de partes aceitas do ADR-006 e
 - TUI `tb md`, `tb md --obsidian`, watcher. `sync_on_change` fica reservado e sem efeito.
 - Tags inline (`#tag` no corpo), Dataview, Canvas, plugins do Obsidian, `.obsidian/` como configuração lida pelo tb.
 - Editar notas existentes pelo tb (renomear com atualização de links, mover).
-- Wikilinks para arquivos fora do vault. Para isso existem `refs` (R4) e links Markdown relativos.
+- Wikilinks para arquivos fora do vault. Para isso existem links Markdown relativos; um campo `refs` no frontmatter fica para a Fase B.
 - Endurecer o walk do grafo fora do vault (symlinks e FIFOs em `docs/`, código etc.). É o mesmo problema do R21, mas fica registrado em Q5.
 - Embeddings ou busca semântica.
 
@@ -102,11 +104,12 @@ humano (Obsidian/editor) ──┐                 ┌── agente (MCP tb_vaul
 
 ### Requisitos
 
-**Localização e versionamento**
+**Localização, config e versionamento**
 
-- R1: o vault é `vault.path`, relativo à raiz (glossário). O tb aplica `filepath.Clean`, junta com a raiz, resolve symlinks com `EvalSymlinks` e exige que o resultado fique dentro da raiz; senão, exit 2 com `vault_path_outside_repo`. O vault resolvido é a raiz do walk do R3. Vault inexistente: exit 1 com `vault_not_found` em todos os comandos, inclusive `check`.
-- R2: `EnsureLocalGitExclude` passa a receber os padrões extras derivados da config: `<vault.path>/.obsidian/`. `.toolbelt/vault/` sai de `LocalCacheExcludePatterns`. `tb init` carrega a config (se existir) para calcular esses padrões. Como `upsertExcludeSection` reescreve a seção inteira, um `tb init` em repositório antigo aplica a troca (CUJ-6). Correção junto: hoje, sem o marcador de fim, `upsertExcludeSection` descarta tudo depois do marcador de início; passa a acrescentar um bloco novo e preservar o resto.
-- R3: o scan percorre o vault com `filepath.WalkDir`, sem seguir symlinks. Nota é toda entrada com `Lstat` de arquivo regular e extensão `.md`. Ignora diretórios que começam com `.` (inclui `.obsidian/` e `.trash/`) e qualquer entrada que não seja arquivo regular ou diretório (symlink, FIFO, socket, device), reportada como `not_regular` no `check` (aviso). Uma nota acima de `vault.max_note_bytes` (default 256 KiB) não é lida e é reportada como `note_too_large` (erro). A leitura abre com `O_NOFOLLOW` e lê no máximo `max_note_bytes + 1` bytes.
+- R0: a raiz é o pai do diretório `.toolbelt/` devolvido por `mem.LocateRepoToolbeltDir(cwd)`, com symlinks resolvidos; no MCP, `cwd` é o argumento `cwd` da tool, nunca o do servidor. A config é lida de `<raiz>/.toolbelt/config.yaml` explicitamente (como no `internal/router`), nunca do cwd do processo. Uma raiz sem `.toolbelt/` é exit 2 com `no_toolbelt_dir`.
+- R1: o vault é `vault.path`, relativo à raiz. O tb aplica `filepath.Clean`, junta com a raiz, resolve symlinks com `EvalSymlinks` e exige que o resultado fique dentro da raiz; senão, exit 2 com `vault_path_outside_repo`. O vault resolvido é a raiz do walk do R3. Vault inexistente: exit 1 com `vault_not_found` em todos os comandos, inclusive `check`.
+- R2: `EnsureLocalGitExclude` passa a receber os padrões extras derivados da config: `<vault.path>/.obsidian/`. `.toolbelt/vault/` sai de `LocalCacheExcludePatterns`. `tb init` carrega a config (se existir) para calcular esses padrões, cria `vault.path` quando não é o default (o `InitDetailed` fixa `vault` e retorna cedo quando já existe config), e o log dele lista também os padrões extras. Como `upsertExcludeSection` reescreve a seção inteira, um `tb init` em repositório antigo aplica a troca (CUJ-6). Correção junto: hoje, com marcador de início e sem o de fim, `upsertExcludeSection` mantém só o texto antes do marcador de início e descarta as linhas do usuário depois dele. Passa a remover a linha de início órfã e, depois dela, só as linhas iguais a um padrão que o tb grava ou já gravou (listas atual e anteriores), manter todas as outras e acrescentar um bloco novo. Um `.gitignore` que ignora o vault não é editado; o `tb init` avisa `vault_gitignored` (o `.gitignore` deste repositório perde a linha na mesma mudança).
+- R3: o scan percorre o vault com `filepath.WalkDir`, sem seguir symlinks. Ignora diretórios que começam com `.` (inclui `.obsidian/` e `.trash/`). Candidata a nota é toda entrada com `Lstat` de arquivo regular e extensão `.md`; os outros arquivos regulares são anexos (R8). Qualquer entrada que não seja arquivo regular nem diretório (symlink, FIFO, socket, device) é reportada como `not_regular` no `check` (aviso). A leitura abre com `O_RDONLY|O_NOFOLLOW|O_NONBLOCK`, faz `fstat` no descritor e exige arquivo regular (um arquivo trocado por FIFO depois do `Lstat` é recusado), e lê no máximo `max_note_bytes + 1` bytes. Uma nota acima de `vault.max_note_bytes` (default 256 KiB) é reportada como `note_too_large` (erro) e não é interpretada.
 
 **Formato da nota**
 
@@ -117,11 +120,10 @@ humano (Obsidian/editor) ──┐                 ┌── agente (MCP tb_vaul
   | `title` | string | Primeiro H1 fora de cerca; sem H1, o nome da nota |
   | `type` | string, um de `vault.types` | `fact` |
   | `tags` | lista de string ou string única; cada tag casa `^[a-z0-9][a-z0-9/_-]*$` | `[]` |
-  | `aliases` | lista de string ou string única | `[]` |
+  | `aliases` | lista de string ou string única (só metadado e busca, R8) | `[]` |
   | `source` | `manual`, `extracted` ou `inferred` | `manual` |
   | `confidence` | número em [0, 1] | ausente |
   | `created`, `updated` | RFC 3339 ou `YYYY-MM-DD` | ausente |
-  | `refs` | lista de caminhos relativos à raiz, fora do vault | `[]` |
 
   Classificação dos problemas:
 
@@ -132,8 +134,6 @@ humano (Obsidian/editor) ──┐                 ┌── agente (MCP tb_vaul
   | `source: inferred` sem `confidence` | `missing_confidence` | erro |
   | `confidence` com `source` diferente de `inferred` | `unused_confidence` | aviso |
   | Tag fora do padrão | `bad_tag` | aviso (a tag é descartada) |
-  | `refs` absoluto, com `..` que escapa da raiz, ou apontando para dentro do vault | `bad_ref` | erro |
-  | `refs` inexistente | `ref_missing` | erro |
 
   Campos desconhecidos são preservados e ignorados. Nos comandos que não são `check`, uma nota com erro usa os defaults no campo afetado e ganha `warnings: [{code, line, message}]` na saída `--json`.
 - R5: notas sem frontmatter são válidas. O tb nunca reescreve uma nota existente.
@@ -147,49 +147,48 @@ humano (Obsidian/editor) ──┐                 ┌── agente (MCP tb_vaul
   3. alvo = o resto, com `TrimSpace` e sem sufixo `.md` (sem diferenciar maiúsculas).
 
   Alvo vazio com fragmento é link para a própria nota. Alvo vazio sem fragmento é descartado. Cada link guarda linha (1-based), coluna, alvo, fragmento, rótulo e `embed`.
-- R8: resolução de um alvo `t` não vazio, na ordem, parando na primeira etapa com candidatos:
-  1. se `t` contém `/`: a nota cujo caminho é `t`;
-  2. as notas cujo nome é `t`;
-  3. as notas que têm `t` em `aliases`.
-
-  Todas as comparações ignoram maiúsculas (`strings.EqualFold`). Zero candidatos: `broken_link`. Um: resolvido. Mais de um: `ambiguous_link`. O Obsidian desempata pelo caminho mais curto; o tb não, porque essa escolha muda em silêncio quando alguém cria uma nota de mesmo nome mais perto da raiz, e o agente seguiria para a nota errada sem aviso.
+- R8: resolução de um alvo `t` não vazio, sem diferenciar maiúsculas (`strings.EqualFold`):
+  - **Anexo:** se `t` tem extensão diferente de `.md` (por exemplo `img.png`, `doc.pdf`), é um link para anexo. Resolve contra os arquivos regulares do vault que não são nota, pelas mesmas duas etapas abaixo; zero candidatos é `missing_attachment` (aviso), nunca erro, porque vaults do Obsidian embutem com frequência arquivos que o tb não gerencia.
+  - **Nota**, na ordem, parando na primeira etapa com candidatos:
+    1. se `t` contém `/`: as notas cujo caminho é `t` ou termina em `/t` (o casamento por caminho parcial do Obsidian);
+    2. senão, as notas cujo nome é `t`.
+  - Zero candidatos: `broken_link`. Um: resolvido. Mais de um: `ambiguous_link`. O Obsidian desempata pelo caminho mais curto; o tb não, porque essa escolha muda em silêncio quando alguém cria uma nota de mesmo nome mais perto da raiz, e o agente seguiria para a nota errada sem aviso.
+  - `aliases` não resolvem links: no Obsidian elas só alimentam o autocomplete, que grava `[[nota|alias]]`.
 - R9: fragmento `#heading` é comparado por slug (R6) com os headings da nota-alvo. Inexistente: `broken_fragment` (aviso, porque o Obsidian aceita). `#^bloco` não é verificado na Fase A.
 
 **Comandos**
 
 - R10: `tb vault new <título> [--type T] [--tag t]... [--source S --confidence C] [--dir sub] [--body -|texto]`:
-  - nome do arquivo: `mdparse.Slugify(título)` + `.md`, em `<vault>/<sub>/`;
+  - o título não pode ter caracteres de controle (inclusive quebra de linha): exit 2 com `bad_title`;
+  - título e corpo passam antes pela redação do vault (R15); a saída traz `redacted: true` quando algo mudou;
+  - nome do arquivo: `mdparse.Slugify(título redigido)`, cortado em 80 bytes numa fronteira de runa, + `.md`, em `<vault>/<sub>/`; slug vazio é exit 2 com `bad_title` (nunca o `section` de reserva do grafo);
   - `--dir` deve ser relativo; o tb cria os diretórios que faltam um a um, com `Lstat` em cada componente, recusando symlink, e confere que o diretório final, resolvido, fica dentro do vault; senão, exit 2 com `dir_outside_vault`;
   - grava com `O_CREATE|O_EXCL|O_NOFOLLOW`, permissão `0644`; se existir, exit 1 com `note_exists` e o caminho;
-  - frontmatter: `title`, `type`, `tags` (se houver), `source`, `confidence` (se houver), `created` (RFC 3339 UTC); corpo: `# <título>` seguido do `--body` (`-` lê o stdin, até `max_note_bytes`);
-  - título e corpo passam por `mem.RedactText` antes de gravar; se algo mudou, grava o texto redigido e a saída traz `redacted: true`;
+  - o frontmatter sai de `yaml.Marshal` de uma struct (nunca de interpolação de string): `title`, `type`, `tags` (se houver), `source`, `confidence` (se houver), `created` (RFC 3339 UTC); corpo: `# <título>` seguido do `--body` (`-` lê o stdin, até `max_note_bytes`);
   - na CLI, `--source` default é `manual`; `inferred` exige `--confidence`.
 - R11: `tb vault list [--type T] [--tag t] [--source S]` lista caminho, título, tipo, tags, `source` e `updated` (só do frontmatter; o mtime não entra na saída), ordenado por caminho.
 - R12: `tb vault show <alvo>` resolve `<alvo>` pelas regras R7–R8 (aceita também o caminho da nota) e imprime frontmatter normalizado e corpo. Com `--json`, inclui `links` (com estado) e `backlinks`.
-- R13: `tb vault search <query> [--limit N]` faz busca por substring, sem diferenciar maiúsculas e acentos, em título, aliases, tags e corpo, com a normalização de `normalizeForSearch` (hoje não exportada, em `internal/mem/validate.go`; passa para `mdparse.NormalizeForSearch` e `mem` a reusa). A busca percorre o texto original runa a runa, comparando a forma normalizada de cada runa, para que os offsets do acerto valham no texto original. O trecho tem até 200 runas ao redor do primeiro acerto e é recortado **depois** da redação do texto inteiro (R15). Ordem: caminho, depois linha do primeiro acerto. `--limit` default 20.
-- R14: `tb vault links <alvo>` lista os wikilinks de saída com estado (`ok`, `broken`, `ambiguous`, `broken_fragment`); `tb vault backlinks <alvo>` lista as notas que apontam para a nota, com linha. Ordem: caminho, linha, coluna.
-- R15: saídas que contêm dado de nota passam por `mem.RedactText` aplicado ao texto inteiro antes de qualquer recorte, na CLI e no MCP. O `RedactText` cobre só os padrões já listados em `internal/mem/redact.go` (tokens GitHub `ghp_`/`gho_`/`github_pat_`, AWS `AKIA`, chave PEM, `Bearer`, Slack `xox`, `*_TOKEN=`). Esta spec acrescenta `ghu_`, `ghs_`, `sk-` (com ≥ 20 caracteres) e `password|passwd|secret` seguidos de `=` ou `:`. O que fica fora desses padrões é risco residual (Modelo de ameaças).
-- R16: `tb vault check [--strict]` valida o vault inteiro. Erros (exit 1): `vault_not_found`, `bad_frontmatter`, `missing_confidence`, `bad_ref`, `ref_missing`, `note_too_large`, `broken_link`, `ambiguous_link`. Avisos (exit 0): `not_regular`, `bad_tag`, `unused_confidence`, `broken_fragment`, `orphan_note` (sem links de entrada nem de saída). `--strict` promove avisos a erros. Vault existente e vazio: exit 0 com `notes: 0`.
+- R13: `tb vault search <query> [--limit N]` primeiro redige o texto inteiro de cada nota (R15) e depois faz busca por substring, sem diferenciar maiúsculas e acentos, no título, aliases, tags e corpo redigidos, para que uma consulta nunca consiga sondar um segredo pela contagem ou ordem dos acertos. A normalização é a de `normalizeForSearch` (hoje não exportada, em `internal/mem/validate.go`; passa para `mdparse.NormalizeForSearch` e `mem` a reusa). A busca percorre o texto redigido runa a runa, comparando a forma normalizada de cada runa, para que os offsets do acerto valham nesse texto. O trecho tem até 200 runas ao redor do primeiro acerto. Ordem: caminho, depois linha do primeiro acerto. `--limit` default 20.
+- R14: `tb vault links <alvo>` lista os wikilinks de saída com estado (`ok`, `broken`, `ambiguous`, `broken_fragment`, `attachment`, `missing_attachment`); `tb vault backlinks <alvo>` lista as notas que apontam para a nota, com linha. Ordem: caminho, linha, coluna.
+- R15: saídas que contêm dado de nota passam pela redação do vault, aplicada ao texto inteiro antes de qualquer recorte ou busca, na CLI e no MCP. A redação do vault é uma lista própria no `internal/vault`: `mem.SecretPatterns()` mais `ghu_`, `ghs_`, `sk-` (com ≥ 20 caracteres) e `password|passwd|secret` seguidos de `=` ou `:`. Os padrões do próprio `mem` não mudam, então as saídas do `tb mem` e do `tb egm` continuam iguais (G6). O que fica fora desses padrões é risco residual (Modelo de ameaças).
+- R16: `tb vault check` valida o vault inteiro. Erros (exit 1): `vault_not_found`, `bad_frontmatter`, `missing_confidence`, `note_too_large`, `broken_link`, `ambiguous_link`. Avisos (exit 0): `not_regular`, `bad_tag`, `unused_confidence`, `broken_fragment`, `missing_attachment`. Vault existente e vazio: exit 0 com `notes: 0`.
 - R17: todos os comandos aceitam `--json`, com chaves em snake_case, e as mesmas entradas geram a mesma saída byte a byte (NFR).
 
 **MCP e stack**
 
-- R18: tools `tb_vault_new`, `tb_vault_list`, `tb_vault_show`, `tb_vault_search`, `tb_vault_links`, `tb_vault_backlinks` e `tb_vault_check`, com schemas tipados, registradas em `internal/registry/parity.go` para manter a paridade CLI/MCP.
+- R18: tools `tb_vault_new`, `tb_vault_list`, `tb_vault_show`, `tb_vault_search`, `tb_vault_links`, `tb_vault_backlinks` e `tb_vault_check`, com schemas tipados e `cwd` absoluto obrigatório (R0), registradas em `internal/registry/parity.go` para manter a paridade CLI/MCP.
   - **Separação de dado:** todo dado de nota (glossário) vai num objeto `data` de cada item; fora dele ficam só campos gerados pelo tb (caminho, códigos, linhas, estados, contagens). As mensagens do `check` citam o alvo só dentro de `data`.
   - **Proveniência:** `tb_vault_new` não aceita `source`; grava sempre `source: inferred` e exige `confidence` (CUJ-7).
-- R19: `tb stack` ganha a op `vault` (roda R16), escolhida como as outras, por argumento posicional (`tb stack verify guard vault`). As listas de ops em `cmd/tb/stack.go` e o schema da tool `tb_stack` em `internal/registry/parity.go` incluem a op.
+- R19: `tb stack` ganha a op `vault` (roda R16), escolhida como as outras, por argumento posicional (`tb stack verify guard vault`). Ela só lê e roda em paralelo como o `guard` (`isParallelOp`); ignora `--strict`, que continua sendo flag do `egm`. As listas de ops e as mensagens de erro em `internal/stack/stack.go` e `cmd/tb/stack.go`, e o schema da tool `tb_stack` em `internal/registry/parity.go`, incluem a op.
 
 **Grafo (só com `TB_GRAPH=on`, ADR-011)**
 
-- R20: novo `VaultIndexer` com `Name() == "vault"`, categoria `doc`, que casa arquivos `.md` sob o vault resolvido (R1). O `MarkdownIndexer` passa a ignorar esses arquivos, para que cada nota tenha um único nó. `allowsIndexer` trata `vault` como habilitado sempre que `markdown` está em `Docs`, para que repositórios com `config.yaml` antigo (que lista `markdown, html, txt`) não percam as notas do grafo (G4); `vault` também entra no default de `Docs`.
-- R21: o `VaultIndexer` **não** usa `readSource`: lê pelo `internal/vault` (R3), com `Lstat`, só arquivo regular, `O_NOFOLLOW` e limite de tamanho. Symlink, FIFO e arquivo grande no vault nunca são lidos pelo grafo, então um repositório clonado não consegue, por um symlink versionado no vault, fazer o `graph.json` (e as tools `tb_graph_*`) carregar conteúdo de fora do repositório.
-- R22: cada nota vira um nó `NodeNote` (novo) com ID `note:<caminho da nota>`, `Path` do arquivo e `Title` do R4; `Source` e `Confidence` vêm do frontmatter (`manual` → 1.0, `extracted` → 0.9, `inferred` → o `confidence`). Headings (R6, fora de cerca e de frontmatter) viram `NodeSection` com ID `section:<arquivo>#<slug>`.
-- R23: wikilink resolvido vira aresta `EdgeLinks` de `note:A` para `note:B`, ou para `section:<arquivo de B>#<slug>` com fragmento, `Source: "extracted"`, confiança 0.9. Links quebrados e ambíguos não viram aresta. O corpo (sem frontmatter) continua gerando links Markdown, autolinks e menções como no `MarkdownIndexer`. Cada `refs` válido vira aresta `EdgeMentions` para `file:<ref>`, confiança 0.95.
-- R24: tags viram nós `NodeTag` (`tag:<tag>`) com aresta `EdgeTagged` (nova) da nota para a tag.
-- R25: consultas sobre notas:
-  - `tb graph explain` e `tb graph path` aceitam IDs `note:` e `tag:`; `tb graph search` inclui nós `note` e `tag`;
-  - `Store.Impact(file)` ganha um passo: depois das arestas `defines`/`calls` de hoje, inclui as notas com aresta `EdgeMentions` ou `EdgeLinks` cujo alvo é `file:<file>` ou uma seção dele; `findPackageOrFileIDs` passa a aceitar também `NodeNote`, para `impact` sobre uma nota listar as notas que a citam;
-  - mudanças em `cmd/tb/graph.go` e `internal/registry/graph.go` limitadas a aceitar esses IDs e tipos; nenhum flag novo.
+- R20: `BuildOptions` ganha `VaultDir` (o vault do R1, vazio quando não resolve), preenchido por `graphOptionsFromConfig` e `graphBuildOptions`. Os indexadores por arquivo pulam os arquivos sob `VaultDir`, e um passo do build depois do walk (como o `resolveSoftMentions`) varre o vault inteiro uma vez pelo `internal/vault`, porque a resolução do R8 precisa de todas as notas. O passo roda quando `vault` está habilitado: `allowsIndexer` trata `vault` como habilitado sempre que `markdown` está em `Docs`, para que repositórios com `config.yaml` antigo (que lista `markdown, html, txt`) não percam as notas (G4), a menos que `vault.graph: false`; `vault` também entra no default de `Docs`.
+- R21: o passo do vault **não** usa `readSource`: lê pelo `internal/vault` (R3). Symlink, FIFO e arquivo grande no vault nunca são lidos pelo grafo, então um repositório clonado não consegue, por um symlink versionado no vault, fazer o `graph.json` (e as tools `tb_graph_*`) carregar conteúdo de fora do repositório.
+- R22: cada nota vira um nó `NodeNote` (novo) com ID `note:<caminho da nota>`, `Path` do arquivo e `Title` do R4, redigido (R15); `Source` e `Confidence` vêm do frontmatter (`manual` → 1.0, `extracted` → 0.9, `inferred` → o `confidence`). Headings (R6) viram `NodeSection` com ID `section:<arquivo>#<slug>`.
+- R23: wikilink resolvido vira aresta `EdgeLinks` de `note:A` para `note:B`, ou para `section:<arquivo de B>#<slug>` com fragmento, `Source: "extracted"`, confiança 0.9. Links quebrados, ambíguos e de anexo não viram aresta. O corpo (sem frontmatter) continua gerando links Markdown, autolinks e menções como no `MarkdownIndexer`, com a nota como origem: `indexMarkupDoc` recebe o ID do nó de origem como parâmetro em vez de supor `file:`.
+- R24: tags viram nós `NodeTag` (novos, `tag:<tag>`) com aresta `EdgeTagged` (nova) da nota para a tag.
+- R25: `tb graph explain`, `tb graph path` e `tb graph search` alcançam nós `note:` e `tag:` pela resolução de ID exato que já existe (`resolveNodeIDs`); a mudança em `cmd/tb/graph.go` e `internal/registry/graph.go` é só listar os tipos novos de nó no help e nos schemas. Nenhum flag novo.
 
 ### Configuração
 
@@ -199,11 +198,12 @@ vault:
   sync_on_change: true         # existente (default atual true); reservado, sem efeito na Fase A
   max_note_bytes: 262144       # novo
   types: [fact, decision, context, log]  # novo
+  graph: true                  # novo; false deixa as notas fora do grafo mesmo com markdown ligado
 graph:
   docs: [markdown, vault, html, txt]     # vault novo no default; com só markdown, vault fica implícito (R20)
 ```
 
-`VaultConfig.Validate` rejeita `path` absoluto ou com `..` que escape da raiz, `max_note_bytes` ≤ 0 ou acima de 4 MiB, e `types` vazio, com valores repetidos ou fora de `^[a-z][a-z0-9_-]*$`.
+`VaultConfig.Validate` rejeita `path` absoluto, com `..` que escape da raiz, ou com quebra de linha, caractere de controle ou caractere de glob (`*`, `?`, `[`, `]`, `!`, `#` no começo), já que ele é gravado no `.git/info/exclude`; `max_note_bytes` ≤ 0 ou acima de 4 MiB; e `types` vazio, com valores repetidos ou fora de `^[a-z][a-z0-9_-]*$`.
 
 ## Modelo de ameaças
 
@@ -211,12 +211,15 @@ graph:
 |--------|-----------|
 | Nota escrita por agente ou vinda de repositório clonado instrui outro agente (injeção via MCP) | R18 (todo dado de nota dentro de `data`), R15. Risco residual: o agente ainda lê o texto e pode obedecê-lo. |
 | Combinação "dado privado + conteúdo não confiável + saída externa" (ADR-010) | O tb não tem saída externa (local-first). O `tb_vault_*` entrega conteúdo não confiável ao agente, e é o harness do agente que decide se ele tem saída externa. Fica registrado como risco do harness, não do tb. |
-| Segredo colado numa nota chega a um prompt | R10 (redação na escrita), R15 (redação na leitura, antes do recorte). Risco residual: segredos fora dos padrões do R15. |
-| `vault.path` ou `--dir` apontando para fora; symlink em componente intermediário | R1 (`EvalSymlinks` da raiz do vault), R10 (`Lstat` por componente, `O_NOFOLLOW`) |
+| Segredo colado numa nota chega a um prompt | R10 (redação na escrita), R15 (redação na leitura, antes do recorte), R13 (busca sobre o texto redigido, sem sondagem pela contagem de acertos). Risco residual: segredos fora dos padrões do R15. |
+| Segredo no título vira nome de arquivo | R10 (o slug sai do título redigido) |
+| Título com quebra de linha forja frontmatter (`source: manual`) | R10 (caracteres de controle recusados, frontmatter por `yaml.Marshal`) |
+| `vault.path` ou `--dir` apontando para fora; symlink em componente intermediário; padrão injetado no `.git/info/exclude` | R1 (`EvalSymlinks` da raiz do vault), R10 (`Lstat` por componente, `O_NOFOLLOW`), `VaultConfig.Validate` |
 | Symlink versionado no vault para `~/.ssh/...` lido pelo grafo e devolvido por `tb_graph_*` | R21 |
-| Nota gigante ou FIFO trava o scan, o `tb graph index` ou o `tb stack` | R3, R21 (só arquivo regular, leitura limitada) |
+| Nota gigante ou FIFO trava o scan, o `tb graph index` ou o `tb stack`, inclusive com troca entre o `Lstat` e a abertura | R3 (`O_NONBLOCK` + `fstat`), R21 |
 | `tb vault new` sobrescreve nota humana | R10 (`O_EXCL`) |
 | Nota de agente se passa por conhecimento humano (`source: manual`, confiança 1.0) | R18 (MCP grava sempre `inferred`). Risco residual: um agente com acesso a arquivos ou à CLI pode escrever `manual` à mão; a proveniência é declarativa, não assinada. |
+| Títulos e tags de notas chegam a agentes pelas `tb_graph_*`, fora de um objeto `data` | R22 (títulos redigidos). Risco residual: as tools do grafo devolvem títulos de nó como campos simples, então um título com injeção ainda chega ao agente. |
 | Link resolvido diferente do Obsidian leva o agente à nota errada | R8 (ambiguidade é erro) |
 | `vault.path` com erro de digitação faz o `check` passar com zero notas | R1, R16 (`vault_not_found` é erro) |
 | Config do Obsidian com dados pessoais versionada sem querer | R2 |
@@ -233,52 +236,58 @@ graph:
 - **Índice SQLite/FTS5 desde já (ADR-003, ADR-006).** Adiada: dependência nova, um sync para manter e um estado que pode divergir, sem problema de desempenho medido.
 - **Resolver ambiguidade como o Obsidian.** Rejeitada pelo motivo em R8.
 - **Vault fora do repositório (ex.: `$XDG_DATA_HOME`).** Rejeitada para o default: o objetivo é compartilhar conhecimento pelo git. R1 exige caminho dentro da raiz; vault pessoal fica para reavaliação se houver demanda.
-- **Exportar `slugify` do grafo e importar o grafo no vault.** Rejeitada: ciclo de import com o `VaultIndexer`. Daí o pacote folha `mdparse`.
+- **Exportar `slugify` do grafo e importar o grafo no vault.** Rejeitada: ciclo de import com o passo do vault. Daí o pacote folha `mdparse`.
+- **Acrescentar os padrões de segredo novos ao `mem`.** Rejeitada na Fase A: o `mem.secretPatterns` também alimenta o `RedactInvariant` e o `tb egm`, então mudaria a saída deles (G6). O vault mantém a própria lista em cima de `mem.SecretPatterns()`.
 
 ## Questões em aberto
 
-- Q1: esta spec contraria decisões aceitas do ADR-006 (`.tb/vault/`, índice SQLite, sync, `tb md`) e do ADR-003 (SQLite+FTS5 como índice derivado). Precisa de um ADR novo que as substitua parcialmente, ou de adendos nos dois. Numeração: as branches `feature/graph-explain-path` e `feature/egm-native` propõem, cada uma, um ADR-014 diferente; o próximo número livre depende de qual entra primeiro. De passagem: o ADR-011 diz `accepted` no arquivo e `proposed` no índice `docs/adr/README.md`.
+- Q1 (resolvida): as divergências da ADR-006 (`.tb/vault/`, índice SQLite, sync, `tb md`) e da ADR-003 (SQLite+FTS5 como índice derivado) estão registradas na [ADR-016](../adr/016-vault-fase-a.md), que substitui as duas em parte na Fase A.
 - Q2: wikilink para invariante (`[[inv:<id>]]`) resolvendo para `invariants.yaml`? Proposta: Fase B.
-- Q3: `tb review` e `tb drift` deveriam ler notas `type: decision` ligadas ao ticket? Fora da Fase A.
-- Q4: `orphan_note` como aviso gera ruído em vaults novos? Medir no dogfooding.
+- Q3: `tb review` e `tb drift` deveriam ler notas `type: decision` ligadas ao ticket? Fora da Fase A. Notas nunca são fontes do `tb egm`: o egm exclui `.toolbelt/**` das fontes, o que também mantém o texto das notas fora dos pacotes dos revisores.
+- Q4: a fixture dourada (G1) precisa ser conferida uma vez no Obsidian real antes de congelar o R8; até lá, as regras de caminho parcial e de anexo do R8 são o comportamento esperado, não um verificado.
 - Q5: o walk do grafo fora do vault tem a mesma fraqueza do R21 (`readSource` segue symlinks e lê FIFOs). Vale um fix separado, com o mesmo leitor seguro, para todos os indexadores.
+- Adiado para a Fase B (cortado nesta rodada para manter a Fase A pequena): o campo `refs` do frontmatter com `bad_ref`/`ref_missing` e o passo do `Store.Impact` para notas, `orphan_note`, `check --strict`.
 
 ## Plano de Implementação Detalhado
 
+Quatro fatias, cada uma mergeável sozinha, com seus testes: 1 `mdparse` (nenhuma mudança visível); 2 vault só leitura e `tb stack vault`; 3 escrita, busca, MCP e versionamento; 4 grafo.
+
 | Arquivo | Ação | Motivo |
 |---------|------|--------|
-| `internal/mdparse/slug.go`, `headings.go`, `frontmatter.go`, `wikilink.go`, `normalize.go` (+ testes) | Create | Pacote folha (R4, R6, R7, R13) |
-| `internal/graph/index_docs.go` | Modify | Usar `mdparse.Slugify` e headings com cerca; `MarkdownIndexer` ignora o vault (R6, R20) |
-| `internal/mem/validate.go` | Modify | Reusar `mdparse.NormalizeForSearch` |
-| `internal/mem/redact.go`, `redact_test.go` | Modify | Padrões novos (R15) |
-| `internal/vault/scan.go`, `read.go` | Create | Raiz, walk e leitura seguros (R1, R3, R21) |
-| `internal/vault/note.go`, `resolve.go` | Create | Nota, defaults, classificação, resolução (R4, R5, R8, R9) |
-| `internal/vault/vault.go`, `search.go`, `check.go` | Create | `New`, `List`, `Show`, `Search`, `Links`, `Backlinks`, `Check` (R10–R16) |
-| `internal/vault/*_test.go`, `internal/vault/testdata/` | Create | Fixtures, incluindo a fixture dourada do G1 |
-| `internal/config/config.go`, `config_test.go` | Modify | `max_note_bytes`, `types`, `VaultConfig.Validate`, `vault` no default de `Docs` |
-| `internal/config/exclude.go`, `exclude_test.go` | Modify | Padrões extras, tirar `vault/`, marcador de fim ausente (R2) |
-| `cmd/tb/main.go`, `cmd/tb/init_exclude_test.go` | Modify | `init` carrega config para o exclude; teste de upgrade (CUJ-6) |
-| `cmd/tb/vault.go`, `cmd/tb/vault_test.go` | Create | Grupo cobra (R10–R17) |
-| `cmd/tb/json_snake_case_test.go` | Modify | Amostras das saídas `tb vault` |
-| `internal/registry/parity.go`, `parity_test.go` | Modify | Tools `tb_vault_*` (R18); op `vault` no schema de `tb_stack` (R19) |
-| `internal/stack/stack.go`, `cmd/tb/stack.go` | Modify | Op `vault` (R19) |
-| `internal/graph/graph.go`, `graph_test.go` | Modify | `NodeNote`, `NodeTag`, `EdgeTagged`; passo novo em `Impact`; `findPackageOrFileIDs` (R22–R25) |
-| `internal/graph/indexer.go` | Modify | `allowsIndexer` com `vault` implícito (R20) |
-| `internal/graph/index_vault.go`, `index_vault_test.go` | Create | `VaultIndexer` (R20–R24) |
-| `cmd/tb/graph.go`, `internal/registry/graph.go` | Modify | Aceitar IDs `note:`/`tag:` (R25) |
-| `docs/en/specs/vault.md` | Create | Espelho EN desta spec (o teste `TestDocsEnglishMirrorComplete` exige) |
-| `docs/cli.md`, `docs/arquitetura.md` §3 e §7, `README.md` (+ `docs/en/`, `README.en.md`) | Modify | Trocar `.tb/vault` por `.toolbelt/vault`; marcar SQLite, `tb md` e sync como planejados; documentar `tb vault` |
-| ADR novo ou adendos em `docs/adr/003-…` e `006-…` (+ EN) | Create/Modify | Q1 |
-| `CHANGELOG.md` | Modify | Entrada não lançada |
+| `internal/mdparse/slug.go`, `internal/mdparse/headings.go`, `internal/mdparse/frontmatter.go`, `internal/mdparse/wikilink.go`, `internal/mdparse/normalize.go` | Create | Fatia 1: Pacote folha (R4, R6, R7, R13) |
+| `internal/mdparse/mdparse_test.go` | Create | Fatia 1: Casos de parser do plano de verificação |
+| `internal/graph/index_docs.go` | Modify | Fatia 1: Usar `mdparse.Slugify` e headings com cerca (R6) |
+| `internal/mem/validate.go` | Modify | Fatia 1: Reusar `mdparse.NormalizeForSearch` |
+| `internal/config/config.go`, `internal/config/config_test.go` | Modify | Fatia 2: `max_note_bytes`, `types`, `graph`, `VaultConfig.Validate` (R0, R1, Configuração) |
+| `internal/vault/root.go`, `internal/vault/scan.go`, `internal/vault/read.go` | Create | Fatia 2: Raiz e config a partir da raiz, walk e leitura seguros (R0, R1, R3) |
+| `internal/vault/note.go`, `internal/vault/resolve.go`, `internal/vault/redact.go` | Create | Fatia 2: Nota, defaults, classificação, resolução, redação do vault (R4–R9, R15) |
+| `internal/vault/vault.go`, `internal/vault/check.go` | Create | Fatia 2: `List`, `Show`, `Links`, `Backlinks`, `Check` (R11, R12, R14, R16) |
+| `internal/vault/vault_test.go` | Create | Fatia 2: Testes de resolução, frontmatter, segurança e da fixture dourada |
+| `cmd/tb/vault.go`, `cmd/tb/vault_test.go` | Create | Fatia 2: `list`, `show`, `links`, `backlinks`, `check` (R17) |
+| `internal/stack/stack.go`, `cmd/tb/stack.go` | Modify | Fatia 2: Op `vault` (R19) |
+| `internal/vault/new.go`, `internal/vault/search.go` | Create | Fatia 3: `New`, `Search` (R10, R13) |
+| `internal/registry/vault.go` | Create | Fatia 3: Tools `tb_vault_*` (R18) |
+| `internal/registry/parity.go`, `internal/registry/parity_test.go`, `internal/registry/annotations.go` | Modify | Fatia 3: Registro, paridade, op `vault` no schema de `tb_stack` (R18, R19) |
+| `internal/config/exclude.go`, `internal/config/exclude_test.go` | Modify | Fatia 3: Padrões extras, tirar `vault/`, marcador de início órfão (R2) |
+| `cmd/tb/main.go`, `cmd/tb/init_exclude_test.go` | Modify | Fatia 3: `init` carrega config, cria vault customizado, loga padrões, `vault_gitignored` (R2, CUJ-6) |
+| `.gitignore` | Modify | Fatia 3: Parar de ignorar `.toolbelt/vault/` neste repositório (G5) |
+| `cmd/tb/json_snake_case_test.go` | Modify | Fatia 3: Amostras das saídas `tb vault` |
+| `docs/cli.md`, `docs/arquitetura.md`, `README.md` (+ espelhos em `docs/pt-BR/`) | Modify | Fatia 3: Cada doc com o seu espelho (o teste de tradução das docs exige). Trocar `.tb/vault` por `.toolbelt/vault`; marcar SQLite, `tb md` e sync como planejados; documentar `tb vault` |
+| `CHANGELOG.md` | Modify | Fatia 3: Entrada não lançada |
+| `internal/graph/indexer.go` | Modify | Fatia 4: `BuildOptions.VaultDir`, passo do vault depois do walk, `vault` implícito (R20, R21) |
+| `internal/graph/index_vault.go`, `internal/graph/index_vault_test.go` | Create | Fatia 4: Notas, seções, arestas de wikilink e de tag (R22–R24) |
+| `internal/graph/index_docs.go` | Modify | Fatia 4: `indexMarkupDoc` com parâmetro de ID de origem; pular `VaultDir` (R20, R23) |
+| `internal/graph/graph.go`, `internal/graph/graph_test.go` | Modify | Fatia 4: `NodeNote`, `NodeTag`, `EdgeTagged` (R22, R24) |
+| `internal/registry/graph.go`, `cmd/tb/graph.go` | Modify | Fatia 4: `VaultDir` nas opções de build; tipos novos de nó no help e nos schemas (R20, R25) |
 
 ### Plano de verificação
 
 - **Parser (`mdparse`):** um teste por forma do glossário: `[[a]]`, `[[a|b]]`, `[[a\|b]]` (em tabela), `[[a#h]]`, `[[a#^x]]`, `[[#h]]`, `![[a]]`, `[[pasta/a]]`, `[[a.md]]`, `[[ a ]]`, `[[A]]` contra `a.md`; ignorados: dentro de ` ``` `, de `~~~`, de código inline com uma e duas crases, no frontmatter; descartados: `[[]]`, `[[a]` + quebra de linha. Headings dentro de cerca e comentários YAML não viram heading. CRLF: linhas e frontmatter corretos.
-- **Resolução:** nome único; caminho; alias; dois `a.md` em pastas diferentes (`ambiguous_link`); alias igual ao nome de outra nota (a etapa 2 vence a 3); mesmo alias em duas notas (`ambiguous_link`); fragmento existente e inexistente.
+- **Resolução:** nome único; caminho completo; caminho parcial (`[[b/a]]` contra `x/b/a.md`); dois `a.md` em pastas diferentes (`ambiguous_link`); alias nunca resolve; anexo encontrado e ausente (aviso `missing_attachment`); fragmento existente e inexistente.
 - **Fixture dourada (G1):** vault em `internal/vault/testdata/obsidian/` com o resultado esperado de cada link em `expected.json`, conferido uma vez no Obsidian real (registro em `docs/campo/dogfood.md`); o teste compara o tb com o `expected.json`.
 - **Frontmatter:** cada linha da tabela de classificação do R4.
-- **Segurança:** symlink para fora do vault (scan e grafo); diretório intermediário symlink em `--dir`; FIFO `x.md` no vault (scan, `tb graph index` e `tb stack vault` terminam); nota acima do limite; `vault.path: ../x`; `vault.path` inexistente (`vault_not_found`, exit 1); segredo no `--body` (gravado redigido); segredo numa nota editada à mão, inclusive cortado pela janela do trecho (saída redigida em `show`, `search` e MCP); `tb_vault_new` gravando `inferred` mesmo se o agente tentar `source`.
-- **Exclude:** `init` em repositório com a seção antiga troca `vault/` por `vault/.obsidian/` (checagem por linha inteira, não substring, porque `.toolbelt/vault/.obsidian/` contém `.toolbelt/vault/`); arquivo sem marcador de fim preserva as linhas do usuário; `vault.path` customizado gera o padrão certo.
-- **Grafo:** com `TB_GRAPH=on` e um `config.yaml` antigo (`docs: [markdown, html, txt]`), cada nota gera um único nó `note:` e nenhum `file:`; arestas de wikilink, fragmento, `refs` e tag; `tb graph impact internal/x.go` lista a nota que cita o arquivo; `explain note:` e `path` entre duas notas; com o grafo desligado, `tb vault` funciona igual.
-- **Regressão:** testes de `tb mem`, `tb graph`, `json_snake_case`, paridade do registry e espelho de docs passam.
+- **Segurança:** symlink para fora do vault (scan e grafo); diretório intermediário symlink em `--dir`; FIFO `x.md` no vault (scan, `tb graph index` e `tb stack vault` terminam); nota acima do limite; `vault.path: ../x`, com quebra de linha e com caractere de glob; `vault.path` inexistente (`vault_not_found`, exit 1); título com quebra de linha (`bad_title`) e com segredo (nome de arquivo redigido); segredo no `--body` (gravado redigido); segredo numa nota editada à mão, inclusive cortado pela janela do trecho (saída redigida em `show`, `search` e MCP) e um `search` pelo prefixo dele (sem acerto); `tb_vault_new` gravando `inferred` mesmo se o agente tentar `source`; `cwd` do MCP diferente do do servidor.
+- **Exclude:** `init` em repositório com a seção antiga troca `vault/` por `vault/.obsidian/` (checagem por linha inteira, não substring, porque `.toolbelt/vault/.obsidian/` contém `.toolbelt/vault/`); arquivo com marcador de início órfão preserva as linhas do usuário, descarta o marcador órfão e as linhas antigas do tb, e um segundo `init` não muda nada; `vault.path` customizado gera o padrão e o diretório certos; `vault_gitignored` quando o `.gitignore` ignora o vault.
+- **Grafo:** com `TB_GRAPH=on` e um `config.yaml` antigo (`docs: [markdown, html, txt]`), cada nota gera um único nó `note:` e nenhum `file:`; arestas de wikilink, fragmento e tag; `vault.graph: false` deixa as notas fora; títulos de nota redigidos; `explain note:` e `path` entre duas notas; com o grafo desligado, `tb vault` funciona igual.
+- **Regressão:** testes de `tb mem`, `tb egm`, `tb graph`, `json_snake_case`, paridade do registry e espelho de docs passam.
 - **Desempenho:** benchmark Go com 2 000 notas geradas (NFR).

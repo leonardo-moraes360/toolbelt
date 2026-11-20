@@ -6,6 +6,8 @@
 
 accepted
 
+The "Vault → SQLite Sync" section is partially superseded for Phase A by [ADR-016](016-vault-fase-a.md): the vault has no derived index.
+
 ## Context
 
 toolbelt needs a storage system for:

@@ -6,6 +6,8 @@
 
 accepted
 
+A parte do vault (itens 1 e 2 da decisão, "TUI própria") é substituída em parte na Fase A pela [ADR-016](016-vault-fase-a.md).
+
 ## Contexto
 
 O owner do projeto utiliza duas ferramentas que melhoram significativamente a experiência com agentes de código:

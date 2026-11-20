@@ -34,6 +34,7 @@ Each ADR follows this format:
 | [013](013-barramento-multi-vendor.md) | Local multi-vendor agent bus (`tb bus`) | proposed (B0/B1 and part of B3 implemented) |
 | [014](014-graphify-reimplementacao.md) | Graphify: reimplement, don't integrate | accepted |
 | [015](015-egm-nativo.md) | Native reimplementation of the Elephant-Goldfish Model (`tb egm`) | accepted |
+| [016](016-vault-fase-a.md) | Markdown vault, Phase A: the vault is the only store | proposed |
 
 ## How to Propose an ADR
 

@@ -6,6 +6,8 @@
 
 accepted
 
+A seção "Sincronização Vault → SQLite" é substituída em parte na Fase A pela [ADR-016](016-vault-fase-a.md): o vault não tem índice derivado.
+
 ## Contexto
 
 O toolbelt precisa de um sistema de armazenamento para:
