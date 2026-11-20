@@ -268,7 +268,8 @@ func sortFinding(f *ReportFinding, claims []Claim, set *Settings) CIFinding {
 // failing one decides; minor findings or the offline opt-in give
 // PASS_PARTIAL with warn.
 func finalize(gd *GateDoc, engine string) {
-	for _, cf := range gd.CIFindings {
+	for i := range gd.CIFindings {
+		cf := &gd.CIFindings[i]
 		switch cf.Result {
 		case "warn":
 			gd.Warn = true
