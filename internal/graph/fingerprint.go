@@ -29,11 +29,17 @@ func SourceFingerprint(root string, opts *BuildOptions) (string, error) {
 	for _, d := range opts.SkipDirs {
 		fw.skip[d] = true
 	}
-	if v, index := resolveVault(abs, opts); v != nil {
-		fw.vaultRel, fw.indexNotes = v.Rel, index
+	fw.vault = opts.vault
+	if fw.vault == nil {
+		fw.vault = resolveVault(abs, opts)
 	}
 	if err := filepath.Walk(abs, fw.visit); err != nil {
 		return "", err
+	}
+	if vs := fw.vault; vs != nil && vs.index {
+		if err := fw.addVault(vs); err != nil {
+			return "", err
+		}
 	}
 	lines := fw.lines
 	sort.Strings(lines)
@@ -43,39 +49,56 @@ func SourceFingerprint(root string, opts *BuildOptions) (string, error) {
 
 // fpWalker collects one fingerprint line per indexed file.
 type fpWalker struct {
-	root, vaultRel string
-	indexNotes     bool
-	opts           *BuildOptions
-	skip           map[string]bool
-	lines          []string
+	root  string
+	vault *vaultState
+	opts  *BuildOptions
+	skip  map[string]bool
+	lines []string
 }
 
 func (fw *fpWalker) visit(path string, info os.FileInfo, err error) error {
 	if err != nil {
 		return err
 	}
-	rel, _ := filepath.Rel(fw.root, path)
 	if info.IsDir() {
-		if path != fw.root && (fw.skip[info.Name()] || vaultHidden(fw.vaultRel, rel)) {
+		if path != fw.root && (fw.skip[info.Name()] || fw.vault.skipDir(fw.root, path, info)) {
 			return filepath.SkipDir
-		}
-		return nil
-	}
-	if inVault(fw.vaultRel, rel) {
-		if fw.indexNotes && !vaultHidden(fw.vaultRel, rel) {
-			// Every vault entry counts (a note, an attachment or a symlink
-			// changes link states), whatever its size.
-			fw.lines = append(fw.lines, fmt.Sprintf("%s|%d|%d|%s",
-				filepath.ToSlash(rel), info.ModTime().UnixNano(), info.Size(), info.Mode().Type()))
 		}
 		return nil
 	}
 	if info.Size() > fw.opts.MaxFileBytes || len(indexersFor(path, fw.opts)) == 0 {
 		return nil
 	}
+	rel, _ := filepath.Rel(fw.root, path)
 	fw.lines = append(fw.lines, fmt.Sprintf("%s|%d|%d",
 		filepath.ToSlash(rel), info.ModTime().UnixNano(), info.Size()))
 	return nil
+}
+
+// addVault fingerprints every vault entry the scan sees (a note, an
+// attachment or a symlink changes link states, whatever its size), skipping
+// dot entries like .obsidian/, plus the vault config, which changes what is
+// parsed.
+func (fw *fpWalker) addVault(vs *vaultState) error {
+	fw.lines = append(fw.lines, "vault-config|"+vs.cfg)
+	return filepath.Walk(vs.v.Dir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if path != vs.v.Dir && strings.HasPrefix(info.Name(), ".") {
+			if info.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if info.IsDir() {
+			return nil
+		}
+		rel, _ := filepath.Rel(vs.v.Dir, path)
+		fw.lines = append(fw.lines, fmt.Sprintf("vault:%s|%d|%d|%s",
+			filepath.ToSlash(rel), info.ModTime().UnixNano(), info.Size(), info.Mode().Type()))
+		return nil
+	})
 }
 
 func (s *Store) CheckStale(root string, opts *BuildOptions) (bool, error) {

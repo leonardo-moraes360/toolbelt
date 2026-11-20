@@ -20,7 +20,7 @@ type GraphNote struct {
 type GraphLink struct {
 	ToPath  string // target note path
 	ToFile  string // target note file
-	Section string // heading slug when the fragment matches one, else ""
+	Heading string // the matched heading's text when unchanged by redaction, else ""
 }
 
 // GraphData is the vault pass input of tb graph index.
@@ -40,7 +40,7 @@ func (v *Vault) Graph() (*GraphData, error) {
 	out := &GraphData{Rel: v.Rel}
 	for _, n := range sc.notes {
 		gn := GraphNote{Path: n.Path, File: n.File, Title: Redact(n.Title), Source: n.Source,
-			Confidence: confidenceOf(n), Tags: n.Tags, Body: Redact(n.Body)}
+			Confidence: confidenceOf(n), Tags: redactAll(n.Tags), Body: Redact(n.Body)}
 		for _, h := range n.Headings {
 			h.Text = Redact(h.Text)
 			gn.Headings = append(gn.Headings, h)
@@ -53,7 +53,7 @@ func (v *Vault) Graph() (*GraphData, error) {
 			}
 			gl := GraphLink{ToPath: to.Path, ToFile: to.File}
 			if l.State == StateOK && w.Fragment != "" {
-				gl.Section = mdparse.Slugify(w.Fragment)
+				gl.Heading = matchedHeading(to, w.Fragment)
 			}
 			gn.Links = append(gn.Links, gl)
 		}
@@ -72,4 +72,20 @@ func confidenceOf(n *Note) float64 {
 		return 0.5
 	}
 	return 1.0
+}
+
+// matchedHeading is the text of to's heading that fragment names, or ""
+// when there is none or redaction would change it: a section ID never
+// carries text the redaction would hide (R15).
+func matchedHeading(to *Note, fragment string) string {
+	slug := mdparse.Slugify(fragment)
+	for _, h := range to.Headings {
+		if h.Slug == slug {
+			if Redact(h.Text) != h.Text {
+				return ""
+			}
+			return h.Text
+		}
+	}
+	return ""
 }

@@ -29,9 +29,8 @@ type BuildOptions struct {
 	MaxFileBytes int64
 	SkipDirs     []string
 
-	// vaultRel is the vault directory (root-relative) resolved for one
-	// build; the per-file indexers skip it and the vault pass reads it.
-	vaultRel string
+	// vault is the vault resolved for one build (R20); nil without one.
+	vault *vaultState
 }
 
 func DefaultBuildOptions() BuildOptions {
@@ -153,10 +152,7 @@ func BuildFromRootOpts(root string, opts *BuildOptions) (*Index, error) {
 	for _, d := range opts.SkipDirs {
 		skip[d] = true
 	}
-	v, indexNotes := resolveVault(abs, opts)
-	if v != nil {
-		opts.vaultRel = v.Rel
-	}
+	opts.vault = resolveVault(abs, opts)
 
 	err = filepath.Walk(abs, func(path string, info os.FileInfo, err error) error {
 		return walkSourceFile(abs, path, info, err, nodes, &edges, opts, skip)
@@ -164,8 +160,8 @@ func BuildFromRootOpts(root string, opts *BuildOptions) (*Index, error) {
 	if err != nil {
 		return nil, err
 	}
-	if indexNotes {
-		indexVault(v, nodes, &edges)
+	if vs := opts.vault; vs != nil && vs.index {
+		indexVault(vs.v, nodes, &edges)
 	}
 
 	edges = resolveSoftMentions(nodes, edges)
@@ -202,7 +198,7 @@ func walkSourceFile(
 		return err
 	}
 	if info.IsDir() {
-		if path != root && skipDirs[info.Name()] {
+		if path != root && (skipDirs[info.Name()] || opts.vault.skipDir(root, path, info)) {
 			return filepath.SkipDir
 		}
 		return nil
@@ -211,9 +207,6 @@ func walkSourceFile(
 		return nil
 	}
 	rel, _ := filepath.Rel(root, path)
-	if inVault(opts.vaultRel, rel) {
-		return nil // the vault pass reads these, without following symlinks (R21)
-	}
 	idxs := indexersFor(path, opts)
 	if len(idxs) == 0 {
 		return nil

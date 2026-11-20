@@ -128,3 +128,111 @@ func checkVaultEdgesAndLeaks(t *testing.T, idx *Index) {
 		}
 	}
 }
+
+func hasNodeID(idx *Index, id string) bool {
+	_, ok := nodeByID(idx, id)
+	return ok
+}
+
+// TestVaultBrokenConfigStillSkipped: an unparsable vault config must not
+// hand .toolbelt/vault to the symlink-following markdown indexer (R21).
+func TestVaultBrokenConfigStillSkipped(t *testing.T) {
+	root := vaultRepo(t, "vault:\n  max_note_bytes: 0\n")
+	outside := filepath.Join(t.TempDir(), "private.md")
+	mustWrite(t, outside, "# PRIVATE HEADING\n")
+	if err := os.Symlink(outside, filepath.Join(root, ".toolbelt", "vault", "x.md")); err != nil {
+		t.Fatal(err)
+	}
+	idx, err := BuildFromRoot(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, n := range idx.Nodes {
+		if strings.Contains(n.Title, "PRIVATE") || strings.HasPrefix(n.Path, ".toolbelt/") {
+			t.Fatalf("vault content indexed with a broken config: %+v", n)
+		}
+	}
+}
+
+// TestVaultSymlinkedDirInsideRepo: vault.path is a symlink to a real
+// directory in the repo; the real directory is skipped by the generic walk
+// (os.SameFile) and indexed once as notes.
+func TestVaultSymlinkedDirInsideRepo(t *testing.T) {
+	root := t.TempDir()
+	mustWrite(t, filepath.Join(root, ".toolbelt", "config.yaml"), "vault:\n  path: notes\n")
+	mustWrite(t, filepath.Join(root, "real", "a.md"), "# A\n")
+	if err := os.Symlink(filepath.Join(root, "real"), filepath.Join(root, "notes")); err != nil {
+		t.Fatal(err)
+	}
+	idx, err := BuildFromRoot(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasNodeID(idx, "note:a") || hasNodeID(idx, "file:real/a.md") {
+		t.Fatalf("nodes %v", titles(idx, NodeNote))
+	}
+}
+
+func TestVaultRedactionAndLinks(t *testing.T) {
+	root := t.TempDir()
+	v := filepath.Join(root, ".toolbelt", "vault")
+	mustWrite(t, filepath.Join(root, ".toolbelt", "config.yaml"), "")
+	mustWrite(t, filepath.Join(v, "a.md"), "## password: hunter2abc\n\n## Safe\n")
+	mustWrite(t, filepath.Join(v, "b.md"), "---\ntags: [sk-"+strings.Repeat("t", 24)+", ok]\n---\n[[a#password: hunter2abc]] [[a#Safe]] [[a]] [[a]] and [md](a.md)\n")
+	mustWrite(t, filepath.Join(root, "docs", "guide.md"), "# Guide\n\nSee [note](../.toolbelt/vault/a.md).\n")
+	idx, err := BuildFromRoot(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	links := 0
+	for _, e := range idx.Edges {
+		if strings.Contains(e.TargetID, "hunter2") || strings.Contains(e.TargetID, "sk-ttt") {
+			t.Fatalf("secret in an edge: %+v", e)
+		}
+		if e.SourceID == "note:b" && e.TargetID == "note:a" && e.Type == EdgeLinks {
+			links++
+		}
+	}
+	for _, n := range idx.Nodes {
+		if strings.Contains(n.ID, "sk-ttt") || strings.Contains(n.Title, "hunter2") {
+			t.Fatalf("secret in a node: %+v", n)
+		}
+	}
+	if links != 2 { // [[a]] twice is one wikilink edge, plus the Markdown link remapped from file:
+		t.Fatalf("note:b -> note:a links: %d", links)
+	}
+	if !edgeExists(idx, "note:b", "section:.toolbelt/vault/a.md#safe", EdgeLinks) || !edgeExists(idx, "file:docs/guide.md", "note:a", EdgeLinks) {
+		t.Fatal("missing section link or docs link remapped to note:")
+	}
+}
+
+func TestVaultFingerprintConfigAndToggle(t *testing.T) {
+	root := vaultRepo(t, "")
+	opts := DefaultBuildOptions()
+	fp1, _ := SourceFingerprint(root, &opts)
+	mustWrite(t, filepath.Join(root, ".toolbelt", "config.yaml"), "vault:\n  max_note_bytes: 1024\n")
+	opts = DefaultBuildOptions()
+	fp2, _ := SourceFingerprint(root, &opts)
+	mustWrite(t, filepath.Join(root, ".toolbelt", "config.yaml"), "vault:\n  graph: false\n")
+	opts = DefaultBuildOptions()
+	fp3, _ := SourceFingerprint(root, &opts)
+	if fp1 == fp2 || fp2 == fp3 || fp1 == fp3 {
+		t.Fatalf("config changes not in the fingerprint: %s %s %s", fp1, fp2, fp3)
+	}
+}
+
+// TestVaultUnderSubdirRoot: indexing a subdirectory whose vault is
+// configured by the parent repository still skips the vault directory.
+func TestVaultUnderSubdirRoot(t *testing.T) {
+	root := t.TempDir()
+	mustWrite(t, filepath.Join(root, ".toolbelt", "config.yaml"), "vault:\n  path: sub/notes\n")
+	mustWrite(t, filepath.Join(root, "sub", "notes", "a.md"), "# A\n")
+	mustWrite(t, filepath.Join(root, "sub", "doc.md"), "# Doc\n")
+	idx, err := BuildFromRoot(filepath.Join(root, "sub"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hasNodeID(idx, "file:notes/a.md") || !hasNodeID(idx, "file:doc.md") {
+		t.Fatalf("subdir root: %v", titles(idx, NodeFile))
+	}
+}
