@@ -154,7 +154,7 @@ Creating and removing worktrees does not affect the state.
   - **If the arbiter upholds**, the finding goes back to `open`.
 - **Severity does not vanish through matching.** A new finding more severe than an already closed lineage becomes a new lineage.
 - **`--decline` is no escape hatch.** It applies to `nit`. For `major`, it downgrades the verdict. For `blocker`, it does not exist.
-- **The gate evaluates the commit.** The `egm` op of `tb stack` checks the gated documents touched in the stack range, by their content at `head`, not by the worktree. A document whose sources changed without it being touched only produces a warning; drift detection is left to Phase B. An empty selection produces a warning, and an empty selection with uncommitted gated documents fails. A blocker resolved with a forced settle fails the gate even without `--strict`. Choosing the range by trust ref is left to the trust spec.
+- **The gate evaluates the commit.** The `egm` op of `tb stack` checks the gated documents touched in the stack range, by their content at `head`, not by the worktree. A document whose sources changed without it being touched only produces a warning; drift detection is left to Phase B. An empty selection produces a warning, and an empty selection with uncommitted gated documents fails. A blocker resolved with a forced settle fails the gate even without `--strict`. Taking the range from the CI event, in a CI mode, is left to the trust spec.
 
 ### 7. Gates become explicit transitions
 
@@ -194,7 +194,7 @@ The upstream's interactive questions become idempotent subcommands of `tb egm re
 ### Negative
 
 - Touching `internal/sandbox`, a security-critical component.
-- egm gets its own git hardening. The router and merge keep theirs, and unification is left to the trust spec.
+- egm gets its own git hardening. The router and merge keep theirs, and unification is left to a separate change.
 - **Vendor credentials:**
   - the copy of the `claudeAiOauth` key creates a short local exposure window (a `0600` file in the `0700` disposable HOME, deleted at the end);
   - the copy cannot be refreshed, so with less than 10 minutes left tb refuses to run and the user runs the vendor CLI once outside tb;

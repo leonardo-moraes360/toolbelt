@@ -19,6 +19,7 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 - `bench/egm-spike`: spike R0 do `tb egm` (isolamento do goldfish com `claude -p` real), com os modos `collect`/`calibrate` e o corpus de matching `internal/egm/testdata/paraphrases.json`
 
 ### Alterado
+- Spec de trust do EGM (Fase A.2, `docs/specs/egm-trust.md`) reescrita com o CI como fronteira de confiança: um recibo commitado com as alegações do autor, conferido num passo `tb stack --egm-mode ci` que roda uma rodada nova e independente com a config e a credencial do próprio CI; os nove mecanismos locais antifraude do primeiro rascunho saem
 - ADR-015 aceito: status, autenticação, o teto `PASS_PARTIAL` offline, o limite `max_rounds` e os dados de convergência alinhados com os resultados da Fase A
 - A saída da CLI e do servidor MCP passa a ser em inglês: help do cobra (`Short`/`Long`/`Example`), uso das flags, mensagens de erro, relatórios (ex.: `guard: ok (3 rules, 0 violations)`, drift `Out of scope` / `Forbidden touched`) e descrições das tools/schemas MCP; o parsing de entrada continua aceitando os títulos em português do `rd.md` (`Escopo`, `Proibido`, `Aceite`)
 
