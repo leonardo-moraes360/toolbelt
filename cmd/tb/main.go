@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
+	"path"
 	"path/filepath"
 	"strings"
 
@@ -12,6 +14,7 @@ import (
 	"github.com/leonardo-moraes360/toolbelt/internal/config"
 	"github.com/leonardo-moraes360/toolbelt/internal/log"
 	_ "github.com/leonardo-moraes360/toolbelt/internal/registry"
+	"github.com/leonardo-moraes360/toolbelt/internal/vault"
 	"github.com/leonardo-moraes360/toolbelt/internal/version"
 )
 
@@ -175,11 +178,17 @@ Example:
 
 		var docs *config.AgentDocsResult
 		var excludePath string
+		var vaultInit initVault
 		if !global && repoRoot != "" {
-			excludePath, err = config.EnsureLocalGitExclude(repoRoot)
+			vaultInit, err = ensureInitVault(repoRoot, dir)
+			if err != nil {
+				return err
+			}
+			excludePath, err = config.EnsureLocalGitExclude(repoRoot, vaultInit.exclude...)
 			if err != nil {
 				return fmt.Errorf("updating .git/info/exclude: %w", err)
 			}
+			vaultInit.gitignored = vaultGitignored(repoRoot, vaultInit.path)
 			docs, err = config.HandleAgentDocs(repoRoot, dir, writeAgents)
 			if err != nil {
 				return fmt.Errorf("processing AGENTS.md/CLAUDE.md: %w", err)
@@ -188,6 +197,9 @@ Example:
 
 		if jsonOutput {
 			payload := buildInitJSON(dir, detected, docs)
+			if vaultInit.gitignored {
+				payload["vault_gitignored"] = vaultInit.path
+			}
 			enc := json.NewEncoder(os.Stdout)
 			enc.SetIndent("", "  ")
 			return enc.Encode(payload)
@@ -204,7 +216,11 @@ Example:
 		if excludePath != "" {
 			log.Info("local state ignored via .git/info/exclude",
 				"path", excludePath,
-				"patterns", strings.Join(config.LocalCacheExcludePatterns, ","))
+				"patterns", strings.Join(append(append([]string{}, config.LocalCacheExcludePatterns...), vaultInit.exclude...), ","))
+		}
+		if vaultInit.gitignored {
+			log.Warn("vault_gitignored: an ignore rule (.gitignore, info/exclude or a global excludes file) ignores the vault, so notes are not versioned; remove it to share them",
+				"vault", vaultInit.path)
 		}
 
 		if docs != nil {
@@ -274,4 +290,49 @@ func buildInitJSON(dir string, detected config.DetectedCmd, docs *config.AgentDo
 func init() {
 	initCmd.Flags().Bool("global", false, "initializes global configuration")
 	initCmd.Flags().Bool("write-agents", false, "seeds a minimal AGENTS.md if missing (never overwrites)")
+}
+
+// initVault is what tb init does for the vault (docs/specs/vault.md, R2).
+type initVault struct {
+	path       string
+	exclude    []string
+	gitignored bool
+}
+
+// ensureInitVault reads vault.path from the repository config tb init just
+// wrote or found, creates a non-default vault directory, and returns the
+// .obsidian/ exclude for it. An invalid vault.path is reported and skipped.
+func ensureInitVault(repoRoot, dir string) (initVault, error) {
+	cfg, err := config.LoadFile(filepath.Join(dir, config.DefaultConfigFile))
+	if err != nil {
+		log.Warn("vault config ignored: config unreadable", "error", err)
+		return initVault{}, nil
+	}
+	v := cfg.Vault
+	if err := v.Validate(); err != nil {
+		log.Warn("vault config ignored", "error", err)
+		return initVault{}, nil
+	}
+	// One component at a time, refusing symlinks: a cloned repository
+	// cannot make tb init create the vault outside it.
+	if err := vault.EnsureDir(repoRoot, v.Path); err != nil {
+		return initVault{}, fmt.Errorf("creating vault %s: %w", v.Path, err)
+	}
+	return initVault{path: filepath.ToSlash(filepath.Clean(v.Path)), exclude: []string{config.VaultExcludePattern(v.Path)}}, nil
+}
+
+// vaultGitignored reports whether git ignores a note in the vault: after
+// tb init's exclude no longer lists the vault, that is a .gitignore (or
+// global excludes) rule. Without git, it reports false.
+func vaultGitignored(repoRoot, vaultPath string) bool {
+	if vaultPath == "" {
+		return false
+	}
+	gitBin, err := exec.LookPath("git")
+	if err != nil {
+		return false
+	}
+	probe := path.Join(vaultPath, "tb-probe-note.md")
+	cmd := exec.Command(gitBin, "-C", repoRoot, "check-ignore", "-q", "--no-index", "--", probe) //nolint:gosec // fixed git subcommand, probe path from validated config
+	return cmd.Run() == nil
 }

@@ -84,7 +84,7 @@ tb  (implemented today)
 ├── review       Fresh-context review (Elephant-Goldfish)
 ├── sandbox      Execution with Landlock isolation (check|run)
 ├── stack        Stacks verification operations (verify/review/drift/guard/vault/egm), not branches
-├── vault        Markdown vault of notes (list|show|links|backlinks|check)
+├── vault        Markdown vault of notes (new|list|show|search|links|backlinks|check)
 ├── verify       Adversarial verification (run; rulers tests|visual)
 ├── workspace    Isolated workspaces via git worktree (create|list|remove; alias: ws)
 ├── version      Shows the toolbelt version (also: tb --version)
@@ -1041,6 +1041,8 @@ tb egm review docs/specs/x.md --restart   # new cycle after a cap (needs an edit
 Notes of project knowledge that are not invariants (facts, decisions, context, logs), as Markdown files with optional YAML frontmatter and `[[wikilinks]]` in `vault.path` (default `.toolbelt/vault/`), editable in Obsidian or any editor ([spec](specs/vault.md), [ADR-016](adr/016-vault-fase-a.md)). The files are the only store: every command scans the vault from disk.
 
 ```bash
+tb vault new "<title>" [--type T] [--tag t]... [--source S --confidence C] [--dir sub] [--body -|text]
+tb vault search <query> [--limit N]
 tb vault list [--type T] [--tag t] [--source manual|extracted|inferred]
 tb vault show <note>          # normalized frontmatter + body; --json adds links and backlinks
 tb vault links <note>         # outgoing wikilinks with state
@@ -1056,7 +1058,10 @@ tb vault check                # exit 1 on errors; warnings keep exit 0
 - **Check:** errors `bad_frontmatter`, `missing_confidence`, `note_too_large`, `broken_link`, `ambiguous_link`; warnings `not_regular`, `unreadable`, `bad_tag`, `unused_confidence`, `broken_fragment`, `missing_attachment`, `ambiguous_attachment`. Text output quotes file names and titles with control characters.
 - **Output:** with `--json`, note text (title, tags, aliases, body, link targets) sits inside `data` objects, and every output is redacted (GitHub, AWS, Slack, `Bearer`, PEM, `*_TOKEN=`, `sk-`, `password:`/`secret=`). Same notes, same bytes.
 - **Stack:** `tb stack vault` runs `check` as a parallel, read-only op.
-- Not yet: `tb vault new`, `search`, the MCP tools, versioning the vault through `tb init` and the graph integration (next slices of the spec).
+- **`new`:** the file name is the slug of the redacted title (up to 80 bytes) in `--dir`; it never overwrites (`note_exists`, exit 1), refuses a title with control characters or no letters (`bad_title`), and a `--dir` that leaves the vault or crosses a symlink (`dir_outside_vault`). The frontmatter is generated with a YAML encoder; title and body are redacted before writing (`redacted: true`).
+- **`search`:** case- and accent-insensitive substring over title, aliases, tags and body, after redacting each note, so a query never probes a secret; one hit per note with the line and a snippet of up to 200 runes.
+- **MCP:** `tb_vault_list`, `tb_vault_show`, `tb_vault_search`, `tb_vault_links`, `tb_vault_backlinks`, `tb_vault_check` (read-only) and `tb_vault_new`, which always writes `source: inferred` and requires `confidence`.
+- Not yet: the graph integration (next slice of the spec).
 
 ### `tb verify` — Adversarial Verification (✓ Phase 1/2)
 
@@ -1960,6 +1965,7 @@ Unix/tcp transport and `--socket`/`--port`/`--tls-*` flags are planned; today on
 | `tb_guard_check` | `tb guard check` | `base`/`head` or `range=A..B`; `strict_fail` by default on SeverityError; `warn_only=true` opt-out; `strict` deprecated (boolean) |
 | `tb_stack` | `tb stack` | `ops` (array, includes `egm`, always moved to the end), `base`/`head`, `fail_fast` (boolean), `jobs` (integer), `approved_sha`/`approved_base`/`require_approved_sha`, `env`/`pass_env`, `egm_docs` (array), `strict` (boolean), `egm_mode` (`local`/`ci`), `egm_config` (absolute path, required by `ci`), `egm_allow_offline` (boolean); returns aggregated JSON with `warn` |
 | `tb_egm_status` / `tb_egm_resolve` / `tb_egm_receipt` | `tb egm status` / `tb egm resolve` / `tb egm receipt` | `cwd` (absolute) and `doc`; status takes `at`/`strict`, resolve takes `fix`/`decline` (arrays), `force_settle`/`reason`, `contest`/`evidence`; returns `{report, exit_code}` (receipt adds `receipt`, the written path) |
+| `tb_vault_list` / `tb_vault_show` / `tb_vault_search` / `tb_vault_links` / `tb_vault_backlinks` / `tb_vault_check` / `tb_vault_new` | `tb vault …` | `cwd` (absolute); `note` for show/links/backlinks, `query`/`limit` for search, `type`/`tag`/`source` for list; new takes `title`, `confidence` (required), `type`, `tags`, `dir`, `body` and always writes `source: inferred`; note text comes back inside `data` |
 | `tb_ticket_list` / `tb_ticket_show` | `tb ticket list` / `tb ticket show` | `status`, `deps` / `id`; optional arg `cwd` |
 | `tb_ticket_create` | `tb ticket create` | `title`, `description`, `scope`/`forbid`/`accept`/`dep` (arrays), `priority` (integer), `timeout`, `dry_run` (boolean) |
 | `tb_board` | `tb board` | `action=list\|pause\|resume\|drain`, `strategy`, `status`, `worker` |
@@ -1995,10 +2001,13 @@ init writes to `.git/info/exclude` (does not change the project's `.gitignore`) 
 
 - `.toolbelt/graph.json`
 - `.toolbelt/logs/`
-- `.toolbelt/vault/`
 - `.toolbelt/workspaces/`
 - `.toolbelt/captures/`
 - `.toolbelt/bench/`
+- `.toolbelt/bus/`
+- `<vault.path>/.obsidian/` (the vault itself is versioned; `tb init` creates a custom `vault.path` and warns `vault_gitignored` when a `.gitignore` rule ignores it)
+
+On a repository initialized before the vault was versioned, run `tb init` again: the old `.toolbelt/vault/` line leaves the section, and a section with a lost end marker keeps your lines.
 
 In a `git worktree`, the file is the common directory's `info/exclude`
 (`$GIT_COMMON_DIR`), the only one git reads. Versionable files

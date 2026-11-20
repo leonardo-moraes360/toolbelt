@@ -34,7 +34,7 @@ Thumbs.db
 # cache/derivados locais (config, invariantes, guard etc. podem ser versionados)
 .toolbelt/graph.json
 .toolbelt/logs/
-.toolbelt/vault/
+.toolbelt/vault/.obsidian/
 .toolbelt/workspaces/
 .toolbelt/captures/
 .toolbelt/bench/

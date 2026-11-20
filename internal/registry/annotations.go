@@ -84,6 +84,16 @@ var toolAnnotations = map[string]ToolAnnotations{
 	// the same state (T-R1).
 	"tb_egm_receipt": annOverwrite,
 
+	// The vault is read from disk on every call; new creates one note and
+	// never overwrites (O_EXCL), so a repeat fails with note_exists.
+	"tb_vault_list":      annReadOnly,
+	"tb_vault_show":      annReadOnly,
+	"tb_vault_search":    annReadOnly,
+	"tb_vault_links":     annReadOnly,
+	"tb_vault_backlinks": annReadOnly,
+	"tb_vault_check":     annReadOnly,
+	"tb_vault_new":       annAppend,
+
 	"tb_router_status":   annReadOnly,
 	"tb_watchdog_alerts": annReadOnly,
 }

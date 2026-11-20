@@ -17,17 +17,31 @@ const (
 // mode instead of 0600.
 const VersionedFileMode = 0o644
 
+// LocalCacheExcludePatterns are local state, never versioned. The vault is
+// versioned (docs/specs/vault.md, G5); only its .obsidian/ is excluded, as
+// an extra pattern derived from vault.path.
 var LocalCacheExcludePatterns = []string{
 	".toolbelt/graph.json",
 	".toolbelt/logs/",
-	".toolbelt/vault/",
 	".toolbelt/workspaces/",
 	".toolbelt/captures/",
 	".toolbelt/bench/",
 	".toolbelt/bus/",
 }
 
-func EnsureLocalGitExclude(repoRoot string) (string, error) {
+// legacyExcludePatterns are lines older tb versions wrote inside the
+// section; they are dropped when an orphan begin marker is repaired.
+var legacyExcludePatterns = []string{".toolbelt/vault/"}
+
+// VaultExcludePattern is the extra exclude for a vault path: its Obsidian
+// workspace config, which can hold personal data.
+func VaultExcludePattern(vaultPath string) string {
+	return strings.TrimSuffix(filepath.ToSlash(filepath.Clean(vaultPath)), "/") + "/.obsidian/"
+}
+
+// EnsureLocalGitExclude writes tb's section in .git/info/exclude with
+// LocalCacheExcludePatterns plus extra (for example VaultExcludePattern).
+func EnsureLocalGitExclude(repoRoot string, extra ...string) (string, error) {
 	excludePath, ok := gitInfoExcludePath(repoRoot)
 	if !ok {
 		return "", nil
@@ -41,8 +55,8 @@ func EnsureLocalGitExclude(repoRoot string) (string, error) {
 		return "", err
 	}
 
-	section := buildExcludeSection()
-	updated := upsertExcludeSection(string(existing), section)
+	section := buildExcludeSection(extra)
+	updated := upsertExcludeSectionWith(string(existing), section, extra)
 	if updated == string(existing) {
 		return excludePath, nil
 	}
@@ -94,12 +108,14 @@ func gitCommonDir(gitDir string) string {
 	return filepath.Clean(common)
 }
 
-func buildExcludeSection() string {
+const excludeComment = "# cache/derived — config and invariants stay versionable"
+
+func buildExcludeSection(extra []string) string {
 	var b strings.Builder
 	b.WriteString(gitExcludeBegin)
 	b.WriteByte('\n')
-	b.WriteString("# cache/derived — config and invariants stay versionable\n")
-	for _, p := range LocalCacheExcludePatterns {
+	b.WriteString(excludeComment + "\n")
+	for _, p := range append(append([]string{}, LocalCacheExcludePatterns...), extra...) {
 		b.WriteString(p)
 		b.WriteByte('\n')
 	}
@@ -109,6 +125,10 @@ func buildExcludeSection() string {
 }
 
 func upsertExcludeSection(existing, section string) string {
+	return upsertExcludeSectionWith(existing, section, nil)
+}
+
+func upsertExcludeSectionWith(existing, section string, extra []string) string {
 	start := strings.Index(existing, gitExcludeBegin)
 	if start < 0 {
 		if existing == "" {
@@ -119,7 +139,7 @@ func upsertExcludeSection(existing, section string) string {
 	}
 	end := strings.Index(existing[start:], gitExcludeEnd)
 	if end < 0 {
-		return strings.TrimRight(existing[:start], "\n") + "\n\n" + section
+		return repairOrphanBegin(existing, start, section, extra)
 	}
 	end = start + end + len(gitExcludeEnd)
 	for end < len(existing) && (existing[end] == '\n' || existing[end] == '\r') {
@@ -132,5 +152,36 @@ func upsertExcludeSection(existing, section string) string {
 	}
 	b.WriteString(section)
 	b.WriteString(existing[end:])
+	return b.String()
+}
+
+// repairOrphanBegin handles a begin marker without its end marker: the
+// orphan marker and, after it, the lines tb writes or wrote are dropped;
+// every other line (the user's) is kept, and a fresh section is appended.
+func repairOrphanBegin(existing string, start int, section string, extra []string) string {
+	known := map[string]bool{gitExcludeBegin: true, excludeComment: true}
+	for _, list := range [][]string{LocalCacheExcludePatterns, legacyExcludePatterns, extra} {
+		for _, p := range list {
+			known[p] = true
+		}
+	}
+	var kept []string
+	for _, l := range strings.Split(existing[start:], "\n") {
+		t := strings.TrimRight(l, "\r")
+		if known[t] {
+			continue
+		}
+		kept = append(kept, l)
+	}
+	head := strings.TrimRight(existing[:start], "\n")
+	tail := strings.TrimRight(strings.Join(kept, "\n"), "\n")
+	var b strings.Builder
+	for _, part := range []string{head, tail} {
+		if strings.TrimSpace(part) != "" {
+			b.WriteString(part)
+			b.WriteString("\n\n")
+		}
+	}
+	b.WriteString(section)
 	return b.String()
 }

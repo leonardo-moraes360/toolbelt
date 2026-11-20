@@ -66,3 +66,52 @@ func TestInitWritesGitExclude(t *testing.T) {
 		t.Fatalf("invariants não deveria ser ignorado: %s", cout2)
 	}
 }
+
+// TestInitVaultVersioned is CUJ-6: tb init over an old exclude section
+// versions the vault (only .obsidian/ stays excluded), creates a custom
+// vault.path, and warns when .gitignore still ignores the vault.
+func TestInitVaultVersioned(t *testing.T) {
+	if testing.Short() {
+		t.Skip()
+	}
+	tbBin := buildTB(t)
+	dir := t.TempDir()
+	for _, args := range [][]string{{"init"}, {"config", "user.email", "t@t"}, {"config", "user.name", "t"}} {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	exclude := filepath.Join(dir, ".git", "info", "exclude")
+	old := "mine\n# >>> toolbelt local/cache (tb init)\n.toolbelt/graph.json\n.toolbelt/vault/\n# <<< toolbelt local/cache\n"
+	if err := os.WriteFile(exclude, []byte(old), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(dir, ".toolbelt"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, ".toolbelt", "config.yaml"), []byte("vault:\n  path: notes\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, ".gitignore"), []byte("notes/\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(tbBin, "init", "--json")
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("init: %v\n%s", err, out)
+	}
+	data, _ := os.ReadFile(exclude)
+	text := string(data)
+	if strings.Contains(text, "\n.toolbelt/vault/\n") || !strings.Contains(text, "\nnotes/.obsidian/\n") || !strings.HasPrefix(text, "mine\n") {
+		t.Fatalf("exclude:\n%s", text)
+	}
+	if fi, err := os.Stat(filepath.Join(dir, "notes")); err != nil || !fi.IsDir() {
+		t.Fatalf("custom vault not created: %v", err)
+	}
+	if !strings.Contains(string(out), `"vault_gitignored": "notes"`) {
+		t.Fatalf("no vault_gitignored warning:\n%s", out)
+	}
+}

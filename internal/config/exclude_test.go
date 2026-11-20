@@ -146,3 +146,49 @@ func TestEnsureLocalGitExcludeWorktree(t *testing.T) {
 	}
 	assertIgnoreSplit(t, wt)
 }
+
+func TestExcludeVaultPatterns(t *testing.T) {
+	if got := VaultExcludePattern(".toolbelt/vault/"); got != ".toolbelt/vault/.obsidian/" {
+		t.Fatal(got)
+	}
+	section := buildExcludeSection([]string{VaultExcludePattern("notes")})
+	for _, l := range strings.Split(section, "\n") {
+		if l == ".toolbelt/vault/" {
+			t.Fatal("the vault must not be excluded")
+		}
+	}
+	if !strings.Contains(section, "\nnotes/.obsidian/\n") {
+		t.Fatalf("missing extra pattern:\n%s", section)
+	}
+}
+
+// TestExcludeOldSectionAndOrphanMarker: an old section with .toolbelt/vault/
+// is replaced; an orphan begin marker keeps the user's lines, drops tb's
+// old lines, and a second run changes nothing.
+func TestExcludeOldSectionAndOrphanMarker(t *testing.T) {
+	section := buildExcludeSection([]string{".toolbelt/vault/.obsidian/"})
+	old := "user-a\n\n" + gitExcludeBegin + "\n" + excludeComment + "\n.toolbelt/graph.json\n.toolbelt/vault/\n" + gitExcludeEnd + "\nuser-b\n"
+	got := upsertExcludeSection(old, section)
+	if strings.Contains(got, "\n.toolbelt/vault/\n") || !strings.Contains(got, "user-a") || !strings.Contains(got, "user-b") {
+		t.Fatalf("old section:\n%s", got)
+	}
+	orphan := "user-a\n" + gitExcludeBegin + "\n" + excludeComment + "\n.toolbelt/graph.json\n.toolbelt/vault/\nmy-own-line\n*.local\n"
+	got = upsertExcludeSection(orphan, section)
+	if strings.Count(got, gitExcludeBegin) != 1 || strings.Contains(got, "\n.toolbelt/vault/\n") ||
+		!strings.Contains(got, "my-own-line\n*.local") || !strings.HasPrefix(got, "user-a\n") || !strings.HasSuffix(got, section) {
+		t.Fatalf("orphan:\n%s", got)
+	}
+	if again := upsertExcludeSection(got, section); again != got {
+		t.Fatalf("not idempotent:\n%s", again)
+	}
+}
+
+func TestOrphanRepairKeepsUserObsidianAndCRLF(t *testing.T) {
+	extra := []string{"notes/.obsidian/"}
+	section := buildExcludeSection(extra)
+	orphan := "user\r\n" + gitExcludeBegin + "\r\n.toolbelt/graph.json\r\nnotes/.obsidian/\r\nother/.obsidian/\r\n"
+	got := upsertExcludeSectionWith(orphan, section, extra)
+	if !strings.Contains(got, "other/.obsidian/") || strings.Count(got, "notes/.obsidian/") != 1 || strings.Count(got, gitExcludeBegin) != 1 {
+		t.Fatalf("repair:\n%q", got)
+	}
+}
