@@ -259,7 +259,7 @@ tb bus recv --channel feature-x --as grok-1 --wait 20s
 - [x] B0 — spec `bus/0.1`: envelope, Agent Card e convite ([docs/pt-BR/bus-protocolo.md](bus-protocolo.md))
 - [x] B1 — store SQLite, CLI + MCP, convite de uso único, `join`/`send`/`recv`/`claim`/`complete`/`log`
 - [x] B2 — lease, heartbeat e watchdog no barramento ([spec](bus-lease.md))
-- [ ] B3 (parcial) — `tb bus run` com adapters `exec` e `harness` feito ([docs/pt-BR/bus-harness.md](bus-harness.md)); falta adapter `notify` e `tb bus discover`
+- [ ] B3 (parcial) — `tb bus run` com adapters `exec` e `harness` feito ([docs/pt-BR/bus-harness.md](bus-harness.md)); falta adapter `notify` e `tb bus discover` ([spec em rascunho](bus-notify-discover.md))
 - [ ] B4 — router/board da Fase 3 sobre o barramento
 
 ## 🤝 Contribuindo
