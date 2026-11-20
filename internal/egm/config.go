@@ -82,6 +82,9 @@ type repoEgm struct {
 	MaxSourceBytes     *int64  `yaml:"max_source_bytes"`
 	MaxPacketBytes     *int64  `yaml:"max_packet_bytes"`
 	MaxStdoutBytes     *int64  `yaml:"max_stdout_bytes"`
+	CI                 *struct {
+		MaxDocs *int `yaml:"max_docs"`
+	} `yaml:"ci"`
 }
 
 // ApplyRepoConfig overlays the repository's egm: section on the user config
@@ -161,6 +164,9 @@ func (s *Settings) applyLimits(r *repoEgm) {
 	lowerInt64(s, "max_source_bytes", &s.MaxSourceBytes, r.MaxSourceBytes)
 	lowerInt64(s, "max_packet_bytes", &s.MaxPacketBytes, r.MaxPacketBytes)
 	lowerInt64(s, "max_stdout_bytes", &s.MaxStdoutBytes, r.MaxStdoutBytes)
+	if r.CI != nil {
+		lowerInt(s, "ci.max_docs", &s.CI.MaxDocs, r.CI.MaxDocs)
+	}
 	if r.TimeoutPerReviewer != nil {
 		cur, _ := time.ParseDuration(s.TimeoutPerReviewer)
 		v, err := time.ParseDuration(*r.TimeoutPerReviewer)

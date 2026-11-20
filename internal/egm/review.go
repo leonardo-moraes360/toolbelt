@@ -29,6 +29,11 @@ type Options struct {
 	Strict     bool
 	// At is gate mode (R7a, R33): status over the commit's tree.
 	At string
+
+	// stateRoot replaces StateRoot() (the CI mode's throwaway state, T-R2);
+	// maxRuns lowers egm.max_agent_runs (the CI step budget, T-R6).
+	stateRoot string
+	maxRuns   int
 }
 
 // Outcome is a command's result: the report (nil for a refused command), the
@@ -60,6 +65,7 @@ type snapshot struct {
 	target      string // report target: "worktree" or the --at rev
 	hasDetailed bool
 	warnings    []Warning
+	stateRoot   string // "" = StateRoot()
 }
 
 func docPathIn(cwd, doc string) (string, error) {
@@ -115,6 +121,10 @@ func prepare(ctx context.Context, o *Options) (*snapshot, error) {
 		raw, w = readRepoConfig(repo.Root)
 	}
 	s.set = ApplyRepoConfig(&user, raw)
+	s.stateRoot = o.stateRoot
+	if o.maxRuns > 0 && o.maxRuns < s.set.MaxAgentRuns {
+		s.set.MaxAgentRuns = o.maxRuns
+	}
 	if w != nil {
 		s.set.Warnings = append(s.set.Warnings, *w)
 	}
@@ -188,7 +198,9 @@ func (s *snapshot) phase1(ctx context.Context) error {
 	pairs = append(pairs, "checks\t"+s.checks.checksSHA())
 	s.content = sha256Hex([]byte(strings.Join(pairs, "\n")))
 	s.policy = PolicySHA(&s.set, s.hasDetailed)
-	if s.stateDir, err = StateDir(s.repo.ID, Slug(s.rel)); err != nil {
+	if s.stateRoot != "" {
+		s.stateDir = filepath.Join(s.stateRoot, "egm", s.repo.ID, Slug(s.rel))
+	} else if s.stateDir, err = StateDir(s.repo.ID, Slug(s.rel)); err != nil {
 		return err
 	}
 	if s.head = s.at; s.head == "" {

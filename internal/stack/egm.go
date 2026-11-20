@@ -17,6 +17,7 @@ func runEgm(ctx context.Context, opts *Options, shared *Shared) (StepResult, err
 	}
 	res, err := egm.Gate(ctx, &egm.GateOptions{
 		RepoDir: repo, Base: shared.Base, Head: shared.Head, Docs: opts.EgmDocs, Strict: opts.Strict,
+		ConfigFile: opts.EgmConfig, Mode: opts.EgmMode, AllowOffline: opts.EgmAllowOffline,
 	})
 	if err != nil {
 		return StepResult{}, err
@@ -42,8 +43,9 @@ func gateReason(res *egm.GateResult) string {
 		}
 	}
 	for _, w := range res.Warnings {
-		if w.Code == "uncommitted_gated_docs" {
-			return "egm: uncommitted_gated_docs: " + w.Path
+		switch w.Code {
+		case "uncommitted_gated_docs", "gated_doc_removed", "ci_budget":
+			return "egm: " + w.Code + ": " + w.Path
 		}
 	}
 	return "egm: no_gated_docs (--strict)"

@@ -2,7 +2,7 @@
 
 # Spec: EGM trust, Fase A.2 (CI como fronteira de confiança)
 
-Autor: toolbelt · Status: Rascunho, rodada 2 (reescrito depois da Fase A, com uma revisão em contexto novo aplicada); fatia 1 de implementação (recibo) feita · Data: 2026-11-19 · Decisão: [ADR-015](../adr/015-egm-nativo.md) · Depende de: [núcleo](egm-nativo.md) (Fase A, implementada)
+Autor: toolbelt · Status: Rascunho, rodada 2 (reescrito depois da Fase A, com uma revisão em contexto novo aplicada); fatias 1 (recibo) e 2 (modo CI) de implementação feitas · Data: 2026-11-19 · Decisão: [ADR-015](../adr/015-egm-nativo.md) · Depende de: [núcleo](egm-nativo.md) (Fase A, implementada)
 
 ## Visão geral
 

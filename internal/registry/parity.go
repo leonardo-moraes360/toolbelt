@@ -307,7 +307,10 @@ func registerStackTools() {
 					Description: "egm: documents added to the selection",
 					Items:       &Property{Type: "string"},
 				},
-				"strict": {Type: "boolean", Description: "egm: PASS_PARTIAL and an empty selection fail", Default: false},
+				"strict":            {Type: "boolean", Description: "egm: PASS_PARTIAL and an empty selection fail", Default: false},
+				"egm_mode":          {Type: "string", Description: "egm: local (default) or ci; ci needs egm_config, implies strict and runs one fresh round with CI's credential, checked against the committed receipt"},
+				"egm_config":        {Type: "string", Description: "egm: absolute path of the egm user config (required by egm_mode ci)"},
+				"egm_allow_offline": {Type: "boolean", Description: "egm ci: without a credential, run a deterministic-only round capped at PASS_PARTIAL", Default: false},
 			},
 			Required: []string{"ops"},
 		},
@@ -752,6 +755,9 @@ func handleStack(ctx context.Context, args map[string]any) (any, error) {
 	if err != nil {
 		return nil, err
 	}
+	if c := StringArg(args, "egm_config"); c != "" && !filepath.IsAbs(c) {
+		return nil, fmt.Errorf("egm_config must be an absolute path")
+	}
 	opNames := StringSliceArg(args, "ops", nil)
 	ops, err := stack.ParseOps(opNames)
 	if err != nil {
@@ -813,6 +819,9 @@ func handleStack(ctx context.Context, args map[string]any) (any, error) {
 		EnvPass:            pass,
 		EgmDocs:            StringSliceArg(args, "egm_docs", nil),
 		Strict:             BoolArg(args, "strict", false),
+		EgmMode:            StringArg(args, "egm_mode"),
+		EgmConfig:          StringArg(args, "egm_config"),
+		EgmAllowOffline:    BoolArg(args, "egm_allow_offline", false),
 	}
 	return stack.Run(ctx, opts)
 }

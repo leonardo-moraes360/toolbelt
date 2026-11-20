@@ -689,6 +689,8 @@ Flags:
   --standards <csv>      review: roles (scope,quality,acceptance)
   --egm-doc <path>       egm: document added to the selection (repeatable)
   --strict               egm: PASS_PARTIAL and an empty selection fail
+  --egm-mode <mode>      egm: local (default) | ci
+  --egm-allow-offline    egm ci: without a credential, a deterministic-only round capped at PASS_PARTIAL
   --env <KEY>            (global) extra allowlist for stacked verify
   --pass-env <KEY>       (global) explicit secret opt-in for verify
 ```
@@ -733,12 +735,33 @@ selection is `ok: true, warn: true` with `no_gated_docs` (`ok: false` with
 gated documents that differ from head. A document with state whose sources changed in
 the range, but that was not touched, only gets a `sources_changed` warning. `egm`
 never runs in parallel and is always moved to the end; `Result.warn` is the OR of the
-steps' `warn` and never changes the exit code. The gate is local: in a CI checkout
-there is no state, so the result is `NO_STATE`.
+steps' `warn` and never changes the exit code. In the default `--egm-mode local`
+the gate is local (`trust: "local"`): in a CI checkout there is no state, so the result
+is `NO_STATE`. It also warns `receipt_missing`, `receipt_invalid` or `receipt_stale`
+(never a failure) so the author sees what CI will reject, and `gated_doc_removed` for a
+gated path deleted or renamed out of the gate.
+
+**`--egm-mode ci`** ([egm trust](specs/egm-trust.md)) is the gate for CI
+(`trust: "ci"`). It needs `-c` (CI's own egm user config) and implies `--strict`.
+For each selected document it checks, in order: the receipt committed at head
+(`tb egm receipt`) exists and is valid (`no_receipt`, `receipt_invalid`); its document
+and source hashes equal the commit's (`receipt_stale`); then it runs **one fresh
+round** with `--engine llm` in a throwaway state. A fresh finding at `major` or above
+fails as `ci_finding`, unless it matches a receipt claim (same heading, line gap at most
+`egm.match.gap`, `sim ≥ egm.match.sim`, not more severe): a `declined` or `forced`
+claim fails as `ci_downgrade`; an `arbiter_withdrawn` claim is re-arbitrated by CI's
+own arbiter (`withdraw` passes, anything else is `ci_upheld`). Findings below `major`
+only warn. A required reviewer that does not complete fails (`ci_not_run`). Without a
+working credential the result is `ci_offline`, unless `--egm-allow-offline` runs a
+deterministic-only round capped at `PASS_PARTIAL`. More selected documents than
+`egm.ci.max_docs` (default 5), or a step past `egm.max_agent_runs`, is `ci_budget`; a
+removed gated document fails. Each document's `ci_findings` lists the fresh findings
+with their `result`.
 
 ```bash
 tb stack verify guard egm --base origin/main
 tb stack egm --base origin/main --egm-doc docs/adr/015-egm-nativo.md --strict
+tb stack egm --egm-mode ci -c "$RUNNER_TEMP/egm.yaml" --base "$BASE_SHA" --head "$HEAD_SHA"
 ```
 
 ---
@@ -1915,7 +1938,7 @@ Unix/tcp transport and `--socket`/`--port`/`--tls-*` flags are planned; today on
 | `tb_review` | `tb review` | ticket/base/head/approved_sha/require_approved_sha/reviewers/standards |
 | `tb_drift` | `tb drift` | returns `{drift, has_drift, pinned_approval}` (`checked` explicit) |
 | `tb_guard_check` | `tb guard check` | `base`/`head` or `range=A..B`; `strict_fail` by default on SeverityError; `warn_only=true` opt-out; `strict` deprecated (boolean) |
-| `tb_stack` | `tb stack` | `ops` (array, includes `egm`, always moved to the end), `base`/`head`, `fail_fast` (boolean), `jobs` (integer), `approved_sha`/`approved_base`/`require_approved_sha`, `env`/`pass_env`, `egm_docs` (array), `strict` (boolean); returns aggregated JSON with `warn` |
+| `tb_stack` | `tb stack` | `ops` (array, includes `egm`, always moved to the end), `base`/`head`, `fail_fast` (boolean), `jobs` (integer), `approved_sha`/`approved_base`/`require_approved_sha`, `env`/`pass_env`, `egm_docs` (array), `strict` (boolean), `egm_mode` (`local`/`ci`), `egm_config` (absolute path, required by `ci`), `egm_allow_offline` (boolean); returns aggregated JSON with `warn` |
 | `tb_egm_status` / `tb_egm_resolve` / `tb_egm_receipt` | `tb egm status` / `tb egm resolve` / `tb egm receipt` | `cwd` (absolute) and `doc`; status takes `at`/`strict`, resolve takes `fix`/`decline` (arrays), `force_settle`/`reason`, `contest`/`evidence`; returns `{report, exit_code}` (receipt adds `receipt`, the written path) |
 | `tb_ticket_list` / `tb_ticket_show` | `tb ticket list` / `tb ticket show` | `status`, `deps` / `id`; optional arg `cwd` |
 | `tb_ticket_create` | `tb ticket create` | `title`, `description`, `scope`/`forbid`/`accept`/`dep` (arrays), `priority` (integer), `timeout`, `dry_run` (boolean) |

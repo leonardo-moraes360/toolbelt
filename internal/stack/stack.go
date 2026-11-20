@@ -98,6 +98,12 @@ type Options struct {
 	EgmDocs []string
 	// Strict makes PASS_PARTIAL and an empty egm selection fail (R33).
 	Strict bool
+	// EgmMode is local (default) or ci; EgmConfig is the egm user config
+	// (-c), required by ci; EgmAllowOffline accepts a deterministic-only
+	// round in ci (docs/specs/egm-trust.md, T-R2 to T-R5).
+	EgmMode         string
+	EgmConfig       string
+	EgmAllowOffline bool
 }
 
 type Loaders struct {
