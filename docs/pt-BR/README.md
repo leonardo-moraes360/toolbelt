@@ -260,7 +260,7 @@ tb bus recv --channel feature-x --as grok-1 --wait 20s
 - [x] B1 — store SQLite, CLI + MCP, convite de uso único, `join`/`send`/`recv`/`claim`/`complete`/`log`
 - [x] B2 — lease, heartbeat e watchdog no barramento ([spec](bus-lease.md))
 - [x] B3 — `tb bus run` com adapters `exec`, `harness` e `notify` e `tb bus discover` ([docs/pt-BR/bus-harness.md](bus-harness.md), [bus-notify-discover.md](bus-notify-discover.md))
-- [ ] B4 — router/board da Fase 3 sobre o barramento
+- [ ] B4 — router/board da Fase 3 sobre o barramento ([spec em rascunho](bus-router.md))
 
 ## 🤝 Contribuindo
 
