@@ -179,6 +179,56 @@ type RouterConfig struct {
 	Timeouts       RouterTimeouts       `yaml:"timeouts" json:"timeouts"`
 	Retry          RouterRetry          `yaml:"retry" json:"retry"`
 	SlowThreshold  float64              `yaml:"slow_threshold" json:"slow_threshold"`
+	// Bus: bus slots b1..bN (docs/bus-router.md, B4b). Read only from trusted
+	// config (global or -c), never from the repository's config.
+	Bus RouterBus `yaml:"bus" json:"bus"`
+}
+
+// RouterBus hands tickets to agents on a bus channel.
+type RouterBus struct {
+	Channel      string `yaml:"channel" json:"channel"`             // empty = no bus slots
+	As           string `yaml:"as" json:"as"`                       // the router's CLI session in that channel
+	Slots        int    `yaml:"slots" json:"slots"`                 // default 1 when channel is set
+	To           string `yaml:"to" json:"to"`                       // role:worker (default) or agent:<name>
+	ClaimTimeout string `yaml:"claim_timeout" json:"claim_timeout"` // default 5m
+}
+
+// Enabled reports whether bus slots are configured.
+func (b *RouterBus) Enabled() bool { return b.Channel != "" }
+
+// ApplyDefaults fills slots, to and claim_timeout when a channel is set.
+func (b *RouterBus) ApplyDefaults() {
+	if !b.Enabled() {
+		return
+	}
+	if b.Slots == 0 {
+		b.Slots = 1
+	}
+	if b.To == "" {
+		b.To = "role:worker"
+	}
+	if b.ClaimTimeout == "" {
+		b.ClaimTimeout = "5m"
+	}
+}
+
+func (b *RouterBus) validate() error {
+	if !b.Enabled() {
+		return nil
+	}
+	if b.As == "" {
+		return errors.New("router.bus.as is required with router.bus.channel")
+	}
+	if b.Slots < 1 {
+		return fmt.Errorf("router.bus.slots must be >= 1 (current %d)", b.Slots)
+	}
+	if b.To != "role:worker" && !strings.HasPrefix(b.To, "agent:") {
+		return fmt.Errorf("router.bus.to %q invalid (use role:worker or agent:<name>)", b.To)
+	}
+	if d, err := time.ParseDuration(b.ClaimTimeout); err != nil || d <= 0 {
+		return fmt.Errorf("invalid router.bus.claim_timeout %q (e.g. 5m)", b.ClaimTimeout)
+	}
+	return nil
 }
 
 // RouterDirectDelivery: ticket -> worker affinity.
@@ -215,8 +265,12 @@ func DefaultRouterConfig() RouterConfig {
 }
 
 func (r *RouterConfig) Validate() error {
-	if r.MaxWorkers < 1 {
-		return fmt.Errorf("router.max_workers must be >= 1 (current %d)", r.MaxWorkers)
+	r.Bus.ApplyDefaults()
+	if r.MaxWorkers < 0 || (r.MaxWorkers == 0 && !r.Bus.Enabled()) {
+		return fmt.Errorf("router.max_workers must be >= 1, or 0 with router.bus.channel (current %d)", r.MaxWorkers)
+	}
+	if err := r.Bus.validate(); err != nil {
+		return err
 	}
 	switch r.Strategy {
 	case "", "fifo", "priority", "dependency":

@@ -40,10 +40,10 @@ var watchdogStatusCmd = &cobra.Command{
 		if worker != "" {
 			found := false
 			ws := rep.Workers[:0:0]
-			for _, w := range rep.Workers {
-				if w.ID == worker {
+			for i := range rep.Workers {
+				if rep.Workers[i].ID == worker {
 					found = true
-					ws = append(ws, w)
+					ws = append(ws, rep.Workers[i])
 				}
 			}
 			if !found {
@@ -142,8 +142,8 @@ var watchdogKillCmd = &cobra.Command{
 		}
 		var ticketID string
 		known := false
-		for _, w := range rep.Workers {
-			if w.ID == worker {
+		for i := range rep.Workers {
+			if w := &rep.Workers[i]; w.ID == worker {
 				known = true
 				if w.Status != "working" {
 					return fmt.Errorf("worker %s is idle", worker)
@@ -162,14 +162,17 @@ var watchdogKillCmd = &cobra.Command{
 			return printJSON(map[string]any{"worker": worker, "ticket": ticketID, "reason": reason, "request": path})
 		}
 		fmt.Printf("Kill request sent: %s (%s). The router applies it on the next tick.\n", worker, ticketID)
+		if strings.HasPrefix(worker, "b") {
+			fmt.Println("Bus slot: the router revokes the thread; the remote agent's own harness stops its child, the router cannot.")
+		}
 		return nil
 	},
 }
 
 func init() {
-	watchdogStatusCmd.Flags().String("worker", "", "filters by worker (w1, w2, ...)")
+	watchdogStatusCmd.Flags().String("worker", "", "filters by worker (w1, w2, ... or bus slots b1, b2, ...)")
 	watchdogAlertsCmd.Flags().String("since", "", "only recent alerts: duration (10m, 2h) or RFC3339")
-	watchdogAlertsCmd.Flags().String("kind", "", "worker_slow|worker_stuck|worker_crash|worker_killed|queue_growing|global_timeout|ticket_canceled|multi_dep_base|agent_escaped|orphan_killed|board_unreadable")
+	watchdogAlertsCmd.Flags().String("kind", "", "worker_slow|worker_stuck|worker_crash|worker_killed|queue_growing|global_timeout|ticket_canceled|multi_dep_base|agent_escaped|orphan_killed|board_unreadable|bus_unclaimed|bus_claim_rejected|bus_lease_lost|bus_verdict_fail|bus_channel_expired|bus_write_failed")
 	watchdogAlertsCmd.Flags().Int("limit", 0, "only the N most recent (0 = all)")
 	watchdogKillCmd.Flags().String("reason", "", "reason (recorded in the alert and the ticket)")
 	_ = watchdogKillCmd.MarkFlagRequired("reason")

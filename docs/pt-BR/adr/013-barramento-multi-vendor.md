@@ -6,7 +6,7 @@
 
 proposed
 
-Implementação (v0.0.5): B0 e B1 entregues; B3 entregue depois da v0.0.8 (`tb bus run` com adapters `exec`, `harness` e `notify`, e `tb bus discover`); B2 entregue depois da v0.0.7 (lease, heartbeat, watchdog: [bus-lease.md](../bus-lease.md)); B4 não iniciado. O status segue `proposed` até as métricas de sucesso serem medidas.
+Implementação (v0.0.5): B0 e B1 entregues; B3 entregue depois da v0.0.8 (`tb bus run` com adapters `exec`, `harness` e `notify`, e `tb bus discover`); B2 entregue depois da v0.0.7 (lease, heartbeat, watchdog: [bus-lease.md](../bus-lease.md)); B4 entregue depois da v0.0.8 (slots do barramento no router e tarefas do router no harness: [bus-router.md](../bus-router.md)). O status segue `proposed` até as métricas de sucesso serem medidas.
 
 ## Contexto
 

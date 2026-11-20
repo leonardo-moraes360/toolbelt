@@ -137,9 +137,9 @@ func ReadAlerts(root string, f AlertFilter) ([]Alert, error) {
 	return out, nil
 }
 
-var workerRe = regexp.MustCompile(`^w\d+$`)
+var workerRe = regexp.MustCompile(`^[wb]\d+$`)
 
-// ValidWorkerID accepts the form w1, w2, ...
+// ValidWorkerID accepts local slots w1, w2, ... and bus slots b1, b2, ...
 func ValidWorkerID(id string) bool { return workerRe.MatchString(id) }
 
 type KillRequest struct {
@@ -151,7 +151,7 @@ type KillRequest struct {
 // RequestKill writes a kill request that the router consumes on its next tick.
 func RequestKill(root, worker, reason string, now time.Time) (string, error) {
 	if !ValidWorkerID(worker) {
-		return "", fmt.Errorf("invalid worker %q (expected w1, w2, ...)", worker)
+		return "", fmt.Errorf("invalid worker %q (expected w1, w2, ... or b1, b2, ...)", worker)
 	}
 	if err := os.MkdirAll(ControlDir(root), 0o755); err != nil {
 		return "", err
@@ -198,7 +198,17 @@ func (r *Router) watchdogTick() (stop bool) {
 			s.cancel()
 			continue
 		}
-		elapsed := now.Sub(s.started)
+		started := s.started
+		if s.bus != nil {
+			// A bus ticket's timeout starts at the claim; before it, the
+			// attempt goroutine bounds the wait with claim_timeout.
+			_, _, _, at := s.bus.snapshot()
+			if at.IsZero() {
+				continue
+			}
+			started = at
+		}
+		elapsed := now.Sub(started)
 		if !s.slowAlerted && elapsed >= time.Duration(r.cfg.SlowThreshold*float64(s.timeout)) && elapsed < s.timeout {
 			s.slowAlerted = true
 			r.alert(AlertWorkerSlow, SevWarn, s.id, s.ticket,

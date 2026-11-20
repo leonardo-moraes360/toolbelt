@@ -851,3 +851,19 @@ func TestLoadStatusStale(t *testing.T) {
 		t.Fatalf("alive: %+v", rep)
 	}
 }
+
+// AC30: control characters in a title never reach the commit subject.
+func TestCommitSubjectStripsControl(t *testing.T) {
+	root := newRepo(t)
+	st := ticket.Open(root)
+	tk, err := st.Create(&ticket.Ticket{Title: "bell\aand\x1b[31mred"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	runWithTimeout(context.Background(), t, newRouter(t, root, nil))
+	got := get(t, st, tk.ID)
+	subj := runGit(t, root, "log", "-1", "--format=%s", got.Result.HeadCommit)
+	if strings.ContainsAny(subj, "\a\x1b") || !strings.Contains(subj, "belland[31mred") {
+		t.Fatalf("subject %q", subj)
+	}
+}

@@ -29,6 +29,7 @@ type PlanUnschedulable struct {
 type Plan struct {
 	Strategy       string              `json:"strategy"`
 	Workers        int                 `json:"workers"`
+	BusSlots       int                 `json:"bus_slots,omitempty"`
 	DirectDelivery bool                `json:"direct_delivery"`
 	Paused         bool                `json:"paused"`
 	Draining       bool                `json:"draining"`
@@ -41,13 +42,17 @@ type Plan struct {
 // round every worker takes one ticket; with direct delivery, a worker prefers a
 // dependent of the ticket it just finished (up to maxSubs per worker).
 func BuildPlan(b *ticket.Board, workers int, strategy ticket.Strategy, direct bool, maxSubs int) Plan {
+	return buildPlan(b, workers, 0, strategy, direct, maxSubs)
+}
+
+func buildPlan(b *ticket.Board, workers, busSlots int, strategy ticket.Strategy, direct bool, maxSubs int) Plan {
 	p := Plan{
-		Strategy: string(strategy), Workers: workers, DirectDelivery: direct,
+		Strategy: string(strategy), Workers: workers, BusSlots: busSlots, DirectDelivery: direct,
 		Paused: b.Control.Paused, Draining: b.Control.Draining,
 		Rounds: []PlanRound{}, Unschedulable: []PlanUnschedulable{},
 		Note: "estimate assuming equal duration per ticket; the actual order depends on when each worker finishes",
 	}
-	pl := &planner{b: b, workers: workers, strategy: strategy, direct: direct, maxSubs: maxSubs,
+	pl := &planner{b: b, workers: workers, busSlots: busSlots, strategy: strategy, direct: direct, maxSubs: maxSubs,
 		status: map[string]ticket.Status{}, byID: map[string]*ticket.Ticket{}}
 	pending := 0
 	for i := range b.Tickets {
@@ -78,6 +83,7 @@ func BuildPlan(b *ticket.Board, workers int, strategy ticket.Strategy, direct bo
 type planner struct {
 	b        *ticket.Board
 	workers  int
+	busSlots int
 	strategy ticket.Strategy
 	direct   bool
 	maxSubs  int
@@ -112,8 +118,7 @@ func (pl *planner) ready() []ticket.Ticket {
 func (pl *planner) assignRound(cands []ticket.Ticket, lastWorker map[string]string) (assigns []PlanAssignment, ranThisRound map[string]string) {
 	taken := map[string]bool{}
 	ranThisRound = map[string]string{}
-	for i := 1; i <= pl.workers; i++ {
-		w := fmt.Sprintf("w%d", i)
+	for _, w := range pl.slotIDs() {
 		pick, via := pl.pickFor(w, cands, taken, lastWorker)
 		if pick == nil {
 			continue
@@ -182,5 +187,17 @@ func (r *Router) Plan() (Plan, error) {
 	if err != nil {
 		return Plan{}, err
 	}
-	return BuildPlan(b, r.workers, r.strategy, r.cfg.DirectDelivery.Enabled, r.cfg.DirectDelivery.MaxSubscriptionsPerWorker), nil
+	return buildPlan(b, r.workers, len(r.slots)-r.workers, r.strategy, r.cfg.DirectDelivery.Enabled, r.cfg.DirectDelivery.MaxSubscriptionsPerWorker), nil
+}
+
+// slotIDs: local slots first, then bus slots, as the router fills them.
+func (pl *planner) slotIDs() []string {
+	ids := make([]string, 0, pl.workers+pl.busSlots)
+	for i := 1; i <= pl.workers; i++ {
+		ids = append(ids, fmt.Sprintf("w%d", i))
+	}
+	for i := 1; i <= pl.busSlots; i++ {
+		ids = append(ids, fmt.Sprintf("b%d", i))
+	}
+	return ids
 }

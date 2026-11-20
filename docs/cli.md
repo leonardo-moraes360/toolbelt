@@ -1649,7 +1649,7 @@ tb router config
 
 | Subcommand | Flags | Description |
 |------------|-------|-------------|
-| `run` | `--workers <n>`, `--strategy fifo\|priority\|dependency`, `--agent-cmd "<cmd>"`, `--once`, `--dry-run`, `--allow-unsandboxed` | Runs until the queue is empty; Ctrl-C returns `running` tickets to `pending` |
+| `run` | `--workers <n>`, `--strategy fifo\|priority\|dependency`, `--agent-cmd "<cmd>"`, `--once`, `--dry-run`, `--check`, `--allow-unsandboxed` | Runs until the queue is empty; Ctrl-C returns `running` tickets to `pending`. With `router.bus` (global config or `-c` only) it adds bus slots `b1..bN` that hand tickets to `router_tasks` workers on a bus channel; `max_workers: 0` = bus only (no `agent_cmd`, no Landlock). `--check` validates the bus session and channel. Spec: [bus-router.md](bus-router.md) |
 | `status` | — | Reads `state.json`; detects stale state (dead PID) |
 | `config` | — | Prints the effective configuration (`router:`) |
 
@@ -1739,7 +1739,7 @@ tb watchdog kill w1 --reason "stuck in a loop"
 |------------|-------|-------------|
 | `status` | `--worker <id>` | Worker state and alert counts per kind |
 | `alerts` | `--since <10m\|2h\|RFC3339>`, `--kind <kind>`, `--limit <n>` | Lists `alerts.jsonl` |
-| `kill <worker>` | `--reason` | Writes `control/kill-<worker>.json`; the router cancels the running ticket (counts as an attempt). Errors if no router is running |
+| `kill <worker>` | `--reason` | Writes `control/kill-<worker>.json`; the router cancels the running ticket (counts as an attempt). Errors if no router is running. For a bus slot (`bN`) the router revokes the thread; the remote harness stops its own child |
 
 **Alerts:**
 

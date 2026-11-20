@@ -2,7 +2,7 @@
 
 # Router no barramento — spec do B4
 
-Status: **B4a implementado**, B4b não implementado (spec na rodada 3, depois de duas revisões em contexto novo).
+Status: **implementado** (B4a e B4b; spec na rodada 3, depois de duas revisões em contexto novo). Onde o código é mais simples que este texto, a nota *Neste corte* diz isso.
 
 Especificação da etapa **B4** do [ADR-013](adr/013-barramento-multi-vendor.md) (§8): o router da Fase 3 ([ADR-009](adr/009-router-e-workers.md)) ganha um segundo tipo de worker, um agente registrado num canal do barramento. Apoia-se no protocolo ([bus-protocolo.md](bus-protocolo.md)), no lease ([bus-lease.md](bus-lease.md)) e no harness ([bus-harness.md](bus-harness.md), [bus-notify-discover.md](bus-notify-discover.md)).
 
@@ -193,7 +193,7 @@ Timeout e cancelamento também revogam:
 | timeout do ticket | `timeout` | falha com `worker_stuck` |
 | ticket alterado fora do router, ou `tb watchdog kill bN` | `canceled` | slot liberado |
 
-A saída do kill diz que o filho do harness é parado pela vigia do harness, não pelo router.
+A saída do kill diz que o filho do harness é parado pela vigia do harness, não pelo router. *Neste corte* todo cancelamento (timeout, kill, ticket alterado, desligamento) revoga com o motivo `canceled`; lease perdido usa `lease_lost`, uma retirada `unclaimed` e um claim recusado `claim_rejected`.
 
 Em todos os casos o router age conforme o que o `Revoke` devolve. `completed` quer dizer que um resultado chegou antes, e o router vai para o passo 5 com ele.
 
@@ -214,7 +214,7 @@ Em todos os casos o router age conforme o que o `Revoke` devolve. `completed` qu
 
 - **Nova tentativa:** a thread anterior é revogada (ou confirmada como concluída) antes do reset do worktree. Um reset que falha (`RemoveAll` bloqueado) gera `workspace_reset_failed` e falha o ticket, em vez de ficar em laço.
 - **Desligamento e timeout global:** cada tentativa do barramento é revogada (motivo `shutdown`). Se o `Revoke` devolver `completed`, o resultado é processado; senão a tentativa volta para `pending` com `Attempts--`. O revoke é limitado pelo busy timeout de 5 s do store.
-- **Reinício:** o `recover` revoga a `bus_thread` de todo ticket em `running` e aceita um resultado `completed`. Se o revoke falhar (canal expirado, store ocupado), o ticket volta para `pending`, a `bus_thread` é mantida, `bus_write_failed` é registrado e o revoke é tentado de novo no próximo início, antes de o ticket ser atribuído outra vez.
+- **Reinício:** o `recover` revoga a `bus_thread` de todo ticket em `running`. *Neste corte* um resultado que uma execução anterior deixou concluído não é aceito: o ticket volta para `pending` e a próxima tentativa refaz o trabalho. Se o revoke falhar (canal expirado, store ocupado), o ticket volta para `pending`, a `bus_thread` é mantida, `bus_write_failed` é registrado e o revoke é tentado de novo no próximo início, antes de o ticket ser atribuído outra vez.
 - **Canal expirado:** `Claim` e `Message` continuam funcionando.
   - Uma tentativa em andamento cujo claim mostra um resultado é aceita.
   - As outras voltam para `pending` com a `bus_thread` mantida.

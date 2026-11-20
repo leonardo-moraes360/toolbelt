@@ -1670,7 +1670,7 @@ tb router config
 
 | Subcomando | Flags | Descrição |
 |------------|-------|-----------|
-| `run` | `--workers <n>`, `--strategy fifo\|priority\|dependency`, `--agent-cmd "<cmd>"`, `--once`, `--dry-run`, `--allow-unsandboxed` | Executa até esvaziar a fila; Ctrl-C devolve tickets `running` para `pending` |
+| `run` | `--workers <n>`, `--strategy fifo\|priority\|dependency`, `--agent-cmd "<cmd>"`, `--once`, `--dry-run`, `--check`, `--allow-unsandboxed` | Executa até esvaziar a fila; Ctrl-C devolve tickets `running` para `pending`. Com `router.bus` (só config global ou `-c`) acrescenta slots do barramento `b1..bN` que entregam tickets a workers com `router_tasks` num canal do barramento; `max_workers: 0` = só barramento (sem `agent_cmd`, sem Landlock). `--check` valida a sessão e o canal do barramento. Spec: [bus-router.md](bus-router.md) |
 | `status` | — | Lê `state.json`; detecta estado obsoleto (PID morto) |
 | `config` | — | Imprime a configuração efetiva (`router:`) |
 
@@ -1760,7 +1760,7 @@ tb watchdog kill w1 --reason "travado em loop"
 |------------|-------|-----------|
 | `status` | `--worker <id>` | Estado dos workers e contagem de alertas por tipo |
 | `alerts` | `--since <10m\|2h\|RFC3339>`, `--kind <tipo>`, `--limit <n>` | Lista `alerts.jsonl` |
-| `kill <worker>` | `--reason` | Grava `control/kill-<worker>.json`; o router cancela o ticket em execução (conta como tentativa). Erro se não há router em execução |
+| `kill <worker>` | `--reason` | Grava `control/kill-<worker>.json`; o router cancela o ticket em execução (conta como tentativa). Erro se não há router em execução. Num slot do barramento (`bN`) o router revoga a thread; o harness remoto para o próprio filho |
 
 **Alertas:**
 

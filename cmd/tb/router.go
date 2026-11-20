@@ -50,6 +50,12 @@ func loadRouterConfig(root string) (config.RouterConfig, *config.Config, error) 
 			cfg = fc
 		}
 	}
+	// router.bus only from trusted config: an agent that can write the
+	// repository must not repoint the router (docs/bus-router.md, B4b).
+	cfg.Router.Bus = config.RouterBus{}
+	if trusted, err := config.LoadTrusted(); err == nil {
+		cfg.Router.Bus = trusted.Router.Bus
+	}
 	if err := cfg.Router.Validate(); err != nil {
 		return cfg.Router, cfg, err
 	}
@@ -68,6 +74,7 @@ var routerRunCmd = &cobra.Command{
 		once, _ := f.GetBool("once")
 		allow, _ := f.GetBool("allow-unsandboxed")
 		dry, _ := f.GetBool("dry-run")
+		check, _ := f.GetBool("check")
 
 		root, err := routerRoot()
 		if err != nil {
@@ -101,6 +108,13 @@ var routerRunCmd = &cobra.Command{
 		})
 		if err != nil {
 			return err
+		}
+		if check {
+			if err := r.CheckBus(); err != nil {
+				return err
+			}
+			fmt.Printf("ok: router bus %s/%s ready\n", rc.Bus.Channel, rc.Bus.As)
+			return nil
 		}
 		if dry {
 			plan, err := r.Plan()
@@ -230,7 +244,8 @@ func renderRouterStatus(rep *router.StatusReport, onlyWorker string) {
 	fmt.Printf("  strategy: %s  started: %s\n", rep.Strategy, rep.StartedAt.Local().Format(time.RFC3339))
 	fmt.Printf("  paused: %s  drain: %s\n", yesNo(rep.Paused), yesNo(rep.Draining))
 	fmt.Printf("  queue: ready %d, blocked %d, running %d\n", rep.Queue.Ready, rep.Queue.Blocked, rep.Queue.Running)
-	for _, w := range rep.Workers {
+	for i := range rep.Workers {
+		w := &rep.Workers[i]
 		if onlyWorker != "" && w.ID != onlyWorker {
 			continue
 		}
@@ -239,6 +254,12 @@ func renderRouterStatus(rep *router.StatusReport, onlyWorker string) {
 			line += " " + w.Ticket
 			if w.StartedAt != nil {
 				line += " since " + w.StartedAt.Local().Format("15:04:05")
+			}
+		}
+		if w.Thread != "" {
+			line += fmt.Sprintf("  bus %s %s", w.Phase, w.Thread)
+			if w.Agent != "" {
+				line += " by " + w.Agent
 			}
 		}
 		if len(w.Subscriptions) > 0 {
@@ -287,5 +308,6 @@ func init() {
 	routerRunCmd.Flags().Bool("once", false, "one scheduling round; exits when the started tickets finish")
 	routerRunCmd.Flags().Bool("allow-unsandboxed", false, "explicit opt-in to run without Landlock isolation")
 	routerRunCmd.Flags().Bool("dry-run", false, "shows the scheduling plan without executing")
+	routerRunCmd.Flags().Bool("check", false, "validates the bus session and channel (router.bus) and exits")
 	routerCmd.AddCommand(routerRunCmd, routerStatusCmd, routerConfigCmd)
 }
