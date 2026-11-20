@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `internal/mdparse` (vault Phase A slice 1): leaf Markdown parser with `Slugify`, fence- and frontmatter-aware ATX `Headings`, `SplitFrontmatter`, Obsidian `Wikilinks` (labels, `\|` in tables, fragments, embeds, outside inline code) and `NormalizeForSearch`; no user-facing command yet
 
 ### Changed
+- Bus B2 draft spec (`docs/bus-lease.md`): per-agent lease with heartbeats, epoch fencing on claims (`complete` takes the epoch), on-demand watchdog sending `lease_expired` from the broker-only `system:watchdog`, heartbeats from the harness and from `tb mcp`, and a v1 → v2 store migration
 - The vault is versioned: `.toolbelt/vault/` left `LocalCacheExcludePatterns`; `tb init` excludes only `<vault.path>/.obsidian/`, creates a custom `vault.path`, warns `vault_gitignored` when a `.gitignore` rule ignores the vault, and repairs an exclude section whose end marker was lost without dropping the user's lines. This repository's `.gitignore` now ignores only `.toolbelt/vault/.obsidian/`
 - `tb graph` Markdown sections: `#` lines inside the frontmatter or a fenced code block are no longer sections, and a closing `#` sequence is dropped from the heading text (ATX rules). A Markdown file that starts with a `---` thematic break is now read as frontmatter up to the next `---` or `...` line, as in Obsidian
 

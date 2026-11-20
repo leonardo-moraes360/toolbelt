@@ -258,7 +258,7 @@ tb bus recv --channel feature-x --as grok-1 --wait 20s
 ### Barramento multi-vendor (`tb bus`, [ADR-013](adr/013-barramento-multi-vendor.md))
 - [x] B0 — spec `bus/0.1`: envelope, Agent Card e convite ([docs/pt-BR/bus-protocolo.md](bus-protocolo.md))
 - [x] B1 — store SQLite, CLI + MCP, convite de uso único, `join`/`send`/`recv`/`claim`/`complete`/`log`
-- [ ] B2 — lease, heartbeat e watchdog no barramento
+- [ ] B2 — lease, heartbeat e watchdog no barramento ([spec em rascunho](bus-lease.md))
 - [ ] B3 (parcial) — `tb bus run` com adapters `exec` e `harness` feito ([docs/pt-BR/bus-harness.md](bus-harness.md)); falta adapter `notify` e `tb bus discover`
 - [ ] B4 — router/board da Fase 3 sobre o barramento
 

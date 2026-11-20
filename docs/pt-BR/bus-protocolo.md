@@ -111,4 +111,4 @@ Declarado no `join`. É informativo: **capacidade não é permissão**; o papel 
 
 ## Fora do B1
 
-Lease com expiração, heartbeat e Watchdog (B2); `tb bus discover` e o restante do B3 (`tb bus run` com adapters `exec`/`harness` já existe, spec em [bus-harness.md](bus-harness.md)); integração com o Router (B4).
+Lease com expiração, heartbeat e Watchdog (B2, spec em rascunho em [bus-lease.md](bus-lease.md)); `tb bus discover` e o restante do B3 (`tb bus run` com adapters `exec`/`harness` já existe, spec em [bus-harness.md](bus-harness.md)); integração com o Router (B4).

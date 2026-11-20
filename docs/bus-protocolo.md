@@ -111,4 +111,4 @@ Declared on `join`. It is informational: **capability is not permission**; the r
 
 ## Out of B1
 
-Expiring lease, heartbeat and Watchdog (B2); `tb bus discover` and the rest of B3 (`tb bus run` with `exec`/`harness` adapters already exists, spec in [bus-harness.md](bus-harness.md)); Router integration (B4).
+Expiring lease, heartbeat and Watchdog (B2, draft spec in [bus-lease.md](bus-lease.md)); `tb bus discover` and the rest of B3 (`tb bus run` with `exec`/`harness` adapters already exists, spec in [bus-harness.md](bus-harness.md)); Router integration (B4).
