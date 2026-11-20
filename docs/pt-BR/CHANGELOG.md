@@ -9,6 +9,9 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Não Lançado]
 
+### Corrigido
+- Build no Windows: o `tb egm receipt` usava `syscall.O_NOFOLLOW`, que não existe no Windows, então o build da release v0.0.7 falhou e nenhuma release v0.0.7 foi publicada; a flag agora é só unix (o `os.Root` continua confinando a escrita).
+
 ## [0.0.7] - 2026-11-20
 
 ### Adicionado

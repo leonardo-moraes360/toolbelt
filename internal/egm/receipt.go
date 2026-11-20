@@ -9,7 +9,6 @@ import (
 	"path"
 	"sort"
 	"strings"
-	"syscall"
 )
 
 // Receipt (T-R1, docs/specs/egm-trust.md): the author's claims about a
@@ -298,7 +297,7 @@ func writeReceiptFile(root, rel string, data []byte) error {
 		return errorf(ExitError, "receipt_path_untrusted", "%s is not a regular file", rel)
 	}
 	tmp := path.Join(dir, "."+path.Base(rel)+".tmp")
-	f, err := r.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_TRUNC|syscall.O_NOFOLLOW, 0o644)
+	f, err := r.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_TRUNC|oNoFollow, 0o644)
 	if err != nil {
 		return err
 	}
