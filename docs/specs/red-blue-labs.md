@@ -2,7 +2,23 @@
 
 # Spec: red/blue isolated labs (`tb lab`)
 
-Author: toolbelt · Status: proposed (not implemented) · Date: 2026-11-20 · Decision: [ADR-017](../adr/017-appsec-red-blue-labs.md) · Companion: [AppSec playbooks](appsec-playbooks.md)
+Author: toolbelt · Status: Phase 1 implemented (sandbox tier) · Date: 2026-11-20 · Decision: [ADR-017](../adr/017-appsec-red-blue-labs.md) · Companion: [AppSec playbooks](appsec-playbooks.md)
+
+## Implementation status (Phase 1)
+
+The **sandbox tier** ships: `tb lab new|list|status|up|run|logs|down|verify`, the `labs/<name>/lab.yaml`
+manifest, tier resolution, and a seed `labs/sqli/lab.yaml` whose `run` reports `attack=reproduced
+defense=detected`. The sandbox-tier target is an **in-process, pure-Go scenario** (no containers): it
+reproduces the vulnerability class in miniature and exposes the construct a static blue check inspects,
+so a lab proves the same detector `tb blue check` would run. Scenarios open no sockets and read no host
+env (enforced by an import-guard test), satisfying the no-egress / no-host-secret defaults by
+construction. The **Podman topology tier fails closed**: `tb lab up --tier podman` (or `auto` resolving
+to podman) refuses with a remediation when rootless Podman is absent, and never silently downgrades.
+
+Deferred to **Phase 2** (needs a host with rootless Podman): the target/red/blue topology driver on an
+internal network, cgroups v2 resource caps (A6) and daemonless/rootless provisioning (A7), the
+network-namespace egress-deny test (A2 in full), in-repo Containerfile seed images, `tb lab export`, MCP
+`tb_lab_*` tools, and a `tb stack` lab op.
 
 ## Overview
 

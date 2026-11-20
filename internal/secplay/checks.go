@@ -170,6 +170,27 @@ func (c *Corpus) blueForClass(class string) (*Playbook, error) {
 	return pb, nil
 }
 
+// ChecksForClass returns a copy of the blue checks declared for class, erroring
+// on an ambiguous class or one with no checks. It is the read-only accessor used
+// by callers (e.g. the lab runner) that need a class's detection patterns without
+// writing them into secchecks.yaml via Apply.
+func (c *Corpus) ChecksForClass(class string) ([]Check, error) {
+	pb, err := c.blueForClass(class)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Check, len(pb.Checks))
+	copy(out, pb.Checks)
+	// Deep-copy the one slice field so a caller mutating a returned check's
+	// globs cannot reach back into the shared corpus.
+	for i := range out {
+		if g := out[i].IncludeGlobs; g != nil {
+			out[i].IncludeGlobs = append([]string(nil), g...)
+		}
+	}
+	return out, nil
+}
+
 // mergeChecks folds checks into sc (deduped by ID), recording what changed.
 func mergeChecks(sc *SecChecks, checks []Check, class, path string, dryRun bool) *ApplyResult {
 	idx := make(map[string]int, len(sc.Checks))
