@@ -27,6 +27,7 @@ func RegisterParityTools() {
 	registerGuardTools()
 	registerStackTools()
 	registerEgmTools()
+	registerVaultTools()
 }
 
 func registerMemTools() {

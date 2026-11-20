@@ -10,10 +10,12 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 ## [Não Lançado]
 
 ### Adicionado
+- `tb vault new` e `tb vault search`, e as tools MCP `tb_vault_list|show|search|links|backlinks|check|new` (fatia 3 da Fase A do vault): o `new` grava uma nota com o nome do slug do título redigido, frontmatter codificado em YAML, `O_EXCL`, sem symlink no `--dir`, e o `tb_vault_new` grava sempre `source: inferred` com `confidence` obrigatória; o `search` casa sem diferenciar maiúsculas e acentos sobre o texto redigido de cada nota
 - `tb vault list|show|links|backlinks|check` e a op `vault` do `tb stack` (fatia 2 da Fase A do vault, só leitura): raiz e config lidas de `<raiz>/.toolbelt/config.yaml`; varredura segura (sem seguir symlinks, diretórios com ponto pulados, FIFOs nunca abertos, `O_NOFOLLOW|O_NONBLOCK` + `fstat`, `vault.max_note_bytes`); frontmatter tipado com número de linha; resolução de wikilinks do Obsidian com caminho parcial, anexos e `ambiguous_link` como erro; texto das notas dentro de objetos `data` e redigido; saída determinística. Chaves novas `vault.max_note_bytes`, `vault.types`, `vault.graph` com `VaultConfig.Validate`
 - `internal/mdparse` (fatia 1 da Fase A do vault): parser Markdown folha com `Slugify`, `Headings` ATX cientes de cerca e de frontmatter, `SplitFrontmatter`, `Wikilinks` do Obsidian (rótulos, `\|` em tabela, fragmentos, embeds, fora de código inline) e `NormalizeForSearch`; ainda sem comando para o usuário
 
 ### Alterado
+- O vault passa a ser versionado: `.toolbelt/vault/` saiu de `LocalCacheExcludePatterns`; o `tb init` exclui só `<vault.path>/.obsidian/`, cria um `vault.path` customizado, avisa `vault_gitignored` quando uma regra do `.gitignore` ignora o vault e repara uma seção de exclude cujo marcador de fim se perdeu, sem descartar as linhas do usuário. O `.gitignore` deste repositório passa a ignorar só `.toolbelt/vault/.obsidian/`
 - Seções Markdown do `tb graph`: linhas `#` dentro do frontmatter ou de bloco de código cercado deixam de ser seção, e uma sequência `#` de fechamento sai do texto do heading (regras ATX). Um arquivo Markdown que começa com uma quebra temática `---` passa a ser lido como frontmatter até a próxima linha `---` ou `...`, como no Obsidian
 
 ## [0.0.7] - 2026-11-20

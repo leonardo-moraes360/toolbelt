@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"strconv"
 	"strings"
@@ -14,7 +15,12 @@ import (
 	"github.com/leonardo-moraes360/toolbelt/internal/vault"
 )
 
-var vaultFilter vault.Filter
+var (
+	vaultFilter     vault.Filter
+	vaultNew        vault.NewOptions
+	vaultConfidence float64
+	vaultSearchMax  int
+)
 
 var vaultCmd = &cobra.Command{
 	Use:   "vault",
@@ -90,12 +96,60 @@ var vaultCheckCmd = &cobra.Command{
 	},
 }
 
+var vaultNewCmd = &cobra.Command{
+	Use:   "new <title>",
+	Short: "Creates a note (never overwrites); --source defaults to manual, inferred needs --confidence",
+	Example: `  tb vault new "SQLite adiado" --type decision --tag storage
+  echo "details" | tb vault new "Context of X" --body -
+  tb vault new "Hypothesis" --source inferred --confidence 0.6 --dir hypotheses`,
+	Args: cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		o := vaultNew
+		o.Title = args[0]
+		if cmd.Flags().Changed("confidence") {
+			c := vaultConfidence
+			o.Confidence = &c
+		}
+		return runVault(func(v *vault.Vault) (any, int, error) {
+			if o.Body == "-" {
+				b, err := io.ReadAll(io.LimitReader(os.Stdin, v.Cfg.MaxNoteBytes+1))
+				if err != nil {
+					return nil, 0, err
+				}
+				o.Body = string(b)
+			}
+			r, err := v.New(&o)
+			return r, 0, err
+		}, printVaultNew)
+	},
+}
+
+var vaultSearchCmd = &cobra.Command{
+	Use:   "search <query>",
+	Short: "Case- and accent-insensitive search over redacted title, aliases, tags and body",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return runVault(func(v *vault.Vault) (any, int, error) {
+			r, err := v.Search(args[0], vaultSearchMax)
+			return r, 0, err
+		}, printVaultSearch)
+	},
+}
+
 func init() {
+	nf := vaultNewCmd.Flags()
+	nf.StringVar(&vaultNew.Type, "type", "", "one of vault.types (default fact)")
+	nf.StringSliceVar(&vaultNew.Tags, "tag", nil, "tag (repeatable)")
+	nf.StringVar(&vaultNew.Source, "source", "", "manual (default), extracted or inferred")
+	nf.Float64Var(&vaultConfidence, "confidence", 0, "confidence in [0, 1] (required with --source inferred)")
+	nf.StringVar(&vaultNew.Dir, "dir", "", "subdirectory of the vault")
+	nf.StringVar(&vaultNew.Body, "body", "", "body text after the title heading; - reads stdin")
+	vaultSearchCmd.Flags().IntVar(&vaultSearchMax, "limit", 20, "maximum hits")
 	f := vaultListCmd.Flags()
 	f.StringVar(&vaultFilter.Type, "type", "", "only notes of this type")
 	f.StringVar(&vaultFilter.Tag, "tag", "", "only notes with this tag")
 	f.StringVar(&vaultFilter.Source, "source", "", "only notes with this source (manual, extracted, inferred)")
-	vaultCmd.AddCommand(vaultListCmd, vaultShowCmd, vaultLinksCmd, vaultBacklinksCmd, vaultCheckCmd)
+	vaultCmd.AddCommand(vaultNewCmd, vaultListCmd, vaultShowCmd, vaultSearchCmd, vaultLinksCmd, vaultBacklinksCmd, vaultCheckCmd)
 	rootCmd.AddCommand(vaultCmd)
 }
 
@@ -240,4 +294,20 @@ func printVaultCheck(v any) {
 		fmt.Printf("%s: %s %s %s\n", loc, is.Level, is.Code, detail)
 	}
 	fmt.Printf("tb vault check: %d notes, %d errors, %d warnings\n", r.Notes, r.Errors, r.Warnings)
+}
+
+func printVaultNew(v any) {
+	r := v.(*vault.NewResult)
+	fmt.Println(one(r.File))
+	if r.Redacted {
+		fmt.Println("note: secret-like text was redacted before writing")
+	}
+}
+
+func printVaultSearch(v any) {
+	r := v.(*vault.SearchResult)
+	for i := range r.Hits {
+		h := &r.Hits[i]
+		fmt.Printf("%s:%d\t%s\t%s\n", one(h.File), h.Line, one(h.Data.Title), one(h.Data.Snippet))
+	}
 }

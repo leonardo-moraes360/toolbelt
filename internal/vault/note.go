@@ -64,15 +64,16 @@ type Note struct {
 	Links      []mdparse.Wikilink
 	Issues     []Issue
 
-	line   int  // the frontmatter line being parsed
-	unread bool // too large or not regular: linkable, never parsed
+	line    int    // the frontmatter line being parsed
+	unread  bool   // too large or not regular: linkable, never parsed
+	rawHead string // the source, for line arithmetic (search)
 }
 
 // parseNote parses src as the note at file (repository-relative) with note
 // path p. It never fails: problems become Issues and the affected fields
 // keep their defaults (R4).
 func parseNote(file, p, src string, types []string) *Note {
-	n := &Note{Path: p, File: file, Name: p[strings.LastIndex(p, "/")+1:], Type: "fact", Source: SourceManual, Body: src}
+	n := &Note{Path: p, File: file, Name: p[strings.LastIndex(p, "/")+1:], Type: "fact", Source: SourceManual, Body: src, rawHead: src}
 	fm, ok, err := mdparse.SplitFrontmatter(src)
 	switch {
 	case err != nil:

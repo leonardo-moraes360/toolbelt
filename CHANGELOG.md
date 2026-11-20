@@ -10,10 +10,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- `tb vault new` and `tb vault search`, and the MCP tools `tb_vault_list|show|search|links|backlinks|check|new` (vault Phase A slice 3): `new` writes a note named after the slug of the redacted title, with YAML-encoded frontmatter, `O_EXCL`, no symlinks in `--dir`, and `tb_vault_new` always writes `source: inferred` with a required `confidence`; `search` matches case- and accent-insensitively over each note's redacted text
 - `tb vault list|show|links|backlinks|check` and the `vault` op of `tb stack` (vault Phase A slice 2, read-only): root and config read from `<root>/.toolbelt/config.yaml`; safe scan (no symlinks followed, dot directories skipped, FIFOs never opened, `O_NOFOLLOW|O_NONBLOCK` + `fstat`, `vault.max_note_bytes`); typed frontmatter with line numbers; Obsidian wikilink resolution with partial paths, attachments and `ambiguous_link` as an error; note text inside `data` objects and redacted; deterministic output. New config keys `vault.max_note_bytes`, `vault.types`, `vault.graph` with `VaultConfig.Validate`
 - `internal/mdparse` (vault Phase A slice 1): leaf Markdown parser with `Slugify`, fence- and frontmatter-aware ATX `Headings`, `SplitFrontmatter`, Obsidian `Wikilinks` (labels, `\|` in tables, fragments, embeds, outside inline code) and `NormalizeForSearch`; no user-facing command yet
 
 ### Changed
+- The vault is versioned: `.toolbelt/vault/` left `LocalCacheExcludePatterns`; `tb init` excludes only `<vault.path>/.obsidian/`, creates a custom `vault.path`, warns `vault_gitignored` when a `.gitignore` rule ignores the vault, and repairs an exclude section whose end marker was lost without dropping the user's lines. This repository's `.gitignore` now ignores only `.toolbelt/vault/.obsidian/`
 - `tb graph` Markdown sections: `#` lines inside the frontmatter or a fenced code block are no longer sections, and a closing `#` sequence is dropped from the heading text (ATX rules). A Markdown file that starts with a `---` thematic break is now read as frontmatter up to the next `---` or `...` line, as in Obsidian
 
 ## [0.0.7] - 2026-11-20

@@ -2,7 +2,7 @@
 
 # Spec: Obsidian-compatible Markdown vault, Phase A (`tb vault`)
 
-Author: toolbelt · Status: Draft (round 3: refreshed against main, fresh-context review applied, Q1 resolved by [ADR-016](../adr/016-vault-fase-a.md); Q4 open); implementation slices 1 (mdparse) and 2 (read-only vault) done · Date: 2026-11-20 · Decision: [ADR-016](../adr/016-vault-fase-a.md) · Originating decisions: [ADR-006](../adr/006-inspiracoes-graphify-obsidian.md), [ADR-003](../adr/003-sqlite-fts5-grafo.md) · Related: [ADR-010](../adr/010-invariantes-fora-compactacao.md), [ADR-011](../adr/011-grafo-sob-demanda.md)
+Author: toolbelt · Status: Draft (round 3: refreshed against main, fresh-context review applied, Q1 resolved by [ADR-016](../adr/016-vault-fase-a.md); Q4 open); implementation slices 1 (mdparse), 2 (read-only vault) and 3 (write, search, MCP, versioning) done · Date: 2026-11-20 · Decision: [ADR-016](../adr/016-vault-fase-a.md) · Originating decisions: [ADR-006](../adr/006-inspiracoes-graphify-obsidian.md), [ADR-003](../adr/003-sqlite-fts5-grafo.md) · Related: [ADR-010](../adr/010-invariantes-fora-compactacao.md), [ADR-011](../adr/011-grafo-sob-demanda.md)
 
 ## Overview
 
