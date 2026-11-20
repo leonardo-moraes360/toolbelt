@@ -28,9 +28,9 @@ func boardStatus(t *testing.T, s *Store, owner Member) []Message {
 	msgs, err := s.Recv(context.Background(), owner, RecvOptions{Peek: true, Limit: 500})
 	must(t, err)
 	var out []Message
-	for _, m := range msgs {
-		if m.Type == TypeTaskStatus && m.From == WatchdogSender {
-			out = append(out, m)
+	for i := range msgs {
+		if msgs[i].Type == TypeTaskStatus && msgs[i].From == WatchdogSender {
+			out = append(out, msgs[i])
 		}
 	}
 	return out

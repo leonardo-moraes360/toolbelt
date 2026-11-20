@@ -207,6 +207,12 @@ func registerBusTools() {
 		},
 		Handler: handleBusComplete,
 	})
+	registerBusLeaseTools(chProp)
+}
+
+// registerBusLeaseTools registers the B2 tools (docs/bus-lease.md R4, R8);
+// the watchdog is CLI only.
+func registerBusLeaseTools(chProp Property) {
 	Register(&Tool{
 		Name: "tb_bus_heartbeat",
 		Description: "Renews this connection's lease and lists held threads (with epochs) and lost ones; tb mcp already heartbeats bound sessions in the background " +
