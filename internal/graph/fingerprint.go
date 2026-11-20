@@ -25,38 +25,57 @@ func SourceFingerprint(root string, opts *BuildOptions) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	skip := map[string]bool{}
+	fw := &fpWalker{root: abs, opts: opts, skip: map[string]bool{}}
 	for _, d := range opts.SkipDirs {
-		skip[d] = true
+		fw.skip[d] = true
 	}
-	var lines []string
-	err = filepath.Walk(abs, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		if info.IsDir() {
-			if path != abs && skip[info.Name()] {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if info.Size() > opts.MaxFileBytes {
-			return nil
-		}
-		if len(indexersFor(path, opts)) == 0 {
-			return nil
-		}
-		rel, _ := filepath.Rel(abs, path)
-		lines = append(lines, fmt.Sprintf("%s|%d|%d",
-			filepath.ToSlash(rel), info.ModTime().UnixNano(), info.Size()))
-		return nil
-	})
-	if err != nil {
+	if v, index := resolveVault(abs, opts); v != nil {
+		fw.vaultRel, fw.indexNotes = v.Rel, index
+	}
+	if err := filepath.Walk(abs, fw.visit); err != nil {
 		return "", err
 	}
+	lines := fw.lines
 	sort.Strings(lines)
 	sum := sha256.Sum256([]byte(strings.Join(lines, "\n")))
 	return hex.EncodeToString(sum[:]), nil
+}
+
+// fpWalker collects one fingerprint line per indexed file.
+type fpWalker struct {
+	root, vaultRel string
+	indexNotes     bool
+	opts           *BuildOptions
+	skip           map[string]bool
+	lines          []string
+}
+
+func (fw *fpWalker) visit(path string, info os.FileInfo, err error) error {
+	if err != nil {
+		return err
+	}
+	rel, _ := filepath.Rel(fw.root, path)
+	if info.IsDir() {
+		if path != fw.root && (fw.skip[info.Name()] || vaultHidden(fw.vaultRel, rel)) {
+			return filepath.SkipDir
+		}
+		return nil
+	}
+	if inVault(fw.vaultRel, rel) {
+		if fw.indexNotes && !vaultHidden(fw.vaultRel, rel) {
+			// Every vault entry counts (a note, an attachment or a symlink
+			// changes link states), whatever its size.
+			fw.lines = append(fw.lines, fmt.Sprintf("%s|%d|%d|%s",
+				filepath.ToSlash(rel), info.ModTime().UnixNano(), info.Size(), info.Mode().Type()))
+		}
+		return nil
+	}
+	if info.Size() > fw.opts.MaxFileBytes || len(indexersFor(path, fw.opts)) == 0 {
+		return nil
+	}
+	fw.lines = append(fw.lines, fmt.Sprintf("%s|%d|%d",
+		filepath.ToSlash(rel), info.ModTime().UnixNano(), info.Size()))
+	return nil
 }
 
 func (s *Store) CheckStale(root string, opts *BuildOptions) (bool, error) {

@@ -1061,7 +1061,7 @@ tb vault check                # exit 1 on errors; warnings keep exit 0
 - **`new`:** the file name is the slug of the redacted title (up to 80 bytes) in `--dir`; it never overwrites (`note_exists`, exit 1), refuses a title with control characters or no letters (`bad_title`), and a `--dir` that leaves the vault or crosses a symlink (`dir_outside_vault`). The frontmatter is generated with a YAML encoder; title and body are redacted before writing (`redacted: true`).
 - **`search`:** case- and accent-insensitive substring over title, aliases, tags and body, after redacting each note, so a query never probes a secret; one hit per note with the line and a snippet of up to 200 runes.
 - **MCP:** `tb_vault_list`, `tb_vault_show`, `tb_vault_search`, `tb_vault_links`, `tb_vault_backlinks`, `tb_vault_check` (read-only) and `tb_vault_new`, which always writes `source: inferred` and requires `confidence`.
-- Not yet: the graph integration (next slice of the spec).
+- **Graph:** with `TB_GRAPH=on`, `tb graph index` adds each note as `note:<path>` (title redacted, provenance from `source`/`confidence`), its headings as sections, resolved wikilinks as `links` edges and tags as `tag:<tag>` nodes; `tb graph explain note:<path>` and `tb graph path` work on them. The vault is never read by the generic Markdown indexer (which follows symlinks); `vault.graph: false` keeps notes out.
 
 ### `tb verify` — Adversarial Verification (✓ Phase 1/2)
 

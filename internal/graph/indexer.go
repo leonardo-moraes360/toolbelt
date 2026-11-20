@@ -28,6 +28,10 @@ type BuildOptions struct {
 	Frameworks   []string
 	MaxFileBytes int64
 	SkipDirs     []string
+
+	// vaultRel is the vault directory (root-relative) resolved for one
+	// build; the per-file indexers skip it and the vault pass reads it.
+	vaultRel string
 }
 
 func DefaultBuildOptions() BuildOptions {
@@ -36,7 +40,7 @@ func DefaultBuildOptions() BuildOptions {
 			"go", "javascript", "python", "java", "kotlin", "csharp",
 			"cpp", "rust", "php", "ruby", "swift", "shell",
 		},
-		Docs: []string{"markdown", "html", "txt"},
+		Docs: []string{"markdown", "vault", "html", "txt"},
 		Frameworks: []string{
 			"react", "vue", "svelte", "astro", "angular", "routes", "mdx",
 		},
@@ -149,12 +153,19 @@ func BuildFromRootOpts(root string, opts *BuildOptions) (*Index, error) {
 	for _, d := range opts.SkipDirs {
 		skip[d] = true
 	}
+	v, indexNotes := resolveVault(abs, opts)
+	if v != nil {
+		opts.vaultRel = v.Rel
+	}
 
 	err = filepath.Walk(abs, func(path string, info os.FileInfo, err error) error {
 		return walkSourceFile(abs, path, info, err, nodes, &edges, opts, skip)
 	})
 	if err != nil {
 		return nil, err
+	}
+	if indexNotes {
+		indexVault(v, nodes, &edges)
 	}
 
 	edges = resolveSoftMentions(nodes, edges)
@@ -199,11 +210,14 @@ func walkSourceFile(
 	if info.Size() > opts.MaxFileBytes {
 		return nil
 	}
+	rel, _ := filepath.Rel(root, path)
+	if inVault(opts.vaultRel, rel) {
+		return nil // the vault pass reads these, without following symlinks (R21)
+	}
 	idxs := indexersFor(path, opts)
 	if len(idxs) == 0 {
 		return nil
 	}
-	rel, _ := filepath.Rel(root, path)
 	for _, lang := range idxs {
 		fileNodes, fileEdges, err := lang.IndexFile(root, rel)
 		if err != nil {

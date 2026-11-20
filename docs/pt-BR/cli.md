@@ -1074,7 +1074,7 @@ tb vault check                # exit 1 com erros; avisos mantêm exit 0
 - **`new`:** o nome do arquivo é o slug do título redigido (até 80 bytes) em `--dir`; nunca sobrescreve (`note_exists`, exit 1), recusa título com caractere de controle ou sem letras (`bad_title`) e um `--dir` que sai do vault ou passa por symlink (`dir_outside_vault`). O frontmatter é gerado por um encoder YAML; título e corpo são redigidos antes de gravar (`redacted: true`).
 - **`search`:** substring sem diferenciar maiúsculas e acentos em título, aliases, tags e corpo, depois de redigir cada nota, então uma consulta nunca sonda um segredo; um acerto por nota, com a linha e um trecho de até 200 runas.
 - **MCP:** `tb_vault_list`, `tb_vault_show`, `tb_vault_search`, `tb_vault_links`, `tb_vault_backlinks`, `tb_vault_check` (só leitura) e `tb_vault_new`, que grava sempre `source: inferred` e exige `confidence`.
-- Ainda não: a integração com o grafo (próxima fatia da spec).
+- **Grafo:** com `TB_GRAPH=on`, o `tb graph index` acrescenta cada nota como `note:<caminho>` (título redigido, proveniência de `source`/`confidence`), os headings dela como seções, wikilinks resolvidos como arestas `links` e tags como nós `tag:<tag>`; `tb graph explain note:<caminho>` e `tb graph path` funcionam sobre eles. O vault nunca é lido pelo indexador Markdown genérico (que segue symlinks); `vault.graph: false` deixa as notas de fora.
 
 ### `tb verify` — Verificação Adversarial (✓ Fase 1/2)
 
