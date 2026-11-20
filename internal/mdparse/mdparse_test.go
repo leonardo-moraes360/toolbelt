@@ -179,15 +179,22 @@ func TestFrontmatterBOMAndMarkers(t *testing.T) {
 }
 
 // TestWikilinksManyOnOneLine guards the linear column count (a 256 KiB
-// note can hold ~40k links on one line).
+// note can hold ~40k links on one line): 4x the links must not cost
+// anywhere near the 16x a quadratic count would. A ratio, not an absolute
+// time, so a slow CI runner does not flake it.
 func TestWikilinksManyOnOneLine(t *testing.T) {
-	line := strings.Repeat("é [[a]] ", 40000)
-	start := time.Now()
-	got := Wikilinks(line)
-	if len(got) != 40000 || got[39999].Col != 39999*8+3 {
-		t.Fatalf("%d links, last col %d", len(got), got[len(got)-1].Col)
+	run := func(n int) time.Duration {
+		line := strings.Repeat("é [[a]] ", n)
+		start := time.Now()
+		got := Wikilinks(line)
+		d := time.Since(start)
+		if len(got) != n || got[n-1].Col != (n-1)*8+3 {
+			t.Fatalf("%d links, last col %d", len(got), got[len(got)-1].Col)
+		}
+		return d
 	}
-	if d := time.Since(start); d > 300*time.Millisecond {
-		t.Fatalf("too slow: %s", d)
+	small, big := run(10000), run(40000)
+	if big > 10*small && big > 200*time.Millisecond {
+		t.Fatalf("not linear: 10k links %s, 40k links %s", small, big)
 	}
 }
