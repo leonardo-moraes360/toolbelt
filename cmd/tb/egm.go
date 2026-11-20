@@ -100,6 +100,22 @@ var egmStatusCmd = &cobra.Command{
 	},
 }
 
+var egmReceiptCmd = &cobra.Command{
+	Use:   "receipt <doc>",
+	Short: "Writes the committed receipt of the author's claims, read by the CI mode (needs PASS or PASS_PARTIAL)",
+	Long: `tb egm receipt writes .toolbelt/egm/receipts/<slug>.json: the document and
+source hashes plus the claims (lineages at major or above that the arbiter
+withdrew, that were declined or force-settled), each with lines in the current
+document (docs/specs/egm-trust.md, T-R1). Commit it with the document. A
+receipt is a claim, not a proof: the CI mode re-checks every field.`,
+	Args: cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return runEgm(cmd, func(ctx context.Context, o egm.Options) (*egm.Outcome, error) {
+			return egm.WriteReceipt(ctx, &o)
+		}, args[0])
+	},
+}
+
 func init() {
 	for _, c := range []*cobra.Command{egmReviewCmd, egmLoopNextCmd} {
 		c.Flags().StringVar(&egmEngine, "engine", egm.EngineAuto, "auto | llm | deterministic")
@@ -118,7 +134,7 @@ func init() {
 	f.StringVar(&egmResolve.Evidence, "evidence", "", "path:line of the contest evidence")
 
 	egmLoopCmd.AddCommand(egmLoopNextCmd)
-	egmCmd.AddCommand(egmReviewCmd, egmLoopCmd, egmResolveCmd, egmStatusCmd)
+	egmCmd.AddCommand(egmReviewCmd, egmLoopCmd, egmResolveCmd, egmStatusCmd, egmReceiptCmd)
 	rootCmd.AddCommand(egmCmd)
 }
 

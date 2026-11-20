@@ -2,7 +2,7 @@
 
 # Spec: EGM trust, Phase A.2 (CI as the trust boundary)
 
-Author: toolbelt · Status: Draft, round 2 (rewritten after Phase A, one fresh-context review applied) · Date: 2026-11-19 · Decision: [ADR-015](../adr/015-egm-nativo.md) · Depends on: [core](egm-nativo.md) (Phase A, implemented)
+Author: toolbelt · Status: Draft, round 2 (rewritten after Phase A, one fresh-context review applied); implementation slice 1 (receipt) done · Date: 2026-11-19 · Decision: [ADR-015](../adr/015-egm-nativo.md) · Depends on: [core](egm-nativo.md) (Phase A, implemented)
 
 ## Overview
 
@@ -50,7 +50,7 @@ Phase A leaves three gaps:
   - **When it runs:** only if `status` on the worktree is `PASS` or `PASS_PARTIAL`.
   - **Format:** sorted keys and a trailing newline. It contains no prompts and no credentials, and messages go through R8 redaction.
   - **Fields:** `version`, `doc`, `doc_sha256`, `sources` (path → sha256, the same as the last round's), and `claims`.
-  - **What goes in `claims`:** every lineage of `major` severity or above that falls in one of two cases. In the first, its last transition is by the arbiter (a withdraw, which R29 moves to `fixed` for a `major` or a `blocker`). In the second, its status is `declined` or `settled` with a `forced` or `forced_blocker` downgrade.
+  - **What goes in `claims`:** every lineage of `major` severity or above that falls in one of two cases. In the first, the arbiter withdrew it (R29 moves a withdrawn `major` or `blocker` to `fixed`) and it has not been opened or reopened since. The owner's later confirmation keeps the claim. In the second, its status is `declined` or `settled` with a `forced` or `forced_blocker` downgrade.
   - **Each claim holds:** `id`, `severity`, `kind` (`arbiter_withdrawn`, `declined` or `forced`), `heading`, `lines` and `message`. `lines` refer to the document at `doc_sha256`. A claim without `lines` is invalid.
   - **What stays out:** other lineages, because CI never relies on them.
 

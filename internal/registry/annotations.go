@@ -80,6 +80,9 @@ var toolAnnotations = map[string]ToolAnnotations{
 	// a transition to the current status is a no-op (R28).
 	"tb_egm_status":  annReadOnly,
 	"tb_egm_resolve": annOverwrite,
+	// receipt rewrites one file in the repository with the same bytes for
+	// the same state (T-R1).
+	"tb_egm_receipt": annOverwrite,
 
 	"tb_router_status":   annReadOnly,
 	"tb_watchdog_alerts": annReadOnly,

@@ -357,3 +357,33 @@ func TestLLMFlowDryRunNoArbiter(t *testing.T) {
 		t.Fatal("dry run ran an arbiter")
 	}
 }
+
+// TestLLMFlowReceiptArbiterClaim: a major the arbiter withdrew stays a claim
+// in the receipt (T-R1), with lines inside the document.
+func TestLLMFlowReceiptArbiterClaim(t *testing.T) {
+	lf := newLLMFlow(t, "")
+	ctx := context.Background()
+	lf.setModes(map[string][]string{"*": {"clean"}, "design": {"findings"}})
+	r := lf.must(Review(ctx, lf.optsP())).Report
+	ev := r.Findings[0].Evidence[0]
+	lf.must(Resolve(ctx, &ResolveOptions{Options: lf.opts(), Contest: "F-1", Evidence: ev.Path + ":" + itoa(int64(ev.Line))}))
+	lf.setModes(map[string][]string{"*": {"clean"}, "arbiter": {"withdraw"}})
+	for i := 0; i < 6 && r.LoopState != "converged"; i++ {
+		r = lf.must(LoopNext(ctx, lf.optsP())).Report
+	}
+	if r.Verdict != VerdictPass && r.Verdict != VerdictPassPartial {
+		t.Fatalf("verdict %s %s", r.Verdict, r.LoopState)
+	}
+	out := lf.must(WriteReceipt(ctx, lf.optsP()))
+	b, err := os.ReadFile(filepath.Join(lf.root, out.Receipt))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var rc Receipt
+	if err := json.Unmarshal(b, &rc); err != nil {
+		t.Fatal(err)
+	}
+	if len(rc.Claims) != 1 || rc.Claims[0].Kind != ClaimArbiterWithdrawn || rc.Claims[0].Severity != SevMajor || len(rc.Claims[0].Lines) != 2 {
+		t.Fatalf("claims %+v", rc.Claims)
+	}
+}

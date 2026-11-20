@@ -8,7 +8,7 @@ import (
 	"github.com/leonardo-moraes360/toolbelt/internal/egm"
 )
 
-// egm MCP tools (R31): only status and resolve; review and loop next take
+// egm MCP tools (R31): status, resolve and receipt; review and loop next take
 // minutes and stay CLI-only. Each call reloads the user config.
 func registerEgmTools() {
 	Register(&Tool{
@@ -25,6 +25,19 @@ func registerEgmTools() {
 			Required: []string{"cwd", "doc"},
 		},
 		Handler: handleEgmStatus,
+	})
+	Register(&Tool{
+		Name:        "tb_egm_receipt",
+		Description: "Writes .toolbelt/egm/receipts/<slug>.json, the committed receipt of the author's claims checked by the CI mode (parity with tb egm receipt); refused unless the verdict is PASS or PASS_PARTIAL",
+		InputSchema: &InputSchema{
+			Type: "object",
+			Properties: map[string]Property{
+				"cwd": {Type: "string", Description: "Absolute directory; doc resolves against it"},
+				"doc": {Type: "string", Description: "Document path"},
+			},
+			Required: []string{"cwd", "doc"},
+		},
+		Handler: handleEgmReceipt,
 	})
 	Register(&Tool{
 		Name:        "tb_egm_resolve",
@@ -81,4 +94,12 @@ func handleEgmResolve(ctx context.Context, args map[string]any) (any, error) {
 		Contest:     StringArg(args, "contest"),
 		Evidence:    StringArg(args, "evidence"),
 	})
+}
+
+func handleEgmReceipt(ctx context.Context, args map[string]any) (any, error) {
+	o, err := egmOptions(args)
+	if err != nil {
+		return nil, err
+	}
+	return egm.WriteReceipt(ctx, &o)
 }

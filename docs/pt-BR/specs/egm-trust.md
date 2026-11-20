@@ -2,7 +2,7 @@
 
 # Spec: EGM trust, Fase A.2 (CI como fronteira de confiança)
 
-Autor: toolbelt · Status: Rascunho, rodada 2 (reescrito depois da Fase A, com uma revisão em contexto novo aplicada) · Data: 2026-11-19 · Decisão: [ADR-015](../adr/015-egm-nativo.md) · Depende de: [núcleo](egm-nativo.md) (Fase A, implementada)
+Autor: toolbelt · Status: Rascunho, rodada 2 (reescrito depois da Fase A, com uma revisão em contexto novo aplicada); fatia 1 de implementação (recibo) feita · Data: 2026-11-19 · Decisão: [ADR-015](../adr/015-egm-nativo.md) · Depende de: [núcleo](egm-nativo.md) (Fase A, implementada)
 
 ## Visão geral
 
@@ -50,7 +50,7 @@ A Fase A deixa três lacunas:
   - **Quando roda:** só se o `status` no worktree for `PASS` ou `PASS_PARTIAL`.
   - **Formato:** chaves ordenadas e quebra de linha no fim. Não contém prompts nem credenciais, e as mensagens passam pela redação do R8.
   - **Campos:** `version`, `doc`, `doc_sha256`, `sources` (caminho → sha256, os mesmos da última rodada) e `claims`.
-  - **O que entra em `claims`:** toda linhagem de severidade `major` para cima que se encaixe num de dois casos. No primeiro, a última transição dela é do árbitro (um withdraw, que o R29 leva a `fixed` num `major` ou num `blocker`). No segundo, o status dela é `declined` ou `settled` com downgrade `forced` ou `forced_blocker`.
+  - **O que entra em `claims`:** toda linhagem de severidade `major` para cima que se encaixe num de dois casos. No primeiro, o árbitro a retirou (o R29 leva um `major` ou `blocker` retirado a `fixed`) e ela não foi aberta nem reaberta depois. A confirmação posterior do dono mantém a alegação. No segundo, o status dela é `declined` ou `settled` com downgrade `forced` ou `forced_blocker`.
   - **Cada alegação traz:** `id`, `severity`, `kind` (`arbiter_withdrawn`, `declined` ou `forced`), `heading`, `lines` e `message`. As `lines` se referem ao documento em `doc_sha256`. Uma alegação sem `lines` é inválida.
   - **O que fica de fora:** as outras linhagens, porque o CI nunca depende delas.
 
