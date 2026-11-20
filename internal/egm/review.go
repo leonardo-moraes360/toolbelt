@@ -37,6 +37,8 @@ type Outcome struct {
 	Report   *Report `json:"report,omitempty"`
 	ExitCode int     `json:"exit_code"`
 	Message  string  `json:"message,omitempty"`
+	// Receipt is the repository-relative path tb egm receipt wrote (T-R1).
+	Receipt string `json:"receipt,omitempty"`
 }
 
 // snapshot is everything phase 1 computes for the target content.
