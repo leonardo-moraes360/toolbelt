@@ -9,6 +9,8 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Não Lançado]
 
+## [0.0.7] - 2026-11-20
+
 ### Adicionado
 - EGM no CI (fatia 3 da Fase A.2): o workflow de exemplo `docs/examples/egm-ci.yml` (release do tb fixada e conferida com `sha256sum -c`, claude fixado, config do egm do CI escrita em `$RUNNER_TEMP`, SHAs de base/head do PR, `continue-on-error` até medir a instabilidade) e o guia `docs/egm-ci.md` (fluxo do autor, configurações do repositório com check obrigatório, "include administrators" e CODEOWNERS, tabela de falhas). O perfil `claude` autentica com `ANTHROPIC_API_KEY`/`CLAUDE_CODE_OAUTH_TOKEN` do `egm.env.pass` sem arquivo de credencial. No `--egm-mode ci` uma seleção vazia só avisa, a menos que `--strict` seja explícito
 - `tb stack egm --egm-mode ci` (fatia 2 da Fase A.2, T-R2 a T-R8): confere o recibo commitado em head (`no_receipt`, `receipt_invalid`, `receipt_stale`), roda uma rodada nova `llm` num estado descartável com a config `-c` do próprio CI e casa os findings de `major` para cima com as alegações do recibo (`ci_finding`, `ci_downgrade`, alegações `arbiter_withdrawn` arbitradas de novo ou `ci_upheld`); `ci_offline` a menos que `--egm-allow-offline`, `ci_not_run`, `ci_budget` e `egm.ci.max_docs` (padrão 5, o repositório só pode baixar), `gated_doc_removed`; o passo informa `trust` e `ci_findings` por documento. O gate local passa a receber a config `-c` do egm e avisa `receipt_missing`/`receipt_stale`. O MCP `tb_stack` ganha `egm_mode`, `egm_config` e `egm_allow_offline`
