@@ -264,7 +264,7 @@ func registerStackTools() {
 			Properties: map[string]Property{
 				"ops": {
 					Type:        "array",
-					Description: "Operations in order: verify, review, drift, guard, egm (egm is not parallel and is always moved to the end)",
+					Description: "Operations in order: verify, review, drift, guard, vault, egm (egm is not parallel and is always moved to the end)",
 					Items:       &Property{Type: "string"},
 				},
 				"cwd":                  {Type: "string", Description: "Repository directory"},

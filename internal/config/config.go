@@ -7,8 +7,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
+	"unicode"
 
 	"gopkg.in/yaml.v3"
 )
@@ -76,9 +78,62 @@ type GraphConfig struct {
 	MaxFileBytes   int64    `yaml:"max_file_bytes"`
 }
 
+// VaultConfig is the vault: section (docs/specs/vault.md, Configuration).
 type VaultConfig struct {
 	Path         string `yaml:"path"`
-	SyncOnChange bool   `yaml:"sync_on_change"`
+	SyncOnChange bool   `yaml:"sync_on_change"` // reserved, no effect in Phase A
+	MaxNoteBytes int64  `yaml:"max_note_bytes"`
+	// Types are the allowed frontmatter type values.
+	Types []string `yaml:"types"`
+	// Graph false keeps notes out of the graph even with markdown enabled.
+	Graph bool `yaml:"graph"`
+}
+
+const maxVaultNoteBytes = 4 << 20
+
+var reVaultType = regexp.MustCompile(`^[a-z][a-z0-9_-]*$`)
+
+// Validate checks the vault: section. path is written into
+// .git/info/exclude, so it must be a clean repository-relative path with
+// no control or glob characters.
+func (v *VaultConfig) Validate() error {
+	if err := validVaultPath(v.Path); err != nil {
+		return err
+	}
+	if v.MaxNoteBytes <= 0 || v.MaxNoteBytes > maxVaultNoteBytes {
+		return fmt.Errorf("vault.max_note_bytes must be between 1 and %d", maxVaultNoteBytes)
+	}
+	return validVaultTypes(v.Types)
+}
+
+func validVaultPath(p string) error {
+	switch {
+	case p == "" || filepath.IsAbs(p) || strings.HasPrefix(p, "/") || strings.HasPrefix(p, `\`):
+		return fmt.Errorf("vault.path must be a relative path inside the repository")
+	case strings.ContainsAny(p, "*?[]!") || strings.HasPrefix(p, "#") || strings.IndexFunc(p, unicode.IsControl) >= 0:
+		return fmt.Errorf("vault.path must not contain control or glob characters")
+	}
+	if c := filepath.ToSlash(filepath.Clean(p)); c == "." || c == ".." || strings.HasPrefix(c, "../") {
+		return fmt.Errorf("vault.path must stay inside the repository")
+	}
+	return nil
+}
+
+func validVaultTypes(types []string) error {
+	if len(types) == 0 {
+		return fmt.Errorf("vault.types must not be empty")
+	}
+	seen := map[string]bool{}
+	for _, t := range types {
+		if !reVaultType.MatchString(t) {
+			return fmt.Errorf("vault.types value %q must match %s", t, reVaultType)
+		}
+		if seen[t] {
+			return fmt.Errorf("vault.types has %q twice", t)
+		}
+		seen[t] = true
+	}
+	return nil
 }
 
 type LoggingConfig struct {
@@ -219,6 +274,9 @@ func DefaultConfig() *Config {
 		Vault: VaultConfig{
 			Path:         ".toolbelt/vault",
 			SyncOnChange: true,
+			MaxNoteBytes: 256 << 10,
+			Types:        []string{"fact", "decision", "context", "log"},
+			Graph:        true,
 		},
 		Logging: LoggingConfig{
 			Level:  "info",

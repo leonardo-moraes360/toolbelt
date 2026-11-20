@@ -2,7 +2,7 @@
 
 # Spec: Obsidian-compatible Markdown vault, Phase A (`tb vault`)
 
-Author: toolbelt · Status: Draft (round 3: refreshed against main, fresh-context review applied, Q1 resolved by [ADR-016](../adr/016-vault-fase-a.md); Q4 open) · Date: 2026-11-20 · Decision: [ADR-016](../adr/016-vault-fase-a.md) · Originating decisions: [ADR-006](../adr/006-inspiracoes-graphify-obsidian.md), [ADR-003](../adr/003-sqlite-fts5-grafo.md) · Related: [ADR-010](../adr/010-invariantes-fora-compactacao.md), [ADR-011](../adr/011-grafo-sob-demanda.md)
+Author: toolbelt · Status: Draft (round 3: refreshed against main, fresh-context review applied, Q1 resolved by [ADR-016](../adr/016-vault-fase-a.md); Q4 open); implementation slices 1 (mdparse) and 2 (read-only vault) done · Date: 2026-11-20 · Decision: [ADR-016](../adr/016-vault-fase-a.md) · Originating decisions: [ADR-006](../adr/006-inspiracoes-graphify-obsidian.md), [ADR-003](../adr/003-sqlite-fts5-grafo.md) · Related: [ADR-010](../adr/010-invariantes-fora-compactacao.md), [ADR-011](../adr/011-grafo-sob-demanda.md)
 
 ## Overview
 
@@ -148,7 +148,7 @@ human (Obsidian/editor) ──┐                 ┌── agent (MCP tb_vault_
 
   An empty target with a fragment links to the same note. An empty target without a fragment is dropped. Each link stores line (1-based), column (1-based, in runes, of the `!` for an embed and of the first `[` otherwise), target, fragment, label and `embed`. A backslash-escaped backtick does not open a code span. Phase A limits: code spans and wikilinks are recognized within one line, and fences inside list items or blockquotes are not recognized, so links inside them are extracted.
 - R8: resolution of a non-empty target `t`, case-insensitive (`strings.EqualFold`):
-  - **Attachment:** if `t` has an extension other than `.md` (for example `img.png`, `doc.pdf`), it is an attachment link. It resolves against the vault's regular non-note files by the same two steps below; zero candidates is `missing_attachment` (warning), never an error, because Obsidian vaults routinely embed files tb does not manage.
+  - **Attachment:** if no note matches `t` and `t` has an extension (for example `img.png`, `doc.pdf`), it is an attachment link, so a note named `v1.2` still wins. It resolves against the vault's regular non-note files by the same two steps below; zero candidates is `missing_attachment` (warning), never an error, because Obsidian vaults routinely embed files tb does not manage.
   - **Note**, in order, stopping at the first step with candidates:
     1. if `t` contains `/`: notes whose path is `t` or ends with `/t` (Obsidian's partial-path match);
     2. otherwise, notes whose name is `t`.

@@ -14,14 +14,14 @@ import (
 
 var stackCmd = &cobra.Command{
 	Use:   "stack <op> [<op>...]",
-	Short: "Stacks verification operations (verify/review/drift/guard/egm), not branches",
+	Short: "Stacks verification operations (verify/review/drift/guard/vault/egm), not branches",
 	Long: `Stacks verification operations in a single run with shared context
 (diff, index of changed files, memory and config).
 
 Not a branch stack (like Graphite or git-stack): it only orchestrates verify,
 review, drift, guard and/or egm in the given order.
 
-Operations: verify, review, drift, guard, egm.
+Operations: verify, review, drift, guard, vault, egm.
 egm gates the specs/ADRs (egm.doc_globs) added or modified in
 merge-base(base, head)..head with tb egm status --at head; it is local (state
 lives in $XDG_STATE_HOME), not parallel, and always runs last. With

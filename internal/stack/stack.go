@@ -30,6 +30,7 @@ const (
 	OpDrift  Op = "drift"
 	OpGuard  Op = "guard"
 	OpEgm    Op = "egm"
+	OpVault  Op = "vault"
 
 	maxJobs = 32
 )
@@ -40,19 +41,20 @@ var knownOps = map[string]Op{
 	"drift":  OpDrift,
 	"guard":  OpGuard,
 	"egm":    OpEgm,
+	"vault":  OpVault,
 }
 
 func ParseOp(name string) (Op, error) {
 	op, ok := knownOps[strings.ToLower(strings.TrimSpace(name))]
 	if !ok {
-		return "", fmt.Errorf("unknown operation: %q (use verify, review, drift, guard or egm)", name)
+		return "", fmt.Errorf("unknown operation: %q (use verify, review, drift, guard, vault or egm)", name)
 	}
 	return op, nil
 }
 
 func ParseOps(names []string) ([]Op, error) {
 	if len(names) == 0 {
-		return nil, fmt.Errorf("provide at least one operation (verify, review, drift, guard, egm)")
+		return nil, fmt.Errorf("provide at least one operation (verify, review, drift, guard, vault, egm)")
 	}
 	ops := make([]Op, 0, len(names))
 	for _, name := range names {
@@ -185,7 +187,7 @@ func ResolveJobs(n int) int {
 }
 
 func isParallelOp(op Op) bool {
-	return op == OpGuard || op == OpDrift || op == OpReview
+	return op == OpGuard || op == OpDrift || op == OpReview || op == OpVault
 }
 
 func validateOptions(opts *Options) error {
@@ -560,6 +562,8 @@ func runOp(ctx context.Context, op Op, opts *Options, shared *Shared) (StepResul
 		return runGuard(ctx, opts, shared)
 	case OpEgm:
 		return runEgm(ctx, opts, shared)
+	case OpVault:
+		return runVault(ctx, shared)
 	default:
 		return StepResult{}, fmt.Errorf("unknown operation: %q", op)
 	}

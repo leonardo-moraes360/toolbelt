@@ -2,7 +2,7 @@
 
 # Spec: Vault Markdown compatível com Obsidian, Fase A (`tb vault`)
 
-Autor: toolbelt · Status: Rascunho (rodada 3: atualizada contra a main, revisão em contexto novo aplicada, Q1 resolvida pela [ADR-016](../adr/016-vault-fase-a.md); Q4 aberta) · Data: 2026-11-20 · Decisão: [ADR-016](../adr/016-vault-fase-a.md) · Decisões de origem: [ADR-006](../adr/006-inspiracoes-graphify-obsidian.md), [ADR-003](../adr/003-sqlite-fts5-grafo.md) · Relacionadas: [ADR-010](../adr/010-invariantes-fora-compactacao.md), [ADR-011](../adr/011-grafo-sob-demanda.md)
+Autor: toolbelt · Status: Rascunho (rodada 3: atualizada contra a main, revisão em contexto novo aplicada, Q1 resolvida pela [ADR-016](../adr/016-vault-fase-a.md); Q4 aberta); fatias 1 (mdparse) e 2 (vault só leitura) de implementação feitas · Data: 2026-11-20 · Decisão: [ADR-016](../adr/016-vault-fase-a.md) · Decisões de origem: [ADR-006](../adr/006-inspiracoes-graphify-obsidian.md), [ADR-003](../adr/003-sqlite-fts5-grafo.md) · Relacionadas: [ADR-010](../adr/010-invariantes-fora-compactacao.md), [ADR-011](../adr/011-grafo-sob-demanda.md)
 
 ## Visão geral
 
@@ -148,7 +148,7 @@ humano (Obsidian/editor) ──┐                 ┌── agente (MCP tb_vaul
 
   Alvo vazio com fragmento é link para a própria nota. Alvo vazio sem fragmento é descartado. Cada link guarda linha (1-based), coluna (1-based, em runas, do `!` num embed e do primeiro `[` nos outros casos), alvo, fragmento, rótulo e `embed`. Uma crase escapada com barra invertida não abre span de código. Limites da Fase A: spans de código e wikilinks são reconhecidos dentro de uma linha, e cercas dentro de itens de lista ou de citações não são reconhecidas, então os links dentro delas são extraídos.
 - R8: resolução de um alvo `t` não vazio, sem diferenciar maiúsculas (`strings.EqualFold`):
-  - **Anexo:** se `t` tem extensão diferente de `.md` (por exemplo `img.png`, `doc.pdf`), é um link para anexo. Resolve contra os arquivos regulares do vault que não são nota, pelas mesmas duas etapas abaixo; zero candidatos é `missing_attachment` (aviso), nunca erro, porque vaults do Obsidian embutem com frequência arquivos que o tb não gerencia.
+  - **Anexo:** se nenhuma nota casa com `t` e `t` tem extensão (por exemplo `img.png`, `doc.pdf`), é um link para anexo, então uma nota chamada `v1.2` continua vencendo. Resolve contra os arquivos regulares do vault que não são nota, pelas mesmas duas etapas abaixo; zero candidatos é `missing_attachment` (aviso), nunca erro, porque vaults do Obsidian embutem com frequência arquivos que o tb não gerencia.
   - **Nota**, na ordem, parando na primeira etapa com candidatos:
     1. se `t` contém `/`: as notas cujo caminho é `t` ou termina em `/t` (o casamento por caminho parcial do Obsidian);
     2. senão, as notas cujo nome é `t`.
