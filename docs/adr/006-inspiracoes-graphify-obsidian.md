@@ -6,6 +6,8 @@
 
 accepted
 
+The vault part (items 1 and 2 of the decision, "own TUI") is partially superseded for Phase A by [ADR-016](016-vault-fase-a.md).
+
 ## Context
 
 The project owner uses two tools that significantly improve the experience with coding agents:
