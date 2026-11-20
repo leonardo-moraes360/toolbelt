@@ -2,7 +2,7 @@
 
 # Router no barramento — spec do B4
 
-Status: **rascunho, rodada 3** (duas revisões em contexto novo aplicadas; não implementado).
+Status: **B4a implementado**, B4b não implementado (spec na rodada 3, depois de duas revisões em contexto novo).
 
 Especificação da etapa **B4** do [ADR-013](adr/013-barramento-multi-vendor.md) (§8): o router da Fase 3 ([ADR-009](adr/009-router-e-workers.md)) ganha um segundo tipo de worker, um agente registrado num canal do barramento. Apoia-se no protocolo ([bus-protocolo.md](bus-protocolo.md)), no lease ([bus-lease.md](bus-lease.md)) e no harness ([bus-harness.md](bus-harness.md), [bus-notify-discover.md](bus-notify-discover.md)).
 

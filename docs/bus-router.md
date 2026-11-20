@@ -2,7 +2,7 @@
 
 # Router on the bus — B4 spec
 
-Status: **draft, round 3** (two fresh-context reviews applied; not implemented).
+Status: **B4a implemented**, B4b not implemented (spec round 3, after two fresh-context reviews).
 
 Specification for stage **B4** of [ADR-013](adr/013-barramento-multi-vendor.md) (§8): the Phase 3 router ([ADR-009](adr/009-router-e-workers.md)) gains a second worker type, an agent registered on a bus channel. It builds on the protocol ([bus-protocolo.md](bus-protocolo.md)), the lease ([bus-lease.md](bus-lease.md)) and the harness ([bus-harness.md](bus-harness.md), [bus-notify-discover.md](bus-notify-discover.md)).
 

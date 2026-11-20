@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Bus B4a (`docs/bus-router.md`): store operations `Claim` and `Message` (reads, also on expired channels), `Revoke` (one transaction returning the final state; a completed thread wins; revoked threads refuse claim and complete and show as lost in heartbeat) and `ClaimConfined` (confinement marker); a harness `router_tasks` mode that honors `router-task/0.1` assigns only from a pinned router-role agent with validated paths, claims and completes itself outside the sandbox, and runs the child confined to the ticket worktree (read-only `.git` and ticket copy, no bus access, fresh `claude` session, file tools only) with a revoke watcher and a verdict file. The wake packet gains an optional `task` object
+- **Breaking:** the bus store migrates to schema v3 on open (one-way, like v2: older `tb` binaries then refuse it)
+
 ### Changed
 - Bus B4 draft spec (`docs/bus-router.md`), in two parts. B4a: bus operations `Claim`, `Message`, `Revoke` (returns the final state) and `ClaimConfined` (schema v3), and a harness `router_tasks` mode where the harness claims and completes outside the sandbox while the confined child only edits the ticket worktree and writes a verdict file. B4b: router bus slots `b1..bN`, configured only from trusted config, with unique per-attempt threads, claim validation against the assign and the confinement marker, and the router committing the worktree after HEAD/branch/parent checks
 

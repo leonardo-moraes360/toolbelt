@@ -38,10 +38,7 @@ func migrateV1(tx *sql.Tx, now int64) error {
 			return fmt.Errorf("migrating bus schema v1 -> v2: %w", err)
 		}
 	}
-	if _, err := tx.Exec(`UPDATE agents SET last_seen = ?`, now); err != nil {
-		return err
-	}
-	_, err := tx.Exec(setSchemaVersion)
+	_, err := tx.Exec(`UPDATE agents SET last_seen = ?`, now)
 	return err
 }
 
@@ -71,6 +68,10 @@ func leaseOf(q queryRower, channel, agentID string, lease time.Duration, now int
 // whose owner is not alive, by takeover with epoch+1 (publishing
 // lease_expired when it was not released yet). An alive owner keeps it.
 func (s *Store) ClaimThread(m Member, thread string) (Claim, error) {
+	return s.claimThread(m, thread, "")
+}
+
+func (s *Store) claimThread(m Member, thread, marker string) (Claim, error) {
 	if thread == "" {
 		return Claim{}, errors.New("thread is required")
 	}
@@ -90,52 +91,69 @@ func (s *Store) ClaimThread(m Member, thread string) (Claim, error) {
 		cur, err := scanClaim(tx.QueryRow(selectClaim, m.Channel, thread))
 		switch {
 		case errors.Is(err, sql.ErrNoRows):
-			if _, err := tx.Exec(`INSERT INTO claims(channel, thread, owner, claimed_at, epoch) VALUES (?, ?, ?, ?, 1)`,
-				m.Channel, thread, m.ID(), now); err != nil {
+			if _, err := tx.Exec(`INSERT INTO claims(channel, thread, owner, claimed_at, epoch, confinement) VALUES (?, ?, ?, ?, 1, ?)`,
+				m.Channel, thread, m.ID(), now, nullStr(marker)); err != nil {
 				return err
 			}
-			c = Claim{Channel: m.Channel, Thread: thread, Owner: m.ID(), ClaimedAt: fromNS(now), Epoch: 1}
+			c = Claim{Channel: m.Channel, Thread: thread, Owner: m.ID(), ClaimedAt: fromNS(now), Epoch: 1, Confinement: marker}
 			return nil
 		case err != nil:
 			return err
-		case cur.CompletedAt != nil:
-			return fmt.Errorf("thread %q already completed by %s", thread, cur.Owner)
-		case cur.ReleasedAt != nil:
-			c, err = takeover(tx, &cur, m, now)
-			return err
-		case cur.Owner == m.ID():
-			c = cur
-			return nil
 		}
-		lastSeen, alive, err := leaseOf(tx, m.Channel, cur.Owner, ch.Lease, now)
-		if err != nil {
-			return err
-		}
-		if alive {
-			return fmt.Errorf("thread %q already claimed by %s (lease ends %s)", thread, cur.Owner,
-				fromNS(lastSeen+int64(ch.Lease)).Format(time.RFC3339))
-		}
-		if err := publishExpired(tx, &cur, lastSeen, now); err != nil {
-			return err
-		}
-		c, err = takeover(tx, &cur, m, now)
+		c, err = claimExisting(tx, &cur, m, ch.Lease, now, marker)
 		return err
 	})
 	return c, err
 }
 
+// claimExisting decides a claim on a thread that already has a row.
+func claimExisting(tx *sql.Tx, cur *Claim, m Member, lease time.Duration, now int64, marker string) (Claim, error) {
+	thread := cur.Thread
+	switch {
+	case cur.RevokedAt != nil:
+		return Claim{}, fmt.Errorf("thread %q revoked by %s (%s)", thread, cur.RevokedBy, cur.RevokeReason)
+	case cur.CompletedAt != nil:
+		return Claim{}, fmt.Errorf("thread %q already completed by %s", thread, cur.Owner)
+	case cur.ReleasedAt != nil:
+		return takeover(tx, cur, m, now, marker)
+	case cur.Owner == m.ID():
+		if marker != "" && cur.Confinement != marker {
+			if _, err := tx.Exec(`UPDATE claims SET confinement = ? WHERE channel = ? AND thread = ?`, marker, m.Channel, thread); err != nil {
+				return Claim{}, err
+			}
+			cur.Confinement = marker
+		}
+		return *cur, nil
+	}
+	lastSeen, alive, err := leaseOf(tx, m.Channel, cur.Owner, lease, now)
+	if err != nil {
+		return Claim{}, err
+	}
+	if alive {
+		return Claim{}, fmt.Errorf("thread %q already claimed by %s (lease ends %s)", thread, cur.Owner,
+			fromNS(lastSeen+int64(lease)).Format(time.RFC3339))
+	}
+	if err := publishExpired(tx, cur, lastSeen, now); err != nil {
+		return Claim{}, err
+	}
+	return takeover(tx, cur, m, now, marker)
+}
+
 // takeover gives cur to m with epoch+1; prev_owner records another owner.
-func takeover(tx *sql.Tx, cur *Claim, m Member, now int64) (Claim, error) {
+// A takeover replaces the confinement marker: a claim by an unconfined
+// member must never inherit the previous owner's.
+func takeover(tx *sql.Tx, cur *Claim, m Member, now int64, marker string) (Claim, error) {
 	prev := sql.NullString{}
 	if cur.Owner != m.ID() {
 		prev = sql.NullString{String: cur.Owner, Valid: true}
 	}
 	epoch := cur.Epoch + 1
-	if _, err := tx.Exec(`UPDATE claims SET owner = ?, claimed_at = ?, epoch = ?, released_at = NULL, prev_owner = ? WHERE channel = ? AND thread = ?`,
-		m.ID(), now, epoch, prev, cur.Channel, cur.Thread); err != nil {
+	if _, err := tx.Exec(`UPDATE claims SET owner = ?, claimed_at = ?, epoch = ?, released_at = NULL, prev_owner = ?, confinement = ? WHERE channel = ? AND thread = ?`,
+		m.ID(), now, epoch, prev, nullStr(marker), cur.Channel, cur.Thread); err != nil {
 		return Claim{}, err
 	}
-	return Claim{Channel: cur.Channel, Thread: cur.Thread, Owner: m.ID(), ClaimedAt: fromNS(now), Epoch: epoch, PrevOwner: prev.String}, nil
+	return Claim{Channel: cur.Channel, Thread: cur.Thread, Owner: m.ID(), ClaimedAt: fromNS(now), Epoch: epoch,
+		PrevOwner: prev.String, Confinement: marker}, nil
 }
 
 // expiredEvent is the lease_expired payload (R5).
@@ -198,6 +216,8 @@ func (s *Store) Complete(m Member, thread string, epoch int64, result json.RawMe
 			return err
 		}
 		switch {
+		case cur.RevokedAt != nil:
+			return fmt.Errorf("%w: thread %q was revoked by %s (%s)", ErrLeaseLost, thread, cur.RevokedBy, cur.RevokeReason)
 		case cur.CompletedAt != nil:
 			return fmt.Errorf("thread %q already completed", thread)
 		case cur.Owner != m.ID():
@@ -239,6 +259,7 @@ type HeldThread struct {
 type LostThread struct {
 	Thread   string `json:"thread"`
 	NewOwner string `json:"new_owner,omitempty"`
+	Reason   string `json:"reason,omitempty"` // revoke reason, when revoked
 }
 
 // HeartbeatResult is R4's answer.
@@ -264,8 +285,11 @@ func (s *Store) Heartbeat(m Member) (HeartbeatResult, error) {
 		}
 		res = HeartbeatResult{LeaseEndsAt: fromNS(now + int64(ch.Lease)), HeartbeatInterval: (ch.Lease / 3).String(),
 			Held: []HeldThread{}, Lost: []LostThread{}}
-		rows, err := tx.Query(`SELECT thread, owner, epoch, released_at, prev_owner FROM claims
-			WHERE channel = ? AND completed_at IS NULL AND (owner = ? OR prev_owner = ?) ORDER BY thread`,
+		// A row revoked by its own owner (an unclaimed thread the router
+		// closed) is not a loss.
+		rows, err := tx.Query(`SELECT thread, owner, epoch, released_at, prev_owner, revoke_reason FROM claims
+			WHERE channel = ? AND completed_at IS NULL AND (owner = ? OR prev_owner = ?)
+			AND (revoked_by IS NULL OR revoked_by != owner) ORDER BY thread`,
 			m.Channel, m.ID(), m.ID())
 		if err != nil {
 			return err
@@ -275,15 +299,15 @@ func (s *Store) Heartbeat(m Member) (HeartbeatResult, error) {
 			var thread, owner string
 			var epoch int64
 			var released sql.NullInt64
-			var prev sql.NullString
-			if err := rows.Scan(&thread, &owner, &epoch, &released, &prev); err != nil {
+			var prev, reason sql.NullString
+			if err := rows.Scan(&thread, &owner, &epoch, &released, &prev, &reason); err != nil {
 				return err
 			}
 			switch {
 			case owner != m.ID():
 				res.Lost = append(res.Lost, LostThread{Thread: thread, NewOwner: owner})
 			case released.Valid:
-				res.Lost = append(res.Lost, LostThread{Thread: thread})
+				res.Lost = append(res.Lost, LostThread{Thread: thread, Reason: reason.String})
 			default:
 				res.Held = append(res.Held, HeldThread{Thread: thread, Epoch: epoch})
 			}
@@ -412,6 +436,8 @@ func (s *Store) Status(channel string) (LeaseStatus, error) {
 		c := &claims[i]
 		state := "held"
 		switch {
+		case c.RevokedAt != nil:
+			state = "revoked"
 		case c.ReleasedAt != nil:
 			state = "released"
 		case !alive[c.Owner]:

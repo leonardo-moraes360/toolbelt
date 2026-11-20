@@ -9,6 +9,10 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Não Lançado]
 
+### Adicionado
+- B4a do barramento (`docs/bus-router.md`): operações do store `Claim` e `Message` (leituras, também em canais expirados), `Revoke` (uma transação que devolve o estado final; uma thread concluída vence; threads revogadas recusam claim e complete e aparecem como perdidas no heartbeat) e `ClaimConfined` (marker de confinamento); um modo `router_tasks` do harness que só aceita assigns `router-task/0.1` de um agente fixado com papel router e caminhos validados, faz ele mesmo o claim e o complete fora do sandbox e roda o filho confinado ao worktree do ticket (`.git` e cópia do ticket só de leitura, sem acesso ao barramento, sessão nova do `claude`, só tools de arquivo) com uma vigia de revoke e um arquivo de veredito. O packet de wake ganha um objeto `task` opcional
+- **Quebra:** o store do barramento migra para o schema v3 ao abrir (de mão única, como a v2: binários `tb` mais antigos passam a recusá-lo)
+
 ### Alterado
 - Spec em rascunho do B4 do barramento (`docs/bus-router.md`), em duas partes. B4a: operações do barramento `Claim`, `Message`, `Revoke` (devolve o estado final) e `ClaimConfined` (schema v3), e um modo `router_tasks` do harness em que o harness faz claim e complete fora do sandbox enquanto o filho confinado só edita o worktree do ticket e escreve um arquivo de veredito. B4b: slots do barramento `b1..bN` no router, configurados só pela config confiável, com threads únicas por tentativa, validação do claim contra o assign e o marker de confinamento, e o router fazendo o commit do worktree depois de checar HEAD, branch e pai
 

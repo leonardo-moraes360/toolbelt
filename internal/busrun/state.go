@@ -33,6 +33,9 @@ type State struct {
 	// the config, it wins over the saved session.
 	ConfigSession string      `json:"config_session,omitempty"`
 	Wakes         []time.Time `json:"wakes,omitempty"`
+	// RouterTasks: router-task message IDs already handled -> seq, so a
+	// restart never handles one twice (pruned below the notified seq).
+	RouterTasks map[string]int64 `json:"router_tasks,omitempty"`
 }
 
 func loadState(path string) (State, error) {

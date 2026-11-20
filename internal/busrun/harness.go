@@ -29,6 +29,8 @@ type Options struct {
 	Adapter          Adapter       // tests: overrides the config's adapter
 	// HeartbeatEvery overrides the channel's heartbeat interval (tests).
 	HeartbeatEvery time.Duration
+	// TaskPoll is how often a router task's claim is checked (default 1s).
+	TaskPoll time.Duration
 }
 
 type Harness struct {
@@ -143,6 +145,14 @@ func (h *Harness) init() error {
 func (h *Harness) Check() error {
 	if h.opts.Adapter != nil {
 		return nil
+	}
+	if h.cfg.RouterTasks != nil {
+		if h.opts.AllowUnsandboxed || !landlockOn() {
+			return errors.New("router_tasks needs the Landlock sandbox (--allow-unsandboxed is not allowed)")
+		}
+		if err := h.taskSandboxOK(); err != nil {
+			return err
+		}
 	}
 	if h.cfg.Adapter == AdapterNotify {
 		if h.cfg.Notify.Backend == BackendTerminal {
@@ -291,7 +301,7 @@ func (h *Harness) step(ctx context.Context, once bool) (bool, error) {
 	if cursor >= h.st.NotifiedSeq {
 		h.st.Read = true
 	}
-	msgs, err := h.pending(max(cursor, h.st.NotifiedSeq), 0)
+	msgs, err := h.pendingAfterTasks(ctx, max(cursor, h.st.NotifiedSeq), now)
 	if err != nil {
 		return false, err
 	}
@@ -463,4 +473,32 @@ func (h *Harness) fail(p *Packet) error {
 	payload, _ := json.Marshal(map[string]any{"state": "wake_failed", "agent": h.member.ID(), "last_seq": p.LastSeq})
 	_, err := h.store.Send(h.member, &bus.SendInput{To: "topic:board", Type: bus.TypeTaskStatus, Payload: payload})
 	return errors.Join(err, h.save())
+}
+
+// routerTasks handles router tasks out of the pending batch, before the
+// ordinary messages, and returns the ordinary ones. Tasks never debounce:
+// the router's claim timeout is ticking.
+func (h *Harness) routerTasks(ctx context.Context, msgs []bus.Message, from int64, now time.Time) ([]bus.Message, error) {
+	if h.cfg.RouterTasks == nil {
+		return msgs, nil
+	}
+	h.st.pruneTasks(from)
+	tasks, rest, err := h.splitTasks(msgs)
+	if err != nil || len(tasks) == 0 {
+		return rest, err
+	}
+	if open, err := h.channelOpen(now); err != nil || !open {
+		return rest, err
+	}
+	return rest, h.handleTasks(ctx, tasks)
+}
+
+// pendingAfterTasks returns the waking messages after (from, ...], with
+// router tasks already handled and removed.
+func (h *Harness) pendingAfterTasks(ctx context.Context, from int64, now time.Time) ([]bus.Message, error) {
+	msgs, err := h.pending(from, 0)
+	if err != nil {
+		return nil, err
+	}
+	return h.routerTasks(ctx, msgs, from, now)
 }

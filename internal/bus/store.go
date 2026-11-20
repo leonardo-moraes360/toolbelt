@@ -19,11 +19,11 @@ import (
 )
 
 // SchemaVersion is stored in PRAGMA user_version.
-const SchemaVersion = 2
+const SchemaVersion = 3
 
 // Literal so the query is static; TestSchemaVersionPragma keeps it in sync
 // with SchemaVersion.
-const setSchemaVersion = `PRAGMA user_version = 2`
+const setSchemaVersion = `PRAGMA user_version = 3`
 
 // ErrInvalidInvite is the generic answer for a missing, used, expired or
 // other-channel invite (deliberately does not reveal which).
@@ -88,6 +88,10 @@ CREATE TABLE claims (
 	epoch        INTEGER NOT NULL DEFAULT 1,
 	released_at  INTEGER,
 	prev_owner   TEXT,
+	revoked_at   INTEGER,
+	revoked_by   TEXT,
+	revoke_reason TEXT,
+	confinement  TEXT,
 	PRIMARY KEY (channel, thread)
 );
 `
@@ -185,7 +189,12 @@ func (s *Store) migrate() error {
 			_, err := tx.Exec(setSchemaVersion)
 			return err
 		case 1:
-			return migrateV1(tx, s.nowNS())
+			if err := migrateV1(tx, s.nowNS()); err != nil {
+				return err
+			}
+			return migrateV2(tx)
+		case 2:
+			return migrateV2(tx)
 		default:
 			return fmt.Errorf("unknown bus schema v%d (this tb supports v%d)", v, SchemaVersion)
 		}
@@ -892,31 +901,41 @@ type Claim struct {
 	Epoch      int64      `json:"epoch"`
 	ReleasedAt *time.Time `json:"released_at,omitempty"`
 	PrevOwner  string     `json:"prev_owner,omitempty"`
+	// Revoked threads are closed for good (docs/bus-router.md, B4a).
+	RevokedAt    *time.Time `json:"revoked_at,omitempty"`
+	RevokedBy    string     `json:"revoked_by,omitempty"`
+	RevokeReason string     `json:"revoke_reason,omitempty"`
+	// Confinement is the harness marker of ClaimConfined; empty otherwise.
+	Confinement string `json:"confinement,omitempty"`
 }
 
 func scanClaim(r rowScanner) (Claim, error) {
 	var c Claim
 	var claimed int64
-	var completed, released sql.NullInt64
-	var result, prev sql.NullString
-	if err := r.Scan(&c.Channel, &c.Thread, &c.Owner, &claimed, &completed, &result, &c.Epoch, &released, &prev); err != nil {
+	var completed, released, revoked sql.NullInt64
+	var result, prev, revokedBy, reason, confinement sql.NullString
+	if err := r.Scan(&c.Channel, &c.Thread, &c.Owner, &claimed, &completed, &result, &c.Epoch, &released, &prev,
+		&revoked, &revokedBy, &reason, &confinement); err != nil {
 		return Claim{}, err
 	}
-	if released.Valid {
-		t := fromNS(released.Int64)
-		c.ReleasedAt = &t
-	}
-	c.PrevOwner = prev.String
 	c.ClaimedAt = fromNS(claimed)
-	if completed.Valid {
-		t := fromNS(completed.Int64)
-		c.CompletedAt = &t
-	}
-	c.ResultID = result.String
+	c.CompletedAt = optTime(completed)
+	c.ReleasedAt = optTime(released)
+	c.RevokedAt = optTime(revoked)
+	c.ResultID, c.PrevOwner = result.String, prev.String
+	c.RevokedBy, c.RevokeReason, c.Confinement = revokedBy.String, reason.String, confinement.String
 	return c, nil
 }
 
-const claimColumns = `channel, thread, owner, claimed_at, completed_at, result_id, epoch, released_at, prev_owner`
+func optTime(v sql.NullInt64) *time.Time {
+	if !v.Valid {
+		return nil
+	}
+	t := fromNS(v.Int64)
+	return &t
+}
+
+const claimColumns = `channel, thread, owner, claimed_at, completed_at, result_id, epoch, released_at, prev_owner, revoked_at, revoked_by, revoke_reason, confinement`
 
 const selectClaim = `SELECT ` + claimColumns + ` FROM claims WHERE channel = ? AND thread = ?`
 
