@@ -26,6 +26,9 @@ type RevokeResult struct {
 	Claim Claim  `json:"claim"`
 }
 
+// Full query as a constant: placeholders only, values go in args.
+const selectMessageByID = selectMessage + ` WHERE channel = ? AND id = ?`
+
 var reasonRe = regexp.MustCompile(`^[a-z][a-z_]{0,31}$`)
 
 // migrateV2 adds the revoke and confinement columns.
@@ -65,7 +68,7 @@ func (s *Store) Claim(channel, thread string) (Claim, error) {
 
 // Message reads one message by ID; it works on an expired channel.
 func (s *Store) Message(channel, id string) (Message, error) {
-	msg, err := scanMessage(s.db.QueryRow(selectMessage+` WHERE channel = ? AND id = ?`, channel, id))
+	msg, err := scanMessage(s.db.QueryRow(selectMessageByID, channel, id))
 	if errors.Is(err, sql.ErrNoRows) {
 		return Message{}, fmt.Errorf("message %q not found", id)
 	}
