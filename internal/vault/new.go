@@ -37,7 +37,7 @@ type NewResult struct {
 	Redacted bool   `json:"redacted,omitempty"`
 }
 
-// newFrontmatter is marshalled by yaml (never interpolated), so a title can
+// newFrontmatter is marshaled by yaml (never interpolated), so a title can
 // never add keys (R10).
 type newFrontmatter struct {
 	Title      string   `yaml:"title"`

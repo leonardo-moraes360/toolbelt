@@ -136,7 +136,7 @@ func TestNewReviewRegressions(t *testing.T) {
 		_, err := v.New(&NewOptions{Title: "a", Source: SourceInferred, Confidence: c})
 		wantReason(t, err, "usage", ExitError)
 	}
-	for _, title := range []string{"evil‮TXT", "zero​width", "line sep"} {
+	for _, title := range []string{"evil\u202eTXT", "zero\u200bwidth", "line\u2028sep"} {
 		_, err := v.New(&NewOptions{Title: title})
 		wantReason(t, err, "bad_title", ExitError)
 	}
