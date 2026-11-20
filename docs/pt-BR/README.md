@@ -258,7 +258,7 @@ tb bus recv --channel feature-x --as grok-1 --wait 20s
 ### Barramento multi-vendor (`tb bus`, [ADR-013](adr/013-barramento-multi-vendor.md))
 - [x] B0 — spec `bus/0.1`: envelope, Agent Card e convite ([docs/pt-BR/bus-protocolo.md](bus-protocolo.md))
 - [x] B1 — store SQLite, CLI + MCP, convite de uso único, `join`/`send`/`recv`/`claim`/`complete`/`log`
-- [ ] B2 — lease, heartbeat e watchdog no barramento ([spec em rascunho](bus-lease.md))
+- [x] B2 — lease, heartbeat e watchdog no barramento ([spec](bus-lease.md))
 - [ ] B3 (parcial) — `tb bus run` com adapters `exec` e `harness` feito ([docs/pt-BR/bus-harness.md](bus-harness.md)); falta adapter `notify` e `tb bus discover`
 - [ ] B4 — router/board da Fase 3 sobre o barramento
 
@@ -315,5 +315,5 @@ Este projeto está na **Fase 3 (em andamento)**: além de verify/guard/mem/graph
 | `tb router` | ✅ | Scheduler em primeiro plano (`run`/`status`/`config`) com entrega direta; sandbox fail-closed (`--allow-unsandboxed`) |
 | `tb watchdog` | ✅ | Alertas e controle dos workers (`status`/`alerts`/`kill`); roda dentro do loop do router |
 | `tb merge` | ✅ | Integra tickets `done` de forma atômica; `fail` (padrão) ou `last_wins` (MCP `tb_merge`); `prompt`/`semantic` não implementadas |
-| `tb bus` | 🟡 | Barramento local entre agentes (ADR-013): `channel`/`invite`/`join`/`send`/`recv`/`claim`/`complete`/`log` sobre `.toolbelt/bus/bus.db`; `tb bus run` acorda o agente (adapters `exec`/`harness`); lease/heartbeat (B2), `notify` e `discover` pendentes |
-| `tb mcp` | ✅ | Servidor MCP stateless (stdio); 36 tools na v0.0.5: mem/verify/review/drift/guard/stack, graph (`search`/`callers`/`deps`/`impact`/`explain`/`path`/`index`; exige `TB_GRAPH=on`), ticket/board/router/watchdog/merge e bus (`tb_bus_join`/`send`/`recv`/`claim`/`complete`); `--bus-as` prende a conexão a uma sessão do bus |
+| `tb bus` | 🟡 | Barramento local entre agentes (ADR-013): `channel`/`invite`/`join`/`send`/`recv`/`claim`/`complete`/`heartbeat`/`watchdog`/`log` sobre `.toolbelt/bus/bus.db`; lease com fencing por epoch (B2); `tb bus run` acorda o agente (adapters `exec`/`harness`); `notify` e `discover` pendentes |
+| `tb mcp` | ✅ | Servidor MCP stateless (stdio); 36 tools na v0.0.5: mem/verify/review/drift/guard/stack, graph (`search`/`callers`/`deps`/`impact`/`explain`/`path`/`index`; exige `TB_GRAPH=on`), ticket/board/router/watchdog/merge e bus (`tb_bus_join`/`send`/`recv`/`claim`/`complete`/`heartbeat`/`status`); `--bus-as` prende a conexão a uma sessão do bus |

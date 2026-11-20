@@ -295,7 +295,7 @@ func TestClaimComplete(t *testing.T) {
 	inv, _ := s.CreateInvite("feature-x", RoleWorker, "", 0)
 	other, err := s.Join("feature-x", inv.Code, &AgentCard{Name: "codex-1"}, "")
 	must(t, err)
-	_, err = s.Complete(worker, "TKT-001", nil)
+	_, err = s.Complete(worker, "TKT-001", 1, nil)
 	wantErr(t, err, "claim first", "complete sem claim")
 	_, err = s.ClaimThread(worker, "TKT-001")
 	must(t, err)
@@ -303,14 +303,14 @@ func TestClaimComplete(t *testing.T) {
 	must(t, err) // owner's reclaim is idempotent
 	_, err = s.ClaimThread(other.Member, "TKT-001")
 	wantErr(t, err, "agent:grok-1", "segundo dono")
-	_, err = s.Complete(other.Member, "TKT-001", nil)
-	wantErr(t, err, "only the owner", "complete por não dono")
-	res, err := s.Complete(worker, "TKT-001", json.RawMessage(`{"verdict":"PASS","commit":"a1b2c3d"}`))
+	_, err = s.Complete(other.Member, "TKT-001", 1, nil)
+	wantErr(t, err, "lease_lost", "complete por não dono")
+	res, err := s.Complete(worker, "TKT-001", 1, json.RawMessage(`{"verdict":"PASS","commit":"a1b2c3d"}`))
 	must(t, err)
 	if res.Message.Type != TypeTaskResult || res.Message.To != "topic:board" || res.Claim.ResultID != res.Message.ID {
 		t.Fatalf("resultado: %+v", res)
 	}
-	_, err = s.Complete(worker, "TKT-001", nil)
+	_, err = s.Complete(worker, "TKT-001", 1, nil)
 	wantErr(t, err, "already completed", "complete duplo")
 	_, err = s.ClaimThread(other.Member, "TKT-001")
 	wantErr(t, err, "completed", "claim após conclusão")

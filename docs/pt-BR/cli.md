@@ -1828,7 +1828,7 @@ tb merge TKT-002 TKT-003
 
 ### `tb bus` — Barramento entre Agentes (✓ B1, ADR-013)
 
-Barramento local para agentes de vendors diferentes (Claude Code, Codex, Grok, ...) trocarem mensagens `bus/0.1` pelo mesmo store (`.toolbelt/bus/bus.db`, SQLite WAL, sem daemon). Spec do envelope, Agent Card e convite: [bus-protocolo.md](bus-protocolo.md). Lease/heartbeat (B2) ainda não existe; o harness `tb bus run` (B3) está em [bus-harness.md](bus-harness.md).
+Barramento local para agentes de vendors diferentes (Claude Code, Codex, Grok, ...) trocarem mensagens `bus/0.1` pelo mesmo store (`.toolbelt/bus/bus.db`, SQLite WAL, sem daemon). Spec do envelope, Agent Card e convite: [bus-protocolo.md](bus-protocolo.md). Lease, heartbeat e watchdog (B2): [bus-lease.md](bus-lease.md); o harness `tb bus run` (B3) está em [bus-harness.md](bus-harness.md).
 
 ```bash
 tb bus channel create feature-x --owner claude-main --ttl 2h
@@ -1838,10 +1838,12 @@ tb bus join feature-x --invite K7Q2-9XMD --name grok-1 --vendor xai --role worke
 tb bus send --channel feature-x --as claude-main --to role:worker --type task.assign --thread TKT-001 --payload '{"ticket":"TKT-001"}'
 tb bus recv --channel feature-x --as grok-1 --wait 20s
 tb bus claim TKT-001 --channel feature-x --as grok-1
-tb bus complete TKT-001 --channel feature-x --as grok-1 --result '{"verdict":"PASS"}'
+tb bus complete TKT-001 --channel feature-x --as grok-1 --epoch 1 --result '{"verdict":"PASS"}'
 tb bus log feature-x --thread TKT-001
 tb bus channel list
 tb bus channel show feature-x
+tb bus heartbeat --channel feature-x --as grok-1
+tb bus watchdog feature-x --dry-run
 tb bus channel extend feature-x --ttl 2h
 tb bus run --channel feature-x --as marin --check
 tb bus run --channel feature-x --as marin
@@ -1850,15 +1852,17 @@ tb bus run --channel feature-x --as claude-code --once
 
 | Comando | Quem | Função |
 |---|---|---|
-| `channel create <channel> --owner N` | humano | cria canal (`--ttl`, padrão sem expiração) e convite do dono (papel `supervisor`; `--invite-ttl`, padrão `10m`) |
-| `channel list` / `channel show <channel>` | humano | lista canais / mostra agentes registrados no canal |
+| `channel create <channel> --owner N` | humano | cria canal (`--ttl`, padrão sem expiração; `--lease`, padrão `2m`, `30s`–`1h`) e convite do dono (papel `supervisor`; `--invite-ttl`, padrão `10m`) |
+| `channel list` / `channel show <channel>` | humano | lista canais / mostra o lease do canal, os agentes (papel, vivo, `last_seen`) e os claims abertos (dono, epoch, seguro/expirado/liberado); sem `session` do Agent Card, token nem payload |
 | `channel extend <channel> --ttl D` | humano | redefine a expiração para agora + `D` (`0` = sem expiração); reabre canal expirado mantendo sessões e histórico |
 | `invite <channel> --role R` | humano | convite de uso único com papel fixado (`--ttl`, padrão `10m`); `--name` vincula a um agente e, se ele já estiver no canal, recupera a sessão perdida (token novo) |
 | `join <channel> --invite C` | agente | entra com Agent Card (`--name`, `--vendor`, `--model`, `--tier`, `--wake`, `--session`, `--capability` ou `--card card.json`); `--role` precisa coincidir com o papel do convite; grava a sessão no diretório privado do bus, fora do repositório (`$XDG_STATE_HOME/toolbelt/bus/`, `0600`) |
 | `send` | agente | `--to agent:\|role:\|topic:`, `--type`, `--thread`, `--causation`, `--idempotency-key`, `--ttl`, `--payload` (JSON ou `@arquivo`) |
 | `recv` | agente | lê e avança o cursor; `--wait` (máx. 25s), `--limit`, `--peek`, `--since` |
-| `claim <thread>` | agente | dono único da thread |
-| `complete <thread>` | dono | `--result`; publica `task.result` em `topic:board` |
+| `claim <thread>` | agente | dono único da thread; imprime o `epoch`; toma um claim liberado ou cujo dono perdeu o lease |
+| `complete <thread>` | dono | `--epoch` (obrigatório, vindo do `claim`), `--result`; publica `task.result` em `topic:board`; `lease_lost` quando o claim trocou de mãos ou foi liberado |
+| `heartbeat` | agente | renova o lease; lista threads seguras (com epochs) e perdidas (com o novo dono) |
+| `watchdog <channel>` | humano | libera claims de agentes não vivos e publica `task.status` `lease_expired` de `system:watchdog` em `topic:board`; `--dry-run` só lista. Não exposto no MCP |
 | `log <channel>` | humano | trilha de auditoria (payload redigido); `--thread`, `--limit` |
 | `run --channel C --as N` | humano | harness B3: espera sem LLM e acorda o agente pelo arquivo de wake (`exec` ou `harness`); `--once`, `--check`, `--dry-run`, `--invite`, `--role`, `--config`, `--allow-unsandboxed`. Spec: [bus-harness.md](bus-harness.md) |
 
@@ -1995,7 +1999,7 @@ Transporte unix/tcp e flags `--socket`/`--port`/`--tls-*` são planejados; hoje 
 | `tb_router_status` | `tb router status` | só leitura de `state.json` |
 | `tb_watchdog_alerts` | `tb watchdog alerts` | `since`, `kind`, `limit` (integer) |
 | `tb_merge` | `tb merge` | `ids` (array), `strategy`, `into`, `force`, `allow_sensitive` (padrão `false`); **dry-run por padrão** — só altera refs com `apply=true` |
-| `tb_bus_join` / `tb_bus_send` / `tb_bus_recv` / `tb_bus_claim` / `tb_bus_complete` | `tb bus …` | identidade presa à conexão após `tb_bus_join` (`channel`, `invite`, `name` + Agent Card); `payload`/`result` como objeto; `wait` string (máx. 25s); criar canal/convite **não** existe via MCP; `tb mcp --bus-as <channel>/<name>` liga a conexão a uma sessão CLI (usado por `tb bus run`) |
+| `tb_bus_join` / `tb_bus_send` / `tb_bus_recv` / `tb_bus_claim` / `tb_bus_complete` / `tb_bus_heartbeat` / `tb_bus_status` | `tb bus …` | identidade presa à conexão após `tb_bus_join` (`channel`, `invite`, `name` + Agent Card); `payload`/`result` como objeto; `tb_bus_complete` exige o `epoch` inteiro; o `tb mcp` manda heartbeat das sessões ligadas em segundo plano; sem tool de watchdog; `wait` string (máx. 25s); criar canal/convite **não** existe via MCP; `tb mcp --bus-as <channel>/<name>` liga a conexão a uma sessão CLI (usado por `tb bus run`) |
 | `tb_graph_search` / `tb_graph_callers` / `tb_graph_deps` / `tb_graph_impact` / `tb_graph_explain` / `tb_graph_path` / `tb_graph_index` | `tb graph …` | chamada requer `TB_GRAPH=on`; `depth`/`limit`/`max_depth` integer; `transitive` boolean; `explain` usa `node`, `path` usa `from`/`to` |
 
 Schemas tipam `depth`/`limit`/`reviewers`/`max_iter` como integer, `strict`/`warn_only`/`transitive`/`skip_unavailable`/`all` (mem) como boolean, `threshold` como number e `standards` como array de strings; valores string legados ainda são aceitos. Relatórios de verify/review/drift/guard voltam como JSON no `content` (sem código de saída de processo). Listas vazias usam `[]`; `hidden_passed` é `null` se a suíte oculta não se aplica.

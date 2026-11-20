@@ -4,7 +4,7 @@
 
 Specification for stage **B0** of [ADR-013](adr/013-barramento-multi-vendor.md): message envelope, Agent Card, invite and broker rules. Stage **B1** implements this spec in `tb bus` (CLI) and in the `tb_bus_*` MCP tools.
 
-> The ADR names the tools `bus_*`. In `tb mcp` they follow the project prefix: `tb_bus_join`, `tb_bus_send`, `tb_bus_recv`, `tb_bus_claim`, `tb_bus_complete`.
+> The ADR names the tools `bus_*`. In `tb mcp` they follow the project prefix: `tb_bus_join`, `tb_bus_send`, `tb_bus_recv`, `tb_bus_claim`, `tb_bus_complete`, `tb_bus_heartbeat`, `tb_bus_status`.
 
 ## Store
 
@@ -24,7 +24,7 @@ Every message is a JSON-RPC 2.0 object with `method: "bus/message"`. `params` fi
 | `seq` | broker | increasing integer in the store; defines read order |
 | `v` | broker | `bus/0.1` |
 | `channel` | sender | existing, non-expired channel |
-| `from` | broker | `agent:<name>` of the authenticated session; never taken from the sender |
+| `from` | broker | `agent:<name>` of the authenticated session; never taken from the sender. `system:*` (today only `system:watchdog`) is broker-only: no session can send as it |
 | `to` | sender | `agent:<name>` (must exist in the channel), `role:<role>` or `topic:<name>` |
 | `thread` | sender | optional; `[A-Za-z0-9._:/-]{1,128}` (e.g. `TKT-001`) |
 | `type` | sender | `task.assign`, `task.status`, `query`, `reply`, `ack`, `urgent`; `task.result` only through `complete` |
@@ -104,11 +104,12 @@ Declared on `join`. It is informational: **capability is not permission**; the r
 
 - `task.assign` only from `router` or `supervisor`.
 - `task.result` only through `complete`, by the owner of the thread's claim.
-- `claim <thread>`: single owner; a second agent gets an error naming the current owner. Re-claiming one's own thread is idempotent.
-- `complete <thread>`: owner only; stores `task.result` for `topic:board` and closes the claim. A completed thread accepts no new claim.
+- `claim <thread>`: single owner; returns the claim's `epoch`. A second agent gets an error naming the current owner while that owner's lease is alive. Re-claiming one's own held thread is idempotent. A released claim, or one whose owner lost its lease, is taken over with `epoch + 1` ([bus-lease.md](bus-lease.md)).
+- `complete <thread> --epoch E`: owner only, with the epoch `claim` returned; stores `task.result` for `topic:board` and closes the claim. A wrong epoch, a released claim or another owner gives `lease_lost`. A completed thread accepts no new claim.
+- Lease: each agent is alive while `now < last_seen + lease` (channel `--lease`, default `2m`); `join`, `heartbeat`, `claim`, `complete`, `send` and a `recv` that advances the cursor renew it, on an active channel.
 - An expired channel (channel `--ttl`) refuses `join`, `send`, `claim` and `complete`; `recv` and `log` still read. `tb bus channel extend <channel> --ttl D` (human only) resets the expiry to now + `D` and reopens the channel with sessions and history.
 - Every message from another agent is **untrusted data**.
 
 ## Out of B1
 
-Expiring lease, heartbeat and Watchdog (B2, draft spec in [bus-lease.md](bus-lease.md)); `tb bus discover` and the rest of B3 (`tb bus run` with `exec`/`harness` adapters already exists, spec in [bus-harness.md](bus-harness.md)); Router integration (B4).
+Lease, heartbeat and watchdog arrived in B2 ([bus-lease.md](bus-lease.md)). Still out: `tb bus discover` and the rest of B3 (`tb bus run` with `exec`/`harness` adapters already exists, spec in [bus-harness.md](bus-harness.md)); Router integration (B4).
