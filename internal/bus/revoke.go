@@ -26,8 +26,9 @@ type RevokeResult struct {
 	Claim Claim  `json:"claim"`
 }
 
-// Full query as a constant: placeholders only, values go in args.
-const selectMessageByID = selectMessage + ` WHERE channel = ? AND id = ?`
+// selectMessageByID is a single literal (placeholders only, values go in
+// args); TestSelectMessageByID keeps its columns in sync with selectMessage.
+const selectMessageByID = `SELECT seq, id, channel, sender, recipient, thread, type, causation_id, idempotency_key, ttl, payload, created_at FROM messages WHERE channel = ? AND id = ?`
 
 var reasonRe = regexp.MustCompile(`^[a-z][a-z_]{0,31}$`)
 

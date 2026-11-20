@@ -157,3 +157,9 @@ func TestMigrateV2(t *testing.T) {
 		t.Fatalf("migrated claim: %+v", c)
 	}
 }
+
+func TestSelectMessageByID(t *testing.T) {
+	if selectMessageByID != selectMessage+` WHERE channel = ? AND id = ?` {
+		t.Fatal("selectMessageByID drifted from selectMessage")
+	}
+}
