@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `internal/mdparse` (vault Phase A slice 1): leaf Markdown parser with `Slugify`, fence- and frontmatter-aware ATX `Headings`, `SplitFrontmatter`, Obsidian `Wikilinks` (labels, `\|` in tables, fragments, embeds, outside inline code) and `NormalizeForSearch`; no user-facing command yet
+
+### Changed
+- `tb graph` Markdown sections: `#` lines inside the frontmatter or a fenced code block are no longer sections, and a closing `#` sequence is dropped from the heading text (ATX rules)
+
 ## [0.0.7] - 2026-11-20
 
 ### Added

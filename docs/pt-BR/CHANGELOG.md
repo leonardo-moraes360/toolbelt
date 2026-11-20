@@ -9,6 +9,12 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Não Lançado]
 
+### Adicionado
+- `internal/mdparse` (fatia 1 da Fase A do vault): parser Markdown folha com `Slugify`, `Headings` ATX cientes de cerca e de frontmatter, `SplitFrontmatter`, `Wikilinks` do Obsidian (rótulos, `\|` em tabela, fragmentos, embeds, fora de código inline) e `NormalizeForSearch`; ainda sem comando para o usuário
+
+### Alterado
+- Seções Markdown do `tb graph`: linhas `#` dentro do frontmatter ou de bloco de código cercado deixam de ser seção, e uma sequência `#` de fechamento sai do texto do heading (regras ATX)
+
 ## [0.0.7] - 2026-11-20
 
 ### Adicionado

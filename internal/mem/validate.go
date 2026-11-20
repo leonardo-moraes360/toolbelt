@@ -4,9 +4,8 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
-	"unicode"
 
-	"golang.org/x/text/unicode/norm"
+	"github.com/leonardo-moraes360/toolbelt/internal/mdparse"
 )
 
 var ValidCategories = []string{"anti_cheat", "mandate", "security"}
@@ -61,15 +60,4 @@ func refLooksLikeADROrDecisions(clean string) bool {
 	return false
 }
 
-func normalizeForSearch(s string) string {
-	s = norm.NFD.String(s)
-	var b strings.Builder
-	b.Grow(len(s))
-	for _, r := range s {
-		if unicode.Is(unicode.Mn, r) {
-			continue
-		}
-		b.WriteRune(unicode.ToLower(r))
-	}
-	return b.String()
-}
+func normalizeForSearch(s string) string { return mdparse.NormalizeForSearch(s) }
