@@ -27,6 +27,7 @@ var LocalCacheExcludePatterns = []string{
 	".toolbelt/captures/",
 	".toolbelt/bench/",
 	".toolbelt/bus/",
+	".toolbelt/secplay-red-ack",
 }
 
 // legacyExcludePatterns are lines older tb versions wrote inside the

@@ -99,6 +99,13 @@ var toolAnnotations = map[string]ToolAnnotations{
 
 	"tb_router_status":   annReadOnly,
 	"tb_watchdog_alerts": annReadOnly,
+
+	"tb_red_search":  annReadOnly,
+	"tb_blue_search": annReadOnly,
+	"tb_red_load":    annReadOnly,
+	"tb_blue_load":   annReadOnly,
+	"tb_sec_pair":    annReadOnly,
+	"tb_blue_apply":  annOverwrite,
 }
 
 // annotationsFor returns the built-in hints for name, if any.

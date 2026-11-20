@@ -528,6 +528,27 @@ tb mem init --json
 
 ---
 
+### `tb red` / `tb blue` — AppSec Playbooks (✓ Phase 1, ADR-017)
+
+Native offensive (red) and defensive (blue) AppSec methodology, paired by vulnerability class. Search is compact; `load` respects a token budget (default 2000) and slices by `##` section. Playbooks are reference text — the read paths never execute anything. Blue playbooks declare grep/regex checks that `tb blue apply` registers into `.toolbelt/secchecks.yaml` and `tb blue check` runs over the working tree. `tb red` prints a one-time authorized-use notice per repo.
+
+```bash
+tb red search "deserialization"
+tb red list --area web
+tb red load red-sqli --section Detection
+tb red load red-rce --budget 1500
+tb red load red-xxe --full
+tb red pair red-sqli
+tb red explain sql-injection
+tb blue search "detection"
+tb blue apply sql-injection --dry-run
+tb blue check
+```
+
+MCP parity: `tb_red_search`, `tb_blue_search`, `tb_red_load`, `tb_blue_load`, `tb_sec_pair` (read-only), `tb_blue_apply` (writes `secchecks.yaml`). See [docs/specs/appsec-playbooks.md](specs/appsec-playbooks.md).
+
+---
+
 ### `tb md` — TUI Markdown (planned — Phase 3+)
 
 > **Not implemented, and dropped from the vault's Phase A** ([ADR-016](adr/016-vault-fase-a.md)): any editor, Obsidian included, edits the vault; see [`tb vault`](#tb-vault--markdown-vault-phase-a).
