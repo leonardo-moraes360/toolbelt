@@ -955,7 +955,7 @@ graph LR
 
 ### 10.2 MCP (Model Context Protocol)
 
-`tb` acts as an **MCP server**, exposing tools. The JSON below is illustrative (`tb_run` does not exist); the real list (48 tools with `TB_GRAPH=on` in v0.0.8) is in [cli.md](cli.md).
+`tb` acts as an **MCP server**, exposing tools. The JSON below is illustrative (`tb_run` does not exist); the real list (54 tools with `TB_GRAPH=on` in v0.0.9) is in [cli.md](cli.md).
 
 ```json
 {
