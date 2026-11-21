@@ -6,6 +6,8 @@
 
 accepted
 
+A [ADR-018](018-cgo-componentes-nativos.md) (proposta) habilita cgo para componentes nativos; o tree-sitter continua adiado, mas o cgo deixa de impedi-lo.
+
 ## Contexto
 
 O [ADR-006](006-inspiracoes-graphify-obsidian.md) deixou em aberto a questão

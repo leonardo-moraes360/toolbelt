@@ -9,6 +9,9 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Não Lançado]
 
+### Adicionado
+- Rascunho da spec do índice vetorial (`docs/specs/vector-index.md`) e ADR-018 (proposta): o release passa a usar cgo para o llama.cpp vendorizado (só CPU, com piso x86-64-v2/armv8.0, builds cruzados com zig e fallbacks nomeados, glibc ≥ 2.28, matriz de smoke nativa com os seis alvos) sob um gate de qualidade de C/C++ `native` (lint e análise estática do shim, hardening por plataforma verificado nos artefatos, builds com sanitizers, libFuzzer, um subconjunto do vendor em allowlist com verificação de manifesto e de advisories); os embeddings rodam num filho `tb __graph-embed` em sandbox e sem rede (novo bloqueio de sockets por seccomp) com um modelo GGUF fixado pelo usuário; o `tb graph search --mode lexical|semantic|hybrid` (RRF) continua opt-in, com uma avaliação de recall@10 decidindo o status experimental
+
 ## [0.0.10] - 2026-11-21
 
 ### Adicionado
