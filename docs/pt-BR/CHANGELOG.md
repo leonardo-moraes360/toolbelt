@@ -9,6 +9,9 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Não Lançado]
 
+### Corrigido
+- Varredura de escapes (Registry de `internal/sandbox`): um processo morto junto com um grupo escapado é reparentado ao subreaper ainda saindo, com o ambiente já ilegível; era reportado como escape sem atribuição, e o `tb egm` podia marcar uma rodada como não atribuída (`TestRunnerEscapeAttributed` intermitente). Um processo saindo (`PF_EXITING`) cujo ambiente já não pode ser lido agora é morto e colhido sem ser reportado, como um zumbi
+
 ## [0.0.9] - 2026-11-20
 
 ### Adicionado

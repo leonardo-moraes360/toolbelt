@@ -149,18 +149,35 @@ func readEnvVars(pid int, keys []string) (vars map[string]string, ok bool) {
 	return out, true
 }
 
-// procLive reports whether pid exists and is not a zombie.
+// pfExiting is PF_EXITING (include/linux/sched.h): set by the kernel as soon
+// as a task starts exiting, before it drops its mm and well before it turns
+// into a zombie.
+const pfExiting = 0x4
+
+// procLive reports whether pid exists and is neither a zombie nor exiting.
 func procLive(pid int) bool {
 	data, err := os.ReadFile("/proc/" + strconv.Itoa(pid) + "/stat") //nolint:gosec // procfs
 	if err != nil {
 		return false
 	}
-	s := string(data)
+	return statLive(string(data))
+}
+
+// statLive parses a /proc/<pid>/stat line. A task that is exiting (e.g.
+// SIGKILLed with its group) still shows state R/D for a moment after its mm
+// is gone, so its environ is already unreadable: the PF_EXITING flag tells it
+// apart from a live process that hides its environment.
+func statLive(s string) bool {
 	i := strings.LastIndexByte(s, ')')
-	if i < 0 || i+2 >= len(s) {
+	if i < 0 {
 		return false
 	}
-	return s[i+2] != 'Z' && s[i+2] != 'X'
+	f := strings.Fields(s[i+1:]) // state ppid pgrp session tty_nr tpgid flags ...
+	if len(f) < 7 || f[0] == "Z" || f[0] == "X" {
+		return false
+	}
+	flags, err := strconv.ParseUint(f[6], 10, 64)
+	return err == nil && flags&pfExiting == 0
 }
 
 // killAndReap kills the orphan (and its group, if it leads one that is not the
