@@ -14,11 +14,17 @@ import (
 	"github.com/leonardo-moraes360/toolbelt/internal/ticket"
 )
 
+// runGit runs git tracked in procs (runTracked), like the router's own git: a
+// bare exec.Command child is an untracked direct child of the test process,
+// and any concurrent procs.Sweep (a router's sweepTick, an agent's settle)
+// SIGKILLs it as an escape. Auto gc/maintenance and fsmonitor are off for the
+// same reason: their detached daemons would be reparented here and swept.
 func runGit(t *testing.T, dir string, args ...string) string {
 	t.Helper()
-	c := exec.Command("git", args...)
+	full := append([]string{"-c", "gc.auto=0", "-c", "maintenance.auto=false", "-c", "core.fsmonitor=false"}, args...)
+	c := exec.Command("git", full...)
 	c.Dir = dir
-	out, err := c.CombinedOutput()
+	out, err := runTracked(c)
 	if err != nil {
 		t.Fatalf("git %v: %v\n%s", args, err, out)
 	}
@@ -97,12 +103,18 @@ func get(t *testing.T, s *ticket.Store, id string) ticket.Ticket {
 	return tk
 }
 
+// runWithTimeout runs r and fails the test if it does not finish in 60s. On
+// timeout it cancels the router and waits for Run to return: a router left
+// running would keep sweeping the shared procs Registry during later tests
+// (killing their processes and stealing their escapes).
 func runWithTimeout(ctx context.Context, t *testing.T, r *Router) *Summary {
 	t.Helper()
 	type res struct {
 		s   *Summary
 		err error
 	}
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 	ch := make(chan res, 1)
 	go func() {
 		s, err := r.Run(ctx)
@@ -115,7 +127,13 @@ func runWithTimeout(ctx context.Context, t *testing.T, r *Router) *Summary {
 		}
 		return x.s
 	case <-time.After(60 * time.Second):
-		t.Fatal("router não terminou em 60s")
+		cancel()
+		select {
+		case <-ch:
+		case <-time.After(30 * time.Second):
+			t.Error("router did not stop 30s after cancellation")
+		}
+		t.Fatal("router did not finish in 60s")
 		return nil
 	}
 }
