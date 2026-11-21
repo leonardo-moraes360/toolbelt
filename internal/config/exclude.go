@@ -22,6 +22,7 @@ const VersionedFileMode = 0o644
 // an extra pattern derived from vault.path.
 var LocalCacheExcludePatterns = []string{
 	".toolbelt/graph.json",
+	".toolbelt/graph.vec",
 	".toolbelt/logs/",
 	".toolbelt/workspaces/",
 	".toolbelt/captures/",

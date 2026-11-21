@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/leonardo-moraes360/toolbelt/internal/graph"
+	"github.com/leonardo-moraes360/toolbelt/internal/secrets"
 )
 
 // Source is a resolved, included source (R7).
@@ -41,16 +42,8 @@ type SourceSet struct {
 }
 
 var (
-	reSpan       = regexp.MustCompile("`([^`\n]+)`")
-	reSpanExt    = regexp.MustCompile(`\.(go|py|rs|java|kt|cs|php|rb|swift|ts|tsx|js|mjs|c|h|cpp|hpp|md|mdx|html|txt|sh|json|yaml|yml|toml)$`)
-	denyBaseGlob = []string{
-		".env*", "*.pem", "*.key", "*.p12", "id_*", "credentials*", "secrets*", "*.tfvars", "*.tfstate*",
-		"kubeconfig*", ".npmrc", ".netrc", ".pypirc", "service-account*.json", "*.keystore", "*.jks",
-	}
-	denyPathGlob = []string{
-		".toolbelt/**", "**/testdata/**", "internal/egm/personas/**", "internal/egm/standards/**",
-		"internal/egm/injection_patterns.txt", "docs/pt-BR/**",
-	}
+	reSpan    = regexp.MustCompile("`([^`\n]+)`")
+	reSpanExt = regexp.MustCompile(`\.(go|py|rs|java|kt|cs|php|rb|swift|ts|tsx|js|mjs|c|h|cpp|hpp|md|mdx|html|txt|sh|json|yaml|yml|toml)$`)
 )
 
 // SpanCandidates returns the single-backtick spans that may be paths (R7 b):
@@ -123,7 +116,7 @@ func denied(rel, doc string, gated []string) bool {
 			return true
 		}
 	}
-	if MatchAny(denyPathGlob, rel) || MatchAny(denyBaseGlob, path.Base(rel)) {
+	if secrets.Denied(rel) {
 		return true
 	}
 	return rel != doc && IsGated(gated, rel)

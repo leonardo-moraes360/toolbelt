@@ -85,16 +85,36 @@ var graphIndexCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		vectors, _ := cmd.Flags().GetBool("vectors")
 		opts := graphBuildOptions()
 		idx, err := s.RebuildOpts(root, &opts)
 		if err != nil {
 			return err
 		}
 		s.SetStale(false)
+		var vst *graph.VectorStats
+		if vectors {
+			var warnings []string
+			vst, warnings, err = buildGraphVectors(cmd.Context(), s, idx)
+			for _, w := range warnings {
+				fmt.Fprintln(os.Stderr, "warning:", w)
+			}
+			if err != nil {
+				return err
+			}
+		}
 		if jsonOutput {
-			return json.NewEncoder(os.Stdout).Encode(graphStatsPayload(s))
+			payload := graphStatsPayload(s)
+			if vst != nil {
+				payload["vectors"] = vst
+			}
+			return json.NewEncoder(os.Stdout).Encode(payload)
 		}
 		fmt.Printf("graph indexed: %d nodes, %d edges → %s\n", len(idx.Nodes), len(idx.Edges), s.Path())
+		if vst != nil {
+			fmt.Printf("vectors: %d units (%d embedded, %d reused, %d dropped, %d denied files) → %s\n",
+				vst.Units, vst.Embedded, vst.Reused, vst.Dropped, vst.Denied, vst.Path)
+		}
 		return nil
 	},
 }
@@ -111,9 +131,16 @@ var graphSearchCmd = &cobra.Command{
 	Args:  cobra.MinimumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		limit, _ := cmd.Flags().GetInt("limit")
+		mode, _ := cmd.Flags().GetString("mode")
+		if err := validSearchMode(mode); err != nil {
+			return err
+		}
 		s, err := graphStoreFresh()
 		if err != nil {
 			return err
+		}
+		if mode != modeLexical {
+			return runVectorSearch(cmd, s, mode, args[0], limit)
 		}
 		hits := s.Search(args[0], limit)
 		return printGraphNodes(s, hits)
@@ -294,6 +321,9 @@ var graphStatsCmd = &cobra.Command{
 
 func init() {
 	graphSearchCmd.Flags().Int("limit", 20, "maximum results")
+	graphSearchCmd.Flags().String("mode", modeLexical, "lexical | semantic | hybrid (semantic and hybrid need graph.vector.enabled and tb graph index --vectors)")
+	graphIndexCmd.Flags().Bool("vectors", false, "also build or update the vector index (.toolbelt/graph.vec; needs graph.vector.enabled)")
+	graphRebuildCmd.Flags().Bool("vectors", false, "also build or update the vector index (.toolbelt/graph.vec; needs graph.vector.enabled)")
 	graphCallersCmd.Flags().String("function", "", "function name")
 	graphCallersCmd.Flags().Int("depth", 1, "depth")
 	graphDepsCmd.Flags().String("module", "", "module/package")

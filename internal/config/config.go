@@ -76,6 +76,10 @@ type GraphConfig struct {
 	Docs           []string `yaml:"docs"`
 	Frameworks     []string `yaml:"frameworks"`
 	MaxFileBytes   int64    `yaml:"max_file_bytes"`
+	// Vector and Embed are user-only: Load drops them from the repository
+	// layer and graph reads them through LoadUser.
+	Vector GraphVectorConfig `yaml:"vector,omitempty"`
+	Embed  GraphEmbedConfig  `yaml:"embed,omitempty"`
 }
 
 // VaultConfig is the vault: section (docs/specs/vault.md, Configuration).
@@ -326,6 +330,8 @@ func DefaultConfig() *Config {
 				"react", "vue", "svelte", "astro", "angular", "routes", "mdx",
 			},
 			MaxFileBytes: 512 * 1024,
+			Vector:       DefaultGraphVectorConfig(),
+			Embed:        DefaultGraphEmbedConfig(),
 		},
 		Vault: VaultConfig{
 			Path:         ".toolbelt/vault",
@@ -384,11 +390,14 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("loading global config: %w", err)
 	}
 
-	// Local overrides global.
+	// Local overrides global, except graph.vector and graph.embed: they pick
+	// what native code loads, so the repository layer never sets them.
+	vector, embed := cfg.Graph.Vector, cfg.Graph.Embed
 	localPath := LocalConfigPath()
 	if err := loadFromFile(localPath, cfg); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return nil, fmt.Errorf("loading local config: %w", err)
 	}
+	cfg.Graph.Vector, cfg.Graph.Embed = vector, embed
 
 	return cfg, nil
 }
@@ -478,6 +487,9 @@ func InitDetailed(dir string) (DetectedCmd, error) {
 	}
 
 	cfg := DefaultConfig()
+	// Left out so a repository config written by init never sets user-only
+	// keys (which would draw config_untrusted warnings); defaults apply.
+	cfg.Graph.Vector, cfg.Graph.Embed = GraphVectorConfig{}, GraphEmbedConfig{}
 	detected = applyDetectedVerifyCmds(cfg, dir)
 	if err := Save(cfg, configPath); err != nil {
 		return detected, fmt.Errorf("saving default config: %w", err)

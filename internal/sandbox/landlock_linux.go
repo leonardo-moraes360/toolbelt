@@ -45,6 +45,21 @@ type rulesetAttr struct {
 	handledAccessFs uint64
 }
 
+// rulesetAttrScoped is struct landlock_ruleset_attr up to the scoped field
+// (ABI 6). It is passed only when scoping is wanted, so older kernels keep
+// getting the 8-byte attr they know.
+type rulesetAttrScoped struct {
+	handledAccessFs  uint64
+	handledAccessNet uint64
+	scoped           uint64
+}
+
+const (
+	landlockScopeAbstractUnixSocket = 1 << 0
+	landlockScopeSignal             = 1 << 1
+	landlockABIScoped               = 6
+)
+
 type pathBeneathAttr struct {
 	allowedAccess uint64
 	parentFd      int32
@@ -60,6 +75,7 @@ type childPayload struct {
 	PrivateTmp      string       `json:"private_tmp,omitempty"`
 	Home            string       `json:"home,omitempty"`
 	MinimalDev      bool         `json:"minimal_dev,omitempty"`
+	DenyNetwork     bool         `json:"deny_network,omitempty"`
 }
 
 func init() {
@@ -118,7 +134,7 @@ func applyLandlock(p *childPayload) error {
 		return fmt.Errorf("Landlock unavailable: %w", err)
 	}
 
-	ruleset, err := createRuleset(abi)
+	ruleset, err := createRuleset(abi, p.DenyNetwork)
 	if err != nil {
 		return err
 	}
@@ -152,9 +168,24 @@ func applyLandlock(p *childPayload) error {
 	return restrictSelf(ruleset)
 }
 
-func createRuleset(abi int) (int, error) {
-	attr := rulesetAttr{handledAccessFs: handledAccessFS(abi)}
-	fd, _, errno := syscall.Syscall(sysLandlockCreateRuleset, uintptr(unsafe.Pointer(&attr)), unsafe.Sizeof(attr), 0)
+// createRuleset scopes abstract unix sockets and signals to the domain when
+// denyNetwork is set and the kernel has ABI >= 6: seccomp already blocks new
+// sockets, scoping also keeps the child from signaling processes outside it.
+func createRuleset(abi int, denyNetwork bool) (int, error) {
+	var (
+		fd    uintptr
+		errno syscall.Errno
+	)
+	if denyNetwork && abi >= landlockABIScoped {
+		attr := rulesetAttrScoped{
+			handledAccessFs: handledAccessFS(abi),
+			scoped:          landlockScopeAbstractUnixSocket | landlockScopeSignal,
+		}
+		fd, _, errno = syscall.Syscall(sysLandlockCreateRuleset, uintptr(unsafe.Pointer(&attr)), unsafe.Sizeof(attr), 0)
+	} else {
+		attr := rulesetAttr{handledAccessFs: handledAccessFS(abi)}
+		fd, _, errno = syscall.Syscall(sysLandlockCreateRuleset, uintptr(unsafe.Pointer(&attr)), unsafe.Sizeof(attr), 0)
+	}
 	if errno != 0 {
 		return -1, fmt.Errorf("landlock_create_ruleset: %v", errno)
 	}
@@ -342,6 +373,7 @@ func prepareChildEnv(cfg *Config, command string, args []string) ([]string, erro
 		PrivateTmp:      cfg.PrivateTmp,
 		Home:            cfg.Home,
 		MinimalDev:      cfg.MinimalDev,
+		DenyNetwork:     cfg.DenyNetwork,
 	})
 	if err != nil {
 		return nil, err
@@ -376,6 +408,13 @@ func runLandlockChild() error {
 	runtime.LockOSThread()
 	if err := applyLandlock(&p); err != nil {
 		return err
+	}
+	// Fail closed: a payload asking for DenyNetwork never execs without the
+	// filter (the error exits 127 in init).
+	if p.DenyNetwork {
+		if err := installNetworkFilter(); err != nil {
+			return fmt.Errorf("network filter: %w", err)
+		}
 	}
 
 	if err := os.Chdir(p.WorkDir); err != nil {

@@ -58,6 +58,29 @@ func CheckModel(path, want string) (os.FileInfo, error) {
 	return fi, nil
 }
 
+// OutsideRepo refuses a model under repoRoot. CheckModel already rejects
+// symlinks on the model path, so only the root needs resolving (it may sit
+// under a symlinked directory such as /tmp on macOS).
+func OutsideRepo(model, repoRoot string) error {
+	if repoRoot == "" {
+		return nil
+	}
+	root, err := filepath.Abs(repoRoot)
+	if err == nil {
+		root, err = filepath.EvalSymlinks(root)
+	}
+	if err != nil {
+		return fmt.Errorf("%w: resolving the repository root: %v", ErrModelPath, err)
+	}
+	for _, r := range []string{root, filepath.Clean(repoRoot)} {
+		rel, err := filepath.Rel(r, model)
+		if err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			return fmt.Errorf("%w: %s is inside the repository; keep the model outside it", ErrModelPath, model)
+		}
+	}
+	return nil
+}
+
 // SameModel reports whether path still names the file CheckModel hashed:
 // the native engine opens the path again, so a swap in between is refused.
 func SameModel(path string, hashed os.FileInfo) error {
