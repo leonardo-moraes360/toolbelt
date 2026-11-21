@@ -258,6 +258,10 @@ func TestClientStartFailures(t *testing.T) {
 	if _, err := Start(context.Background(), o); !errors.Is(err, ErrEmbedUnavailable) {
 		t.Fatalf("unavailable: %v", err)
 	}
+	o = fakeOptions(t, "cpu")
+	if _, err := Start(context.Background(), o); !errors.Is(err, ErrEmbedCPU) {
+		t.Fatalf("cpu: %v", err)
+	}
 	o = fakeOptions(t, "badsha")
 	if _, err := Start(context.Background(), o); !errors.Is(err, ErrEmbedProtocol) {
 		t.Fatalf("badsha: %v", err)

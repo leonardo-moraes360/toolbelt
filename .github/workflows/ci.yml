@@ -197,6 +197,55 @@ jobs:
       - name: Embed tests
         run: go test -tags embednative -count=1 ./internal/embed/... ./internal/version
 
+      - name: AVX-tier code only in ggml-cpu (ADR-019)
+        if: runner.arch == 'X64'
+        run: python3 scripts/avx-audit.py bin/tb-native internal/embed/native/build/linux_amd64/lib
+
+      - name: Pre-AVX CPU under QEMU (ADR-019)
+        if: runner.arch == 'X64'
+        run: |
+          sudo apt-get install -y --no-install-recommends qemu-user
+          q="qemu-x86_64 -cpu Nehalem"
+          for c in "version" "graph --help" "mem list" "sandbox check"; do
+            # shellcheck disable=SC2086
+            $q bin/tb-native $c >/dev/null 2>"$RUNNER_TEMP/err" || { cat "$RUNNER_TEMP/err"; exit 1; }
+          done
+          sha="$(sed -n 's/^sha256: //p' .github/embed-smoke-model.txt)"
+          set +e
+          $q bin/tb-native __graph-embed --smoke "$TB_EMBED_MODEL" --sha256 "$sha" 2>"$RUNNER_TEMP/err"
+          rc=$?
+          set -e
+          cat "$RUNNER_TEMP/err"
+          [ "$rc" = 2 ] && grep -q embed_cpu_unsupported "$RUNNER_TEMP/err"
+
+      - name: "Spike: v2 vs v3 kernels, speed and recall (ADR-019)"
+        if: runner.arch == 'X64' && startsWith(github.head_ref, 'spike/')
+        run: |
+          python3 - > "$RUNNER_TEMP/req.jsonl" <<'PY'
+          import glob, json
+          txt = "".join(open(f).read() for f in sorted(glob.glob("internal/graph/*.go")))
+          print(json.dumps({"id": 1, "kind": "doc", "texts": [txt[i:i+1500] for i in range(0, 64*1500, 1500)]}))
+          print(json.dumps({"id": 2, "kind": "query", "texts": [f"where does the sandbox refuse symlink {i}" for i in range(64)]}))
+          PY
+          sha="$(sed -n 's/^sha256: //p' .github/embed-smoke-model.txt)"
+          export TB_EMBED_MODEL_SHA256="$sha" TB_EMBED_THREADS=4
+          bench() {
+            local t0 t1
+            t0=$(date +%s.%N)
+            "$1" __graph-embed --model "$TB_EMBED_MODEL" --sha256 "$sha" --threads 4 < "$RUNNER_TEMP/req.jsonl" > /dev/null
+            t1=$(date +%s.%N)
+            echo "$2 bench (64 chunks + 64 queries): $(echo "$t1 - $t0" | bc) s" | tee -a "$GITHUB_STEP_SUMMARY"
+            TB_EMBED_EXE="$PWD/$1" go test -count=1 -timeout 60m -run TestSemanticRecall -v ./internal/graph/eval/ \
+              | grep -E 'vectors:|RESULT' | sed "s/^/$2 /" | tee -a "$GITHUB_STEP_SUMMARY"
+          }
+          cp bin/tb-native bin/tb-v3
+          bench bin/tb-v3 v3
+          TB_X86_KERNELS=v2 scripts/build-native.sh linux amd64
+          go build -tags embednative,netgo,osusergo -o bin/tb-v2 ./cmd/tb
+          bench bin/tb-v2 v2
+          ls -l bin/tb-v2 bin/tb-v3 | tee -a "$GITHUB_STEP_SUMMARY"
+          scripts/build-native.sh linux amd64
+
       - name: Static initializers do no I/O
         run: scripts/native-gate.sh strace bin/tb-native bin/tb
 

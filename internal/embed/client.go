@@ -257,7 +257,7 @@ func (c *Client) startErr(err error) error {
 	lines := strings.Split(strings.TrimRight(c.res.Output, "\n"), "\n")
 	for i := len(lines) - 1; i >= 0; i-- {
 		msg := strings.TrimSpace(lines[i])
-		for _, known := range []error{native.ErrUnavailable, ErrModelMismatch, ErrModelPath, native.ErrUnsupported, native.ErrModelLoad} {
+		for _, known := range []error{native.ErrUnavailable, ErrEmbedCPU, ErrModelMismatch, ErrModelPath, native.ErrUnsupported, native.ErrModelLoad} {
 			code, _, _ := strings.Cut(known.Error(), ":")
 			if strings.Contains(msg, code) {
 				return fmt.Errorf("%w (child: %s)", known, msg)

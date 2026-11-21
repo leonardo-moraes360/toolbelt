@@ -76,6 +76,10 @@ func runFake(mode, sha string, args []string) {
 		_ = serve(ctx, os.Stdin, os.Stdout, fakeInfo(sha), funcEngine(func(string) ([]float32, bool, error) {
 			return nil, false, errors.New("embed: evaluation failed")
 		}))
+	case "cpu":
+		// What tb __graph-embed prints when CheckCPU fails (ADR-019).
+		fmt.Fprintln(os.Stderr, "tb __graph-embed: embed_cpu_unsupported: the embedding engine needs an x86-64-v3 CPU (missing [AVX2]); every other tb command still works")
+		os.Exit(2)
 	case "unavailable":
 		fmt.Fprintln(os.Stderr, "tb __graph-embed: embed_unavailable: this tb was built without the native engine")
 		os.Exit(2)

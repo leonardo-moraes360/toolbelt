@@ -21,11 +21,28 @@ foreach(opt GGML_BACKEND_DL GGML_CPU_ALL_VARIANTS GGML_NATIVE GGML_OPENMP GGML_M
   set(${opt} OFF CACHE BOOL "" FORCE)
 endforeach()
 
-# The CPU floor (ADR-018): x86-64-v2 on amd64, armv8.0-a on arm64.
+# The CPU floor (ADR-018) is x86-64-v2 on amd64 and armv8.0-a on arm64.
+# ADR-019 (spike) moves only the ggml-cpu kernels on amd64 to the AVX2 tier;
+# tb __graph-embed refuses with embed_cpu_unsupported on CPUs without it.
+# TB_X86_KERNELS=v2 builds the ADR-018 floor (for benchmarks and fallback).
+set(TB_X86_KERNELS "v3" CACHE STRING "amd64 ggml-cpu kernels: v2 or v3")
 if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64)$")
   set(GGML_SSE42 ON CACHE BOOL "" FORCE)
-  foreach(opt GGML_AVX GGML_AVX2 GGML_AVX_VNNI GGML_BMI2 GGML_FMA GGML_F16C GGML_AVX512 GGML_AVX512_VBMI
-              GGML_AVX512_VNNI GGML_AVX512_BF16 GGML_AMX_TILE GGML_AMX_INT8 GGML_AMX_BF16)
+  if(TB_X86_KERNELS STREQUAL "v3")
+    set(tb_x86_on GGML_AVX GGML_AVX2 GGML_BMI2 GGML_FMA GGML_F16C)
+    set(tb_x86_off GGML_AVX_VNNI GGML_AVX512 GGML_AVX512_VBMI GGML_AVX512_VNNI GGML_AVX512_BF16 GGML_AMX_TILE
+                   GGML_AMX_INT8 GGML_AMX_BF16)
+  elseif(TB_X86_KERNELS STREQUAL "v2")
+    set(tb_x86_on "")
+    set(tb_x86_off GGML_AVX GGML_AVX2 GGML_AVX_VNNI GGML_BMI2 GGML_FMA GGML_F16C GGML_AVX512 GGML_AVX512_VBMI
+                   GGML_AVX512_VNNI GGML_AVX512_BF16 GGML_AMX_TILE GGML_AMX_INT8 GGML_AMX_BF16)
+  else()
+    message(FATAL_ERROR "TB_X86_KERNELS must be v2 or v3, not ${TB_X86_KERNELS}")
+  endif()
+  foreach(opt ${tb_x86_on})
+    set(${opt} ON CACHE BOOL "" FORCE)
+  endforeach()
+  foreach(opt ${tb_x86_off})
     set(${opt} OFF CACHE BOOL "" FORCE)
   endforeach()
 elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64|ARM64)$")

@@ -32,6 +32,12 @@ var graphEmbedCmd = &cobra.Command{
 			fmt.Fprintln(os.Stderr, "tb __graph-embed:", native.ErrUnavailable)
 			os.Exit(2)
 		}
+		// Before Serve and Smoke, so no native code runs on a CPU the
+		// kernels were not built for (ADR-019).
+		if err := embed.CheckCPU(); err != nil {
+			fmt.Fprintln(os.Stderr, "tb __graph-embed:", err)
+			os.Exit(2)
+		}
 		if graphEmbedSmoke == "" {
 			if graphEmbedModel == "" {
 				return errors.New("embed_protocol: --model or --smoke is required")

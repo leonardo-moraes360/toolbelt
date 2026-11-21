@@ -6,7 +6,8 @@
 #
 # With ZIG set (the pinned zig binary) the compiler is zig for the target's
 # triple (scripts/zig-target.sh); otherwise CC/CXX or the host compiler.
-# EXTRA_CFLAGS adds flags (sanitizers).
+# EXTRA_CFLAGS adds flags (sanitizers). TB_X86_KERNELS=v2|v3 (default v3)
+# picks the amd64 ggml-cpu kernels (ADR-019).
 set -euo pipefail
 
 goos="$1" goarch="$2"
@@ -51,6 +52,7 @@ cmake -S "$src" -B "$out/cmake" -G Ninja \
   -DCMAKE_BUILD_TYPE=Release \
   -DCMAKE_C_FLAGS="$flags" -DCMAKE_CXX_FLAGS="$flags" \
   -DCMAKE_ARCHIVE_OUTPUT_DIRECTORY="$out/lib" \
+  -DTB_X86_KERNELS="${TB_X86_KERNELS:-v3}" \
   "${cross[@]}"
 cmake --build "$out/cmake" --parallel
 # Each target writes its own archive; collect them in lib/.
