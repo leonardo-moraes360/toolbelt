@@ -11,6 +11,7 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ### Corrigido
 - Varredura de escapes (Registry de `internal/sandbox`): um processo morto junto com um grupo escapado é reparentado ao subreaper ainda saindo, com o ambiente já ilegível; era reportado como escape sem atribuição, e o `tb egm` podia marcar uma rodada como não atribuída (`TestRunnerEscapeAttributed` intermitente). Um processo saindo (`PF_EXITING`) cujo ambiente já não pode ser lido agora é morto e colhido sem ser reportado, como um zumbi
+- Varredura de escapes (Registry de `internal/sandbox`): um processo multithread escapado cuja thread líder chamou `exit(2)` enquanto as outras threads seguiam rodando aparece com estado `Z` e era tomado por zumbi: nunca classificado, nunca sinalizado, e o `wait4` não colhe um líder com threads vivas, então cada varredura girava até o prazo de 2 s com o mutex do Registry preso e o escape vivo nunca era morto nem reportado. Um líder `Z` com thread viva agora é classificado por essa thread (`/proc/<tid>`), morto e reportado; filhos zumbis também recebem `SIGKILL` (sem efeito num zumbi de verdade)
 
 ## [0.0.9] - 2026-11-20
 

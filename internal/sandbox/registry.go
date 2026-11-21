@@ -226,7 +226,9 @@ func (r *Registry) Sweep() []Orphan {
 //     (TB_TICKET_ID) with the group's owner: different, missing or unreadable
 //     (with the process still alive) is treated as an escape, attributed to the
 //     owner declared in the process's own environment (or unattributable when
-//     missing). Zombies and exiting processes (nothing to hide, environment
+//     missing). A process whose leader thread exited while other threads still
+//     run shows Z but is live: it is classified through a live thread.
+//     Zombies and exiting processes (nothing to hide, environment
 //     inaccessible) are only reaped: a process killed with its escaped group
 //     is reparented here while still exiting, and reading its environ then
 //     fails, which must not count as an unattributable escape.
@@ -242,7 +244,7 @@ func (r *Registry) sweepLocked() {
 		// kill, only reap (a live descendant of it shows up as its own orphan).
 		escape := false
 		if !c.zombie {
-			escape = r.classifyLocked(&o, g)
+			escape = r.classifyLocked(&o, g, c.task)
 		}
 		if !escape && g != nil && !g.finished {
 			continue // orphaned descendant of a still-running agent: the group kills it at the end
@@ -256,13 +258,14 @@ func (r *Registry) sweepLocked() {
 }
 
 // classifyLocked reads the environment of a live untracked child into o and
-// reports whether it is an escape (see sweepLocked).
-func (r *Registry) classifyLocked(o *Orphan, g *groupInfo) bool {
+// reports whether it is an escape (see sweepLocked). task is the /proc entry
+// to read it from: o.PID, or a live thread when the leader thread exited.
+func (r *Registry) classifyLocked(o *Orphan, g *groupInfo, task int) bool {
 	if g == nil {
-		vars, ok := readEnvVars(o.PID, r.vars)
+		vars, ok, task := r.taskEnv(o.PID, task)
 		// An exiting task has no mm: its environ fails to open (or reads
 		// empty). It is dying and cannot hide; treat it like a zombie.
-		if (!ok || len(vars) == 0) && !procLive(o.PID) {
+		if (!ok || len(vars) == 0) && !procLive(task) {
 			return false
 		}
 		o.Vars = vars
@@ -271,16 +274,31 @@ func (r *Registry) classifyLocked(o *Orphan, g *groupInfo) bool {
 	if g.owner == "" || r.ownerVar == "" {
 		return false
 	}
-	vars, ok := readEnvVars(o.PID, r.vars)
+	vars, ok, task := r.taskEnv(o.PID, task)
 	foreign := false
 	switch {
 	case ok:
 		foreign = vars[r.ownerVar] != g.owner
 	default:
-		foreign = procLive(o.PID) // unreadable but alive: the owner cannot be proven
+		foreign = procLive(task) // unreadable but alive: the owner cannot be proven
 	}
 	if foreign {
 		o.Vars, o.ForeignGroup, o.GroupOwner = vars, true, g.owner
 	}
 	return foreign
+}
+
+// taskEnv reads the captured vars through task. When task is a thread (the
+// leader already exited) and it exits before the read, it retries once through
+// another live thread, so a process that churns threads still gets attributed.
+// It returns the task finally read from.
+func (r *Registry) taskEnv(pid, task int) (vars map[string]string, ok bool, used int) {
+	vars, ok = readEnvVars(task, r.vars)
+	if !ok && task != pid {
+		if t := liveThread(pid); t != 0 {
+			task = t
+			vars, ok = readEnvVars(t, r.vars)
+		}
+	}
+	return vars, ok, task
 }
