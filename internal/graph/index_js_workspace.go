@@ -22,14 +22,13 @@ type jsWorkspace struct {
 }
 
 type jsWorkspacePkg struct {
-	dir      string // repo-relative, slash-separated
-	exports  json.RawMessage
-	module   string
-	main     string
-	types    string
-	typings  string
-	source   string
-	hasEntry bool
+	dir     string // repo-relative, slash-separated
+	exports json.RawMessage
+	module  string
+	main    string
+	types   string
+	typings string
+	source  string
 }
 
 type jsWorkspaceCacheEntry struct {
@@ -78,23 +77,7 @@ func readJSWorkspace(root string) *jsWorkspace {
 			globs = append(globs, raw.Packages...)
 		}
 	}
-	if data, err := os.ReadFile(filepath.Join(root, "package.json")); err == nil {
-		var raw struct {
-			Workspaces json.RawMessage `json:"workspaces"`
-		}
-		if json.Unmarshal(data, &raw) == nil && len(raw.Workspaces) > 0 {
-			var list []string
-			if json.Unmarshal(raw.Workspaces, &list) != nil {
-				var obj struct {
-					Packages []string `json:"packages"`
-				}
-				if json.Unmarshal(raw.Workspaces, &obj) == nil {
-					list = obj.Packages
-				}
-			}
-			globs = append(globs, list...)
-		}
-	}
+	globs = append(globs, packageJSONWorkspaces(root)...)
 	for _, dir := range expandWorkspaceGlobs(root, globs) {
 		if pkg, name, ok := readWorkspacePackage(root, dir); ok {
 			if _, dup := ws.pkgs[name]; !dup {
@@ -103,6 +86,32 @@ func readJSWorkspace(root string) *jsWorkspace {
 		}
 	}
 	return ws
+}
+
+// packageJSONWorkspaces reads "workspaces" from the root package.json, in the
+// array form (npm/yarn) or the {"packages": [...]} object form (yarn classic).
+func packageJSONWorkspaces(root string) []string {
+	data, err := os.ReadFile(filepath.Join(root, "package.json"))
+	if err != nil {
+		return nil
+	}
+	var raw struct {
+		Workspaces json.RawMessage `json:"workspaces"`
+	}
+	if json.Unmarshal(data, &raw) != nil || len(raw.Workspaces) == 0 {
+		return nil
+	}
+	var list []string
+	if json.Unmarshal(raw.Workspaces, &list) == nil {
+		return list
+	}
+	var obj struct {
+		Packages []string `json:"packages"`
+	}
+	if json.Unmarshal(raw.Workspaces, &obj) == nil {
+		return obj.Packages
+	}
+	return nil
 }
 
 func expandWorkspaceGlobs(root string, globs []string) []string {
@@ -283,14 +292,7 @@ func exportTargets(raw json.RawMessage, key string) []string {
 	if json.Unmarshal(raw, &m) != nil {
 		return nil
 	}
-	subpath := false
-	for k := range m {
-		if strings.HasPrefix(k, ".") {
-			subpath = true
-			break
-		}
-	}
-	if !subpath {
+	if !hasSubpathKeys(m) {
 		if key != "." {
 			return nil
 		}
@@ -299,6 +301,20 @@ func exportTargets(raw json.RawMessage, key string) []string {
 	if v, ok := m[key]; ok {
 		return conditionTargets(v)
 	}
+	return patternExportTargets(m, key)
+}
+
+func hasSubpathKeys(m map[string]json.RawMessage) bool {
+	for k := range m {
+		if strings.HasPrefix(k, ".") {
+			return true
+		}
+	}
+	return false
+}
+
+// patternExportTargets matches key against "./x/*" subpath patterns.
+func patternExportTargets(m map[string]json.RawMessage, key string) []string {
 	for pattern, v := range m {
 		star := strings.Index(pattern, "*")
 		if star < 0 {

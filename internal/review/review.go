@@ -724,92 +724,104 @@ func isJSXFile(file string) bool {
 	return ext == ".tsx" || ext == ".jsx"
 }
 
+// largeFuncScanner walks a unified diff and reports added functions (and
+// React components, measured without JSX markup) above the size limits.
+type largeFuncScanner struct {
+	reviewer  string
+	file      string
+	counting  bool
+	component bool
+	inHeader  bool
+	added     int
+	markup    int
+	newLine   int
+	startLine int
+	emitted   map[string]bool
+	out       []Finding
+}
+
 func reviewQualityLargeFuncs(ctx *FreshContext) []Finding {
-	var out []Finding
-	file := ""
-	counting := false
-	added, markup, newLine, startLine := 0, 0, 0, 0
-	component := false
-	inHeader := false
-	emitted := map[string]bool{}
-	reset := func() {
-		counting = false
-		added, markup, startLine = 0, 0, 0
-		component = false
-	}
-	flush := func() {
-		if !counting || file == "" {
-			reset()
-			return
-		}
-		limit, size, msg := largeFuncAddedLines, added, fmt.Sprintf("added function is too large (%d lines +)", added)
-		if component {
-			limit, size = largeComponentLogicLines, added-markup
-			msg = fmt.Sprintf("added React component is too large (%d logic lines +, %d JSX lines not counted)", size, markup)
-		}
-		if size < limit {
-			reset()
-			return
-		}
-		id := "quality-large-func-" + file
-		if !emitted[id] {
-			emitted[id] = true
-			out = append(out, Finding{
-				ID: "quality-large-func", Severity: SeverityWarning, Category: "quality", Role: "quality",
-				Message:  msg,
-				File:     file,
-				Line:     startLine,
-				Reviewer: ctx.Reviewer, Agreement: 1,
-			})
-		}
-		reset()
-	}
+	sc := &largeFuncScanner{reviewer: ctx.Reviewer, emitted: map[string]bool{}}
 	for _, line := range strings.Split(ctx.Diff, "\n") {
-		if strings.HasPrefix(line, "diff --git ") {
-			flush()
-			file = diffPath(line)
-			newLine = 0
-			inHeader = true
-			continue
+		sc.line(line)
+	}
+	sc.flush()
+	return sc.out
+}
+
+func (sc *largeFuncScanner) line(line string) {
+	switch {
+	case strings.HasPrefix(line, "diff --git "):
+		sc.flush()
+		sc.file = diffPath(line)
+		sc.newLine = 0
+		sc.inHeader = true
+		return
+	case strings.HasPrefix(line, "@@"):
+		sc.flush()
+		sc.inHeader = false
+		if m := hunkNewStartRe.FindStringSubmatch(line); len(m) > 1 {
+			sc.newLine, _ = strconv.Atoi(m[1])
 		}
-		if strings.HasPrefix(line, "@@") {
-			flush()
-			inHeader = false
-			if m := hunkNewStartRe.FindStringSubmatch(line); m != nil {
-				newLine, _ = strconv.Atoi(m[1])
-			}
-			continue
-		}
-		if inHeader {
-			continue
-		}
-		cur := newLine
-		if strings.HasPrefix(line, "+") || strings.HasPrefix(line, " ") {
-			newLine++
-		}
-		if !strings.HasPrefix(line, "+") {
-			continue
-		}
-		if addedFuncRe.MatchString(line) {
-			flush()
-			counting = true
-			startLine = cur
-			if isJSXFile(file) {
-				if m := funcNameRe.FindStringSubmatch(line); m != nil && m[1] != "" && unicode.IsUpper(rune(m[1][0])) {
-					component = true
-				}
-			}
-			continue
-		}
-		if counting {
-			added++
-			if component && jsxMarkupRe.MatchString(strings.TrimSpace(line[1:])) {
-				markup++
-			}
+		return
+	case sc.inHeader:
+		return
+	}
+	cur := sc.newLine
+	if strings.HasPrefix(line, "+") || strings.HasPrefix(line, " ") {
+		sc.newLine++
+	}
+	if !strings.HasPrefix(line, "+") {
+		return
+	}
+	if addedFuncRe.MatchString(line) {
+		sc.flush()
+		sc.counting = true
+		sc.startLine = cur
+		sc.component = isJSXFile(sc.file) && isComponentDecl(line)
+		return
+	}
+	if sc.counting {
+		sc.added++
+		if sc.component && jsxMarkupRe.MatchString(strings.TrimSpace(line[1:])) {
+			sc.markup++
 		}
 	}
-	flush()
-	return out
+}
+
+func isComponentDecl(line string) bool {
+	m := funcNameRe.FindStringSubmatch(line)
+	return len(m) > 1 && m[1] != "" && unicode.IsUpper(rune(m[1][0]))
+}
+
+func (sc *largeFuncScanner) reset() {
+	sc.counting, sc.component = false, false
+	sc.added, sc.markup, sc.startLine = 0, 0, 0
+}
+
+func (sc *largeFuncScanner) flush() {
+	defer sc.reset()
+	if !sc.counting || sc.file == "" {
+		return
+	}
+	limit, size := largeFuncAddedLines, sc.added
+	msg := fmt.Sprintf("added function is too large (%d lines +)", sc.added)
+	if sc.component {
+		limit, size = largeComponentLogicLines, sc.added-sc.markup
+		msg = fmt.Sprintf("added React component is too large (%d logic lines +, %d JSX lines not counted)", size, sc.markup)
+	}
+	id := "quality-large-func-" + sc.file
+	if size < limit || sc.emitted[id] {
+		return
+	}
+	sc.emitted[id] = true
+	sc.out = append(sc.out, Finding{
+		ID: "quality-large-func", Severity: SeverityWarning, Category: "quality", Role: "quality",
+		Message:  msg,
+		File:     sc.file,
+		Line:     sc.startLine,
+		Reviewer: sc.reviewer, Agreement: 1,
+	})
 }
 
 func reviewQualityMissingTests(ctx *FreshContext) []Finding {

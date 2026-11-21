@@ -378,23 +378,11 @@ func runVerifyIteration(ctx context.Context, cfg *Config, res *Result, cache *cm
 			failSig = "test\x00" + sig
 		}
 	}
-	hiddenOK := true
-	if res.HiddenAvailable {
-		hiddenOK, out, err = runConfiguredCmd(ctx, cfg, cfg.HiddenTest, "verify.hidden_test_cmd")
-		if err != nil {
-			setFailure(res, "verify.hidden_test_cmd", err.Error())
-			return false, true, err
-		}
-		res.HiddenPassed = boolPtr(hiddenOK)
-		if !hiddenOK {
-			setFailure(res, "verify.hidden_test_cmd", failReason("verify.hidden_test_cmd", out))
-			if sig := failureSignature(out); sig != "" {
-				failSig += "\x00hidden\x00" + sig
-			}
-		}
-	} else {
-		res.HiddenPassed = nil
+	hiddenOK, hiddenSig, err := runHiddenStep(ctx, cfg, res)
+	if err != nil {
+		return false, true, err
 	}
+	failSig += hiddenSig
 	if visibleOK && hiddenOK {
 		return true, false, nil
 	}
@@ -406,6 +394,27 @@ func runVerifyIteration(ctx context.Context, cfg *Config, res *Result, cache *cm
 	}
 	cache.lastFailSig = failSig
 	return false, false, nil
+}
+
+func runHiddenStep(ctx context.Context, cfg *Config, res *Result) (ok bool, sig string, err error) {
+	if !res.HiddenAvailable {
+		res.HiddenPassed = nil
+		return true, "", nil
+	}
+	ok, out, err := runConfiguredCmd(ctx, cfg, cfg.HiddenTest, "verify.hidden_test_cmd")
+	if err != nil {
+		setFailure(res, "verify.hidden_test_cmd", err.Error())
+		return false, "", err
+	}
+	res.HiddenPassed = boolPtr(ok)
+	if ok {
+		return true, "", nil
+	}
+	setFailure(res, "verify.hidden_test_cmd", failReason("verify.hidden_test_cmd", out))
+	if s := failureSignature(out); s != "" {
+		sig = "\x00hidden\x00" + s
+	}
+	return false, sig, nil
 }
 
 func runBuildAndLint(ctx context.Context, cfg *Config, res *Result, cache *cmdCache) (ok, deterministic bool, err error) {

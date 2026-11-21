@@ -8,7 +8,7 @@ import (
 )
 
 var (
-	ansiRE = regexp.MustCompile(`\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)`)
+	ansiRE = regexp.MustCompile(`\x1b\[[0-9;?]*[\x20-\x2f]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)`)
 	// failLineRE matches the lines a test runner uses to name what broke
 	// (go test, vitest/jest, pytest, playwright, cargo, tsc, generic errors).
 	// Case-sensitive and anchored at line start, so ordinary log noise
@@ -53,9 +53,9 @@ func failureLines(out string) []string {
 }
 
 // excerpt keeps the failure lines first and then the tail of the output
-// (runners print the summary last), within max bytes.
-func excerpt(out string, max int) string {
-	if len(out) <= max {
+// (runners print the summary last), within limit bytes.
+func excerpt(out string, limit int) string {
+	if len(out) <= limit {
 		return out
 	}
 	var b strings.Builder
@@ -65,13 +65,13 @@ func excerpt(out string, max int) string {
 			continue
 		}
 		seen[l] = struct{}{}
-		if b.Len()+len(l)+1 > max/2 {
+		if b.Len()+len(l)+1 > limit/2 {
 			break
 		}
 		b.WriteString(l)
 		b.WriteByte('\n')
 	}
-	rest := max - b.Len()
+	rest := limit - b.Len()
 	if b.Len() > 0 {
 		b.WriteString("…\n")
 	}
