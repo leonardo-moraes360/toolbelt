@@ -3,6 +3,7 @@
 package egm
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"os"
@@ -108,7 +109,7 @@ func TestBootstrapRefusals(t *testing.T) {
 	if _, err := os.Lstat(filepath.Join(f.root, ".git", "x.md")); err == nil {
 		t.Error("written inside .git")
 	}
-	if after, _ := os.ReadFile(filepath.Join(f.root, "docs", "specs", "x.md")); string(after) != string(before) {
+	if after, _ := os.ReadFile(filepath.Join(f.root, "docs", "specs", "x.md")); !bytes.Equal(after, before) {
 		t.Error("an existing document changed")
 	}
 }
@@ -124,9 +125,9 @@ func TestBootstrapFromFiltering(t *testing.T) {
 	writeFile(t, filepath.Join(dir, "p(1).go"), "package internal\n")
 	gitT(t, f.root, "add", "internal/p(1).go")
 	gitT(t, f.root, "commit", "-qm", "unlinkable name")
-	real := t.TempDir()
-	writeFile(t, filepath.Join(real, "inside.go"), "package x\n")
-	if err := os.Symlink(real, filepath.Join(dir, "linked")); err != nil {
+	target := t.TempDir()
+	writeFile(t, filepath.Join(target, "inside.go"), "package x\n")
+	if err := os.Symlink(target, filepath.Join(dir, "linked")); err != nil {
 		t.Fatal(err)
 	}
 	gitT(t, f.root, "add", "internal/linked")
