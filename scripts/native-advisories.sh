@@ -50,7 +50,7 @@ while IFS=$'\x1f' read -r id patched summary; do
   [[ $fixed -eq 1 ]] || report "$id" "fixed in $patched, not contained in the pin ($summary)"
 done <<<"$adv"
 
-osv="$(curl -sSf -X POST https://api.osv.dev/v1/query -d "{\"commit\":\"$commit\"}")"
+osv="$(curl -sSf --proto '=https' --tlsv1.2 -X POST https://api.osv.dev/v1/query -d "{\"commit\":\"$commit\"}")"
 while read -r id; do
   [[ -n "$id" ]] && report "$id" "OSV lists the pinned commit as affected"
 done < <(jq -r '.vulns[]?.id' <<<"$osv")

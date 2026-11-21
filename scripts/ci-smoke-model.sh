@@ -7,13 +7,16 @@ pin="$root/.github/embed-smoke-model.txt"
 url="$(sed -n 's/^url: //p' "$pin")"
 sha="$(sed -n 's/^sha256: //p' "$pin")"
 dest="$1"
-# sha256sum on Linux and Git for Windows, shasum on macOS.
+# Compare the digest itself: GNU sha256sum (Linux, Git for Windows), the
+# BSD sha256sum of macOS 14+ (no --quiet) and shasum all print it first.
 check() {
-  if command -v sha256sum >/dev/null; then echo "$sha  $dest" | sha256sum -c --quiet
-  else echo "$sha  $dest" | shasum -a 256 -c --quiet; fi
+  local got
+  if command -v shasum >/dev/null; then got="$(shasum -a 256 "$dest")"
+  else got="$(sha256sum "$dest")"; fi
+  [[ "${got%% *}" == "$sha" ]] || { echo "ci-smoke-model: $dest has sha256 ${got%% *}, want $sha" >&2; return 1; }
 }
 if [[ ! -f "$dest" ]] || ! check 2>/dev/null; then
-  curl -sSfL --retry 3 -o "$dest" "$url"
+  curl -sSfL --proto '=https' --tlsv1.2 --retry 3 -o "$dest" "$url"
 fi
 check
 chmod 0600 "$dest"

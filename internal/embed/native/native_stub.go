@@ -12,7 +12,9 @@ type Model struct{}
 func Open(string, int) (*Model, error) { return nil, ErrUnavailable }
 
 // Dims, NCtx, Embed and Close exist so callers compile in every build.
-func (m *Model) Dims() int                             { return 0 }
-func (m *Model) NCtx() int                             { return 0 }
-func (m *Model) Embed(string) ([]float32, bool, error) { return nil, false, ErrUnavailable }
-func (m *Model) Close()                                {}
+func (m *Model) Dims() int { return 0 }
+func (m *Model) NCtx() int { return 0 }
+func (m *Model) Embed(string) (vec []float32, truncated bool, err error) {
+	return nil, false, ErrUnavailable
+}
+func (m *Model) Close() {}

@@ -6,9 +6,7 @@ on:
       - "v*"
 
 permissions:
-  contents: write
-  id-token: write
-  attestations: write
+  contents: read
 
 # The pinned zig (ADR-018); its sha256 comes from ziglang.org/download/index.json.
 env:
@@ -19,24 +17,29 @@ jobs:
   release:
     name: Release (draft)
     runs-on: ubuntu-latest
+    permissions:
+      contents: write # create the draft release
+      id-token: write # keyless cosign signing
+      attestations: write # build provenance
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           fetch-depth: 0
 
       - name: Setup Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
           go-version-file: go.mod
-          cache: true
+          cache: false # no cache in the release job (cache poisoning)
 
       - name: Install the native toolchain
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends cmake ninja-build binutils strace jq
-          curl -sSfL -o zig.tar.xz "https://ziglang.org/download/${ZIG_VERSION}/zig-x86_64-linux-${ZIG_VERSION}.tar.xz"
+          curl -sSfL --proto '=https' --tlsv1.2 -o zig.tar.xz "https://ziglang.org/download/${ZIG_VERSION}/zig-x86_64-linux-${ZIG_VERSION}.tar.xz"
           echo "${ZIG_SHA256}  zig.tar.xz" | sha256sum -c
           mkdir -p "$RUNNER_TEMP/zig" && tar -xJf zig.tar.xz -C "$RUNNER_TEMP/zig" --strip-components=1
           echo "ZIG=$RUNNER_TEMP/zig/zig" >> "$GITHUB_ENV"
@@ -50,16 +53,14 @@ jobs:
           scripts/native-advisories.sh
 
       - name: Install cosign
-        uses: sigstore/cosign-installer@v4.1.3
-
+        uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532 # v4.1.3
       - name: Install syft
-        uses: anchore/sbom-action/download-syft@v0.24.3
-
+        uses: anchore/sbom-action/download-syft@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
       - name: Run tests
         run: go test ./...
 
       - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@v7
+        uses: goreleaser/goreleaser-action@a4f02ab5355a589de60d917a659ce617ed19b3de # v7.3.0
         with:
           distribution: goreleaser
           version: "~> v2"
@@ -98,7 +99,7 @@ jobs:
           scripts/native-gate.sh strace dist/tb_linux_amd64*/tb "$RUNNER_TEMP/tb-untagged"
 
       - name: Attest build provenance
-        uses: actions/attest-build-provenance@v4
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-checksums: ./dist/checksums.txt
 
@@ -108,6 +109,8 @@ jobs:
     name: Smoke (${{ matrix.os }}/${{ matrix.arch }})
     needs: [release]
     runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: write # read the draft release assets (drafts need write access)
     strategy:
       fail-fast: false
       matrix:
@@ -123,8 +126,9 @@ jobs:
         shell: bash
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
-
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Download the draft asset
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -133,8 +137,9 @@ jobs:
           v="${TAG#v}"
           asset="toolbelt_${v}_${{ matrix.os }}_${{ matrix.arch }}.${{ matrix.ext }}"
           gh release download "$TAG" -p "$asset" -p checksums.txt
-          if command -v sha256sum >/dev/null; then sum=(sha256sum -c); else sum=(shasum -a 256 -c); fi
-          grep " ${asset}\$" checksums.txt | "${sum[@]}"
+          want="$(grep " ${asset}\$" checksums.txt | cut -d' ' -f1)"
+          if command -v shasum >/dev/null; then got="$(shasum -a 256 "$asset")"; else got="$(sha256sum "$asset")"; fi
+          [[ -n "$want" && "${got%% *}" == "$want" ]] || { echo "checksum mismatch for $asset"; exit 1; }
           mkdir x
           if [[ "${{ matrix.ext }}" == zip ]]; then unzip -q "$asset" -d x; else tar -xzf "$asset" -C x; fi
 
@@ -158,10 +163,13 @@ jobs:
     name: Smoke (glibc 2.28, x86-64-v2)
     needs: [release]
     runs-on: ubuntu-24.04
+    permissions:
+      contents: write # read the draft release assets (drafts need write access)
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
-
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Download the draft asset
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -188,6 +196,8 @@ jobs:
     name: Publish
     needs: [smoke, floors]
     runs-on: ubuntu-latest
+    permissions:
+      contents: write # publish the draft (drafts need write access)
     steps:
       - name: Make the release public
         env:
