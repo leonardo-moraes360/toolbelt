@@ -1670,7 +1670,7 @@ tb router config
 
 | Subcomando | Flags | Descrição |
 |------------|-------|-----------|
-| `run` | `--workers <n>`, `--strategy fifo\|priority\|dependency`, `--agent-cmd "<cmd>"`, `--once`, `--dry-run`, `--allow-unsandboxed` | Executa até esvaziar a fila; Ctrl-C devolve tickets `running` para `pending` |
+| `run` | `--workers <n>`, `--strategy fifo\|priority\|dependency`, `--agent-cmd "<cmd>"`, `--once`, `--dry-run`, `--check`, `--allow-unsandboxed` | Executa até esvaziar a fila; Ctrl-C devolve tickets `running` para `pending`. Com `router.bus` (só config global ou `-c`) acrescenta slots do barramento `b1..bN` que entregam tickets a workers com `router_tasks` num canal do barramento; `max_workers: 0` = só barramento (sem `agent_cmd`, sem Landlock). `--check` valida a sessão e o canal do barramento. Spec: [bus-router.md](bus-router.md) |
 | `status` | — | Lê `state.json`; detecta estado obsoleto (PID morto) |
 | `config` | — | Imprime a configuração efetiva (`router:`) |
 
@@ -1730,13 +1730,19 @@ router:
   retry:
     max_attempts: 2
   slow_threshold: 0.8         # fração do timeout para worker_slow
+  # bus:                      # slots do barramento b1..bN; SÓ na config global ou -c (ignorado na do repositório)
+  #   channel: feature-x
+  #   as: router              # a sessão CLI do router (tb bus join --role router)
+  #   slots: 1
+  #   to: role:worker         # ou agent:<nome>
+  #   claim_timeout: 5m
 ```
 
 **Arquivos de runtime** (`.toolbelt/router/`, no `.gitignore`):
 
 | Caminho | Conteúdo |
 |---------|----------|
-| `state.json` | PID, estratégia, workers (idle/working, ticket, assinaturas) e fila (ready/blocked/running); atualizado a cada mudança |
+| `state.json` | PID, estratégia, workers (idle/working, ticket, assinaturas; slots do barramento também thread, agente, fase e `claimed_at`) e fila (ready/blocked/running); atualizado a cada mudança |
 | `alerts.jsonl` | Alertas do watchdog, um JSON por linha (criado no primeiro alerta) |
 | `control/` | Pedidos para o router em execução (ex.: `kill-w1.json`) |
 | `logs/TKT-NNN.log` | stdout/stderr do agente por ticket |
@@ -1760,7 +1766,7 @@ tb watchdog kill w1 --reason "travado em loop"
 |------------|-------|-----------|
 | `status` | `--worker <id>` | Estado dos workers e contagem de alertas por tipo |
 | `alerts` | `--since <10m\|2h\|RFC3339>`, `--kind <tipo>`, `--limit <n>` | Lista `alerts.jsonl` |
-| `kill <worker>` | `--reason` | Grava `control/kill-<worker>.json`; o router cancela o ticket em execução (conta como tentativa). Erro se não há router em execução |
+| `kill <worker>` | `--reason` | Grava `control/kill-<worker>.json`; o router cancela o ticket em execução (conta como tentativa). Erro se não há router em execução. Num slot do barramento (`bN`) o router revoga a thread; o harness remoto para o próprio filho |
 
 **Alertas:**
 
@@ -1777,6 +1783,8 @@ tb watchdog kill w1 --reason "travado em loop"
 | `agent_escaped` | error | descendente do agente escapou do grupo de processos (`setsid`/`setpgid`); foi morto e o ticket dono (por `TB_TICKET_ID`; não atribuível ⇒ todos os rodando) falha sem retry nem git (Linux) | `escalate` |
 | `orphan_killed` | warn | órfão não-agente encerrado sem falhar ticket (daemon nascido na criação do worktree sem `TB_TICKET_ID`, ou órfão sem nenhum agente rodando) | `none` |
 | `board_unreadable` | warn | um ticket YAML está inválido; workers mantidos, nova tentativa a cada tick | `none` |
+| `bus_unclaimed` / `bus_claim_rejected` / `bus_lease_lost` / `bus_verdict_fail` | warn | slots do barramento: nenhum claim válido no prazo; um claim sem o marker, de quem não é worker ou não é o destinatário, ou anterior ao assign; o claim trocou de mãos, foi liberado ou o dono não está vivo; o agente informou FAIL ([bus-router.md](bus-router.md)) | `none` |
+| `bus_channel_expired` / `bus_write_failed` | warn | o canal do barramento expirou (slots do barramento parados); uma escrita no barramento falhou (canal expirado: a tentativa volta para a fila) | `none` |
 
 **Exemplo:**
 

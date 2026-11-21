@@ -13,6 +13,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 
 	"github.com/leonardo-moraes360/toolbelt/internal/execenv"
 	"github.com/leonardo-moraes360/toolbelt/internal/sandbox"
@@ -389,7 +390,7 @@ func (r *Router) commitWorkspace(dir string, t *ticket.Ticket) (string, error) {
 		if err := refuseStagedSubmodules(g); err != nil {
 			return "", err
 		}
-		args := append(r.identityArgs(), "commit", "--no-verify", "-q", "-m", fmt.Sprintf("tb: %s %s", t.ID, t.Title))
+		args := append(r.identityArgs(), "commit", "--no-verify", "-q", "-m", fmt.Sprintf("tb: %s %s", t.ID, stripControl(t.Title)))
 		if _, err := g.run(args...); err != nil {
 			return "", err
 		}
@@ -495,4 +496,15 @@ func (r *Router) identityArgs() []string {
 		r.ident = []string{"-c", "user.name=" + name, "-c", "user.email=" + email}
 	})
 	return append([]string(nil), r.ident...)
+}
+
+// stripControl drops control characters from a commit subject: the title may
+// come from a planner model.
+func stripControl(s string) string {
+	return strings.Map(func(c rune) rune {
+		if unicode.IsControl(c) || unicode.Is(unicode.Cf, c) {
+			return -1
+		}
+		return c
+	}, s)
 }

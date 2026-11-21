@@ -99,6 +99,10 @@ type Result struct {
 	StartedAt  *time.Time `yaml:"started_at,omitempty" json:"started_at,omitempty"`
 	FinishedAt *time.Time `yaml:"finished_at,omitempty" json:"finished_at,omitempty"`
 	Log        string     `yaml:"log,omitempty" json:"log,omitempty"`
+	// Bus attempts (docs/bus-router.md): who completed it, at which epoch,
+	// from the claim row, never from the payload.
+	BusAgent string `yaml:"bus_agent,omitempty" json:"bus_agent,omitempty"`
+	BusEpoch int64  `yaml:"bus_epoch,omitempty" json:"bus_epoch,omitempty"`
 }
 
 type Ticket struct {
@@ -118,6 +122,9 @@ type Ticket struct {
 	Result       *Result       `yaml:"result,omitempty" json:"result,omitempty"`
 	MergedAt     *time.Time    `yaml:"merged_at,omitempty" json:"merged_at,omitempty"`
 	Source       string        `yaml:"source,omitempty" json:"source,omitempty"`
+	// BusThread is the bus thread of the current or last unconfirmed bus
+	// attempt; cleared once the router saw it completed or revoked.
+	BusThread string `yaml:"bus_thread,omitempty" json:"bus_thread,omitempty"`
 }
 
 // TimeoutDuration returns 0 when no timeout is set.

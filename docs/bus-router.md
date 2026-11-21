@@ -2,7 +2,7 @@
 
 # Router on the bus — B4 spec
 
-Status: **B4a implemented**, B4b not implemented (spec round 3, after two fresh-context reviews).
+Status: **implemented** (B4a and B4b; spec round 3, after two fresh-context reviews). Where the code is simpler than this text, the note *In this cut* says so.
 
 Specification for stage **B4** of [ADR-013](adr/013-barramento-multi-vendor.md) (§8): the Phase 3 router ([ADR-009](adr/009-router-e-workers.md)) gains a second worker type, an agent registered on a bus channel. It builds on the protocol ([bus-protocolo.md](bus-protocolo.md)), the lease ([bus-lease.md](bus-lease.md)) and the harness ([bus-harness.md](bus-harness.md), [bus-notify-discover.md](bus-notify-discover.md)).
 
@@ -193,7 +193,7 @@ Timeout and cancel also revoke:
 | ticket timeout | `timeout` | fails with `worker_stuck` |
 | ticket changed outside the router, or `tb watchdog kill bN` | `canceled` | slot freed |
 
-The kill output says the harness's child is stopped by the harness's watcher, not by the router.
+The kill output says the harness's child is stopped by the harness's watcher, not by the router. *In this cut* every cancel (timeout, kill, ticket change, shutdown) revokes with reason `canceled`; lease loss uses `lease_lost`, a withdraw `unclaimed`, a rejected claim `claim_rejected`.
 
 In every case the router acts on what `Revoke` returns. `completed` means a result got there first, and the router goes to step 5 with it.
 
@@ -212,10 +212,10 @@ In every case the router acts on what `Revoke` returns. `completed` means a resu
 
 **6. Retry, shutdown, restart, expiry.**
 
-- **Retry:** the previous thread is revoked (or confirmed completed) before the worktree is reset. A failed reset (`RemoveAll` blocked) raises `workspace_reset_failed` and fails the ticket instead of looping.
+- **Retry:** the previous thread is revoked (or confirmed completed) before the worktree is reset. A failed reset (`RemoveAll` blocked) fails the attempt instead of looping. *In this cut* it surfaces as the worktree creation error (`worker_crash`), with no separate `workspace_reset_failed` kind.
 - **Shutdown and the global timeout:** each bus attempt is revoked (reason `shutdown`). If `Revoke` returns `completed`, the result is processed; otherwise the attempt goes back to `pending` with `Attempts--`. The revoke is bounded by the store's 5 s busy timeout.
-- **Restart:** `recover` revokes the `bus_thread` of every `running` ticket and honors a `completed` result. If the revoke fails (expired channel, busy store), the ticket goes back to `pending`, `bus_thread` is kept, `bus_write_failed` is logged, and the revoke is retried on the next start before that ticket is assigned again.
-- **Expired channel:** `Claim` and `Message` still work.
+- **Restart:** `recover` revokes the `bus_thread` of every `running` ticket. *In this cut* a result a previous run left completed is not honored: the ticket goes back to `pending` and the next attempt redoes the work. If the revoke fails (expired channel, busy store), the ticket goes back to `pending`, `bus_thread` is kept, `bus_write_failed` is logged, and the revoke is retried on the next start before that ticket is assigned again.
+- **Expired channel:** `Claim` and `Message` still work, and the router waits (it does not stop as `stalled`) while bus slots are idle for this reason.
   - A running attempt whose claim shows a result is honored.
   - Others go back to `pending` with `bus_thread` kept.
   - Bus slots stay idle with one `bus_channel_expired` alert, and local slots keep running.
@@ -334,7 +334,7 @@ The harness writes it from the verdict file:
     - one from a recreated board with the same ticket IDs;
     - one on a revoked thread.
 23. **Restart.**
-    - A restart revokes open threads, honors a completed one and requeues the rest.
+    - A restart revokes open threads and requeues their tickets (*in this cut* a completed one is requeued too, not honored).
     - With the channel expired, `bus_thread` is kept and revoked on a later start before the ticket is reassigned.
 24. **Shutdown and the global timeout** end with no hang while bus slots are busy. An attempt in `committing` finishes its commit.
 25. **No cursor.** `tb bus recv --as router` during a run changes nothing the router sees.

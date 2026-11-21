@@ -37,6 +37,11 @@ type WorkerState struct {
 	Ticket        string     `json:"ticket,omitempty"`
 	StartedAt     *time.Time `json:"started_at,omitempty"`
 	Subscriptions []string   `json:"subscriptions"`
+	// Bus slots: the attempt thread, the claiming agent and the phase.
+	Thread    string     `json:"thread,omitempty"`
+	Agent     string     `json:"agent,omitempty"`
+	Phase     string     `json:"phase,omitempty"`
+	ClaimedAt *time.Time `json:"claimed_at,omitempty"`
 }
 
 type QueueState struct {

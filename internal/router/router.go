@@ -91,6 +91,7 @@ type slot struct {
 	reason      string
 	killReason  string
 	slowAlerted bool
+	bus         *busAttempt // bus slots only
 }
 
 type workerDone struct {
@@ -106,6 +107,12 @@ type workerDone struct {
 	workspace string
 	log       string
 	alerts    []pendingAlert // escapes detected by execute; emitted in complete
+	// bus attempts
+	busThread  string
+	busAgent   string
+	busEpoch   int64
+	requeue    bool // back to pending without spending the attempt (expired channel)
+	keepThread bool // the thread could not be revoked: keep it for a later start
 }
 
 // Router: all mutable state (slots, alerts, summary) belongs to the Run
@@ -141,6 +148,8 @@ type Router struct {
 	summary      Summary
 	identOnce    sync.Once
 	ident        []string // -c user.name/user.email for commits (see identityArgs)
+	bus          *busLink // bus slots (docs/bus-router.md); nil without router.bus
+	busBlocked   bool     // bus slots idle for a reason that will pass (expired channel, stale thread)
 }
 
 // New validates options without touching tickets.
@@ -149,8 +158,8 @@ func New(opts *Options) (*Router, error) {
 		return nil, errors.New("repository root is required")
 	}
 	cfg := opts.Config
-	if cfg.MaxWorkers == 0 {
-		cfg = config.DefaultRouterConfig()
+	if cfg.MaxWorkers == 0 && !cfg.Bus.Enabled() {
+		cfg = config.DefaultRouterConfig() // zero value: no config passed
 	}
 	if opts.Workers > 0 {
 		cfg.MaxWorkers = opts.Workers
@@ -187,6 +196,11 @@ func New(opts *Options) (*Router, error) {
 	for i := 1; i <= r.workers; i++ {
 		r.slots = append(r.slots, &slot{id: fmt.Sprintf("w%d", i)})
 	}
+	if cfg.Bus.Enabled() {
+		for i := 1; i <= cfg.Bus.Slots; i++ {
+			r.slots = append(r.slots, &slot{id: fmt.Sprintf("b%d", i)})
+		}
+	}
 	return r, nil
 }
 
@@ -220,6 +234,7 @@ func (r *Router) running() int {
 // Run loops until there is no work, drain, --once, the global timeout, or ctx
 // cancellation (which requeues running tickets).
 func (r *Router) Run(ctx context.Context) (*Summary, error) {
+	defer r.closeBus()
 	if err := r.preflight(); err != nil {
 		return nil, err
 	}
@@ -233,7 +248,7 @@ func (r *Router) Run(ctx context.Context) (*Summary, error) {
 		return nil, err
 	}
 
-	r.done = make(chan workerDone, r.workers)
+	r.done = make(chan workerDone, len(r.slots))
 	r.startedAt = r.now()
 	// Kill requests from previous runs (or written with no active router) are
 	// stale: they must not kill the first worker of this run.
@@ -250,7 +265,7 @@ func (r *Router) Run(ctx context.Context) (*Summary, error) {
 	if err := r.recover(); err != nil {
 		return nil, err
 	}
-	r.logf("router started: %d workers, strategy %s", r.workers, r.strategy)
+	r.logf("router started: %d workers, %d bus slots, strategy %s", r.workers, len(r.slots)-r.workers, r.strategy)
 
 	ticker := time.NewTicker(r.tick)
 	defer ticker.Stop()
@@ -269,11 +284,18 @@ func (r *Router) Run(ctx context.Context) (*Summary, error) {
 
 // preflight checks what must be in place before touching any state.
 func (r *Router) preflight() error {
-	if len(r.argv) == 0 {
-		return errors.New("agent_cmd not configured (use router.agent_cmd in .toolbelt/config.yaml or --agent-cmd)")
+	// Bus only (max_workers 0): the router runs no agent, so neither agent_cmd
+	// nor Landlock is required.
+	if r.workers > 0 {
+		if len(r.argv) == 0 {
+			return errors.New("agent_cmd not configured (use router.agent_cmd in .toolbelt/config.yaml or --agent-cmd)")
+		}
+		// fail-closed: without Landlock and without explicit opt-in, nothing is touched.
+		if _, err := sandbox.New(sandbox.Config{WorkDir: r.opts.Root, AllowUnsandboxed: r.opts.AllowUnsandboxed}); err != nil {
+			return err
+		}
 	}
-	// fail-closed: without Landlock and without explicit opt-in, nothing is touched.
-	if _, err := sandbox.New(sandbox.Config{WorkDir: r.opts.Root, AllowUnsandboxed: r.opts.AllowUnsandboxed}); err != nil {
+	if err := r.openBus(); err != nil {
 		return err
 	}
 	if _, err := gitOut(r.opts.Root, "rev-parse", "--verify", "HEAD"); err != nil {
@@ -374,6 +396,10 @@ func (r *Router) recover() error {
 		t := &list[i]
 		switch {
 		case t.Status == ticket.StatusRunning:
+			if !r.revokeStale(t) {
+				r.alert(AlertBusWriteFailed, SevWarn, "", t.ID,
+					fmt.Sprintf("%s: bus thread %s not revoked yet; kept for the next start", t.ID, t.BusThread), ActionNone)
+			}
 			if _, err := r.store.Update(t.ID, func(x *ticket.Ticket) error {
 				x.Status = ticket.StatusPending
 				x.Worker = ""
@@ -421,8 +447,8 @@ func (r *Router) finished(b *ticket.Board) (string, bool) {
 		}
 		return ReasonCompleted, true
 	}
-	if b.Control.Paused {
-		return "", false // wait for resume
+	if b.Control.Paused || r.busBlocked {
+		return "", false // wait for resume, tb bus channel extend, or a stale thread to be revoked
 	}
 	// candidates exist, nothing is running and schedule assigned nothing: no progress is possible
 	return ReasonStalled, true
@@ -430,6 +456,9 @@ func (r *Router) finished(b *ticket.Board) (string, bool) {
 
 // subLive: a subscription is valid when live and for a worker that exists in this router.
 func (r *Router) subLive(t *ticket.Ticket, now time.Time) (string, bool) {
+	if t.Subscription != nil && isBusSlot(t.Subscription.Worker) {
+		return "", false // no direct delivery for bus slots (B4)
+	}
 	if !r.cfg.DirectDelivery.Enabled || !t.Subscription.Live(now) || r.slotByID(t.Subscription.Worker) == nil {
 		return "", false
 	}
@@ -452,11 +481,18 @@ func (r *Router) schedule(b *ticket.Board) {
 	}
 	taken := r.heldTickets()
 	head := ""
+	busOK := r.bus != nil && r.busOpen()
+	r.busBlocked = r.bus != nil && !busOK
 	for _, s := range r.slots {
-		if s.ticket != "" {
+		if s.ticket != "" || (isBusSlot(s.id) && !busOK) {
 			continue
 		}
 		pick, via := r.pickCandidate(s, cands, taken, now)
+		if pick != nil && !r.revokeStale(pick) {
+			taken[pick.ID] = true
+			r.busBlocked = true
+			continue
+		}
 		if pick == nil {
 			continue
 		}
@@ -537,6 +573,8 @@ func (r *Router) baseFor(s *slot, pick *ticket.Ticket, head string, byID map[str
 func (r *Router) start(s *slot, t *ticket.Ticket, via, base string) {
 	now := r.now()
 	var attempts int
+	onBus := isBusSlot(s.id)
+	thread := ""
 	_, err := r.store.Update(t.ID, func(x *ticket.Ticket) error {
 		if x.Status != ticket.StatusPending {
 			return fmt.Errorf("%s is no longer pending (%s)", x.ID, x.Status)
@@ -548,6 +586,10 @@ func (r *Router) start(s *slot, t *ticket.Ticket, via, base string) {
 		started := now.UTC()
 		x.Result = &ticket.Result{BaseCommit: base, Branch: "tb-workspace/" + x.ID, StartedAt: &started}
 		attempts = x.Attempts
+		if onBus {
+			thread = newThread(x.ID, x.Attempts)
+			x.BusThread = thread // written at start: recover and the result check know it
+		}
 		return nil
 	})
 	if err != nil {
@@ -564,6 +606,12 @@ func (r *Router) start(s *slot, t *ticket.Ticket, via, base string) {
 	r.logf("[%s] %s started (%s, base %s, attempt %d)", s.id, t.ID, via, short(base), attempts)
 	tk := *t // copy: the goroutine does not share the board's slice
 	wid := s.id
+	if onBus {
+		a := &busAttempt{thread: thread, phase: phaseAssigned}
+		s.bus = a
+		go func() { r.done <- r.executeBus(wctx, s, wid, &tk, base, a, attempts, timeout) }()
+		return
+	}
 	go func() { r.done <- r.execute(wctx, s, wid, &tk, base) }()
 }
 
@@ -615,6 +663,7 @@ func (r *Router) complete(ev *workerDone) {
 	res := &ticket.Result{
 		Branch: ev.branch, BaseCommit: ev.base, HeadCommit: ev.head, Workspace: ev.workspace,
 		ExitCode: ev.exit, StartedAt: &started, FinishedAt: &now, Log: ev.log,
+		BusAgent: ev.busAgent, BusEpoch: ev.busEpoch,
 	}
 	// Ticket canceled/changed while running: no transition.
 	if cur, err := r.store.Get(ev.id); err == nil && (c.reason == reasonCanceled || cur.Status != ticket.StatusRunning || cur.Worker != c.worker) {
@@ -635,7 +684,7 @@ func (r *Router) complete(ev *workerDone) {
 	switch {
 	case finishedOK:
 		r.completeOK(ev, &c, res)
-	case c.reason == reasonShutdown:
+	case c.reason == reasonShutdown || ev.requeue:
 		r.completeRequeue(ev, &c)
 	default:
 		r.completeFailure(ev, &c, res)
@@ -650,6 +699,7 @@ func (r *Router) completeOK(ev *workerDone, c *completion, res *ticket.Result) {
 	err := r.updateMine(ev.id, c.worker, func(x *ticket.Ticket) {
 		x.Status = ticket.StatusDone
 		x.Result = res
+		x.BusThread = ""
 	})
 	if errors.Is(err, errNotMine) {
 		r.discard(c.worker, ev.id)
@@ -664,7 +714,9 @@ func (r *Router) completeOK(ev *workerDone, c *completion, res *ticket.Result) {
 	}
 	r.summary.Done = append(r.summary.Done, ev.id)
 	r.logf("[%s] %s done (%s)", c.worker, ev.id, short(ev.head))
-	r.subscribeDependents(ev.id, c.worker)
+	if !isBusSlot(c.worker) {
+		r.subscribeDependents(ev.id, c.worker) // no direct delivery for bus slots (B4)
+	}
 }
 
 // completeRequeue returns the ticket to pending (router shutdown).
@@ -674,6 +726,9 @@ func (r *Router) completeRequeue(ev *workerDone, c *completion) {
 		x.Worker = ""
 		x.Subscription = nil
 		x.Result = nil
+		if !ev.keepThread {
+			x.BusThread = ""
+		}
 		if x.Attempts > 0 {
 			x.Attempts-- // a router interruption does not count as an attempt
 		}
@@ -722,6 +777,9 @@ func (r *Router) completeFailure(ev *workerDone, c *completion, res *ticket.Resu
 	err := r.updateMine(ev.id, c.worker, func(x *ticket.Ticket) {
 		x.Result = res
 		x.Subscription = nil
+		if !ev.keepThread {
+			x.BusThread = ""
+		}
 		if retry {
 			x.Status = ticket.StatusPending
 			x.Worker = ""
@@ -841,6 +899,7 @@ func (r *Router) writeState(b *ticket.Board, status string) {
 			w.Status, w.Ticket = "working", s.ticket
 			t := s.started.UTC()
 			w.StartedAt = &t
+			w.Thread, w.Agent, w.Phase, w.ClaimedAt = busState(s.bus)
 		}
 		for i := range b.Tickets {
 			t := &b.Tickets[i]
