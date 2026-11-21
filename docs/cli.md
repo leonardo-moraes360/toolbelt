@@ -2183,10 +2183,13 @@ tb --version
 #   built:  unknown
 #   go:     go1.22.2
 #   os:     linux/amd64
+#   embed:  llama.cpp b12600 (29b52d398b29)
 
 tb version --json
-# {"version":"dev","commit":"unknown","build_time":"unknown","go_version":"go1.22.2"}
+# {"version":"dev","commit":"unknown","build_time":"unknown","go_version":"go1.22.2","embed":"llama.cpp b12600 (29b52d398b29)"}
 ```
+
+A release build; a build without `-tags embednative` (`go build ./cmd/tb`) prints `embed:  unavailable (built without embednative)`.
 
 All CLI `--json` outputs (and domain payloads embedded in MCP tools)
 use **`snake_case`** keys consistently (`exit_code`, `base_ref`,

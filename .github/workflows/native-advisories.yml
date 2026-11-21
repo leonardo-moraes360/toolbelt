@@ -1,0 +1,30 @@
+name: Native advisories
+
+# ADR-018 §4: a published advisory that affects the pinned llama.cpp fails
+# this job (and the release, which runs the same check).
+on:
+  schedule:
+    - cron: "17 7 * * *"
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "third_party/llama.cpp/**"
+      - "scripts/native-advisories.sh"
+
+permissions:
+  contents: read
+
+jobs:
+  advisories:
+    name: llama.cpp advisories
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check the pinned llama.cpp
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: scripts/native-advisories.sh

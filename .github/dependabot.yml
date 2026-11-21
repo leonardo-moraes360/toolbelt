@@ -9,6 +9,9 @@ updates:
       time: "09:00"
       timezone: America/Sao_Paulo
     open-pull-requests-limit: 5
+    # zizmor dependabot-cooldown: let a release age a week before the bump.
+    cooldown:
+      default-days: 7
     commit-message:
       prefix: "chore(deps)"
     groups:
@@ -23,6 +26,9 @@ updates:
       time: "09:00"
       timezone: America/Sao_Paulo
     open-pull-requests-limit: 5
+    # zizmor dependabot-cooldown: let a release age a week before the bump.
+    cooldown:
+      default-days: 7
     commit-message:
       prefix: "ci(deps)"
     groups:

@@ -67,10 +67,12 @@ It ships in three phases, each usable alone:
 
 The model file is checked by the parent, and again by the child before loading:
 - the path is absolute;
-- every component is reached through `Lstat` with no symlink;
-- the file is regular and owned by the current user;
-- it is outside the repository;
-- its sha256 equals `model_sha256`.
+- every component is reached through `Lstat` with no symlink (on macOS, `/tmp` and `/var` are symlinks: use the `/private/...` path);
+- every parent directory belongs to the user or root and no other user can write it (sticky directories such as `/tmp` excepted; group write only for the user's own primary group) (unix);
+- the file is opened without following a symlink, is regular and owned by the current user;
+- it is outside the repository (V1: the repository is known only to `tb graph`);
+- its sha256 equals `model_sha256`;
+- after the native load, the path still names the hashed file (same device, inode, size and mtime), or the load is refused (`model_mismatch`).
 
 ## Units
 
@@ -107,7 +109,8 @@ Fallbacks:
 ### Engine settings in the shim
 
 - A model whose pooling type is `NONE` is refused (`model_unsupported`): it gives no sentence vector.
-- For non-causal models, `n_ubatch ≥ n_ctx` and `n_seq_max ≥ 64`, so one request is one batch of sequences.
+- For non-causal models, `n_ubatch ≥ n_ctx` and `n_seq_max ≥ 64`, so one request is one batch of sequences (V1, with the protocol; the V0 shim embeds one text per call as sequence 0, with `n_ctx = min(n_ctx_train, 8192)`).
+- A text longer than `n_ctx` tokens keeps its first `n_ctx − 1` tokens and its last one (the trailing special token).
 - Vectors are read per sequence and L2-normalized.
 
 ### Protocol
@@ -194,7 +197,7 @@ These files change together:
 - `third_party/llama.cpp/` (the allowlisted subset), its `MANIFEST` and `ADVISORIES.md`, and `scripts/vendor-llama.sh`;
 - `internal/embed/native/` (the shim and its cgo bindings, build tag `embednative`);
 - `.goreleaser.yaml` (`CGO_ENABLED=1`, `-tags embednative`, zig `CC`/`CXX`, per-build `hooks.pre` with CMake, per-target `CGO_LDFLAGS`, hardening flags);
-- `.github/workflows/ci.yml` (the `native` job, depguard), `release.yml` (the smoke matrix, QEMU, `rockylinux:8`), `codeql.yml` (`c-cpp` with the SARIF check step; the `go` job stays untagged);
+- `.github/workflows/ci.yml` (the `native` job; the `import "C"` rule is a test, `TestOnlyNativeImportsC`), `release.yml` (the smoke matrix, QEMU, `rockylinux:8`), `codeql.yml` (`c-cpp` with the SARIF check step; the `go` job stays untagged);
 - `.github/embed-smoke-model.txt`.
 
 `tb version` prints `embed: llama.cpp <tag> (<commit>)`.

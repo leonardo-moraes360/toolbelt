@@ -59,7 +59,7 @@ Duas escolhas foram feitas ao escrever este ADR:
 
      Assim, um bug de memória no llama.cpp, ou um arquivo de modelo hostil, só consegue corromper esse filho. Ele não alcança o repositório nem o HOME, e não tem rede.
    - **Plataformas sem o sandbox:** no Linux sem Landlock ou seccomp, e no darwin ou windows, o filho recusa (`embed_unsandboxed`), a menos que a config de usuário defina `graph.embed.allow_unsandboxed: true`.
-   - **Regra de import:** uma regra do depguard só deixa `internal/embed/native` importar `"C"`.
+   - **Regra de import:** só `internal/embed/native` pode importar `"C"`, garantido por um teste (`TestOnlyNativeImportsC`), porque o depguard não enxerga o pseudo-pacote do cgo.
 4. **Um gate de qualidade C/C++ moldado pelo uso.** É um job novo de CI, `native`, obrigatório para o merge. O código C/C++ é usado de três jeitos, e cada um tem suas checagens.
 
    | Código | Dono | Checagens |
@@ -89,7 +89,7 @@ Duas escolhas foram feitas ao escrever este ADR:
    - **Piso de glibc:** os alvos Linux miram a glibc 2.28, e um container `rockylinux:8` confere isso.
    - **Matriz de smoke tests nativos:** todo alvo roda `tb version` e um smoke test de embed no próprio runner (ubuntu-24.04 amd64 e arm64, macos-15 arm64, macos-15-intel, windows-2025 amd64 e windows-11-arm), mais x86-64-v2 sob `qemu-x86_64 -cpu Nehalem`. Uma falha bloqueia a release.
 6. **A cadeia da release cobre as partes nativas.**
-   - O SBOM ganha um componente CycloneDX para o llama.cpp e o ggml (tag, commit, licença, hash do subconjunto).
+   - O SBOM (SPDX) ganha pacotes para o llama.cpp e o ggml (tag, commit, licença, hash do subconjunto).
    - O `tb version` imprime o motor e o commit dele.
    - Os checksums, a assinatura cosign e a proveniência SLSA não mudam.
 7. **O modelo é dado do usuário.**

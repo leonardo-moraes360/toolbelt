@@ -17,6 +17,7 @@ jobs:
     permissions:
       contents: read
       security-events: write
+      issues: write # c-cpp: an alert in third_party/ opens an issue (ADR-018)
 
     strategy:
       fail-fast: false
@@ -27,6 +28,9 @@ jobs:
             build-mode: manual
           - language: actions
             build-mode: none
+          # The shim and the vendored llama.cpp, traced through a tagged build.
+          - language: c-cpp
+            build-mode: manual
 
     steps:
       - name: Checkout
@@ -35,7 +39,7 @@ jobs:
           persist-credentials: false
 
       - name: Setup Go
-        if: matrix.language == 'go'
+        if: matrix.language == 'go' || matrix.language == 'c-cpp'
         uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
           go-version-file: go.mod
@@ -49,10 +53,58 @@ jobs:
           queries: security-extended
 
       - name: Build
-        if: matrix.build-mode == 'manual'
+        if: matrix.language == 'go'
         run: go build ./...
+
+      - name: Build (native)
+        if: matrix.language == 'c-cpp'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends cmake ninja-build
+          scripts/build-native.sh linux amd64
+          go build -a -tags embednative ./internal/embed/native
 
       - name: Perform CodeQL analysis
         uses: github/codeql-action/analyze@1bd86f2fdb4b86187fa4059f16f31a3202acc9ea # v4.39.4
         with:
           category: "/language:${{ matrix.language }}"
+          output: sarif-results
+          # c-cpp uploads a filtered SARIF below (the shim only).
+          upload: ${{ matrix.language == 'c-cpp' && 'never' || 'always' }}
+
+      # c-cpp (ADR-018 §4): an alert in the shim fails the job. Alerts in the
+      # vendored llama.cpp cannot be fixed here (no local patches): they are
+      # left out of the uploaded SARIF, so they do not block every PR, and
+      # the weekly run lists them in one tracking issue to report upstream.
+      - name: Gate the c-cpp alerts
+        if: matrix.language == 'c-cpp'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          in=(sarif-results/*.sarif)
+          uri='.locations[0].physicalLocation.artifactLocation.uri'
+          jq "del(.runs[].results[] | select($uri | startswith(\"third_party/\")))" "${in[0]}" > shim.sarif
+          jq -r ".runs[].results[] | select($uri | startswith(\"third_party/\")) | \"- \\(.ruleId) \\($uri):\\(.locations[0].physicalLocation.region.startLine)\"" "${in[0]}" > vendor.txt
+          shim="$(jq "[.runs[].results[] | select($uri | startswith(\"internal/embed/native/\"))] | length" shim.sarif)"
+          vendor="$(wc -l < vendor.txt | tr -d ' ')"
+          echo "c-cpp alerts: shim=$shim vendored=$vendor"
+          if [ "$vendor" -gt 0 ] && [ "$GITHUB_EVENT_NAME" = schedule ]; then
+            # A fixed title, so an open issue is found again when the count changes.
+            title="CodeQL: alerts in vendored llama.cpp"
+            open="$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "in:title \"$title\"" --json number -q '.[0].number')"
+            body="$(printf 'Run %s found %s CodeQL alert(s) under third_party/ (first 200 below). Triage and report upstream; never patch in place (ADR-018).\n\n' "$GITHUB_RUN_ID" "$vendor"; head -200 vendor.txt)"
+            if [ -z "$open" ]; then
+              gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --body "$body"
+            else
+              gh issue comment "$open" --repo "$GITHUB_REPOSITORY" --body "$body"
+            fi
+          fi
+          [ "$shim" -eq 0 ]
+
+      - name: Upload the c-cpp SARIF (shim only)
+        if: matrix.language == 'c-cpp' && always()
+        uses: github/codeql-action/upload-sarif@1bd86f2fdb4b86187fa4059f16f31a3202acc9ea # v4.39.4
+        with:
+          sarif_file: shim.sarif
+          category: "/language:c-cpp"

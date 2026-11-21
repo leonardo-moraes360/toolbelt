@@ -67,10 +67,12 @@ O `tb graph` lê a config pelo `config.Load()`, que mescla o `.toolbelt/config.y
 
 O arquivo do modelo é checado pelo pai, e de novo pelo filho antes de carregar:
 - o caminho é absoluto;
-- todo componente é alcançado por `Lstat`, sem symlink;
-- o arquivo é regular e pertence ao usuário atual;
-- está fora do repositório;
-- o sha256 dele é igual a `model_sha256`.
+- todo componente é alcançado por `Lstat`, sem symlink (no macOS, `/tmp` e `/var` são symlinks: use o caminho `/private/...`);
+- todo diretório pai pertence ao usuário ou ao root e nenhum outro usuário pode escrever nele (exceto diretórios sticky como `/tmp`; escrita de grupo só para o grupo primário do próprio usuário) (unix);
+- o arquivo é aberto sem seguir symlink, é regular e pertence ao usuário atual;
+- está fora do repositório (V1: só o `tb graph` conhece o repositório);
+- o sha256 dele é igual a `model_sha256`;
+- depois do load nativo, o caminho ainda aponta para o arquivo do hash (mesmo dispositivo, inode, tamanho e mtime), senão o load é recusado (`model_mismatch`).
 
 ## Unidades
 
@@ -107,7 +109,8 @@ Fallbacks:
 ### Configurações do motor no shim
 
 - Um modelo cujo tipo de pooling é `NONE` é recusado (`model_unsupported`): ele não gera vetor de sentença.
-- Para modelos não causais, `n_ubatch ≥ n_ctx` e `n_seq_max ≥ 64`, para que uma requisição seja um único lote de sequências.
+- Para modelos não causais, `n_ubatch ≥ n_ctx` e `n_seq_max ≥ 64`, para que uma requisição seja um único lote de sequências (V1, com o protocolo; o shim da V0 gera o embedding de um texto por chamada como sequência 0, com `n_ctx = min(n_ctx_train, 8192)`).
+- Um texto com mais de `n_ctx` tokens mantém os primeiros `n_ctx − 1` tokens e o último (o token especial final).
 - Os vetores são lidos por sequência e normalizados em L2.
 
 ### Protocolo
@@ -194,7 +197,7 @@ Estes arquivos mudam juntos:
 - `third_party/llama.cpp/` (o subconjunto em allowlist), seu `MANIFEST` e `ADVISORIES.md`, e `scripts/vendor-llama.sh`;
 - `internal/embed/native/` (o shim e seus bindings cgo, build tag `embednative`);
 - `.goreleaser.yaml` (`CGO_ENABLED=1`, `-tags embednative`, `CC`/`CXX` zig, `hooks.pre` por build com CMake, `CGO_LDFLAGS` por alvo, flags de hardening);
-- `.github/workflows/ci.yml` (o job `native`, depguard), `release.yml` (a matriz de smoke tests, QEMU, `rockylinux:8`), `codeql.yml` (`c-cpp` com o passo de checagem do SARIF; o job `go` continua sem tag);
+- `.github/workflows/ci.yml` (o job `native`; a regra de `import "C"` é um teste, `TestOnlyNativeImportsC`), `release.yml` (a matriz de smoke tests, QEMU, `rockylinux:8`), `codeql.yml` (`c-cpp` com o passo de checagem do SARIF; o job `go` continua sem tag);
 - `.github/embed-smoke-model.txt`.
 
 O `tb version` imprime `embed: llama.cpp <tag> (<commit>)`.
