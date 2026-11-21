@@ -245,7 +245,7 @@ tb bus recv --channel feature-x --as grok-1 --wait 20s
 - [x] `tb ticket` / `tb board` — work ticket management
 - [x] `tb router` / `tb watchdog` — delegation control and health
 - [x] `tb merge` — aggregation of worker results (`fail` | `last_wins`)
-- [ ] Optional vector index ([spec](docs/specs/vector-index.md), [ADR-018](docs/adr/018-cgo-componentes-nativos.md): cgo release with vendored llama.cpp under a C/C++ quality gate; draft)
+- [ ] Optional vector index ([spec](docs/specs/vector-index.md), [ADR-018](docs/adr/018-cgo-componentes-nativos.md)), experimental: V0 (cgo release, vendored llama.cpp, C/C++ quality gate) and V1 (`tb graph index --vectors`, `tb graph search --mode semantic|hybrid`) done; V2 (MCP + recall evaluation) pending
 - [x] Graphify: in-house reimplementation ([ADR-014](docs/adr/014-graphify-reimplementacao.md)) — `tb graph explain`/`path`
 - [x] `tb graph search` with BM25 ranking (title/path/package, camelCase/`snake_case` splitting, multi-term)
 - [x] Obsidian-compatible Markdown vault, Phase A (`tb vault`, [ADR-016](docs/adr/016-vault-fase-a.md), [spec](docs/specs/vault.md)): notes with frontmatter and wikilinks, `new`/`list`/`show`/`search`/`links`/`backlinks`/`check`, MCP tools, `tb stack vault`, graph nodes; Q4 (golden fixture checked in real Obsidian) open
@@ -305,7 +305,7 @@ This project is in **Phase 3 (in progress)**: besides verify/guard/mem/graph/rev
 | `tb guard` | ✅ | Anti-cheat check on diff (strict by default / exit ≠ 0 on `SeverityError`; `--warn-only` opt-out; `--strict` deprecated) |
 | `tb verify` | ✅ | `tests` + `visual` rulers (`tb verify run`; `--build-cmd`/`--lint-cmd`/`--no-build`/`--no-lint`/`--dry-run`; hidden suite via `--hidden-test-cmd` or toolchain detection in `tests/hidden/` — N/A if not applicable; build/lint cache within the run; `reason`/`error` in JSON; `--base`/`--head` run in the head worktree; fail-fast if command missing/not executable; custom `protected_paths` from `guard.yaml` do not abort the loop — Scope exception via `--ticket`) |
 | `tb mem` | ✅ | Invariants (`add`/`list`/`show`/`edit`/`retire`/`search`/`check`/`init`; `--ref` ADR; soft-retire + `--all`) |
-| `tb graph` | ✅ | On-demand multi-language graph + frameworks + docs (ADR-011); `javascript` covers TypeScript (`ts`/`tsx`); BM25-ranked `search`, `callers`/`deps`/`impact`, `explain`/`path` (ADR-014) |
+| `tb graph` | ✅ | On-demand multi-language graph + frameworks + docs (ADR-011); `javascript` covers TypeScript (`ts`/`tsx`); BM25-ranked `search`, `callers`/`deps`/`impact`, `explain`/`path` (ADR-014); experimental vector index via `index --vectors` and `search --mode semantic|hybrid` |
 | `tb review` | ✅ | Fresh-context review against local ticket/`rd.md` (no GitHub); `--approved-sha` |
 | `tb drift` | ✅ | Scope / base commit / pinned patch drift against `rd.md` (not vault vs code) |
 | `tb stack` | ✅ | Stacks verify/review/drift/guard with shared context (aggregated JSON; MCP `tb_stack`) |

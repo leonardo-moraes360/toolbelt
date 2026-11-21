@@ -308,10 +308,13 @@ tb graph search <query> [flags]
 
 Flags:
   --limit <n>         Maximum results (default: 20)
+  --mode <mode>       lexical | semantic | hybrid (default: lexical)
   --json              JSON output (global flag)
 ```
 
 Ordem em três faixas: (1) título idêntico à consulta; (2) nós que contêm a consulta como substring de título/path/pacote/ID — o que a busca antiga trazia; (3) nós que só casam termos. Dentro de cada faixa, ranking BM25 sobre título, path e pacote (título pesa 3×), com camelCase, `snake_case` e separadores de path quebrados em termos; consulta com várias palavras casa qualquer termo. Empates ordenam por ID. Com mais resultados que `--limit`, o corte é feito nessa ordem.
+
+Com `--mode semantic`, a consulta vira embedding e é ranqueada por similaridade de cosseno sobre os chunks dos arquivos, agrupados por nó de arquivo; `--mode hybrid` funde os rankings léxico e semântico com RRF (k = 60), empates por ID do nó. Os dois precisam do [índice vetorial](#índice-vetorial-experimental) e nunca o reindexam. JSON nesses modos: `{"stale", "mode", "stale_vectors", "nodes": [...]}`, cada nó com os campos de sempre mais `lines`, `score_semantic`, `rank_lexical`, `rank_semantic` e `score_fused`; a saída de texto acrescenta `:<lines>` ao path. A saída do `lexical` (padrão) não muda.
 
 **`tb graph callers`:**
 
@@ -387,9 +390,14 @@ confiança &lt; 0.6 ([ADR-014](adr/014-graphify-reimplementacao.md)).
 
 ```bash
 tb graph index [path] [flags]
+
+Flags:
+  --vectors           Also build or update the vector index (.toolbelt/graph.vec; needs graph.vector.enabled)
 ```
 
 O path é **posicional** (não existe `--path`).
+
+Com `--vectors` (também no `tb graph rebuild`), depois de indexar o tb cria ou atualiza o `.toolbelt/graph.vec` (modo 0600, escrita atômica), refazendo o embedding só dos chunks cujo sha256 do texto mudou. O JSON ganha `vectors`: `{path, files, units, embedded, reused, dropped, denied, truncated, rebuilt}`; a saída de texto imprime uma linha `vectors: …`.
 
 **Exemplos:**
 
@@ -418,6 +426,34 @@ tb graph rebuild src/
 # Estatísticas
 tb graph stats
 ```
+
+#### Índice vetorial (experimental)
+
+A busca semântica e a híbrida ([spec](specs/vector-index.md), fase V1) vêm desligadas. As chaves são lidas **só da config do usuário** (o arquivo do `-c` ou a config global); valores no `.toolbelt/config.yaml` do repositório são ignorados com o aviso `config_untrusted`.
+
+```yaml
+graph:
+  vector:
+    enabled: true
+    max_chunks: 50000
+    chunk_lines: 40
+    chunk_bytes: 1536
+    overlap_lines: 8
+  embed:
+    model: /home/me/models/embed.gguf
+    model_sha256: <hex>
+    query_prefix: "query: "
+    doc_prefix: "passage: "
+    threads: 4
+    timeout: 2m
+    allow_unsandboxed: false
+```
+
+- `graph.vector.enabled` (padrão `false`); `graph.embed.model` é um path absoluto para um arquivo GGUF e `graph.embed.model_sha256` é obrigatório.
+- `graph.embed.threads` tem padrão min(4, NumCPU), `graph.embed.timeout` `2m`; `graph.vector.max_chunks` 50000; `chunk_lines`/`chunk_bytes`/`overlap_lines` 40/1536/8.
+- O filho de embedding `tb __graph-embed` roda em sandbox (Landlock + seccomp: sem sockets, workdir vazio e só leitura, tmp privado, `HOME` vazio, env mínimo). Arquivos da deny list (segredos) nunca viram embedding, e cada arquivo é redigido por inteiro antes de virar chunks. `graph.embed.allow_unsandboxed: true` deixa o filho rodar sem a sandbox completa (aviso `embed_unsandboxed`).
+- Motivos: `vectors_disabled`, `vectors_stale`, `vectors_invalid`, `vectors_too_many`, `model_path`, `model_mismatch`, `model_unsupported`, `embed_unavailable`, `embed_unsandboxed`, `embed_protocol`, `embed_crashed`, `embed_timeout`, `config_untrusted`. Um build sem `embednative` responde `embed_unavailable`.
+- Os parâmetros `mode`/`vectors` do MCP e a avaliação de recall ficam para a V2.
 
 ---
 

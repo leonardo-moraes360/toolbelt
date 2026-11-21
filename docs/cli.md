@@ -308,10 +308,13 @@ tb graph search <query> [flags]
 
 Flags:
   --limit <n>         Maximum results (default: 20)
+  --mode <mode>       lexical | semantic | hybrid (default: lexical)
   --json              JSON output (global flag)
 ```
 
 Results come in three tiers: (1) title equal to the query; (2) nodes that contain the query as a substring of title/path/package/ID — what the old search returned; (3) nodes that only match terms. Within each tier, BM25 ranking over title, path and package (title weighs 3×), with camelCase, `snake_case` and path separators split into terms; a multi-word query matches any term. Ties are ordered by ID. With more results than `--limit`, the cut follows this order.
+
+With `--mode semantic` the query is embedded and ranked by cosine similarity over the file chunks, grouped by file node; `--mode hybrid` fuses the lexical and semantic rankings with RRF (k = 60), ties by node ID. Both need [the vector index](#vector-index-experimental) and never reindex it. JSON for those modes: `{"stale", "mode", "stale_vectors", "nodes": [...]}`, each node with its usual fields plus `lines`, `score_semantic`, `rank_lexical`, `rank_semantic` and `score_fused`; text output appends `:<lines>` to the path. The default `lexical` output is unchanged.
 
 **`tb graph callers`:**
 
@@ -387,9 +390,14 @@ confidence &lt; 0.6 ([ADR-014](adr/014-graphify-reimplementacao.md)).
 
 ```bash
 tb graph index [path] [flags]
+
+Flags:
+  --vectors           Also build or update the vector index (.toolbelt/graph.vec; needs graph.vector.enabled)
 ```
 
 The path is **positional** (there is no `--path`).
+
+With `--vectors` (also on `tb graph rebuild`), after indexing tb builds or updates `.toolbelt/graph.vec` (mode 0600, written atomically), re-embedding only the chunks whose text sha256 changed. JSON gains `vectors`: `{path, files, units, embedded, reused, dropped, denied, truncated, rebuilt}`; text output prints a `vectors: …` line.
 
 **Examples:**
 
@@ -418,6 +426,34 @@ tb graph rebuild src/
 # Statistics
 tb graph stats
 ```
+
+#### Vector index (experimental)
+
+Semantic and hybrid search ([spec](specs/vector-index.md), phase V1) are off by default. The keys are read **only from the user config** (the `-c` file or the global config); values in the repository's `.toolbelt/config.yaml` are ignored with a `config_untrusted` warning.
+
+```yaml
+graph:
+  vector:
+    enabled: true
+    max_chunks: 50000
+    chunk_lines: 40
+    chunk_bytes: 1536
+    overlap_lines: 8
+  embed:
+    model: /home/me/models/embed.gguf
+    model_sha256: <hex>
+    query_prefix: "query: "
+    doc_prefix: "passage: "
+    threads: 4
+    timeout: 2m
+    allow_unsandboxed: false
+```
+
+- `graph.vector.enabled` (default `false`); `graph.embed.model` is an absolute path to a GGUF file and `graph.embed.model_sha256` is required.
+- `graph.embed.threads` defaults to min(4, NumCPU), `graph.embed.timeout` to `2m`; `graph.vector.max_chunks` 50000; `chunk_lines`/`chunk_bytes`/`overlap_lines` 40/1536/8.
+- The embedding child `tb __graph-embed` runs sandboxed (Landlock + seccomp: no sockets, read-only empty workdir, private tmp, empty `HOME`, minimal env). Deny-listed files (secrets) are never embedded, and each file is redacted as a whole before chunking. `graph.embed.allow_unsandboxed: true` lets it run without the full sandbox (`embed_unsandboxed` warning).
+- Reasons: `vectors_disabled`, `vectors_stale`, `vectors_invalid`, `vectors_too_many`, `model_path`, `model_mismatch`, `model_unsupported`, `embed_unavailable`, `embed_unsandboxed`, `embed_protocol`, `embed_crashed`, `embed_timeout`, `config_untrusted`. A build without `embednative` answers `embed_unavailable`.
+- MCP `mode`/`vectors` parameters and the recall evaluation come in V2.
 
 ---
 

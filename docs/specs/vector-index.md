@@ -2,7 +2,7 @@
 
 # Optional vector index for `tb graph search` — spec
 
-Status: **draft** (round 2, after one fresh-context review). Decision record: [ADR-018](../adr/018-cgo-componentes-nativos.md) (cgo, vendored llama.cpp, C/C++ quality gate).
+Status: **V0 and V1 implemented**; V2 (MCP, evaluation) pending, experimental. V1 embeds one text per native call: the multi-sequence batch in the shim (`n_seq_max ≥ 64`) is still pending. Decision record: [ADR-018](../adr/018-cgo-componentes-nativos.md) (cgo, vendored llama.cpp, C/C++ quality gate).
 
 The vector index adds semantic search to the code graph:
 
