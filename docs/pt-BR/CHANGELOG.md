@@ -9,6 +9,9 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Não Lançado]
 
+### Adicionado
+- `tb egm drift-report` (Fase B1, `docs/specs/egm-drift-bootstrap.md`): compara cada documento sob gate com as fontes que a base dele certificou (o recibo commitado para esses bytes do documento, senão uma rodada local convergida) pelos hashes dos caminhos da base, com os status `fresh`, `no_baseline`, `sources_differ`, `drifted`, `source_missing` e `unreadable`, `--at` a partir dos blobs e `--json` (`egm-source-drift/0.1`). No `--egm-mode ci`, uma edição de recibo seleciona o documento dele, apagar o recibo de um documento que continua sob gate reprova (`receipt_removed`) e o `ci_source_drift` aponta o drift que o intervalo introduziu contra o recibo do merge-base (`egm.drift.ci: warn|fail`, chave de política). O aviso `sources_changed` do gate local agora usa os recibos também
+
 ### Corrigido
 - Varredura de escapes (Registry de `internal/sandbox`): um processo morto junto com um grupo escapado é reparentado ao subreaper ainda saindo, com o ambiente já ilegível; era reportado como escape sem atribuição, e o `tb egm` podia marcar uma rodada como não atribuída (`TestRunnerEscapeAttributed` intermitente). Um processo saindo (`PF_EXITING`) cujo ambiente já não pode ser lido agora é morto e colhido sem ser reportado, como um zumbi
 - Varredura de escapes (Registry de `internal/sandbox`): um processo multithread escapado cuja thread líder chamou `exit(2)` enquanto as outras threads seguiam rodando aparece com estado `Z` e era tomado por zumbi: nunca classificado, nunca sinalizado, e o `wait4` não colhe um líder com threads vivas, então cada varredura girava até o prazo de 2 s com o mutex do Registry preso e o escape vivo nunca era morto nem reportado. Um líder `Z` com thread viva agora é classificado por essa thread (`/proc/<tid>`), morto e reportado; filhos zumbis também recebem `SIGKILL` (sem efeito num zumbi de verdade)

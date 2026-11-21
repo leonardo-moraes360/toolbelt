@@ -771,17 +771,23 @@ document that changed after the review is `STALE`. `PASS` is `ok`; `PASS_PARTIAL
 any other verdict, or a lineage with `forced_blocker`, is `ok: false`. An empty
 selection is `ok: true, warn: true` with `no_gated_docs` (`ok: false` with
 `--strict`), and `ok: false` with `uncommitted_gated_docs` when the worktree has
-gated documents that differ from head. A document with state whose sources changed in
-the range, but that was not touched, only gets a `sources_changed` warning. `egm`
+gated documents that differ from head. A gated document that was not touched but cites a path that
+changed in the range gets a `sources_changed` warning for each path of its source drift
+(against its receipt, or a converged local round; see `tb egm drift-report`). `egm`
 never runs in parallel and is always moved to the end; `Result.warn` is the OR of the
 steps' `warn` and never changes the exit code. In the default `--egm-mode local`
 the gate is local (`trust: "local"`): in a CI checkout there is no state, so the result
 is `NO_STATE`. It also warns `receipt_missing`, `receipt_invalid` or `receipt_stale`
-(never a failure) so the author sees what CI will reject, and `gated_doc_removed` for a
-gated path deleted or renamed out of the gate.
+(never a failure) so the author sees what CI will reject, `gated_doc_removed` for a
+gated path deleted or renamed out of the gate, and `receipt_removed` for a deleted receipt
+of a document that is still gated.
 
 **`--egm-mode ci`** ([egm trust](specs/egm-trust.md); setup guide in [egm-ci.md](egm-ci.md)) is the gate for CI
 (`trust: "ci"`). It needs `-c` (CI's own egm user config) and implies `--strict`.
+A range that edits a receipt selects its document; deleting the receipt of a document that is
+still gated fails (`receipt_removed`). `ci_source_drift` flags an untouched document that was
+fresh against its **merge-base** receipt and drifted in this range; it is a warning unless
+`egm.drift.ci: fail` (the repository config can only raise it).
 For each selected document it checks, in order: the receipt committed at head
 (`tb egm receipt`) exists and is valid (`no_receipt`, `receipt_invalid`); its document
 and source hashes equal the commit's (`receipt_stale`); then it runs **one fresh
@@ -1064,6 +1070,7 @@ tb egm resolve docs/specs/x.md --contest F-5 --evidence internal/x.go:40   # arb
 tb egm status docs/specs/x.md [--strict]  # 0 PASS, 1 FAIL, 3 IN_PROGRESS/STALE/NO_STATE
 tb egm status docs/specs/x.md --at HEAD   # gate mode: document, sources and config from the commit
 tb egm receipt docs/specs/x.md            # writes .toolbelt/egm/receipts/<slug>.json (needs PASS or PASS_PARTIAL)
+tb egm drift-report [doc...] [--at REV]   # source drift against the receipt: 0 fresh/no_baseline, 1 drift, 2 error
 tb egm review docs/specs/x.md --restart   # new cycle after a cap (needs an edit)
 ```
 

@@ -2,7 +2,7 @@
 
 # `tb egm drift-report` and `tb egm bootstrap` — Phase B spec
 
-Status: **draft, round 2** (one fresh-context review applied; not implemented).
+Status: **B1 implemented**; B2 and B3 not implemented (spec round 2, after one fresh-context review).
 
 Phase B of [ADR-015](../adr/015-egm-nativo.md) (§8). It builds on the core ([egm-nativo.md](egm-nativo.md), Phase A) and the trust spec ([egm-trust.md](egm-trust.md), Phase A.2). The upstream names come from [ADR-007](../adr/007-inspiracao-elephant-goldfish.md): `drift-report` "compares docs with current code" and `bootstrap` "documents an existing codebase".
 
@@ -44,7 +44,7 @@ The repository config at `--at` governs the comparison (globs and limits), like 
 For each gated document at `--at`, the baseline is, in order:
 
 1. the **committed receipt** at `--at`, when its `doc_sha256` equals the document at `--at`;
-2. otherwise the **local state round** for this document whose `doc_sha256` equals it **and whose cycle converged to `PASS` or `PASS_PARTIAL`** (the rounds a receipt could have been written from);
+2. otherwise the **local state round** for this document whose `doc_sha256` equals it **and whose content and policy have a `PASS` or `PASS_PARTIAL` verdict** (the rounds a receipt could have been written from);
 3. otherwise **none**.
 
 A baseline for another version of the document is no baseline: the document itself changed, which is the job of `tb egm review` and the gate.
@@ -54,7 +54,8 @@ A baseline for another version of the document is no baseline: the document itse
 Drift compares **hashes of the baseline's paths**, not review packets, so the packet budget never decides it:
 
 - Each baseline source path is resolved at `--at` with the Phase A path rules (inside the root, no symlink in any component, tracked in the index with mode `100644` or `100755`, not denied by the config at `--at`), with **no size limit**. If it resolves, its sha256 is compared with the baseline's.
-- Separately, the document's R7 source set at `--at` is collected as a review would. A path it includes that the baseline does not is **added**.
+- Separately, every source candidate of the document (R7 links and spans) that resolves under the same path rules, and is not in the baseline, is **added**. Neither the packet budget nor content checks decide it.
+- A baseline source over 256 MiB counts as changed (a baseline hash always comes from a smaller R7 source).
 
 | Status | Meaning | Exit |
 |---|---|---|
@@ -62,14 +63,14 @@ Drift compares **hashes of the baseline's paths**, not review packets, so the pa
 | `no_baseline` | no receipt or converged round matches this version of the document | 0 |
 | `sources_differ` | the baseline paths are unchanged, but a newly resolving path was added | 1 |
 | `drifted` | at least one baseline path resolves with a different sha256 (`changed`) | 1 |
-| `source_missing` | a baseline path no longer resolves (`missing`, each with the reason: deleted, symlink, not regular, untracked, denied) | 1 |
+| `source_missing` | a baseline path no longer resolves (`missing`, each with the reason: `deleted`, `symlink` (the path or a parent directory), `not_regular`, `denied`) | 1 |
 | `unreadable` | the document or the receipt could not be read at `--at` | 2 |
 
 A document gets the most severe status (`unreadable` > `source_missing` > `drifted` > `sources_differ` > `fresh` > `no_baseline`), and every list is reported. The command's exit code is the highest one among the documents; usage errors exit 2, as R32 defines (`ExitError`).
 
 ### Output
 
-Text groups documents by status, most severe first. `--json` (keys sorted, as every egm JSON):
+Text groups documents by status, most severe first. `--json` (a stable key order; `reason` appears only for `unreadable`):
 
 ```json
 {"at": "<commit>", "documents": [
@@ -88,12 +89,13 @@ Text groups documents by status, most severe first. `--json` (keys sorted, as ev
 2. **`ci_source_drift`.** For each gated document the range did not touch, whose merge-base receipt matches its content at the merge-base and was `fresh` there, the comparison above runs at head against that merge-base receipt. A document that becomes `drifted`, `source_missing` or `sources_differ` in this range raises `ci_source_drift`. Documents already drifted at the merge-base do not blame this range.
    - Its severity is `egm.drift.ci`: `warn` (default) or `fail`. It is a policy key: the repository config can only raise it to `fail`.
    - The way to clear it is to update the document or re-review it; check 1 then holds the new receipt to a full review in CI.
+   - Both comparisons use the **merge-base** settings (the user config `-c` plus the target branch's repository config), so the pull request's own config cannot lower a limit to hide drift.
 
 The bound is one source collection per gated document at the merge-base and at head, with no agent run; `egm.ci.max_docs` does not apply to it (it bounds agent runs).
 
 ### Local gate
 
-The `egm` op of `tb stack` keeps the warning code `sources_changed` (consumers parse it), now computed by the comparison above for documents whose baseline paths changed in the stack range: from receipts first, from converged state rounds when there is no receipt. It stays a warning.
+The `egm` op of `tb stack` keeps the warning code `sources_changed` (consumers parse it), now computed by the comparison above for documents whose baseline paths changed in the stack range: from receipts first, from converged state rounds when there is no receipt. It stays a warning; a document whose drift cannot be computed gets `drift_unavailable` instead of disappearing.
 
 ## Part B2: `tb egm bootstrap`
 

@@ -61,6 +61,11 @@ func (r *Receipt) valid(rel string, docLines int) bool {
 	if r.Version != receiptVersion || r.Doc != rel || r.DocSHA256 == "" || r.Sources == nil {
 		return false
 	}
+	for p := range r.Sources {
+		if validRelPath(p) != nil {
+			return false
+		}
+	}
 	seen := map[string]bool{}
 	for i := range r.Claims {
 		if !r.Claims[i].valid(docLines) || seen[r.Claims[i].ID] {

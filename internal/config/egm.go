@@ -40,6 +40,14 @@ type EgmConfig struct {
 	TimeoutPerReviewer  string            `yaml:"timeout_per_reviewer"`
 	MaxStdoutBytes      int64             `yaml:"max_stdout_bytes"`
 	CI                  EgmCI             `yaml:"ci"`
+	Drift               EgmDrift          `yaml:"drift"`
+}
+
+// EgmDrift tunes source drift (docs/specs/egm-drift-bootstrap.md, B1).
+type EgmDrift struct {
+	// CI is ci_source_drift's severity: warn (default) or fail. Policy key:
+	// the repository config can only raise it to fail.
+	CI string `yaml:"ci" json:"ci"`
 }
 
 // EgmCI tunes the CI mode of the egm gate (docs/specs/egm-trust.md, T-R6).
@@ -80,6 +88,7 @@ func DefaultEgmConfig() EgmConfig {
 		TimeoutPerReviewer: "5m",
 		MaxStdoutBytes:     1 << 20,
 		CI:                 EgmCI{MaxDocs: 5},
+		Drift:              EgmDrift{CI: "warn"},
 	}
 }
 
@@ -108,6 +117,14 @@ func (e *EgmConfig) Validate() error {
 		if c.bad {
 			return fmt.Errorf("%s", c.msg)
 		}
+	}
+	return e.validateValues()
+}
+
+// validateValues checks the keys that are not plain bounds.
+func (e *EgmConfig) validateValues() error {
+	if v := e.Drift.CI; v != "" && v != "warn" && v != "fail" {
+		return fmt.Errorf("egm.drift.ci must be warn or fail")
 	}
 	d, err := time.ParseDuration(e.TimeoutPerReviewer)
 	if err != nil || d <= 0 {
