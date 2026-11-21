@@ -250,7 +250,7 @@ tb bus recv --channel feature-x --as grok-1 --wait 20s
 - [x] `tb graph search` com ranking BM25 (título/path/pacote, quebra de camelCase/`snake_case`, multi-termo)
 - [x] Vault Markdown compatível com Obsidian, Fase A (`tb vault`, [ADR-016](adr/016-vault-fase-a.md), [spec](specs/vault.md)): notas com frontmatter e wikilinks, `new`/`list`/`show`/`search`/`links`/`backlinks`/`check`, tools MCP, `tb stack vault`, nós no grafo; Q4 (fixture dourada conferida no Obsidian real) aberta
 - [x] Reimplementação do Elephant-Goldfish Model, Fase A (`tb egm`, [ADR-015](adr/015-egm-nativo.md) aceito): spike R0; engines determinística e `llm`, árbitro, gate no `tb stack` (`status --at`) e tools MCP
-- [ ] Próximas fases do `tb egm`: `drift-report` e `bootstrap` (Fase B, [spec](specs/egm-drift-bootstrap.md): B1 `drift-report` com drift das fontes no CI e B2 esqueleto do `bootstrap` feitos; B3 partes com LLM pendente); a Fase A.2 (CI como fronteira de confiança, [spec](specs/egm-trust.md)) está implementada; item 8 do R0 em aberto
+- [ ] Próximas fases do `tb egm`: Fase C (`draft`, `brainstorm`, drift por símbolo); a Fase B (`drift-report` e `bootstrap`, [spec](specs/egm-drift-bootstrap.md)) está implementada, partes com LLM incluídas; a Fase A.2 (CI como fronteira de confiança, [spec](specs/egm-trust.md)) está implementada; item 8 do R0 em aberto
 - [ ] Componentes opcionais em Rust para inferência local
 - [ ] Rulers adicionais para `tb verify`
 - [ ] `tb merge` estratégias `prompt` / `semantic`

@@ -1083,7 +1083,9 @@ tb egm status docs/specs/x.md [--strict]  # 0 PASS, 1 FAIL, 3 IN_PROGRESS/STALE/
 tb egm status docs/specs/x.md --at HEAD   # modo gate: documento, fontes e config do commit
 tb egm receipt docs/specs/x.md            # grava .toolbelt/egm/receipts/<slug>.json (exige PASS ou PASS_PARTIAL)
 tb egm drift-report [doc...] [--at REV]   # drift das fontes contra o recibo: 0 fresh/no_baseline, 1 drift, 2 erro
+tb egm drift-report --engine llm          # mais um goldfish de drift por documento drifted (egm.drift.max_docs); findings relatados, exit igual
 tb egm bootstrap docs/specs/novo.md --from internal/x/  # esqueleto novo ligado ao código (nunca sobrescreve, nunca commita); recusas saem com 2: usage, bootstrap_exists, bootstrap_path, bootstrap_sources
+tb egm bootstrap docs/specs/novo.md --from internal/x/ --engine llm  # um goldfish redige o corpo; também bootstrap_injection, bootstrap_invalid, bootstrap_not_run, tools_unverifiable, agent_unavailable
 tb egm review docs/specs/x.md --restart   # novo ciclo depois do teto (exige edição)
 ```
 

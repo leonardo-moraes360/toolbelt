@@ -60,12 +60,17 @@ type DriftDoc struct {
 	Missing  []MissingSource `json:"missing"`
 	Added    []string        `json:"added"`
 	Reason   string          `json:"reason,omitempty"`
+	// Findings and LLM come from the drift goldfish (--engine llm, B3):
+	// reported only, never stored as review lineages.
+	Findings []Finding `json:"findings,omitempty"`
+	LLM      *DriftLLM `json:"llm,omitempty"`
 }
 
 // DriftReport is tb egm drift-report's result.
 type DriftReport struct {
 	V         string     `json:"v"`
 	At        string     `json:"at"`
+	Engine    string     `json:"engine"`
 	Documents []DriftDoc `json:"documents"`
 }
 
@@ -94,10 +99,15 @@ type DriftOptions struct {
 	Docs       []string
 	At         string // default HEAD
 	ConfigFile string
+	Engine     string // deterministic (default) or llm (B3)
 }
 
 // Drift runs tb egm drift-report.
 func Drift(ctx context.Context, o *DriftOptions) (*DriftReport, error) {
+	engine, err := goldfishEngine(o.Engine)
+	if err != nil {
+		return nil, err
+	}
 	repo, err := DiscoverRepo(filepath.Join(o.Cwd, ".egm-drift"))
 	if err != nil {
 		return nil, err
@@ -118,7 +128,7 @@ func Drift(ctx context.Context, o *DriftOptions) (*DriftReport, error) {
 	if err != nil {
 		return nil, err
 	}
-	rep := &DriftReport{V: DriftVersion, At: oid, Documents: []DriftDoc{}}
+	rep := &DriftReport{V: DriftVersion, At: oid, Engine: engine, Documents: []DriftDoc{}}
 	for _, d := range docs {
 		dd, err := driftOf(ctx, repo, set, oid, d, true)
 		if err != nil {
@@ -133,7 +143,24 @@ func Drift(ctx context.Context, o *DriftOptions) (*DriftReport, error) {
 		}
 		return a.Doc < b.Doc
 	})
+	if engine == EngineLLM {
+		if err := driftLLM(ctx, repo, set, oid, rep); err != nil {
+			return nil, err
+		}
+	}
 	return rep, nil
+}
+
+// goldfishEngine checks --engine of drift-report and bootstrap: the default
+// is deterministic (not auto), so no run reaches an agent unasked.
+func goldfishEngine(e string) (string, error) {
+	switch e {
+	case "", EngineDeterministic:
+		return EngineDeterministic, nil
+	case EngineLLM:
+		return EngineLLM, nil
+	}
+	return "", errorf(ExitError, "usage", "--engine must be deterministic or llm, got %q", e)
 }
 
 // driftDocs: the explicit documents (each must be gated), or every gated

@@ -214,6 +214,7 @@ O resultado vai em `docs/campo/dogfood.md` (PT e EN).
     | `rev-parse --verify`, `merge-base <a> <b>` | Refs e base de três pontos (R33) |
     | `diff --name-status --no-renames -z <a> <b>` | Diff de árvores entre commits (R33) |
     | `diff --no-index -U0` | Diff entre snapshots, fora de qualquer repositório (env acima) |
+    | `diff --no-index -U3` | Diff redigido de uma fonte para o goldfish de drift ([egm-drift-bootstrap.md](egm-drift-bootstrap.md), B3), num diretório temporário privado (env acima) |
     | `check-ignore --no-index -- <paths>` | Exclusão de ignorados (R7) |
     | `config --file <path> --no-includes --null --list` | Leitura de `config` e `config.worktree` para a allowlist (R4d); não executa nada |
 

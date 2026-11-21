@@ -57,6 +57,7 @@ const (
 	opMergeBase
 	opDiffNameStatus
 	opDiffNoIndex
+	opDiffNoIndexContext
 	opCheckIgnore
 	opConfigList
 )
@@ -75,8 +76,10 @@ var gitOps = map[gitOp][]string{
 	opMergeBase:      {"merge-base"},
 	opDiffNameStatus: {"diff", "--name-status", "--no-renames", "-z", "--no-ext-diff", "--no-textconv"},
 	opDiffNoIndex:    {"diff", "--no-index", "-U0", "--no-ext-diff", "--no-textconv", "--no-color"},
-	opCheckIgnore:    {"check-ignore", "--no-index"},
-	opConfigList:     {"config", "--no-includes", "--null", "--list", "--file"},
+	// The drift goldfish reads a unified diff with context lines (B3).
+	opDiffNoIndexContext: {"diff", "--no-index", "-U3", "--no-ext-diff", "--no-textconv", "--no-color"},
+	opCheckIgnore:        {"check-ignore", "--no-index"},
+	opConfigList:         {"config", "--no-includes", "--null", "--list", "--file"},
 }
 
 // gitFixedOptions neutralize every config key that could make an allowed
@@ -548,13 +551,22 @@ func parseCheckIgnore(out []byte, paths []string, back map[string]string) map[st
 // repository: no GIT_DIR/GIT_WORK_TREE, cwd and GIT_CEILING_DIRECTORIES in
 // stateDir. Exit 1 (differences) is not an error.
 func DiffNoIndex(ctx context.Context, stateDir, a, b string) ([]byte, error) {
+	return diffNoIndex(ctx, opDiffNoIndex, stateDir, a, b)
+}
+
+// DiffNoIndexContext is DiffNoIndex with three context lines (B3).
+func DiffNoIndexContext(ctx context.Context, stateDir, a, b string) ([]byte, error) {
+	return diffNoIndex(ctx, opDiffNoIndexContext, stateDir, a, b)
+}
+
+func diffNoIndex(ctx context.Context, op gitOp, stateDir, a, b string) ([]byte, error) {
 	for _, p := range []string{stateDir, a, b} {
 		if p == "" || strings.ContainsRune(p, 0) {
 			return nil, errorf(ExitError, "git_forbidden", "programming error: invalid diff --no-index argument %q", p)
 		}
 	}
 	c := &gitCall{
-		op:       opDiffNoIndex,
+		op:       op,
 		tail:     []string{"--", a, b},
 		dir:      stateDir,
 		extraEnv: []string{"GIT_CEILING_DIRECTORIES=" + stateDir},

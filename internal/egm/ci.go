@@ -58,7 +58,14 @@ func readReceiptAt(ctx context.Context, repo *Repo, oid, rel string, docLines in
 }
 
 func (r *Receipt) valid(rel string, docLines int) bool {
-	if r.Version != receiptVersion || r.Doc != rel || r.DocSHA256 == "" || r.Sources == nil {
+	switch {
+	case r.Doc != rel || r.DocSHA256 == "" || r.Sources == nil:
+		return false
+	case r.Version == receiptVersion && r.Commit != "":
+		return false
+	case r.Version == receiptVersionCommit && !isHexCommit(r.Commit):
+		return false
+	case r.Version != receiptVersion && r.Version != receiptVersionCommit:
 		return false
 	}
 	for p := range r.Sources {
@@ -72,6 +79,19 @@ func (r *Receipt) valid(rel string, docLines int) bool {
 			return false
 		}
 		seen[r.Claims[i].ID] = true
+	}
+	return true
+}
+
+// isHexCommit: a 40- or 64-hex lowercase object id (SHA-1 or SHA-256).
+func isHexCommit(s string) bool {
+	if len(s) != 40 && len(s) != 64 {
+		return false
+	}
+	for _, c := range s {
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
+			return false
+		}
 	}
 	return true
 }

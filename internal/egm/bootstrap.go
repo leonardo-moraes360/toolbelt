@@ -27,12 +27,14 @@ type BootstrapOptions struct {
 	Target     string
 	From       []string
 	ConfigFile string
+	Engine     string // deterministic (default) or llm (B3)
 }
 
 // BootstrapResult reports what was written and what was skipped.
 type BootstrapResult struct {
 	Doc      string          `json:"doc"`
 	Type     string          `json:"type"`
+	Engine   string          `json:"engine"`
 	Sources  []string        `json:"sources"`
 	Skipped  []SkippedSource `json:"skipped"`
 	Next     string          `json:"next"`
@@ -41,6 +43,10 @@ type BootstrapResult struct {
 
 // Bootstrap writes the skeleton of a new gated document.
 func Bootstrap(ctx context.Context, o *BootstrapOptions) (*BootstrapResult, error) {
+	engine, err := goldfishEngine(o.Engine)
+	if err != nil {
+		return nil, err
+	}
 	repo, err := DiscoverRepo(filepath.Join(o.Cwd, ".egm-bootstrap"))
 	if err != nil {
 		return nil, err
@@ -74,9 +80,15 @@ func Bootstrap(ctx context.Context, o *BootstrapOptions) (*BootstrapResult, erro
 	}
 	docType := DocType(rel, set.DocTypes)
 	text := skeleton(rel, docType, files)
-	warns, err := checkBootstrapSources(ctx, repo, &set, rel, text, files)
+	got, err := checkBootstrapSources(ctx, repo, &set, rel, text, files)
 	if err != nil {
 		return nil, err
+	}
+	warns := got.Warnings
+	if engine == EngineLLM {
+		if text, warns, err = bootstrapDraft(ctx, repo, &set, rel, docType, got); err != nil {
+			return nil, err
+		}
 	}
 	if err := createNew(repo.Root, rel, text); err != nil {
 		return nil, err
@@ -84,7 +96,7 @@ func Bootstrap(ctx context.Context, o *BootstrapOptions) (*BootstrapResult, erro
 	if skipped == nil {
 		skipped = []SkippedSource{}
 	}
-	return &BootstrapResult{Doc: rel, Type: docType, Sources: files, Skipped: skipped, Warnings: append(set.Warnings, warns...),
+	return &BootstrapResult{Doc: rel, Type: docType, Engine: engine, Sources: files, Skipped: skipped, Warnings: append(set.Warnings, warns...),
 		Next: "edit " + rel + ", then run: tb egm review " + rel}, nil
 }
 
@@ -236,10 +248,22 @@ func acceptSources(ctx context.Context, repo *Repo, doc string, cands []string, 
 // required sections with TODO, and Sources as links relative to the doc.
 func skeleton(rel, docType string, files []string) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "# %s\n\n%s\n\n", titleFrom(rel), BootstrapStatus)
+	b.WriteString(draftHead(rel))
 	for _, pair := range requiredHeadings[structuralStandard(docType)] {
 		fmt.Fprintf(&b, "%s\n\nTODO\n\n", pair[0])
 	}
+	b.WriteString(sourcesSection(rel, files))
+	return b.String()
+}
+
+// draftHead is the title and the generated status line.
+func draftHead(rel string) string {
+	return fmt.Sprintf("# %s\n\n%s\n\n", titleFrom(rel), BootstrapStatus)
+}
+
+// sourcesSection lists the files as Markdown links relative to the document.
+func sourcesSection(rel string, files []string) string {
+	var b strings.Builder
 	b.WriteString("## Sources\n\n")
 	dir := path.Dir(rel)
 	for _, f := range files {
@@ -269,7 +293,7 @@ func titleFrom(rel string) string {
 // checkBootstrapSources refuses a skeleton whose R7 sources are not
 // exactly the accepted files (one dropped as secret-like or by a limit):
 // its first review would start with an excluded source.
-func checkBootstrapSources(ctx context.Context, repo *Repo, set *Settings, rel, text string, files []string) ([]Warning, error) {
+func checkBootstrapSources(ctx context.Context, repo *Repo, set *Settings, rel, text string, files []string) (*SourceSet, error) {
 	got, err := CollectSources(ctx, repo, set, rel, text)
 	if err != nil {
 		return nil, err
@@ -303,7 +327,7 @@ func checkBootstrapSources(ctx context.Context, repo *Repo, set *Settings, rel, 
 	if len(dropped) > 0 {
 		return nil, errorf(ExitError, "bootstrap_sources", "the review would not include exactly the --from files as sources: %s", strings.Join(dropped, ", "))
 	}
-	return got.Warnings, nil
+	return got, nil
 }
 
 // createNew writes rel under root with O_EXCL and no final symlink; the
