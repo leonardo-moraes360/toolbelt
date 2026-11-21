@@ -245,7 +245,7 @@ tb bus recv --channel feature-x --as grok-1 --wait 20s
 - [x] `tb ticket` / `tb board` — gerenciamento de tickets de trabalho
 - [x] `tb router` / `tb watchdog` — controle de delegação e saúde
 - [x] `tb merge` — agregação de resultados de workers (`fail` | `last_wins`)
-- [ ] Índice vetorial opcional ([spec](specs/vector-index.md), [ADR-018](adr/018-cgo-componentes-nativos.md): release com cgo e llama.cpp vendorizado sob um gate de qualidade de C/C++; rascunho)
+- [ ] Índice vetorial opcional ([spec](specs/vector-index.md), [ADR-018](adr/018-cgo-componentes-nativos.md)), experimental: V0 (release com cgo, llama.cpp vendorizado, gate de qualidade de C/C++) e V1 (`tb graph index --vectors`, `tb graph search --mode semantic|hybrid`) prontas; V2 (MCP + avaliação de recall) pendente
 - [x] Graphify: reimplementação própria ([ADR-014](adr/014-graphify-reimplementacao.md)) — `tb graph explain`/`path`
 - [x] `tb graph search` com ranking BM25 (título/path/pacote, quebra de camelCase/`snake_case`, multi-termo)
 - [x] Vault Markdown compatível com Obsidian, Fase A (`tb vault`, [ADR-016](adr/016-vault-fase-a.md), [spec](specs/vault.md)): notas com frontmatter e wikilinks, `new`/`list`/`show`/`search`/`links`/`backlinks`/`check`, tools MCP, `tb stack vault`, nós no grafo; Q4 (fixture dourada conferida no Obsidian real) aberta
@@ -305,7 +305,7 @@ Este projeto está na **Fase 3 (em andamento)**: além de verify/guard/mem/graph
 | `tb guard` | ✅ | Check anti-trapaça em diff (default estrito / exit ≠ 0 em `SeverityError`; `--warn-only` opt-out; `--strict` deprecated) |
 | `tb verify` | ✅ | Rulers `tests` + `visual` (`tb verify run`; `--build-cmd`/`--lint-cmd`/`--no-build`/`--no-lint`/`--dry-run`; suíte oculta via `--hidden-test-cmd` ou detecção de toolchain em `tests/hidden/` — N/A se inaplicável; cache de build/lint na execução; `reason`/`error` no JSON; `--base`/`--head` rodam no worktree do head; fail-fast se o comando não existe/não é executável; `protected_paths` custom do `guard.yaml` não abortam o loop — exceção de Scope via `--ticket`) |
 | `tb mem` | ✅ | Invariantes (`add`/`list`/`show`/`edit`/`retire`/`search`/`check`/`init`; `--ref` ADR; soft-retire + `--all`) |
-| `tb graph` | ✅ | Grafo sob demanda multi-linguagem + frameworks + docs (ADR-011); `javascript` cobre TypeScript (`ts`/`tsx`); `search` com ranking BM25, `callers`/`deps`/`impact`, `explain`/`path` (ADR-014) |
+| `tb graph` | ✅ | Grafo sob demanda multi-linguagem + frameworks + docs (ADR-011); `javascript` cobre TypeScript (`ts`/`tsx`); `search` com ranking BM25, `callers`/`deps`/`impact`, `explain`/`path` (ADR-014); índice vetorial experimental via `index --vectors` e `search --mode semantic|hybrid` |
 | `tb review` | ✅ | Revisão fresh-context contra ticket/`rd.md` local (sem GitHub); `--approved-sha` |
 | `tb drift` | ✅ | Drift de escopo / commit base / patch pinado contra `rd.md` (não é vault vs código) |
 | `tb stack` | ✅ | Empilha verify/review/drift/guard com contexto compartilhado (JSON agregado; MCP `tb_stack`) |

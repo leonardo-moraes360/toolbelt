@@ -124,3 +124,25 @@ func TestSmokeUnavailable(t *testing.T) {
 		t.Fatalf("%v", err)
 	}
 }
+
+func TestOutsideRepo(t *testing.T) {
+	repo := t.TempDir()
+	other := t.TempDir()
+	inside := filepath.Join(repo, "models", "m.gguf")
+	for _, c := range []struct {
+		model, root string
+		ok          bool
+	}{
+		{filepath.Join(other, "m.gguf"), repo, true},
+		{inside, repo, false},
+		{filepath.Join(repo, "m.gguf"), repo, false},
+		{inside, "", true},
+		// A sibling whose name only shares the prefix is outside.
+		{repo + "-models/m.gguf", repo, true},
+	} {
+		err := OutsideRepo(c.model, c.root)
+		if (err == nil) != c.ok || (err != nil && !errors.Is(err, ErrModelPath)) {
+			t.Errorf("OutsideRepo(%q, %q) = %v, want ok=%v", c.model, c.root, err, c.ok)
+		}
+	}
+}

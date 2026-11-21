@@ -10,6 +10,8 @@ import (
 	"sort"
 	"strings"
 	"unicode"
+
+	"github.com/leonardo-moraes360/toolbelt/internal/secrets"
 )
 
 // Bootstrap (docs/specs/egm-drift-bootstrap.md, B2): a new gated document
@@ -121,7 +123,7 @@ func inDenied(rel string) bool {
 			return true
 		}
 	}
-	return MatchAny(denyPathGlob, rel)
+	return secrets.MatchAny(secrets.DenyPathGlob, rel)
 }
 
 // bootstrapTarget: inside the repository, gated, absent, in an existing
