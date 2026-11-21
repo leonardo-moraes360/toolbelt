@@ -178,11 +178,17 @@ func sideEffectMode(mode string, stdout io.Writer) (bool, error) {
 	case "stderr-json":
 		fmt.Fprintln(os.Stderr, `{"type":"result","result":"{}"}`)
 	case "escape", "escape-anon":
-		setsid, sleep := fixedBin("setsid"), fixedBin("sleep")
-		if setsid == "" || sleep == "" {
-			return true, errors.New("fake-agent-egm: setsid/sleep not found in /usr/bin or /bin")
+		// The child calls setsid(2) before exec, and Start returns only after
+		// the exec succeeded, so the escapee has left the agent's group before
+		// the payload is written. Running the setsid binary instead raced: under
+		// load the agent could exit before setsid ran, and the group kill took
+		// the child silently, leaving no escape to detect.
+		sleep := fixedBin("sleep")
+		if sleep == "" {
+			return true, errors.New("fake-agent-egm: sleep not found in /usr/bin or /bin")
 		}
-		cmd := exec.Command(setsid, sleep, "30")
+		cmd := exec.Command(sleep, "30")
+		cmd.SysProcAttr = newSessionAttr()
 		if mode == "escape-anon" {
 			cmd.Env = []string{"PATH=" + os.Getenv("PATH")}
 		}
