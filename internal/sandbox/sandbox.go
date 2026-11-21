@@ -64,6 +64,11 @@ type Config struct {
 	// /dev/null, /dev/zero, /dev/full, /dev/random and /dev/urandom, so /dev/pts
 	// and /dev/shm stay closed.
 	MinimalDev bool
+	// DenyNetwork makes socket(2) and socketpair(2) fail with EPERM in the child
+	// (seccomp filter installed by the trampoline; with Landlock ABI >= 6 also
+	// abstract unix socket and signal scoping). New fails closed when
+	// NetworkDenyAvailable is false, unless AllowUnsandboxed.
+	DenyNetwork bool
 }
 
 type PathAccess struct {
@@ -74,6 +79,10 @@ type PathAccess struct {
 type Sandbox struct {
 	config     Config
 	landlockOK bool
+	// netDenyOK is false only when DenyNetwork was requested, cannot be
+	// enforced and AllowUnsandboxed accepted that: the run keeps Landlock (if
+	// any) but reports Sandboxed=false.
+	netDenyOK bool
 }
 
 type Result struct {
@@ -111,6 +120,10 @@ func New(config Config) (*Sandbox, error) { //nolint:gocritic // stable public A
 			probeErr = ErrUnsupported
 		}
 		return nil, fmt.Errorf("Landlock unavailable (%v); use --allow-unsandboxed to opt in to running without isolation", probeErr)
+	}
+	s.netDenyOK = !config.DenyNetwork || (s.landlockOK && NetworkDenyAvailable())
+	if !s.netDenyOK && !config.AllowUnsandboxed {
+		return nil, fmt.Errorf("%w: network denial (seccomp filter) unavailable; use --allow-unsandboxed to opt in to running without isolation", ErrUnsupported)
 	}
 	return s, nil
 }
@@ -156,7 +169,13 @@ func (s *Sandbox) runIsolated(ctx context.Context, bin string, args ...string) (
 	if err != nil {
 		return nil, fmt.Errorf("current executable: %w", err)
 	}
-	env, err := prepareChildEnv(&s.config, bin, args)
+	cfg := s.config
+	if !s.netDenyOK {
+		// Reached only with AllowUnsandboxed (New refuses otherwise); the result
+		// says the requested isolation was not applied.
+		cfg.DenyNetwork = false
+	}
+	env, err := prepareChildEnv(&cfg, bin, args)
 	if err != nil {
 		return nil, err
 	}
@@ -164,7 +183,7 @@ func (s *Sandbox) runIsolated(ctx context.Context, bin string, args ...string) (
 	cmd.Dir = s.config.WorkDir
 	cmd.Stdin = s.config.Stdin
 	cmd.Env = env
-	return finishRun(ctx, cmd, true, &s.config)
+	return finishRun(ctx, cmd, s.netDenyOK, &s.config)
 }
 
 func (c *Config) hasEnvOverrides() bool {

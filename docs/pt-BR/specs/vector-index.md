@@ -2,7 +2,7 @@
 
 # Índice vetorial opcional para o `tb graph search` — spec
 
-Status: **rascunho** (rodada 2, depois de uma revisão em contexto novo). Registro de decisão: [ADR-018](../adr/018-cgo-componentes-nativos.md) (cgo, llama.cpp vendorizado, gate de qualidade C/C++).
+Status: **V0 e V1 implementadas**; V2 (MCP, avaliação) pendente, experimental. A V1 embeda um texto por chamada nativa: o lote multi-sequência no shim (`n_seq_max ≥ 64`) ainda está pendente. Registro de decisão: [ADR-018](../adr/018-cgo-componentes-nativos.md) (cgo, llama.cpp vendorizado, gate de qualidade C/C++).
 
 O índice vetorial acrescenta busca semântica ao grafo de código:
 

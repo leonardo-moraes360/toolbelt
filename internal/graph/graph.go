@@ -102,6 +102,9 @@ func NewStore(indexPath string) *Store {
 
 func (s *Store) Path() string { return s.path }
 
+// Index is the loaded index; callers must not mutate it.
+func (s *Store) Index() *Index { return s.index }
+
 func (s *Store) Load() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()

@@ -28,10 +28,18 @@ const (
 	tierExact            // title equals the query (case-insensitive)
 )
 
+// SearchHit is one ranked node. The semantic/hybrid fields are omitempty so
+// a lexical hit marshals exactly as before vectors existed (acceptance 8).
 type SearchHit struct {
 	Node  Node
 	Score float64
 	tier  int
+
+	Lines         string   `json:"lines,omitempty"`
+	ScoreSemantic *float64 `json:"score_semantic,omitempty"`
+	RankLexical   *int     `json:"rank_lexical,omitempty"`
+	RankSemantic  *int     `json:"rank_semantic,omitempty"`
+	ScoreFused    *float64 `json:"score_fused,omitempty"`
 }
 
 type searchStats struct {

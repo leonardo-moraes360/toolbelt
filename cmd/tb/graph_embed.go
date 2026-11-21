@@ -14,12 +14,14 @@ import (
 
 var (
 	graphEmbedSmoke   string
+	graphEmbedModel   string
 	graphEmbedSHA     string
 	graphEmbedThreads int
 )
 
-// graphEmbedCmd is the native embedding child (ADR-018). In V0 it only
-// smoke-tests a model; the JSON-lines protocol arrives in V1.
+// graphEmbedCmd is the native embedding child (ADR-018): with --smoke it
+// smoke-tests a model, otherwise it serves the JSON-lines protocol on
+// stdin/stdout (docs/specs/vector-index.md, Protocol).
 var graphEmbedCmd = &cobra.Command{
 	Use:    "__graph-embed",
 	Short:  "Native embedding child (internal use)",
@@ -31,7 +33,14 @@ var graphEmbedCmd = &cobra.Command{
 			os.Exit(2)
 		}
 		if graphEmbedSmoke == "" {
-			return errors.New("embed_protocol: only --smoke is available in this release")
+			if graphEmbedModel == "" {
+				return errors.New("embed_protocol: --model or --smoke is required")
+			}
+			if err := embed.Serve(cmd.Context(), os.Stdin, os.Stdout, graphEmbedModel, graphEmbedSHA, graphEmbedThreads); err != nil {
+				fmt.Fprintln(os.Stderr, "tb __graph-embed:", err)
+				os.Exit(2)
+			}
+			return nil
 		}
 		res, err := embed.Smoke(graphEmbedSmoke, graphEmbedSHA, graphEmbedThreads)
 		if err != nil {
@@ -47,6 +56,7 @@ var graphEmbedCmd = &cobra.Command{
 func init() {
 	f := graphEmbedCmd.Flags()
 	f.StringVar(&graphEmbedSmoke, "smoke", "", "model to smoke-test (absolute path)")
+	f.StringVar(&graphEmbedModel, "model", "", "model to serve (absolute path)")
 	f.StringVar(&graphEmbedSHA, "sha256", "", "expected sha256 of the model")
 	f.IntVar(&graphEmbedThreads, "threads", 2, "inference threads")
 	rootCmd.AddCommand(graphEmbedCmd)
