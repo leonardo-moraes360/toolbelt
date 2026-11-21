@@ -67,3 +67,6 @@ tmp/
 # Goreleaser
 dist/
 bench/results/
+
+# Native build output (scripts/build-native.sh)
+/internal/embed/native/build/

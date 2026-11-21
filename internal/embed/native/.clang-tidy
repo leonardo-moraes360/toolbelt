@@ -1,0 +1,14 @@
+# The shim's static analysis (ADR-018 native gate): zero findings allowed.
+Checks: >-
+  -*,
+  bugprone-*,
+  cert-*,
+  clang-analyzer-*,
+  performance-*,
+  -bugprone-easily-swappable-parameters,
+  -cert-err33-c,
+  -clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling
+# The last one asks for Annex K (memcpy_s), which glibc and musl do not ship;
+# every memcpy in the shim is bounded by n_ctx, checked above it.
+WarningsAsErrors: '*'
+HeaderFilterRegex: 'internal/embed/native/.*'

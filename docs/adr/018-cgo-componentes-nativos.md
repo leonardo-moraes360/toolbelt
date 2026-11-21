@@ -59,7 +59,7 @@ Two choices were made when this ADR was written:
 
      A memory bug in llama.cpp, or a hostile model file, can then corrupt only that child. It reaches neither the repository nor HOME, and it has no network.
    - **Platforms without the sandbox:** on Linux without Landlock or seccomp, and on darwin or windows, the child refuses (`embed_unsandboxed`) unless the user config sets `graph.embed.allow_unsandboxed: true`.
-   - **Import rule:** a depguard rule lets only `internal/embed/native` import `"C"`.
+   - **Import rule:** only `internal/embed/native` may import `"C"`, enforced by a test (`TestOnlyNativeImportsC`), because depguard cannot see the cgo pseudo-package.
 4. **A C/C++ quality gate shaped by use.** It is a new CI job, `native`, required for merge. The C/C++ code is used in three ways, and each gets its own checks.
 
    | Code | Owner | Checks |
@@ -89,7 +89,7 @@ Two choices were made when this ADR was written:
    - **Glibc floor:** Linux targets glibc 2.28, and a `rockylinux:8` container checks it.
    - **Native smoke matrix:** every target runs `tb version` and an embed smoke test on its own runner (ubuntu-24.04 amd64 and arm64, macos-15 arm64, macos-15-intel, windows-2025 amd64 and windows-11-arm), plus x86-64-v2 under `qemu-x86_64 -cpu Nehalem`. A failure blocks the release.
 6. **The release chain covers the native parts.**
-   - The SBOM gains a CycloneDX component for llama.cpp and ggml (tag, commit, license, subset hash).
+   - The SBOM (SPDX) gains packages for llama.cpp and ggml (tag, commit, license, subset hash).
    - `tb version` prints the engine and its commit.
    - The checksums, cosign signature and SLSA provenance are unchanged.
 7. **The model is user data.**

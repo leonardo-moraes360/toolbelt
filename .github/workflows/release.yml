@@ -10,9 +10,14 @@ permissions:
   id-token: write
   attestations: write
 
+# The pinned zig (ADR-018); its sha256 comes from ziglang.org/download/index.json.
+env:
+  ZIG_VERSION: "0.17.1"
+  ZIG_SHA256: "3581863e3cbcfd0fce0efc682ce7e9e93da96668a977791d356a26d2a7e9b17a"
+
 jobs:
   release:
-    name: Release
+    name: Release (draft)
     runs-on: ubuntu-latest
 
     steps:
@@ -26,6 +31,23 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+
+      - name: Install the native toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends cmake ninja-build binutils strace jq
+          curl -sSfL -o zig.tar.xz "https://ziglang.org/download/${ZIG_VERSION}/zig-x86_64-linux-${ZIG_VERSION}.tar.xz"
+          echo "${ZIG_SHA256}  zig.tar.xz" | sha256sum -c
+          mkdir -p "$RUNNER_TEMP/zig" && tar -xJf zig.tar.xz -C "$RUNNER_TEMP/zig" --strip-components=1
+          echo "ZIG=$RUNNER_TEMP/zig/zig" >> "$GITHUB_ENV"
+          echo "TB_ROOT=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
+
+      - name: Check the vendored tree and its advisories
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          scripts/vendor-llama.sh --check
+          scripts/native-advisories.sh
 
       - name: Install cosign
         uses: sigstore/cosign-installer@v4.1.3
@@ -45,7 +67,130 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Every SBOM lists the vendored llama.cpp and ggml
+        run: |
+          commit="$(sed -n 's/^commit: //p' third_party/llama.cpp/MANIFEST)"
+          n=0
+          for f in dist/*.sbom.json; do
+            for p in llama.cpp ggml; do
+              jq -e --arg p "$p" --arg c "$commit" \
+                '.packages[] | select(.name == $p and (.downloadLocation | endswith($c)))' "$f" >/dev/null ||
+                { echo "$f: no $p@$commit"; exit 1; }
+            done
+            n=$((n + 1))
+          done
+          [ "$n" -eq 6 ] || { echo "expected 6 SBOMs, got $n"; exit 1; }
+
+      - name: Check Linux hardening and the glibc floor
+        run: |
+          for arch in amd64 arm64; do
+            for b in dist/tb_linux_${arch}*/tb; do
+              echo "== $b"
+              scripts/native-gate.sh artifact "$b" "internal/embed/native/build/linux_${arch}/lib"
+            done
+          done
+
+      # The strace check of the native gate, on the zig-built release binary
+      # (its libc++ static init differs from the CI host build).
+      - name: Static initializers do no I/O (release binary)
+        run: |
+          CGO_ENABLED=0 go build -o "$RUNNER_TEMP/tb-untagged" ./cmd/tb
+          scripts/native-gate.sh strace dist/tb_linux_amd64*/tb "$RUNNER_TEMP/tb-untagged"
+
       - name: Attest build provenance
         uses: actions/attest-build-provenance@v4
         with:
           subject-checksums: ./dist/checksums.txt
+
+  # Every target runs its own binary from the draft on its own runner
+  # (ADR-018 §5); a failure leaves the release a draft.
+  smoke:
+    name: Smoke (${{ matrix.os }}/${{ matrix.arch }})
+    needs: [release]
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: linux, arch: amd64, runner: ubuntu-24.04, ext: tar.gz, exe: "" }
+          - { os: linux, arch: arm64, runner: ubuntu-24.04-arm, ext: tar.gz, exe: "" }
+          - { os: darwin, arch: arm64, runner: macos-15, ext: tar.gz, exe: "" }
+          - { os: darwin, arch: amd64, runner: macos-15-intel, ext: tar.gz, exe: "" }
+          - { os: windows, arch: amd64, runner: windows-2025, ext: zip, exe: .exe }
+          - { os: windows, arch: arm64, runner: windows-11-arm, ext: zip, exe: .exe }
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Download the draft asset
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          v="${TAG#v}"
+          asset="toolbelt_${v}_${{ matrix.os }}_${{ matrix.arch }}.${{ matrix.ext }}"
+          gh release download "$TAG" -p "$asset" -p checksums.txt
+          if command -v sha256sum >/dev/null; then sum=(sha256sum -c); else sum=(shasum -a 256 -c); fi
+          grep " ${asset}\$" checksums.txt | "${sum[@]}"
+          mkdir x
+          if [[ "${{ matrix.ext }}" == zip ]]; then unzip -q "$asset" -d x; else tar -xzf "$asset" -C x; fi
+
+      - name: tb version names the engine
+        run: |
+          "./x/tb${{ matrix.exe }}" version | tee version.txt
+          grep -q "embed:  llama.cpp" version.txt
+
+      - name: Download the smoke model
+        run: scripts/ci-smoke-model.sh "$RUNNER_TEMP/model.gguf"
+
+      - name: Embed smoke test
+        run: |
+          sha="$(sed -n 's/^sha256: //p' .github/embed-smoke-model.txt)"
+          model="$RUNNER_TEMP/model.gguf"
+          if [[ "${{ matrix.os }}" == windows ]]; then model="$(cygpath -w "$model")"; fi
+          "./x/tb${{ matrix.exe }}" __graph-embed --smoke "$model" --sha256 "$sha"
+
+  # glibc 2.28 and the x86-64-v2 CPU floor (ADR-018 §1, §5).
+  floors:
+    name: Smoke (glibc 2.28, x86-64-v2)
+    needs: [release]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Download the draft asset
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          gh release download "$TAG" -p "toolbelt_${TAG#v}_linux_amd64.tar.gz"
+          mkdir x && tar -xzf toolbelt_*_linux_amd64.tar.gz -C x
+          scripts/ci-smoke-model.sh "$PWD/model.gguf"
+
+      - name: rockylinux:8 (glibc 2.28)
+        run: |
+          sha="$(sed -n 's/^sha256: //p' .github/embed-smoke-model.txt)"
+          docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/w:ro" -w /w rockylinux:8 sh -c \
+            "./x/tb version && ./x/tb __graph-embed --smoke /w/model.gguf --sha256 $sha"
+
+      - name: x86-64-v2 under QEMU (Nehalem)
+        run: |
+          sudo apt-get update && sudo apt-get install -y --no-install-recommends qemu-user
+          sha="$(sed -n 's/^sha256: //p' .github/embed-smoke-model.txt)"
+          qemu-x86_64 -cpu Nehalem ./x/tb version
+          qemu-x86_64 -cpu Nehalem ./x/tb __graph-embed --smoke "$PWD/model.gguf" --sha256 "$sha"
+
+  publish:
+    name: Publish
+    needs: [smoke, floors]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Make the release public
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false

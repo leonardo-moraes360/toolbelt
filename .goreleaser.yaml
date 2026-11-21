@@ -7,12 +7,27 @@ before:
   hooks:
     - go mod tidy
 
+# Every target is built with cgo and the vendored llama.cpp (ADR-018). The
+# release workflow sets TB_ROOT (the checkout) and ZIG (the pinned zig); each
+# target first builds its static libraries (scripts/build-native.sh), then
+# links with zig for its GOOS/GOARCH (scripts/zig-cc.sh, zig-target.sh).
+# Compile hardening is in the #cgo directives and build-native.sh; link
+# hardening (PIE, full RELRO) is here. scripts/native-gate.sh checks both.
 builds:
   - id: tb
     main: ./cmd/tb
     binary: tb
+    # netgo and osusergo keep the pure-Go resolver and user lookup of the
+    # earlier CGO_ENABLED=0 releases; cgo's net would also need the macOS
+    # SDK's libresolv, which zig does not ship.
+    tags:
+      - embednative
+      - netgo
+      - osusergo
     env:
-      - CGO_ENABLED=0
+      - CGO_ENABLED=1
+      - CC={{ .Env.TB_ROOT }}/scripts/zig-cc.sh
+      - CXX={{ .Env.TB_ROOT }}/scripts/zig-c++.sh
     goos:
       - linux
       - darwin
@@ -20,11 +35,40 @@ builds:
     goarch:
       - amd64
       - arm64
-    ldflags:
+    hooks:
+      pre:
+        - cmd: "{{ .Env.TB_ROOT }}/scripts/build-native.sh {{ .Os }} {{ .Arch }}"
+    ldflags: &ldflags
       - -s -w
       - -X github.com/leonardo-moraes360/toolbelt/internal/version.Version={{.Version}}
       - -X github.com/leonardo-moraes360/toolbelt/internal/version.Commit={{.Commit}}
       - -X github.com/leonardo-moraes360/toolbelt/internal/version.BuildTime={{.Date}}
+    overrides:
+      - goos: linux
+        goarch: amd64
+        goamd64: v1
+        flags: [-buildmode=pie]
+        ldflags: &linuxldflags
+          - -s -w
+          - -X github.com/leonardo-moraes360/toolbelt/internal/version.Version={{.Version}}
+          - -X github.com/leonardo-moraes360/toolbelt/internal/version.Commit={{.Commit}}
+          - -X github.com/leonardo-moraes360/toolbelt/internal/version.BuildTime={{.Date}}
+          - -extldflags "-Wl,-z,relro,-z,now"
+      - goos: linux
+        goarch: arm64
+        goarm64: v8.0
+        flags: [-buildmode=pie]
+        ldflags: *linuxldflags
+      - goos: windows
+        goarch: amd64
+        goamd64: v1
+        flags: [-buildmode=pie]
+        ldflags: *ldflags
+      - goos: windows
+        goarch: arm64
+        goarm64: v8.0
+        flags: [-buildmode=pie]
+        ldflags: *ldflags
 
 archives:
   - id: default
@@ -34,6 +78,11 @@ archives:
       - README.md
       - LICENSE
       - CHANGELOG.md
+      # MIT notices of the vendored code compiled into tb (ADR-018).
+      - src: third_party/llama.cpp/LICENSE
+        dst: THIRD_PARTY_LICENSES/llama.cpp-LICENSE
+      - src: third_party/llama.cpp/MANIFEST
+        dst: THIRD_PARTY_LICENSES/llama.cpp-MANIFEST
     format_overrides:
       - goos: windows
         formats: [zip]
@@ -41,8 +90,14 @@ archives:
 checksum:
   name_template: checksums.txt
 
+# syft's SPDX document plus the vendored llama.cpp and ggml, which syft
+# cannot see in a binary (scripts/sbom.sh, ADR-018).
 sboms:
   - artifacts: archive
+    cmd: bash
+    args: ["{{ .Env.TB_ROOT }}/scripts/sbom.sh", "$artifact", "$document"]
+    env:
+      - SYFT_FILE_METADATA_CATALOGER_ENABLED=true
 
 signs:
   - cmd: cosign
@@ -71,5 +126,7 @@ release:
     owner: leonardo-moraes360
     name: toolbelt
   prerelease: auto
-  draft: false
+  # Published as a draft: the native smoke matrix (release.yml) runs on the
+  # draft's assets and only then makes the release public (ADR-018).
+  draft: true
   name_template: "v{{.Version}}"

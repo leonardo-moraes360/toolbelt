@@ -139,3 +139,174 @@ jobs:
           name: benchmark-results
           path: bench/results/
           retention-days: 30
+
+  # The C/C++ quality gate of ADR-018: shim lint and analysis, the vendored
+  # tree hash, the embed tests with the smoke model, a sanitizer build, a
+  # libFuzzer run and the static-initializer strace check.
+  native:
+    name: Native gate (${{ matrix.runner }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04, ubuntu-24.04-arm]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Install the native toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends cmake ninja-build clang clang-tidy clang-format cppcheck strace binutils
+
+      - name: Lint the shim and check the vendored tree
+        run: scripts/native-gate.sh lint
+
+      - name: Cache the smoke model
+        uses: actions/cache@v5
+        with:
+          path: ~/.cache/tb-smoke-model
+          key: smoke-model-${{ hashFiles('.github/embed-smoke-model.txt') }}
+
+      - name: Download the smoke model
+        run: |
+          mkdir -p ~/.cache/tb-smoke-model
+          scripts/ci-smoke-model.sh ~/.cache/tb-smoke-model/model.gguf
+          echo "TB_EMBED_MODEL=$HOME/.cache/tb-smoke-model/model.gguf" >> "$GITHUB_ENV"
+
+      - name: Build the native libraries and tb
+        run: |
+          scripts/build-native.sh "$(go env GOOS)" "$(go env GOARCH)"
+          go build -tags embednative,netgo,osusergo -o bin/tb-native ./cmd/tb
+          go build -o bin/tb ./cmd/tb
+          ./bin/tb-native version | grep -q "embed:  llama.cpp"
+
+      - name: Embed tests
+        run: go test -tags embednative -count=1 ./internal/embed/... ./internal/version
+
+      - name: Static initializers do no I/O
+        run: scripts/native-gate.sh strace bin/tb-native bin/tb
+
+      - name: Sanitizer build (ASan + UBSan) and embed tests
+        run: |
+          san="-fsanitize=address,undefined -fno-omit-frame-pointer -fno-sanitize-recover=undefined"
+          # ggml calls its dequantize table through a type-punned function
+          # pointer by design; only the vendored libraries skip that check.
+          CC=clang CXX=clang++ EXTRA_CFLAGS="$san -fno-sanitize=function" scripts/build-native.sh "$(go env GOOS)" "$(go env GOARCH)"
+          CC=clang CXX=clang++ CGO_CFLAGS="$san" CGO_CXXFLAGS="$san" CGO_LDFLAGS="$san" \
+            go test -asan -tags embednative -count=1 ./internal/embed/...
+
+      - name: libFuzzer (5 minutes)
+        run: scripts/native-fuzz.sh 300
+
+  # The ADR-018 spike on every PR: each release target builds with the
+  # pinned zig, and the Linux ones pass the hardening and glibc-floor checks.
+  native-cross:
+    name: Native cross-build (${{ matrix.target }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [linux/amd64, linux/arm64, darwin/amd64, darwin/arm64, windows/amd64, windows/arm64]
+    env:
+      ZIG_VERSION: "0.17.1"
+      ZIG_SHA256: "3581863e3cbcfd0fce0efc682ce7e9e93da96668a977791d356a26d2a7e9b17a"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Install the native toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends cmake ninja-build binutils
+          curl -sSfL -o zig.tar.xz "https://ziglang.org/download/${ZIG_VERSION}/zig-x86_64-linux-${ZIG_VERSION}.tar.xz"
+          echo "${ZIG_SHA256}  zig.tar.xz" | sha256sum -c
+          mkdir -p "$RUNNER_TEMP/zig" && tar -xJf zig.tar.xz -C "$RUNNER_TEMP/zig" --strip-components=1
+          echo "ZIG=$RUNNER_TEMP/zig/zig" >> "$GITHUB_ENV"
+
+      - name: Build
+        run: |
+          goos="${{ matrix.target }}"; goarch="${goos#*/}"; goos="${goos%/*}"
+          scripts/build-native.sh "$goos" "$goarch"
+          flags=(); ld="-s -w"; ext=""
+          case "$goos" in
+            linux) flags=(-buildmode=pie); ld="$ld -extldflags '-Wl,-z,relro,-z,now'" ;;
+            windows) flags=(-buildmode=pie); ext=.exe ;;
+          esac
+          GOOS="$goos" GOARCH="$goarch" CGO_ENABLED=1 CC="$PWD/scripts/zig-cc.sh" CXX="$PWD/scripts/zig-c++.sh" \
+            go build -tags embednative,netgo,osusergo "${flags[@]}" -ldflags "$ld" -o "bin/tb-$goos-$goarch$ext" ./cmd/tb
+          ls -l "bin/tb-$goos-$goarch$ext"
+
+      - name: Hardening and glibc floor (Linux)
+        if: startsWith(matrix.target, 'linux/')
+        run: |
+          t="${{ matrix.target }}"
+          scripts/native-gate.sh artifact "bin/tb-${t%/*}-${t#*/}" "internal/embed/native/build/${t%/*}_${t#*/}/lib"
+
+      - name: Upload the binary
+        uses: actions/upload-artifact@v7
+        with:
+          name: tb-native-${{ strategy.job-index }}
+          path: bin/tb-*
+          retention-days: 3
+
+  # Each cross-built binary runs tb version and the embed smoke test on its
+  # own OS and CPU (the release smoke matrix, on every PR).
+  native-run:
+    name: Native run (${{ matrix.os }}/${{ matrix.arch }})
+    needs: [native-cross]
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: linux, arch: amd64, runner: ubuntu-24.04, ext: "" }
+          - { os: linux, arch: arm64, runner: ubuntu-24.04-arm, ext: "" }
+          - { os: darwin, arch: arm64, runner: macos-15, ext: "" }
+          - { os: darwin, arch: amd64, runner: macos-15-intel, ext: "" }
+          - { os: windows, arch: amd64, runner: windows-2025, ext: .exe }
+          - { os: windows, arch: arm64, runner: windows-11-arm, ext: .exe }
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Download the binaries
+        uses: actions/download-artifact@v8
+        with:
+          pattern: tb-native-*
+          merge-multiple: true
+          path: bin
+
+      - name: tb version names the engine
+        run: |
+          b="bin/tb-${{ matrix.os }}-${{ matrix.arch }}${{ matrix.ext }}"
+          chmod +x "$b"
+          "$b" version | tee version.txt
+          grep -q "embed:  llama.cpp" version.txt
+
+      - name: Embed smoke test
+        run: |
+          scripts/ci-smoke-model.sh "$RUNNER_TEMP/model.gguf"
+          sha="$(sed -n 's/^sha256: //p' .github/embed-smoke-model.txt)"
+          model="$RUNNER_TEMP/model.gguf"
+          if [[ "${{ matrix.os }}" == windows ]]; then model="$(cygpath -w "$model")"; fi
+          "bin/tb-${{ matrix.os }}-${{ matrix.arch }}${{ matrix.ext }}" __graph-embed --smoke "$model" --sha256 "$sha"

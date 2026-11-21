@@ -1,0 +1,7 @@
+# CI smoke model for the native embedding engine (ADR-018, docs/specs/vector-index.md).
+# Downloaded with the hash checked and cached by CI; never committed.
+name: all-MiniLM-L6-v2 Q8_0 (GGUF)
+license: Apache-2.0
+url: https://huggingface.co/second-state/All-MiniLM-L6-v2-Embedding-GGUF/resolve/544f204f2eaa2d71361ffc74d6df7170285b286a/all-MiniLM-L6-v2-Q8_0.gguf
+sha256: 263215c3cadd6e16740741a7624ab4cbb6c8e777688bd5331ecfbf5681c2f8ed
+size: 25008064
