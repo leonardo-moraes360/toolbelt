@@ -42,6 +42,12 @@ type engine interface {
 	Embed(text string) (vec []float32, truncated bool, err error)
 }
 
+// batchEngine embeds a whole request in one native call (native.Model);
+// engines without it are called once per text.
+type batchEngine interface {
+	EmbedBatch(texts []string) (vecs [][]float32, truncated []bool, err error)
+}
+
 var (
 	errLineTooLong = errors.New("line too long")
 	// errLineCut is errLineTooLong when the rest of the line is still unread.
@@ -118,21 +124,51 @@ func handle(line []byte, dims int, eng engine) reply {
 		rep.Error = fmt.Sprintf("embed_request: %d texts, over %d", len(req.Texts), MaxTexts)
 		return rep
 	}
-	rep.Vectors = make([]string, 0, len(req.Texts))
-	for i, t := range req.Texts {
-		vec, tr, err := eng.Embed(t)
-		if err != nil {
-			return reply{ID: req.ID, Error: err.Error()}
-		}
+	vecs, trs, err := embedAll(eng, req.Texts)
+	if err != nil {
+		return reply{ID: req.ID, Error: err.Error()}
+	}
+	rep.Vectors = make([]string, 0, len(vecs))
+	for i, vec := range vecs {
 		if len(vec) != dims {
 			return reply{ID: req.ID, Error: fmt.Sprintf("embed: engine returned %d dims, want %d", len(vec), dims)}
 		}
 		rep.Vectors = append(rep.Vectors, encodeVector(vec))
-		if tr {
+		if trs[i] {
 			rep.Truncated = append(rep.Truncated, i)
 		}
 	}
 	return rep
+}
+
+func embedAll(eng engine, texts []string) (vecs [][]float32, truncated []bool, err error) {
+	if len(texts) == 0 {
+		return nil, nil, nil
+	}
+	if b, ok := eng.(batchEngine); ok {
+		// MaxTexts may exceed what one native call takes; split.
+		for start := 0; start < len(texts); start += native.MaxBatch {
+			part := texts[start:min(start+native.MaxBatch, len(texts))]
+			v, tr, err := b.EmbedBatch(part)
+			if err != nil {
+				return nil, nil, err
+			}
+			if len(v) != len(part) || len(tr) != len(part) {
+				return nil, nil, fmt.Errorf("embed: engine returned %d vectors for %d texts", len(v), len(part))
+			}
+			vecs, truncated = append(vecs, v...), append(truncated, tr...)
+		}
+		return vecs, truncated, nil
+	}
+	for _, t := range texts {
+		vec, tr, err := eng.Embed(t)
+		if err != nil {
+			return nil, nil, err
+		}
+		vecs = append(vecs, vec)
+		truncated = append(truncated, tr)
+	}
+	return vecs, truncated, nil
 }
 
 func writeLine(w *bufio.Writer, v any) error {

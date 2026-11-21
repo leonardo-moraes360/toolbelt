@@ -17,4 +17,11 @@ func (m *Model) NCtx() int { return 0 }
 func (m *Model) Embed(string) (vec []float32, truncated bool, err error) {
 	return nil, false, ErrUnavailable
 }
+
+// MaxBatch matches the native build so callers size requests the same way.
+const MaxBatch = 64
+
+func (m *Model) EmbedBatch([]string) (vecs [][]float32, truncated []bool, err error) {
+	return nil, nil, ErrUnavailable
+}
 func (m *Model) Close() {}
