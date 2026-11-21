@@ -138,7 +138,7 @@ jobs:
           asset="toolbelt_${v}_${{ matrix.os }}_${{ matrix.arch }}.${{ matrix.ext }}"
           gh release download "$TAG" -p "$asset" -p checksums.txt
           want="$(grep " ${asset}\$" checksums.txt | cut -d' ' -f1)"
-          if command -v shasum >/dev/null; then got="$(shasum -a 256 "$asset")"; else got="$(sha256sum "$asset")"; fi
+          if command -v shasum >/dev/null; then got="$(shasum -a 256 <"$asset")"; else got="$(sha256sum <"$asset")"; fi
           [[ -n "$want" && "${got%% *}" == "$want" ]] || { echo "checksum mismatch for $asset"; exit 1; }
           mkdir x
           if [[ "${{ matrix.ext }}" == zip ]]; then unzip -q "$asset" -d x; else tar -xzf "$asset" -C x; fi

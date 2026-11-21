@@ -7,12 +7,13 @@ pin="$root/.github/embed-smoke-model.txt"
 url="$(sed -n 's/^url: //p' "$pin")"
 sha="$(sed -n 's/^sha256: //p' "$pin")"
 dest="$1"
-# Compare the digest itself: GNU sha256sum (Linux, Git for Windows), the
+# Compare the digest itself, hashing stdin: GNU sha256sum escapes a path
+# with a backslash (Windows) with a leading "\". GNU sha256sum, the
 # BSD sha256sum of macOS 14+ (no --quiet) and shasum all print it first.
 check() {
   local got
-  if command -v shasum >/dev/null; then got="$(shasum -a 256 "$dest")"
-  else got="$(sha256sum "$dest")"; fi
+  if command -v shasum >/dev/null; then got="$(shasum -a 256 <"$dest")"
+  else got="$(sha256sum <"$dest")"; fi
   [[ "${got%% *}" == "$sha" ]] || { echo "ci-smoke-model: $dest has sha256 ${got%% *}, want $sha" >&2; return 1; }
 }
 if [[ ! -f "$dest" ]] || ! check 2>/dev/null; then
