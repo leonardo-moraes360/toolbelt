@@ -142,7 +142,23 @@ func (r *Router) CheckBus() error {
 	if !r.cfg.Bus.Enabled() {
 		return errors.New("router.bus.channel is not configured (set it in the global config or -c)")
 	}
-	return r.openBus()
+	defer r.closeBus()
+	if err := r.openBus(); err != nil {
+		return err
+	}
+	if to := r.cfg.Bus.To; strings.HasPrefix(to, "agent:") {
+		agents, err := r.bus.store.Agents(r.bus.member.Channel)
+		if err != nil {
+			return err
+		}
+		for i := range agents {
+			if bus.AgentID(agents[i].Name) == to {
+				return nil
+			}
+		}
+		return fmt.Errorf("router.bus.to: %s is not a member of %s", to, r.bus.member.Channel)
+	}
+	return nil
 }
 
 func (r *Router) closeBus() {
@@ -218,7 +234,7 @@ type busAttemptRun struct {
 
 // executeBus runs in the attempt goroutine and returns through workerDone,
 // like execute.
-func (r *Router) executeBus(ctx context.Context, s *slot, worker string, t *ticket.Ticket, base string, a *busAttempt, attempt int) workerDone {
+func (r *Router) executeBus(ctx context.Context, s *slot, worker string, t *ticket.Ticket, base string, a *busAttempt, attempt int, timeout time.Duration) workerDone {
 	ev := workerDone{slot: s, id: t.ID, base: base, branch: "tb-workspace/" + t.ID, exit: -1}
 	ev.log = logRel(t.ID)
 	ws, err := r.createWorkspace(t, base)
@@ -229,7 +245,7 @@ func (r *Router) executeBus(ctx context.Context, s *slot, worker string, t *tick
 	ev.workspace = ws.Path
 	thread, _, _, _ := a.snapshot()
 	ev.busThread = thread
-	run := &busAttemptRun{r: r, ev: &ev, t: t, a: a, worker: worker, ws: ws.Path, attempt: attempt, timeout: s.timeout}
+	run := &busAttemptRun{r: r, ev: &ev, t: t, a: a, worker: worker, ws: ws.Path, attempt: attempt, timeout: timeout}
 	if !run.assign(thread) {
 		return ev
 	}
@@ -276,9 +292,10 @@ func (b *busAttemptRun) writeFailed(op string, err error) {
 	b.alert(AlertBusWriteFailed, SevWarn, fmt.Sprintf("bus %s for %s failed: %v", op, b.t.ID, err))
 	if errors.Is(err, bus.ErrChannelExpired) {
 		b.ev.requeue, b.ev.keepThread = true, true
+		b.ev.err = nil
 		return
 	}
-	b.ev.err = fmt.Errorf("bus %s: %w", op, err)
+	b.ev.err = fmt.Errorf("bus %s failed: %w", op, err)
 }
 
 func (b *busAttemptRun) loop(ctx context.Context) {
@@ -300,11 +317,23 @@ func (b *busAttemptRun) loop(ctx context.Context) {
 // poll handles one tick; true ends the attempt.
 func (b *busAttemptRun) poll(ctx context.Context) bool {
 	r := b.r
+	if _, err := r.bus.store.ActiveChannel(r.bus.member.Channel); errors.Is(err, bus.ErrChannelExpired) {
+		// Nobody can claim or complete now: honor a stored result, else requeue.
+		if c, cerr := r.bus.store.Claim(r.bus.member.Channel, b.ev.busThread); cerr == nil && c.RevokedAt == nil && b.completedByUs(&c) {
+			b.result(ctx, &c)
+			return true
+		}
+		b.writeFailed("attempt", err)
+		return true
+	}
 	c, err := r.bus.store.Claim(r.bus.member.Channel, b.ev.busThread)
 	switch {
 	case errors.Is(err, bus.ErrNoClaim):
 		return b.waitClaim()
 	case err != nil:
+		if b.owner == "" {
+			return b.waitClaim() // a failing store must not hold the slot past the claim deadline
+		}
 		return false // transient: try again next tick
 	}
 	if b.owner == "" {
@@ -350,6 +379,7 @@ func (b *busAttemptRun) checkClaim(c *bus.Claim) bool {
 			return true
 		}
 		if b.r.now().After(b.deadline) {
+			b.alert(AlertBusUnclaimed, SevWarn, fmt.Sprintf("%s: no valid claim within %s", b.t.ID, b.r.bus.claimTimeout))
 			b.ev.err = errBusUnclaimed
 			return true
 		}
@@ -430,22 +460,37 @@ func (b *busAttemptRun) revokeOrResult(ctx context.Context, reason string) bool 
 	r := b.r
 	res, err := r.bus.store.Revoke(r.bus.member, b.ev.busThread, reason)
 	if err != nil {
-		// Expired channel or busy store: honor a stored result, else requeue
-		// and keep the thread for a later revoke.
-		if c, cerr := r.bus.store.Claim(r.bus.member.Channel, b.ev.busThread); cerr == nil && c.CompletedAt != nil && c.RevokedAt == nil && b.owner != "" {
+		// Expired channel or busy store: honor a result stored by the
+		// recorded owner at its epoch, else give up on the thread (kept for a
+		// later revoke).
+		if c, cerr := r.bus.store.Claim(r.bus.member.Channel, b.ev.busThread); cerr == nil && c.RevokedAt == nil && b.completedByUs(&c) {
 			b.result(ctx, &c)
 			return true
 		}
+		b.ev.keepThread = true
 		b.writeFailed("revoke", err)
-		b.ev.requeue, b.ev.keepThread = true, true
-		b.ev.err = nil
 		return false
 	}
-	if res.State == bus.RevokeCompleted && b.owner != "" && res.Claim.Owner == b.owner && res.Claim.Epoch == b.epoch {
+	if res.State == bus.RevokeCompleted && b.completedByUs(&res.Claim) {
 		b.result(ctx, &res.Claim)
 		return true
 	}
 	return false
+}
+
+// completedByUs: the claim is completed by the validated owner at its
+// epoch. A claim completed before the router recorded it is validated now.
+func (b *busAttemptRun) completedByUs(c *bus.Claim) bool {
+	if c.CompletedAt == nil {
+		return false
+	}
+	if b.owner == "" {
+		if b.r.invalidClaim(c, b.assignAt) != "" {
+			return false
+		}
+		b.owner, b.epoch = c.Owner, c.Epoch
+	}
+	return c.Owner == b.owner && c.Epoch == b.epoch
 }
 
 // result processes a completed claim: the message must come from the
@@ -486,17 +531,20 @@ func (r *Router) commitBusWorkspace(dir string, t *ticket.Ticket, base string) (
 		return "", err
 	}
 	branch := "refs/heads/tb-workspace/" + t.ID
-	if ref, err := g.run("symbolic-ref", "HEAD"); err != nil || ref != branch {
-		return "", integrityErr("bus worktree of %s: HEAD is not %s", t.ID, branch)
-	}
-	for _, rev := range []string{"HEAD", branch} {
-		if sha, err := g.run("rev-parse", rev); err != nil || sha != base {
-			return "", integrityErr("bus worktree of %s: %s moved off the base (the agent committed)", t.ID, rev)
-		}
+	if err := checkBusHead(g, t.ID, branch, base, "moved off the base (the agent committed)"); err != nil {
+		return "", err
 	}
 	head, err := r.commitWorkspace(dir, t)
-	if err != nil || head == base {
+	if err != nil {
 		return head, err
+	}
+	// Re-checked after the commit: HEAD must still be the ticket branch and
+	// both must point at the commit tb merge will use.
+	if err := checkBusHead(g, t.ID, branch, head, "changed during the commit"); err != nil {
+		return "", err
+	}
+	if head == base {
+		return head, nil
 	}
 	parents, err := g.run("rev-list", "--parents", "-n", "1", "HEAD")
 	if err != nil {
@@ -506,6 +554,19 @@ func (r *Router) commitBusWorkspace(dir string, t *ticket.Ticket, base string) (
 		return "", integrityErr("bus commit of %s does not have the base as its only parent", t.ID)
 	}
 	return head, nil
+}
+
+// checkBusHead: HEAD is the ticket branch, and HEAD and the branch are want.
+func checkBusHead(g *trustedGit, id, branch, want, what string) error {
+	if ref, err := g.run("symbolic-ref", "HEAD"); err != nil || ref != branch {
+		return integrityErr("bus worktree of %s: HEAD is not %s", id, branch)
+	}
+	for _, rev := range []string{"HEAD", branch} {
+		if sha, err := g.run("rev-parse", rev); err != nil || sha != want {
+			return integrityErr("bus worktree of %s: %s %s", id, rev, what)
+		}
+	}
+	return nil
 }
 
 // setBusThread records a new thread for a running bus attempt.
@@ -518,7 +579,7 @@ func (r *Router) setBusThread(id, worker, thread string) error {
 func cleanText(s string, n int) string {
 	var b strings.Builder
 	for _, c := range s {
-		if unicode.IsControl(c) {
+		if unicode.IsControl(c) || unicode.Is(unicode.Cf, c) {
 			continue
 		}
 		if b.Len()+len(string(c)) > n {
@@ -529,7 +590,8 @@ func cleanText(s string, n int) string {
 	return b.String()
 }
 
-func cleanSummary(s string) string { return mem.RedactText(cleanText(s, maxSummaryBytes)) }
+// cleanSummary redacts before cutting: a cut must not split a secret.
+func cleanSummary(s string) string { return cleanText(mem.RedactText(s), maxSummaryBytes) }
 
 func busState(a *busAttempt) (thread, agent, phase string, claimedAt *time.Time) {
 	th, ag, ph, at := a.snapshot()

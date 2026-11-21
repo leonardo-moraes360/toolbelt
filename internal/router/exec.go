@@ -502,7 +502,7 @@ func (r *Router) identityArgs() []string {
 // come from a planner model.
 func stripControl(s string) string {
 	return strings.Map(func(c rune) rune {
-		if unicode.IsControl(c) {
+		if unicode.IsControl(c) || unicode.Is(unicode.Cf, c) {
 			return -1
 		}
 		return c

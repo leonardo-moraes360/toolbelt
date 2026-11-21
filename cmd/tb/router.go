@@ -113,6 +113,9 @@ var routerRunCmd = &cobra.Command{
 			if err := r.CheckBus(); err != nil {
 				return err
 			}
+			if jsonOutput {
+				return printJSON(map[string]any{"ok": true, "channel": rc.Bus.Channel, "as": rc.Bus.As})
+			}
 			fmt.Printf("ok: router bus %s/%s ready\n", rc.Bus.Channel, rc.Bus.As)
 			return nil
 		}
@@ -156,7 +159,7 @@ func renderPlan(p *router.Plan) {
 	if p.DirectDelivery {
 		dd = "on"
 	}
-	fmt.Printf("Plan (strategy %s, %d workers, direct delivery %s)\n", p.Strategy, p.Workers, dd)
+	fmt.Printf("Plan (strategy %s, %d workers, %d bus slots, direct delivery %s)\n", p.Strategy, p.Workers, p.BusSlots, dd)
 	if p.Paused {
 		fmt.Println("  board paused: nothing would be assigned until `tb board resume`")
 	}
@@ -260,6 +263,9 @@ func renderRouterStatus(rep *router.StatusReport, onlyWorker string) {
 			line += fmt.Sprintf("  bus %s %s", w.Phase, w.Thread)
 			if w.Agent != "" {
 				line += " by " + w.Agent
+			}
+			if w.ClaimedAt != nil {
+				line += " claimed " + w.ClaimedAt.Local().Format("15:04:05")
 			}
 		}
 		if len(w.Subscriptions) > 0 {

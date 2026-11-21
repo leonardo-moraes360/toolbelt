@@ -212,10 +212,10 @@ In every case the router acts on what `Revoke` returns. `completed` means a resu
 
 **6. Retry, shutdown, restart, expiry.**
 
-- **Retry:** the previous thread is revoked (or confirmed completed) before the worktree is reset. A failed reset (`RemoveAll` blocked) raises `workspace_reset_failed` and fails the ticket instead of looping.
+- **Retry:** the previous thread is revoked (or confirmed completed) before the worktree is reset. A failed reset (`RemoveAll` blocked) fails the attempt instead of looping. *In this cut* it surfaces as the worktree creation error (`worker_crash`), with no separate `workspace_reset_failed` kind.
 - **Shutdown and the global timeout:** each bus attempt is revoked (reason `shutdown`). If `Revoke` returns `completed`, the result is processed; otherwise the attempt goes back to `pending` with `Attempts--`. The revoke is bounded by the store's 5 s busy timeout.
 - **Restart:** `recover` revokes the `bus_thread` of every `running` ticket. *In this cut* a result a previous run left completed is not honored: the ticket goes back to `pending` and the next attempt redoes the work. If the revoke fails (expired channel, busy store), the ticket goes back to `pending`, `bus_thread` is kept, `bus_write_failed` is logged, and the revoke is retried on the next start before that ticket is assigned again.
-- **Expired channel:** `Claim` and `Message` still work.
+- **Expired channel:** `Claim` and `Message` still work, and the router waits (it does not stop as `stalled`) while bus slots are idle for this reason.
   - A running attempt whose claim shows a result is honored.
   - Others go back to `pending` with `bus_thread` kept.
   - Bus slots stay idle with one `bus_channel_expired` alert, and local slots keep running.
@@ -334,7 +334,7 @@ The harness writes it from the verdict file:
     - one from a recreated board with the same ticket IDs;
     - one on a revoked thread.
 23. **Restart.**
-    - A restart revokes open threads, honors a completed one and requeues the rest.
+    - A restart revokes open threads and requeues their tickets (*in this cut* a completed one is requeued too, not honored).
     - With the channel expired, `bus_thread` is kept and revoked on a later start before the ticket is reassigned.
 24. **Shutdown and the global timeout** end with no hang while bus slots are busy. An attempt in `committing` finishes its commit.
 25. **No cursor.** `tb bus recv --as router` during a run changes nothing the router sees.

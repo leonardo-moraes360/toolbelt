@@ -1709,13 +1709,19 @@ router:
   retry:
     max_attempts: 2
   slow_threshold: 0.8         # timeout fraction for worker_slow
+  # bus:                      # bus slots b1..bN; ONLY from the global config or -c (ignored in the repository's)
+  #   channel: feature-x
+  #   as: router              # the router's CLI session (tb bus join --role router)
+  #   slots: 1
+  #   to: role:worker         # or agent:<name>
+  #   claim_timeout: 5m
 ```
 
 **Runtime files** (`.toolbelt/router/`, gitignored):
 
 | Path | Content |
 |------|---------|
-| `state.json` | PID, strategy, workers (idle/working, ticket, subscriptions) and queue (ready/blocked/running); updated on every change |
+| `state.json` | PID, strategy, workers (idle/working, ticket, subscriptions; bus slots also thread, agent, phase and `claimed_at`) and queue (ready/blocked/running); updated on every change |
 | `alerts.jsonl` | Watchdog alerts, one JSON per line (created on the first alert) |
 | `control/` | Requests to the running router (e.g. `kill-w1.json`) |
 | `logs/TKT-NNN.log` | Agent stdout/stderr per ticket |
@@ -1756,6 +1762,8 @@ tb watchdog kill w1 --reason "stuck in a loop"
 | `agent_escaped` | error | an agent descendant escaped the process group (`setsid`/`setpgid`); it was killed and the owning ticket (by `TB_TICKET_ID`; unattributable ⇒ all running ones) fails without retry or git (Linux) | `escalate` |
 | `orphan_killed` | warn | a non-agent orphan was killed without failing any ticket (daemon born during worktree creation without `TB_TICKET_ID`, or an orphan with no agent running) | `none` |
 | `board_unreadable` | warn | a ticket YAML is invalid; workers kept, retried every tick | `none` |
+| `bus_unclaimed` / `bus_claim_rejected` / `bus_lease_lost` / `bus_verdict_fail` | warn | bus slots: no valid claim in time; a claim without the marker, by a non-worker or a non-addressee, or before the assign; the claim changed hands, was released or its owner is not alive; the agent reported FAIL ([bus-router.md](bus-router.md)) | `none` |
+| `bus_channel_expired` / `bus_write_failed` | warn | the bus channel expired (bus slots idle); a bus write failed (expired channel: the attempt is requeued) | `none` |
 
 **Example:**
 

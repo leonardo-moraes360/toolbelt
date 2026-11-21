@@ -70,7 +70,8 @@ var watchdogStatusCmd = &cobra.Command{
 			return nil
 		}
 		parts := make([]string, 0, len(counts))
-		for _, k := range []string{router.AlertWorkerSlow, router.AlertWorkerStuck, router.AlertWorkerCrash, router.AlertWorkerKilled, router.AlertQueueGrowing, router.AlertGlobalTimeout} {
+		for _, k := range []string{router.AlertWorkerSlow, router.AlertWorkerStuck, router.AlertWorkerCrash, router.AlertWorkerKilled, router.AlertQueueGrowing, router.AlertGlobalTimeout,
+			router.AlertBusUnclaimed, router.AlertBusClaimRejected, router.AlertBusLeaseLost, router.AlertBusVerdictFail, router.AlertBusChannelExpired, router.AlertBusWriteFailed} {
 			if n := counts[k]; n > 0 {
 				parts = append(parts, fmt.Sprintf("%s=%d", k, n))
 			}

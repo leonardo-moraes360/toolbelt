@@ -222,7 +222,7 @@ func (b *RouterBus) validate() error {
 	if b.Slots < 1 {
 		return fmt.Errorf("router.bus.slots must be >= 1 (current %d)", b.Slots)
 	}
-	if b.To != "role:worker" && !strings.HasPrefix(b.To, "agent:") {
+	if b.To != "role:worker" && (!strings.HasPrefix(b.To, "agent:") || b.To == "agent:") {
 		return fmt.Errorf("router.bus.to %q invalid (use role:worker or agent:<name>)", b.To)
 	}
 	if d, err := time.ParseDuration(b.ClaimTimeout); err != nil || d <= 0 {

@@ -234,10 +234,10 @@ func (r *Router) watchdogTick() (stop bool) {
 
 // checkQueue emits queue_growing when ready > 2*workers (once per transition).
 func (r *Router) checkQueue(ready int) {
-	growing := ready > 2*r.workers
+	growing := ready > 2*len(r.slots)
 	if growing && !r.queueGrowing {
 		r.alert(AlertQueueGrowing, SevWarn, "", "",
-			fmt.Sprintf("queue growing: %d tickets ready for %d workers", ready, r.workers), ActionNone)
+			fmt.Sprintf("queue growing: %d tickets ready for %d workers", ready, len(r.slots)), ActionNone)
 	}
 	r.queueGrowing = growing
 }

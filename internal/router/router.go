@@ -149,6 +149,7 @@ type Router struct {
 	identOnce    sync.Once
 	ident        []string // -c user.name/user.email for commits (see identityArgs)
 	bus          *busLink // bus slots (docs/bus-router.md); nil without router.bus
+	busBlocked   bool     // bus slots idle for a reason that will pass (expired channel, stale thread)
 }
 
 // New validates options without touching tickets.
@@ -233,6 +234,7 @@ func (r *Router) running() int {
 // Run loops until there is no work, drain, --once, the global timeout, or ctx
 // cancellation (which requeues running tickets).
 func (r *Router) Run(ctx context.Context) (*Summary, error) {
+	defer r.closeBus()
 	if err := r.preflight(); err != nil {
 		return nil, err
 	}
@@ -246,7 +248,6 @@ func (r *Router) Run(ctx context.Context) (*Summary, error) {
 		return nil, err
 	}
 
-	defer r.closeBus()
 	r.done = make(chan workerDone, len(r.slots))
 	r.startedAt = r.now()
 	// Kill requests from previous runs (or written with no active router) are
@@ -395,7 +396,10 @@ func (r *Router) recover() error {
 		t := &list[i]
 		switch {
 		case t.Status == ticket.StatusRunning:
-			r.revokeStale(t)
+			if !r.revokeStale(t) {
+				r.alert(AlertBusWriteFailed, SevWarn, "", t.ID,
+					fmt.Sprintf("%s: bus thread %s not revoked yet; kept for the next start", t.ID, t.BusThread), ActionNone)
+			}
 			if _, err := r.store.Update(t.ID, func(x *ticket.Ticket) error {
 				x.Status = ticket.StatusPending
 				x.Worker = ""
@@ -443,8 +447,8 @@ func (r *Router) finished(b *ticket.Board) (string, bool) {
 		}
 		return ReasonCompleted, true
 	}
-	if b.Control.Paused {
-		return "", false // wait for resume
+	if b.Control.Paused || r.busBlocked {
+		return "", false // wait for resume, tb bus channel extend, or a stale thread to be revoked
 	}
 	// candidates exist, nothing is running and schedule assigned nothing: no progress is possible
 	return ReasonStalled, true
@@ -478,6 +482,7 @@ func (r *Router) schedule(b *ticket.Board) {
 	taken := r.heldTickets()
 	head := ""
 	busOK := r.bus != nil && r.busOpen()
+	r.busBlocked = r.bus != nil && !busOK
 	for _, s := range r.slots {
 		if s.ticket != "" || (isBusSlot(s.id) && !busOK) {
 			continue
@@ -485,6 +490,7 @@ func (r *Router) schedule(b *ticket.Board) {
 		pick, via := r.pickCandidate(s, cands, taken, now)
 		if pick != nil && !r.revokeStale(pick) {
 			taken[pick.ID] = true
+			r.busBlocked = true
 			continue
 		}
 		if pick == nil {
@@ -603,7 +609,7 @@ func (r *Router) start(s *slot, t *ticket.Ticket, via, base string) {
 	if onBus {
 		a := &busAttempt{thread: thread, phase: phaseAssigned}
 		s.bus = a
-		go func() { r.done <- r.executeBus(wctx, s, wid, &tk, base, a, attempts) }()
+		go func() { r.done <- r.executeBus(wctx, s, wid, &tk, base, a, attempts, timeout) }()
 		return
 	}
 	go func() { r.done <- r.execute(wctx, s, wid, &tk, base) }()

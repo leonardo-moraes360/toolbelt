@@ -2,6 +2,7 @@ package router
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/leonardo-moraes360/toolbelt/internal/ticket"
 )
@@ -137,6 +138,9 @@ func (pl *planner) assignRound(cands []ticket.Ticket, lastWorker map[string]stri
 // pickFor: with direct delivery, prefer a dependent of the ticket w just
 // finished; otherwise the first free candidate.
 func (pl *planner) pickFor(w string, cands []ticket.Ticket, taken map[string]bool, lastWorker map[string]string) (pick *ticket.Ticket, via string) {
+	if strings.HasPrefix(w, "b") {
+		lastWorker = nil // no direct delivery for bus slots (B4)
+	}
 	if pl.direct {
 		for i := range cands {
 			t := &cands[i]

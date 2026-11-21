@@ -79,14 +79,18 @@ type fakeWorker struct {
 	mu      sync.Mutex
 	handled int
 	threads []string
+	snoop   bool // read every assign from the log, not just those addressed to m
 }
 
 func (w *fakeWorker) run(ctx context.Context) {
 	seen := map[string]bool{}
 	for ctx.Err() == nil {
 		msgs, _ := w.f.store.Pending(w.m, 0, 0, []bus.Type{bus.TypeTaskAssign}, true, 100)
+		if w.snoop {
+			msgs, _ = w.f.store.Log("ch", "", 100)
+		}
 		for i := range msgs {
-			if seen[msgs[i].ID] {
+			if msgs[i].Type != bus.TypeTaskAssign || seen[msgs[i].ID] {
 				continue
 			}
 			seen[msgs[i].ID] = true
@@ -150,6 +154,8 @@ func TestBusHappyPath(t *testing.T) {
 	if f := strings.Fields(parents); len(f) != 2 || f[1] != got.Result.BaseCommit {
 		t.Fatalf("parents: %s", parents)
 	}
+	w.mu.Lock()
+	defer w.mu.Unlock()
 	if !strings.HasPrefix(w.threads[0], tk.ID+"/") || !strings.HasSuffix(w.threads[0], ".1") {
 		t.Fatalf("thread %q", w.threads[0])
 	}
@@ -178,6 +184,8 @@ func TestBusFailRetries(t *testing.T) {
 	w.start(t)
 	runWithTimeout(context.Background(), t, f.router(t, nil))
 	requireDoneWithCommit(t, f.tickets, tk.ID)
+	w.mu.Lock()
+	defer w.mu.Unlock()
 	if len(w.threads) != 2 || w.threads[0] == w.threads[1] || !strings.HasSuffix(w.threads[1], ".2") {
 		t.Fatalf("threads %v", w.threads)
 	}
@@ -221,10 +229,13 @@ func TestBusClaimRejected(t *testing.T) {
 	w.start(t)
 	runWithTimeout(context.Background(), t, f.router(t, nil))
 	requireDoneWithCommit(t, f.tickets, tk.ID)
-	if countKind(alertKinds(t, f.root), AlertBusClaimRejected) != 1 || len(w.threads) != 2 {
-		t.Fatalf("alerts %v threads %v", alertKinds(t, f.root), w.threads)
+	w.mu.Lock()
+	threads := append([]string(nil), w.threads...)
+	w.mu.Unlock()
+	if countKind(alertKinds(t, f.root), AlertBusClaimRejected) != 1 || len(threads) != 2 {
+		t.Fatalf("alerts %v threads %v", alertKinds(t, f.root), threads)
 	}
-	if _, err := f.store.ClaimConfined(f.worker, w.threads[0]); err == nil {
+	if _, err := f.store.ClaimConfined(f.worker, threads[0]); err == nil {
 		t.Fatal("the rejected thread was not revoked")
 	}
 }
@@ -380,5 +391,136 @@ func TestBusRecoverRevokes(t *testing.T) {
 	c, _ := f.store.Claim("ch", thread)
 	if c.RevokedAt == nil {
 		t.Fatalf("old thread not revoked: %+v", c)
+	}
+}
+
+func (f *busFixture) member(t *testing.T, name string, role bus.Role) bus.Member {
+	t.Helper()
+	inv, _ := f.store.CreateInvite("ch", role, "", 0)
+	j, err := f.store.Join("ch", inv.Code, &bus.AgentCard{Name: name}, role)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return j.Member
+}
+
+// AC19: a reviewer's claim and, with to: agent:w, another worker's claim
+// are rejected; the attempt ends unclaimed.
+func TestBusInvalidClaimers(t *testing.T) {
+	for name, setup := range map[string]func(f *busFixture, o *Options) bus.Member{
+		"reviewer": func(f *busFixture, _ *Options) bus.Member { return f.member(t, "rev", bus.RoleReviewer) },
+		"non-addressee": func(f *busFixture, o *Options) bus.Member {
+			o.Config.Bus.To = "agent:w"
+			return f.member(t, "other", bus.RoleWorker)
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := newBusFixture(t)
+			tk := mk(t, f.tickets, "contested")
+			var claimer bus.Member
+			r := f.router(t, func(o *Options) {
+				o.Config.Bus.ClaimTimeout = "400ms"
+				o.Config.Retry.MaxAttempts = 1
+				claimer = setup(f, o)
+			})
+			w := &fakeWorker{f: f, m: claimer, snoop: true, work: func(task *busrun.RouterTask, _ int) (string, bool) {
+				edit(task)
+				return "PASS", true
+			}}
+			w.start(t)
+			runWithTimeout(context.Background(), t, r)
+			got := get(t, f.tickets, tk.ID)
+			if got.Status != ticket.StatusFailed || countKind(alertKinds(t, f.root), AlertBusClaimRejected) == 0 {
+				t.Fatalf("ticket %+v alerts %v", got.Result, alertKinds(t, f.root))
+			}
+		})
+	}
+}
+
+// AC18: a detached HEAD escalates; a PASS with no changes is done at the base.
+func TestBusHeadChecks(t *testing.T) {
+	f := newBusFixture(t)
+	detached := mk(t, f.tickets, "detached")
+	noop := mk(t, f.tickets, "noop", detached.ID)
+	w := &fakeWorker{f: f, m: f.worker, work: func(task *busrun.RouterTask, _ int) (string, bool) {
+		if task.Ticket == detached.ID {
+			runGit(t, task.Workspace, "checkout", "-q", "--detach")
+		}
+		return "PASS", true
+	}}
+	w.start(t)
+	runWithTimeout(context.Background(), t, f.router(t, nil))
+	if got := get(t, f.tickets, detached.ID); got.Status != ticket.StatusFailed || !strings.Contains(got.Result.Error, "HEAD") {
+		t.Fatalf("detached: %+v", got.Result)
+	}
+	if got := get(t, f.tickets, noop.ID); got.Status == ticket.StatusDone && got.Result.HeadCommit != got.Result.BaseCommit {
+		t.Fatalf("noop: %+v", got.Result)
+	}
+}
+
+// AC32: tb watchdog kill b1 revokes the attempt.
+func TestBusKill(t *testing.T) {
+	f := newBusFixture(t)
+	tk := mk(t, f.tickets, "kill me")
+	claimed := make(chan string, 1)
+	w := &fakeWorker{f: f, m: f.worker, work: func(task *busrun.RouterTask, _ int) (string, bool) {
+		claimed <- task.Thread
+		return "", false
+	}}
+	w.start(t)
+	r := f.router(t, func(o *Options) { o.Config.Retry.MaxAttempts = 1 })
+	ch := make(chan *Summary, 1)
+	go func() { s, _ := r.Run(context.Background()); ch <- s }()
+	thread := <-claimed
+	waitFor(t, "claim recorded", func() bool {
+		st, err := ReadState(f.root)
+		if err != nil {
+			return false
+		}
+		for i := range st.Workers {
+			if st.Workers[i].ID == "b1" && st.Workers[i].Phase == phaseClaimed && st.Workers[i].Agent == "agent:w" && st.Workers[i].Thread == thread {
+				return true
+			}
+		}
+		return false
+	})
+	if _, err := RequestKill(f.root, "b1", "test", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-ch:
+	case <-time.After(10 * time.Second):
+		t.Fatal("kill did not end the run")
+	}
+	c, _ := f.store.Claim("ch", thread)
+	if got := get(t, f.tickets, tk.ID); got.Status != ticket.StatusFailed || c.RevokedAt == nil {
+		t.Fatalf("ticket %+v claim %+v", got, c)
+	}
+}
+
+// AC27: with the channel expired the router does not stop as stalled.
+func TestBusExpiredChannelNotStalled(t *testing.T) {
+	f := newBusFixture(t)
+	mk(t, f.tickets, "waiting")
+	r := f.router(t, nil)
+	if err := r.openBus(); err != nil {
+		t.Fatal(err)
+	}
+	defer r.closeBus()
+	if _, err := f.store.ExtendChannel("ch", time.Nanosecond); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(time.Millisecond)
+	b, err := ticket.LoadBoard(f.tickets)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.round1 = true
+	r.schedule(b)
+	if reason, fin := r.finished(b); fin {
+		t.Fatalf("finished as %s with an expired channel", reason)
+	}
+	if countKind(alertKinds(t, f.root), AlertBusChannelExpired) != 1 {
+		t.Fatalf("alerts %v", alertKinds(t, f.root))
 	}
 }
