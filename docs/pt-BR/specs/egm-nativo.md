@@ -87,7 +87,7 @@ O `tb review` revisa diffs com heurísticas. Não revisa documentos, não tem re
   - verificação de símbolos no `tb graph`;
   - churn;
   - adaptador `review.Finding` → `egm.Finding`;
-  - drift-report, bootstrap, draft e brainstorm.
+  - drift-report e bootstrap (Fase B, [egm-drift-bootstrap.md](egm-drift-bootstrap.md)), draft e brainstorm.
 - O texto das personas do upstream não é copiado.
 
 ## Jornadas de usuário (CUJs)

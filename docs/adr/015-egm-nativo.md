@@ -4,7 +4,7 @@
 
 ## Status
 
-accepted (2026-11-19). The R0 spike of the [core spec](../specs/egm-nativo.md) ran ([dogfood #30–#34](../campo/dogfood.md)) and revised the matching and convergence design; Phase A is implemented (PRs [#115](https://github.com/leonardo-moraes360/toolbelt/pull/115), [#116](https://github.com/leonardo-moraes360/toolbelt/pull/116) and [#117](https://github.com/leonardo-moraes360/toolbelt/pull/117)). R0 item 8 (git over a repository owned by another uid, which needs a second user) is still open. The [trust spec](../specs/egm-trust.md) stays a draft.
+accepted (2026-11-19). The R0 spike of the [core spec](../specs/egm-nativo.md) ran ([dogfood #30–#34](../campo/dogfood.md)) and revised the matching and convergence design; Phase A is implemented (PRs [#115](https://github.com/leonardo-moraes360/toolbelt/pull/115), [#116](https://github.com/leonardo-moraes360/toolbelt/pull/116) and [#117](https://github.com/leonardo-moraes360/toolbelt/pull/117)). R0 item 8 (git over a repository owned by another uid, which needs a second user) is still open. The [trust spec](../specs/egm-trust.md) stays a draft. Phase B ([spec](../specs/egm-drift-bootstrap.md)): B1 `drift-report` and B2 `bootstrap` are implemented; B3 (the LLM parts) is not.
 
 ## Context
 

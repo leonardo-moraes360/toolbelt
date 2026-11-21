@@ -22,8 +22,9 @@ var egmBootstrapCmd = &cobra.Command{
 egm.doc_types for the path) with TODO, and a Sources section linking each
 --from file. Directories expand to their tracked files; untracked, denied,
 symlinked or non-regular files are skipped with the reason. The skeleton
-is refused unless the review would include every accepted file as a source.
-No file content is read, no agent runs, and nothing is staged or committed.
+is refused unless the review would include exactly the accepted files as
+sources. No file content goes into the draft (it is read only for that R7
+check), no agent runs, and nothing is staged or committed.
 Spec: docs/specs/egm-drift-bootstrap.md (B2).`,
 	Example: `  tb egm bootstrap docs/specs/router.md --from internal/router/
   tb egm bootstrap docs/adr/020-x.md --from internal/x/x.go --from cmd/tb/x.go`,

@@ -87,7 +87,7 @@ The protections against active fraud by the author itself, who runs as the same 
   - symbol verification in `tb graph`;
   - churn;
   - `review.Finding` → `egm.Finding` adapter;
-  - drift-report, bootstrap, draft and brainstorm.
+  - drift-report and bootstrap (Phase B, [egm-drift-bootstrap.md](egm-drift-bootstrap.md)), draft and brainstorm.
 - The upstream personas' text is not copied.
 
 ## Critical User Journeys (CUJs)
