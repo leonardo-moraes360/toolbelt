@@ -4,7 +4,7 @@ go 1.27.4
 
 require (
 	github.com/spf13/cobra v1.10.2
-	github.com/spf13/pflag v1.0.9
+	github.com/spf13/pflag v1.1.0
 	golang.org/x/sync v0.25.0
 	golang.org/x/text v0.44.0
 	gopkg.in/yaml.v3 v3.0.1
