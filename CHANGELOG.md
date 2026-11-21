@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Escape sweep (`internal/sandbox` Registry): a process killed together with an escaped group is reparented to the subreaper while still exiting, with its environment already unreadable; it was reported as an unattributable escape, so `tb egm` could flag a round as unattributed (flaky `TestRunnerEscapeAttributed`). An exiting process (`PF_EXITING`) whose environment can no longer be read is now killed and reaped without being reported, like a zombie
+
 ## [0.0.9] - 2026-11-20
 
 ### Added

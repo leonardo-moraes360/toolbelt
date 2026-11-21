@@ -259,3 +259,33 @@ func TestRegistryGroupKeyedByStartTime(t *testing.T) {
 		t.Fatalf("deveria preferir o líder mais novo: %+v", g)
 	}
 }
+
+// A task SIGKILLed with its escaped group is reparented to the subreaper
+// while still exiting (state R, PF_EXITING set): its environ is already
+// unreadable, so it must count as dead, not as a live process hiding its
+// owner (flaky TestRunnerEscapeAttributed: escaped=true unattributed=true).
+func TestStatLiveExitingIsNotLive(t *testing.T) {
+	cases := []struct {
+		name, stat string
+		want       bool
+	}{
+		{"running", "123 (sleep) R 1 123 123 0 -1 4194304 0 0", true},
+		{"sleeping, comm with ') '", "123 (a) b) S 1 123 123 0 -1 4194560 0 0", true},
+		{"exiting", "123 (sleep) R 1 123 123 0 -1 4195340 0 0", false},
+		{"zombie", "123 (sleep) Z 1 123 123 0 -1 4227084 0 0", false},
+		{"dead", "123 (sleep) X 1 123 123 0 -1 4194304 0 0", false},
+		{"truncated", "123 (sleep) R 1 123", false},
+		{"garbage", "nonsense", false},
+	}
+	for _, tc := range cases {
+		if got := statLive(tc.stat); got != tc.want {
+			t.Errorf("%s: statLive=%v, want %v", tc.name, got, tc.want)
+		}
+	}
+}
+
+func TestProcLiveSelf(t *testing.T) {
+	if !procLive(os.Getpid()) {
+		t.Fatal("the test process itself is not live")
+	}
+}
