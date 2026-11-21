@@ -197,56 +197,22 @@ func BuildVectors(ctx context.Context, repoRoot string, idx *Index, emb embed.Em
 		return st, fmt.Errorf("%w: %d chunks > max_chunks %d", ErrVectorsTooMany, len(units), o.MaxChunks)
 	}
 
-	type cached struct {
-		vec       []float32
-		truncated bool
-	}
-	reuse := map[[32]byte]cached{}
+	reuse := map[[32]byte]cachedVec{}
 	oldKeys := map[string]bool{}
 	if old, lerr := LoadVectors(o.Path); lerr == nil && !old.Stale(o, info) {
 		for _, r := range old.records {
-			reuse[r.SHA] = cached{r.Vec, r.Truncated}
+			reuse[r.SHA] = cachedVec{r.Vec, r.Truncated}
 			oldKeys[recordKey(r.Path, r.Start, r.End, r.SHA)] = true
 		}
 	} else {
 		st.Rebuilt = true
 	}
 
-	var pending []int
-	queued := map[[32]byte]bool{}
-	for i := range units {
-		sha := units[i].sha
-		if _, ok := reuse[sha]; ok || queued[sha] {
-			continue
-		}
-		queued[sha] = true
-		pending = append(pending, i)
+	n, err := embedPending(ctx, emb, info.Dims, units, reuse)
+	if err != nil {
+		return st, err
 	}
-	for b := 0; b < len(pending); b += embed.MaxTexts {
-		if err := ctx.Err(); err != nil {
-			return st, err
-		}
-		batch := pending[b:min(b+embed.MaxTexts, len(pending))]
-		texts := make([]string, len(batch))
-		for j, ui := range batch {
-			texts[j] = units[ui].text
-		}
-		vecs, trunc, err := emb.Embed(ctx, embed.KindDoc, texts)
-		if err != nil {
-			return st, err
-		}
-		if len(vecs) != len(texts) || (trunc != nil && len(trunc) != len(texts)) {
-			return st, fmt.Errorf("%w: %d vectors for %d texts", embed.ErrEmbedProtocol, len(vecs), len(texts))
-		}
-		for j, ui := range batch {
-			if len(vecs[j]) != info.Dims || !finite(vecs[j]) {
-				return st, fmt.Errorf("%w: vector %d has %d dims, want %d", embed.ErrEmbedProtocol, j, len(vecs[j]), info.Dims)
-			}
-			t := trunc != nil && trunc[j]
-			reuse[units[ui].sha] = cached{vecs[j], t}
-		}
-		st.Embedded += len(batch)
-	}
+	st.Embedded = n
 
 	recs := make([]vectorRecord, len(units))
 	newKeys := map[string]bool{}
@@ -280,6 +246,53 @@ func BuildVectors(ctx context.Context, repoRoot string, idx *Index, emb embed.Em
 		return st, err
 	}
 	return st, writeFileAtomic(o.Path, data)
+}
+
+type cachedVec struct {
+	vec       []float32
+	truncated bool
+}
+
+// embedPending embeds, in protocol-sized batches, each distinct unit text
+// not yet in reuse, and adds the results to reuse. It returns how many texts
+// it sent; on error reuse may be partly filled, but nothing is written.
+func embedPending(ctx context.Context, emb embed.Embedder, dims int, units []unit, reuse map[[32]byte]cachedVec) (int, error) {
+	var pending []int
+	queued := map[[32]byte]bool{}
+	for i := range units {
+		sha := units[i].sha
+		if _, ok := reuse[sha]; ok || queued[sha] {
+			continue
+		}
+		queued[sha] = true
+		pending = append(pending, i)
+	}
+	sent := 0
+	for b := 0; b < len(pending); b += embed.MaxTexts {
+		if err := ctx.Err(); err != nil {
+			return sent, err
+		}
+		batch := pending[b:min(b+embed.MaxTexts, len(pending))]
+		texts := make([]string, len(batch))
+		for j, ui := range batch {
+			texts[j] = units[ui].text
+		}
+		vecs, trunc, err := emb.Embed(ctx, embed.KindDoc, texts)
+		if err != nil {
+			return sent, err
+		}
+		if len(vecs) != len(texts) || (trunc != nil && len(trunc) != len(texts)) {
+			return sent, fmt.Errorf("%w: %d vectors for %d texts", embed.ErrEmbedProtocol, len(vecs), len(texts))
+		}
+		for j, ui := range batch {
+			if len(vecs[j]) != dims || !finite(vecs[j]) {
+				return sent, fmt.Errorf("%w: vector %d has %d dims, want %d", embed.ErrEmbedProtocol, j, len(vecs[j]), dims)
+			}
+			reuse[units[ui].sha] = cachedVec{vecs[j], trunc != nil && trunc[j]}
+		}
+		sent += len(batch)
+	}
+	return sent, nil
 }
 
 func recordKey(p string, start, end int, sha [32]byte) string {
