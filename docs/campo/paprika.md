@@ -87,3 +87,72 @@ For `.tsx`/`.jsx`, measure JSX size apart from logic, or use a separate limit fo
 ## Status
 
 The seven problems above were fixed in [#152](https://github.com/leonardo-moraes360/toolbelt/pull/152) (merged 2026-11-21). Two differences from the proposals: `tb init` does not fill `env.allow`; instead, `PLAYWRIGHT_BROWSERS_PATH`, `PUPPETEER_CACHE_DIR` and similar join the default allowlist by exact name. And the `--base` fallback applies only to a repository with a single commit that is not a shallow clone; there the base becomes `HEAD` itself (empty diff), not the empty tree.
+
+## Addendum 2026-11-21: Go server with SQLite (`server-go/`)
+
+Second task in the same repo, now with Go alongside TypeScript. `tb` v0.0.9 installed with `go install …/cmd/tb@latest` (the binary reports commit `unknown`). `test_cmd` now also runs `go test`, the parity suite and E2E against the Go binary.
+
+| Command | Result |
+|---------|--------|
+| `tb verify run` | PASS in 1 iteration after one fix (below); build + lint + TS tests, Go, parity and E2E |
+| `tb stack verify guard review drift --base origin/main --ticket rd.md` | ok; guard 4 rules with no violation, drift clean (0 out of scope, 0 forbidden), review with 9 `quality-large-func` |
+| `tb mem add` | Worked, but only after creating an ADR (see P2) |
+
+### P1: `go build` fails inside `verify` because of VCS stamping
+In `verify`'s filtered environment, `git` cannot report status and `go build` fails with `error obtaining VCS status: exit status 128 … Use -buildvcs=false`. In a normal shell the same command passes. Worked around with `go build -buildvcs=false`. Proposal: `tb init` suggests `-buildvcs=false` when it detects `go.mod`, or the filter keeps the variables git needs (`HOME`, non-secret `GIT_*`); and `reason` shows the end of the output (the error line was cut off and only appeared with `-v`).
+
+### P2: `tb mem add --ref` only accepts `docs/adr` or `docs/decisions`
+I tried to reference `server-go/README.md` and it was rejected. Good for forcing a recorded decision, but the message could suggest creating the ADR.
+
+### P2: `tb` is not on PATH in cloud sessions
+I needed `go install` and `PATH=$PATH:~/go/bin`. `go install` produces a version without a commit (`unknown`), which makes it hard to report a bug with the exact version. Proposal: `-ldflags` via `debug.ReadBuildInfo` (`go install` fills in the module version).
+
+### P3: `review`/`drift` require commits
+With everything in the working tree, you cannot review before committing. Proposal: `--worktree` comparing the current tree with the base.
+
+### P3: `quality-large-func` on declarative tables
+The 9 warnings are schema definitions and route/tool registrations (long lists, no branching). Proposal: measure complexity (branches) in addition to lines, or ignore bodies that are a single composite literal.
+
+### Metrics
+| Metric | Value |
+|--------|-------|
+| `tb verify run` inside `tb stack` (PASS) | 32.8 s (TS + Go build, typecheck, vet, TS tests, TS E2E, go test, parity and E2E against Go) |
+| `tb stack …` | 33 s total; guard 136 ms, review 173 ms, drift 32 ms |
+
+## Addendum 2026-11-21: "Rust/WASM canvas" thread (cloud container)
+
+| Situation | Result | Helped / hindered | Proposal |
+|-----------|--------|-------------------|----------|
+| `tb` in the cloud container | Not installed; the toolbelt clone is outside the session's repository scope, so `tb mem list` (AGENTS.md rule 1), `verify` and `stack` did not run | hindered | Publish binaries in releases (`go install …@latest` or tarball) and document a fallback in AGENTS.md: read `.toolbelt/invariants.yaml` directly when `tb` is missing. That is what I did; the YAML file was enough to check the invariants |
+| Invariants as text | Read `invariants.yaml` by hand and found a real conflict: "nodeStyle is the only rendering source" versus a second renderer (WASM). Recorded in ADR 0001 | helped | Have `tb review` flag when a diff creates a path parallel to one named in a `mandate` invariant (e.g. a new file that draws nodes without importing `nodeStyle`) |
+| Polyglot project (Rust in `experiments/`) | `verify.test_cmd` only covers pnpm; `cargo test` was left out of the gate | neutral | `tb init` detects `Cargo.toml` in subfolders and suggests a composite `test_cmd`, or `verify` accepts a list of suites per directory |
+
+## Addendum 2026-11-21: "Paprika CI" thread (cloud container, PR #5)
+
+`tb` built from the public clone (`go build -buildvcs=false ./cmd/tb`, in ~1 min); `tb mem list` and `tb verify run` ran (PASS in 1 iteration, 32.5 s).
+
+| Situation | Result | Helped / hindered | Proposal |
+|-----------|--------|-------------------|----------|
+| Local gate vs CI gate | `verify` passed, but CI caught 2 failures the local gate could not see: clippy from the newer Rust stable (1.100, lint `chunks_exact_to_as_chunks`) and `govulncheck` | hindered | `verify` accepts suites per directory (Rust and Go lint) and warns when the local toolchain is behind CI's; a `tb ci plan` reading the same area map as CI would avoid two sources of truth |
+| `lint_cmd` without a real Go linter | `lint_cmd` only has `go vet`; golangci-lint found 40 items (2 dead code, 1 ineffectual assignment) | neutral | `tb init` suggests `golangci-lint run` when there is a `go.mod` and the binary exists |
+| Change-based selection | I wrote `ci-plan.mjs` and `go-affected.sh` by hand; `tb`'s graph (`graph`) already knows Go imports | neutral | `tb graph affected --base <sha>` returning affected packages/test files would serve both CI and `verify` (run only what changed) |
+| `verify` output | Shows only the verdict; no per-step timing | neutral | Show build/lint/test duration to decide what to parallelize |
+
+## Addendum 2026-11-21: migration to toolbelt v0.0.10 (user's machine, PR #11)
+
+`tb` at `~/go/bin/tb`, `toolbelt 0.0.10`, commit f376165 (go1.27.4); the binary now reports the commit, which resolves the P2 about the `unknown` version. Bootstrap done in a worktree from `origin/main` (dae178d) with `tb init --json`. Result: `agent_docs.yaml` with new hints (`pnpm check`, `pnpm test:render`); `config.yaml` untouched by `init`, new keys `egm.drift` and `egm.bootstrap` added by hand; `verify.*`, `env.allow` and the 9 invariants unchanged (`tb mem check` retention 1.00). `tb stack verify guard`: ok, verify PASS in 1 iteration (19.5 s), guard 48 ms.
+
+| Command | Expected | Got | Severity |
+|---------|----------|-----|----------|
+| `tb bootstrap` / `tb help bootstrap` | A bootstrap or migration command for v10 | Does not exist ("Unknown help topic"); bootstrap is `tb init`. "bootstrap" in the docs is only egm phase B2 | medium |
+| `tb init` with an existing `config.yaml` | Migrate or add the new keys, or at least warn which are missing | Silent no-op; I found `egm.drift`/`egm.bootstrap` by comparing with a `config.yaml` generated in an empty repo | medium |
+| `tb init --dry-run` | See the plan before writing | No dry-run | low |
+| `tb init` on `agent_docs.yaml` | "never overwrites" (help) | Rewrote the hints (correct content, but contradicts the help) | low |
+| `tb init` in a worktree | Worktree-local ignore, or a warning | Writes to `.git/info/exclude` of the common dir, also affecting the main checkout, without warning | low |
+| `tb verify` with a deterministic failure | ESCALATE on the 2nd repeat of the same named failure (CHANGELOG v0.0.10) | 3 identical iterations (~25 s); the friction from the first task's metrics remains | medium |
+| `verify` `reason` | Excerpt with the decisive line (CHANGELOG v0.0.10) | Cut `Executable doesn't exist at …chromium_headless_shell-1243`, which only appears in the DEBUG log | medium |
+| `tb doctor` | Check the environment (Playwright Chromium, `test_cmd` binaries) before `verify` | Does not exist; you only find out from the `verify` failure | low |
+
+Resolved in v10, relative to the earlier addenda: `PLAYWRIGHT_BROWSERS_PATH`/`PUPPETEER_*` in the default allowlist (env filter P1), `filtered_env` in non-PASS results, `--base` fallback in a 1-commit repo, graph resolves pnpm workspace packages, `tb mem init` no longer seeds the `thresholds.yaml` invariant (Paprika's remains because it was seeded earlier; I did not remove it, it is `immutable`).
+
+Main proposal: `tb init --migrate` (or `tb config migrate`) that merges missing default keys, with `--dry-run` showing the diff, and a warning in `tb init` when the existing `config.yaml` is behind the binary's version (e.g. a `version:` field in the config).
