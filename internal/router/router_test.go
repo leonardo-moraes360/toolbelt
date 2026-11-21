@@ -17,10 +17,12 @@ import (
 // runGit runs git tracked in procs (runTracked), like the router's own git: a
 // bare exec.Command child is an untracked direct child of the test process,
 // and any concurrent procs.Sweep (a router's sweepTick, an agent's settle)
-// SIGKILLs it as an escape.
+// SIGKILLs it as an escape. Auto gc/maintenance and fsmonitor are off for the
+// same reason: their detached daemons would be reparented here and swept.
 func runGit(t *testing.T, dir string, args ...string) string {
 	t.Helper()
-	c := exec.Command("git", args...)
+	full := append([]string{"-c", "gc.auto=0", "-c", "maintenance.auto=false", "-c", "core.fsmonitor=false"}, args...)
+	c := exec.Command("git", full...)
 	c.Dir = dir
 	out, err := runTracked(c)
 	if err != nil {
