@@ -314,7 +314,7 @@ Flags:
 
 Results come in three tiers: (1) title equal to the query; (2) nodes that contain the query as a substring of title/path/package/ID — what the old search returned; (3) nodes that only match terms. Within each tier, BM25 ranking over title, path and package (title weighs 3×), with camelCase, `snake_case` and path separators split into terms; a multi-word query matches any term. Ties are ordered by ID. With more results than `--limit`, the cut follows this order.
 
-With `--mode semantic` the query is embedded and ranked by cosine similarity over the file chunks, grouped by file node; `--mode hybrid` fuses the lexical and semantic rankings with RRF (k = 60), ties by node ID. Both need [the vector index](#vector-index-experimental) and never reindex it. JSON for those modes: `{"stale", "mode", "stale_vectors", "nodes": [...]}`, each node with its usual fields plus `lines`, `score_semantic`, `rank_lexical`, `rank_semantic` and `score_fused`; text output appends `:<lines>` to the path. The default `lexical` output is unchanged.
+With `--mode semantic` the query is embedded and ranked by cosine similarity over the file chunks, grouped by file node; `--mode hybrid` fuses the lexical and semantic rankings with RRF (k = 60), ties by node ID. Both need [the vector index](#vector-index) and never reindex it. JSON for those modes: `{"stale", "mode", "stale_vectors", "nodes": [...]}`, each node with its usual fields plus `lines`, `score_semantic`, `rank_lexical`, `rank_semantic` and `score_fused`; text output appends `:<lines>` to the path. The default `lexical` output is unchanged.
 
 **`tb graph callers`:**
 
@@ -427,9 +427,9 @@ tb graph rebuild src/
 tb graph stats
 ```
 
-#### Vector index (experimental)
+#### Vector index
 
-Semantic and hybrid search ([spec](specs/vector-index.md), phase V1) are off by default. The keys are read **only from the user config** (the `-c` file or the global config); values in the repository's `.toolbelt/config.yaml` are ignored with a `config_untrusted` warning.
+Semantic and hybrid search ([spec](specs/vector-index.md)) are off by default. The keys are read **only from the user config** (the `-c` file or the global config); values in the repository's `.toolbelt/config.yaml` are ignored with a `config_untrusted` warning.
 
 ```yaml
 graph:
@@ -453,7 +453,9 @@ graph:
 - `graph.embed.threads` defaults to min(4, NumCPU), `graph.embed.timeout` to `2m`; `graph.vector.max_chunks` 50000; `chunk_lines`/`chunk_bytes`/`overlap_lines` 40/1536/8.
 - The embedding child `tb __graph-embed` runs sandboxed (Landlock + seccomp: no sockets, read-only empty workdir, private tmp, empty `HOME`, minimal env). Deny-listed files (secrets) are never embedded, and each file is redacted as a whole before chunking. `graph.embed.allow_unsandboxed: true` lets it run without the full sandbox (`embed_unsandboxed` warning).
 - Reasons: `vectors_disabled`, `vectors_stale`, `vectors_invalid`, `vectors_too_many`, `model_path`, `model_mismatch`, `model_unsupported`, `embed_unavailable`, `embed_unsandboxed`, `embed_protocol`, `embed_crashed`, `embed_timeout`, `config_untrusted`. A build without `embednative` answers `embed_unavailable`.
-- MCP `mode`/`vectors` parameters and the recall evaluation come in V2.
+- MCP: `tb_graph_search` takes `mode` (`lexical`|`semantic`|`hybrid`, default `lexical`) and returns the same JSON as the CLI (`mode`, `stale_vectors`, nodes with `lines`, `score_semantic`, `rank_lexical`, `rank_semantic`, `score_fused`) plus a `warnings` array; `tb_graph_index` takes `vectors` (boolean, default `false`) and its payload gains the `vectors` stats. Without them the output is unchanged. MCP queries never reindex vectors. Errors use the same reasons, with the warnings appended to the error text.
+- `tb mcp` keeps one warm embedding child per server: reused across queries, restarted when the embed config changes or the child breaks, killed after 5 minutes idle and on exit.
+- Evaluation (44 intent queries over this repository, all-MiniLM-L6-v2 Q8_0): recall@10 lexical 0.273, semantic 0.670, hybrid 0.568. `semantic` scored highest on this suite; `hybrid` keeps exact-name matches from the lexical ranking. See [dogfood](campo/dogfood.md) #45.
 
 ---
 
@@ -2093,7 +2095,7 @@ Unix/tcp transport and `--socket`/`--port`/`--tls-*` flags are planned; today on
 | `tb_watchdog_alerts` | `tb watchdog alerts` | `since`, `kind`, `limit` (integer) |
 | `tb_merge` | `tb merge` | `ids` (array), `strategy`, `into`, `force`, `allow_sensitive` (default `false`); **dry-run by default**; only changes refs with `apply=true` |
 | `tb_bus_join` / `tb_bus_send` / `tb_bus_recv` / `tb_bus_claim` / `tb_bus_complete` / `tb_bus_heartbeat` / `tb_bus_status` | `tb bus …` | identity bound to the connection after `tb_bus_join` (`channel`, `invite`, `name` + Agent Card); `payload`/`result` as objects; `tb_bus_complete` requires the integer `epoch`; `tb mcp` heartbeats bound sessions in the background; no watchdog tool; `wait` string (max 25s); creating channels/invites does **not** exist through MCP; `tb mcp --bus-as <channel>/<name>` binds the connection to a CLI session (used by `tb bus run`) |
-| `tb_graph_search` / `tb_graph_callers` / `tb_graph_deps` / `tb_graph_impact` / `tb_graph_explain` / `tb_graph_path` / `tb_graph_index` | `tb graph …` | call requires `TB_GRAPH=on`; `depth`/`limit`/`max_depth` integer; `transitive` boolean; `explain` takes `node`, `path` takes `from`/`to` |
+| `tb_graph_search` / `tb_graph_callers` / `tb_graph_deps` / `tb_graph_impact` / `tb_graph_explain` / `tb_graph_path` / `tb_graph_index` | `tb graph …` | call requires `TB_GRAPH=on`; `depth`/`limit`/`max_depth` integer; `transitive` boolean; `explain` takes `node`, `path` takes `from`/`to`; `tb_graph_search` `mode` and `tb_graph_index` `vectors` (see [vector index](#vector-index)) |
 
 Schemas type `depth`/`limit`/`reviewers`/`max_iter` as integer, `strict`/`warn_only`/`transitive`/`skip_unavailable`/`all` (mem) as boolean, `threshold` as number, and `standards` as a string array; legacy string values are still accepted. verify/review/drift/guard reports come back as JSON in `content` (without a process exit code). Empty lists use `[]`; `hidden_passed` is `null` if the hidden suite does not apply.
 

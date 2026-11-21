@@ -2,7 +2,7 @@
 
 # Índice vetorial opcional para o `tb graph search` — spec
 
-Status: **V0 e V1 implementadas**; V2 (MCP, avaliação) pendente, experimental. A V1 embeda um texto por chamada nativa: o lote multi-sequência no shim (`n_seq_max ≥ 64`) ainda está pendente. Registro de decisão: [ADR-018](../adr/018-cgo-componentes-nativos.md) (cgo, llama.cpp vendorizado, gate de qualidade C/C++).
+Status: **V0, V1 e V2 implementadas**; deixou de ser experimental: recall@10 em 44 consultas por intenção sobre este repositório (all-MiniLM-L6-v2 Q8_0): lexical 0,273, semantic 0,670, hybrid 0,568, então hybrid − lexical = +0,295 ≥ +0,10 ([dogfood](../campo/dogfood.md) #45). O modo semantic teve a maior nota nesta suíte; o hybrid mantém os acertos por nome exato. O shim ainda embeda um texto por chamada nativa: o lote multi-sequência (`n_seq_max ≥ 64`) ainda está pendente. Registro de decisão: [ADR-018](../adr/018-cgo-componentes-nativos.md) (cgo, llama.cpp vendorizado, gate de qualidade C/C++).
 
 O índice vetorial acrescenta busca semântica ao grafo de código:
 

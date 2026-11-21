@@ -2,7 +2,7 @@
 
 # Optional vector index for `tb graph search` — spec
 
-Status: **V0 and V1 implemented**; V2 (MCP, evaluation) pending, experimental. V1 embeds one text per native call: the multi-sequence batch in the shim (`n_seq_max ≥ 64`) is still pending. Decision record: [ADR-018](../adr/018-cgo-componentes-nativos.md) (cgo, vendored llama.cpp, C/C++ quality gate).
+Status: **V0, V1 and V2 implemented**; no longer experimental: recall@10 on 44 intent queries over this repository (all-MiniLM-L6-v2 Q8_0): lexical 0.273, semantic 0.670, hybrid 0.568, so hybrid − lexical = +0.295 ≥ +0.10 ([dogfood](../campo/dogfood.md) #45). Semantic mode scored highest on this suite; hybrid keeps exact-name matches. The shim still embeds one text per native call: the multi-sequence batch (`n_seq_max ≥ 64`) is still pending. Decision record: [ADR-018](../adr/018-cgo-componentes-nativos.md) (cgo, vendored llama.cpp, C/C++ quality gate).
 
 The vector index adds semantic search to the code graph:
 
