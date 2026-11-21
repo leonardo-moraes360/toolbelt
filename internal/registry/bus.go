@@ -207,23 +207,23 @@ func registerBusTools() {
 		},
 		Handler: handleBusComplete,
 	})
-	registerBusLeaseTools(chProp)
+	registerBusLeaseTools(&chProp)
 }
 
 // registerBusLeaseTools registers the B2 tools (docs/bus-lease.md R4, R8);
 // the watchdog is CLI only.
-func registerBusLeaseTools(chProp Property) {
+func registerBusLeaseTools(chProp *Property) {
 	Register(&Tool{
 		Name: "tb_bus_heartbeat",
 		Description: "Renews this connection's lease and lists held threads (with epochs) and lost ones; tb mcp already heartbeats bound sessions in the background " +
 			"(parity with tb bus heartbeat)",
-		InputSchema: &InputSchema{Type: "object", Properties: map[string]Property{"channel": chProp}},
+		InputSchema: &InputSchema{Type: "object", Properties: map[string]Property{"channel": *chProp}},
 		Handler:     handleBusHeartbeat,
 	})
 	Register(&Tool{
 		Name:        "tb_bus_status",
 		Description: "Agents of this connection's channel (alive, last_seen; no Agent Cards) and open claims (owner, epoch, held/expired/released) (parity with tb bus channel show)",
-		InputSchema: &InputSchema{Type: "object", Properties: map[string]Property{"channel": chProp}},
+		InputSchema: &InputSchema{Type: "object", Properties: map[string]Property{"channel": *chProp}},
 		Handler:     handleBusStatus,
 	})
 }

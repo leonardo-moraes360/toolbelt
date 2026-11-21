@@ -314,7 +314,7 @@ Flags:
 
 Ordem em três faixas: (1) título idêntico à consulta; (2) nós que contêm a consulta como substring de título/path/pacote/ID — o que a busca antiga trazia; (3) nós que só casam termos. Dentro de cada faixa, ranking BM25 sobre título, path e pacote (título pesa 3×), com camelCase, `snake_case` e separadores de path quebrados em termos; consulta com várias palavras casa qualquer termo. Empates ordenam por ID. Com mais resultados que `--limit`, o corte é feito nessa ordem.
 
-Com `--mode semantic`, a consulta vira embedding e é ranqueada por similaridade de cosseno sobre os chunks dos arquivos, agrupados por nó de arquivo; `--mode hybrid` funde os rankings léxico e semântico com RRF (k = 60), empates por ID do nó. Os dois precisam do [índice vetorial](#índice-vetorial-experimental) e nunca o reindexam. JSON nesses modos: `{"stale", "mode", "stale_vectors", "nodes": [...]}`, cada nó com os campos de sempre mais `lines`, `score_semantic`, `rank_lexical`, `rank_semantic` e `score_fused`; a saída de texto acrescenta `:<lines>` ao path. A saída do `lexical` (padrão) não muda.
+Com `--mode semantic`, a consulta vira embedding e é ranqueada por similaridade de cosseno sobre os chunks dos arquivos, agrupados por nó de arquivo; `--mode hybrid` funde os rankings léxico e semântico com RRF (k = 60), empates por ID do nó. Os dois precisam do [índice vetorial](#índice-vetorial) e nunca o reindexam. JSON nesses modos: `{"stale", "mode", "stale_vectors", "nodes": [...]}`, cada nó com os campos de sempre mais `lines`, `score_semantic`, `rank_lexical`, `rank_semantic` e `score_fused`; a saída de texto acrescenta `:<lines>` ao path. A saída do `lexical` (padrão) não muda.
 
 **`tb graph callers`:**
 
@@ -427,9 +427,9 @@ tb graph rebuild src/
 tb graph stats
 ```
 
-#### Índice vetorial (experimental)
+#### Índice vetorial
 
-A busca semântica e a híbrida ([spec](specs/vector-index.md), fase V1) vêm desligadas. As chaves são lidas **só da config do usuário** (o arquivo do `-c` ou a config global); valores no `.toolbelt/config.yaml` do repositório são ignorados com o aviso `config_untrusted`.
+A busca semântica e a híbrida ([spec](specs/vector-index.md)) vêm desligadas. As chaves são lidas **só da config do usuário** (o arquivo do `-c` ou a config global); valores no `.toolbelt/config.yaml` do repositório são ignorados com o aviso `config_untrusted`.
 
 ```yaml
 graph:
@@ -453,7 +453,9 @@ graph:
 - `graph.embed.threads` tem padrão min(4, NumCPU), `graph.embed.timeout` `2m`; `graph.vector.max_chunks` 50000; `chunk_lines`/`chunk_bytes`/`overlap_lines` 40/1536/8.
 - O filho de embedding `tb __graph-embed` roda em sandbox (Landlock + seccomp: sem sockets, workdir vazio e só leitura, tmp privado, `HOME` vazio, env mínimo). Arquivos da deny list (segredos) nunca viram embedding, e cada arquivo é redigido por inteiro antes de virar chunks. `graph.embed.allow_unsandboxed: true` deixa o filho rodar sem a sandbox completa (aviso `embed_unsandboxed`).
 - Motivos: `vectors_disabled`, `vectors_stale`, `vectors_invalid`, `vectors_too_many`, `model_path`, `model_mismatch`, `model_unsupported`, `embed_unavailable`, `embed_unsandboxed`, `embed_protocol`, `embed_crashed`, `embed_timeout`, `config_untrusted`. Um build sem `embednative` responde `embed_unavailable`.
-- Os parâmetros `mode`/`vectors` do MCP e a avaliação de recall ficam para a V2.
+- MCP: o `tb_graph_search` aceita `mode` (`lexical`|`semantic`|`hybrid`, padrão `lexical`) e devolve o mesmo JSON da CLI (`mode`, `stale_vectors`, nós com `lines`, `score_semantic`, `rank_lexical`, `rank_semantic`, `score_fused`) mais um array `warnings`; o `tb_graph_index` aceita `vectors` (booleano, padrão `false`) e o payload ganha as estatísticas `vectors`. Sem eles a saída não muda. As consultas pelo MCP nunca reindexam os vetores. Os erros usam os mesmos motivos, com os avisos anexados ao texto do erro.
+- O `tb mcp` mantém um filho de embedding aquecido por servidor: reaproveitado entre consultas, reiniciado quando a config de embed muda ou o filho quebra, morto depois de 5 minutos ocioso e na saída.
+- Avaliação (44 consultas por intenção sobre este repositório, all-MiniLM-L6-v2 Q8_0): recall@10 lexical 0,273, semantic 0,670, hybrid 0,568. O `semantic` teve a maior nota nesta suíte; o `hybrid` mantém os acertos por nome exato do ranking léxico. Veja o [dogfood](campo/dogfood.md) #45.
 
 ---
 
@@ -2114,7 +2116,7 @@ Transporte unix/tcp e flags `--socket`/`--port`/`--tls-*` são planejados; hoje 
 | `tb_watchdog_alerts` | `tb watchdog alerts` | `since`, `kind`, `limit` (integer) |
 | `tb_merge` | `tb merge` | `ids` (array), `strategy`, `into`, `force`, `allow_sensitive` (padrão `false`); **dry-run por padrão** — só altera refs com `apply=true` |
 | `tb_bus_join` / `tb_bus_send` / `tb_bus_recv` / `tb_bus_claim` / `tb_bus_complete` / `tb_bus_heartbeat` / `tb_bus_status` | `tb bus …` | identidade presa à conexão após `tb_bus_join` (`channel`, `invite`, `name` + Agent Card); `payload`/`result` como objeto; `tb_bus_complete` exige o `epoch` inteiro; o `tb mcp` manda heartbeat das sessões ligadas em segundo plano; sem tool de watchdog; `wait` string (máx. 25s); criar canal/convite **não** existe via MCP; `tb mcp --bus-as <channel>/<name>` liga a conexão a uma sessão CLI (usado por `tb bus run`) |
-| `tb_graph_search` / `tb_graph_callers` / `tb_graph_deps` / `tb_graph_impact` / `tb_graph_explain` / `tb_graph_path` / `tb_graph_index` | `tb graph …` | chamada requer `TB_GRAPH=on`; `depth`/`limit`/`max_depth` integer; `transitive` boolean; `explain` usa `node`, `path` usa `from`/`to` |
+| `tb_graph_search` / `tb_graph_callers` / `tb_graph_deps` / `tb_graph_impact` / `tb_graph_explain` / `tb_graph_path` / `tb_graph_index` | `tb graph …` | chamada requer `TB_GRAPH=on`; `depth`/`limit`/`max_depth` integer; `transitive` boolean; `explain` usa `node`, `path` usa `from`/`to`; `mode` no `tb_graph_search` e `vectors` no `tb_graph_index` (veja o [índice vetorial](#índice-vetorial)) |
 
 Schemas tipam `depth`/`limit`/`reviewers`/`max_iter` como integer, `strict`/`warn_only`/`transitive`/`skip_unavailable`/`all` (mem) como boolean, `threshold` como number e `standards` como array de strings; valores string legados ainda são aceitos. Relatórios de verify/review/drift/guard voltam como JSON no `content` (sem código de saída de processo). Listas vazias usam `[]`; `hidden_passed` é `null` se a suíte oculta não se aplica.
 

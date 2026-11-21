@@ -8,6 +8,7 @@ import (
 	"github.com/leonardo-moraes360/toolbelt/internal/config"
 	"github.com/leonardo-moraes360/toolbelt/internal/graph"
 	"github.com/leonardo-moraes360/toolbelt/internal/mem"
+	"github.com/leonardo-moraes360/toolbelt/internal/vecsearch"
 )
 
 func init() {
@@ -17,12 +18,14 @@ func init() {
 func RegisterGraphTools() {
 	Register(&Tool{
 		Name:        "tb_graph_search",
-		Description: "Searches the code graph (on demand; requires TB_GRAPH=on)",
+		Description: "Searches the code graph (on demand; requires TB_GRAPH=on). mode semantic or hybrid needs graph.vector.enabled in the user config and tb_graph_index with vectors: true; it starts or reuses a warm embedding child (sandboxed, no network) but writes nothing and never reindexes",
 		InputSchema: &InputSchema{
 			Type: "object",
 			Properties: map[string]Property{
 				"query": {Type: "string", Description: "Query"},
 				"limit": {Type: "integer", Description: "Maximum results", Default: 20},
+				"mode": {Type: "string", Description: "lexical (BM25), semantic (vectors) or hybrid (RRF of both)", Default: vecsearch.ModeLexical,
+					Enum: []string{vecsearch.ModeLexical, vecsearch.ModeSemantic, vecsearch.ModeHybrid}},
 			},
 			Required: []string{"query"},
 		},
@@ -96,11 +99,12 @@ func RegisterGraphTools() {
 	})
 	Register(&Tool{
 		Name:        "tb_graph_index",
-		Description: "Indexes the code graph on demand",
+		Description: "Indexes the code graph on demand; vectors: true also builds or updates .toolbelt/graph.vec (needs graph.vector.enabled in the user config)",
 		InputSchema: &InputSchema{
 			Type: "object",
 			Properties: map[string]Property{
-				"path": {Type: "string", Description: "Root to index", Default: "."},
+				"path":    {Type: "string", Description: "Root to index", Default: "."},
+				"vectors": {Type: "boolean", Description: "Also build or update the vector index", Default: false},
 			},
 		},
 		Handler: handleGraphIndex,
@@ -153,13 +157,23 @@ func graphNodesPayload(s *graph.Store, nodes []graph.Node) map[string]any {
 	return graphPayload(s, map[string]any{"nodes": nodes})
 }
 
-func handleGraphSearch(_ context.Context, args map[string]any) (any, error) {
+func handleGraphSearch(ctx context.Context, args map[string]any) (any, error) {
+	mode := StringArg(args, "mode")
+	if mode == "" {
+		mode = vecsearch.ModeLexical
+	}
+	if err := vecsearch.CheckMode(mode, "mode"); err != nil {
+		return nil, err
+	}
 	s, err := openGraphStoreReadOnly()
 	if err != nil {
 		return nil, err
 	}
 	q := StringArg(args, "query")
 	limit := IntArg(args, "limit", 20)
+	if mode != vecsearch.ModeLexical {
+		return graphVectorSearch(ctx, s, mode, q, limit)
+	}
 	return graphNodesPayload(s, s.Search(q, limit)), nil
 }
 
@@ -246,7 +260,7 @@ func handleGraphPath(_ context.Context, args map[string]any) (any, error) {
 	return graphPayload(s, map[string]any{"hops": len(steps) - 1, "steps": steps}), nil
 }
 
-func handleGraphIndex(_ context.Context, args map[string]any) (any, error) {
+func handleGraphIndex(ctx context.Context, args map[string]any) (any, error) {
 	s, err := openGraphStore()
 	if err != nil {
 		return nil, err
@@ -255,18 +269,29 @@ func handleGraphIndex(_ context.Context, args map[string]any) (any, error) {
 	if path == "" {
 		path = "."
 	}
+	if BoolArg(args, "vectors", false) {
+		if err := vecsearch.CheckVectorRoot(s, path); err != nil {
+			return nil, err
+		}
+	}
 	opts := graphOptionsFromConfig()
 	idx, err := s.RebuildOpts(path, &opts)
 	if err != nil {
 		return nil, err
 	}
 	s.SetStale(false)
-	return map[string]any{
+	payload := map[string]any{
 		"nodes": len(idx.Nodes),
 		"edges": len(idx.Edges),
 		"path":  s.Path(),
 		"stale": false,
-	}, nil
+	}
+	if BoolArg(args, "vectors", false) {
+		if err := graphVectorIndex(ctx, s, idx, payload); err != nil {
+			return nil, err
+		}
+	}
+	return payload, nil
 }
 
 func graphOptionsFromConfig() graph.BuildOptions {
