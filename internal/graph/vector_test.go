@@ -34,7 +34,7 @@ func newFake() *fakeEmbedder {
 func (f *fakeEmbedder) Info() embed.Info { return f.info }
 func (f *fakeEmbedder) Close() error     { return nil }
 
-func (f *fakeEmbedder) Embed(_ context.Context, kind embed.Kind, texts []string) ([][]float32, []bool, error) {
+func (f *fakeEmbedder) Embed(_ context.Context, kind embed.Kind, texts []string) (vecs [][]float32, trunc []bool, err error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.fail != nil {
@@ -43,7 +43,7 @@ func (f *fakeEmbedder) Embed(_ context.Context, kind embed.Kind, texts []string)
 	if kind == embed.KindDoc {
 		f.texts = append(f.texts, texts...)
 	}
-	vecs := make([][]float32, len(texts))
+	vecs = make([][]float32, len(texts))
 	for i, t := range texts {
 		v := make([]float32, f.info.Dims)
 		for _, tok := range tokenize(t) {
@@ -95,6 +95,9 @@ func buildIdx(t *testing.T, root string) *Index {
 	return idx
 }
 
+// optsPtr lets tests pass option literals to BuildVectors.
+func optsPtr[T any](v T) *T { return &v }
+
 func smallOpts() VectorOptions {
 	return VectorOptions{ChunkLines: 4, ChunkBytes: 256, OverlapLines: 1}
 }
@@ -139,7 +142,7 @@ func TestBuildVectorsIncremental(t *testing.T) {
 	fake := newFake()
 	o := smallOpts()
 	ctx := context.Background()
-	st, err := BuildVectors(ctx, root, buildIdx(t, root), fake, o)
+	st, err := BuildVectors(ctx, root, buildIdx(t, root), fake, &o)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -147,13 +150,13 @@ func TestBuildVectorsIncremental(t *testing.T) {
 	if st.Embedded == 0 || len(first) != st.Embedded || !st.Rebuilt {
 		t.Fatalf("first run: %+v, %d texts", st, len(first))
 	}
-	path := filepath.Join(root, ".toolbelt", "graph.vec")
-	fi, err := os.Stat(path)
+	store := filepath.Join(root, ".toolbelt", "graph.vec")
+	fi, err := os.Stat(store)
 	if err != nil || fi.Mode().Perm() != 0o600 {
 		t.Fatalf("store mode: %v %v", fi, err)
 	}
 
-	st, err = BuildVectors(ctx, root, buildIdx(t, root), fake, o)
+	st, err = BuildVectors(ctx, root, buildIdx(t, root), fake, &o)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -161,7 +164,15 @@ func TestBuildVectorsIncremental(t *testing.T) {
 		t.Fatalf("no-change run sent %d texts: %+v", len(got), st)
 	}
 
-	before, _ := LoadVectors(path)
+	checkEditReembedsOnlyChanged(t, root, store, fake, &o)
+	checkVanishedFileDropped(t, root, store, fake, &o)
+}
+
+// checkEditReembedsOnlyChanged edits one line of alpha.go and expects only
+// the chunks whose text changed to reach the embedder.
+func checkEditReembedsOnlyChanged(t *testing.T, root, store string, fake *fakeEmbedder, o *VectorOptions) {
+	t.Helper()
+	before, _ := LoadVectors(store)
 	oldSHA := map[[32]byte]bool{}
 	for _, r := range before.records {
 		oldSHA[r.SHA] = true
@@ -170,7 +181,8 @@ func TestBuildVectorsIncremental(t *testing.T) {
 		"alpha.go": strings.Replace("package m\n\n"+numbered("alpha", 20)+"func Alpha() {}\n", "word15", "zebra15", 1),
 	})
 	idx := buildIdx(t, root)
-	units, _, _, err := collectUnits(root, idx, o.normalized())
+	n := o.normalized()
+	units, _, _, err := collectUnits(root, idx, &n)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -180,7 +192,7 @@ func TestBuildVectorsIncremental(t *testing.T) {
 			want++
 		}
 	}
-	if _, err := BuildVectors(ctx, root, idx, fake, o); err != nil {
+	if _, err := BuildVectors(context.Background(), root, idx, fake, o); err != nil {
 		t.Fatal(err)
 	}
 	got := fake.take()
@@ -192,15 +204,20 @@ func TestBuildVectorsIncremental(t *testing.T) {
 			t.Fatalf("unchanged chunk re-embedded: %q", txt)
 		}
 	}
+}
 
+// checkVanishedFileDropped removes beta.go and expects its records dropped
+// without embedding anything.
+func checkVanishedFileDropped(t *testing.T, root, store string, fake *fakeEmbedder, o *VectorOptions) {
+	t.Helper()
 	if err := os.Remove(filepath.Join(root, "beta.go")); err != nil {
 		t.Fatal(err)
 	}
-	st, err = BuildVectors(ctx, root, buildIdx(t, root), fake, o)
+	st, err := BuildVectors(context.Background(), root, buildIdx(t, root), fake, o)
 	if err != nil {
 		t.Fatal(err)
 	}
-	after, _ := LoadVectors(path)
+	after, _ := LoadVectors(store)
 	for _, r := range after.records {
 		if r.Path == "beta.go" {
 			t.Fatal("vanished file kept in store")
@@ -224,7 +241,7 @@ func TestBuildVectorsDenyAndRedact(t *testing.T) {
 		t.Fatal("fixture: secrets.go not indexed")
 	}
 	fake := newFake()
-	st, err := BuildVectors(context.Background(), root, idx, fake, smallOpts())
+	st, err := BuildVectors(context.Background(), root, idx, fake, optsPtr(smallOpts()))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -261,7 +278,7 @@ func TestBuildVectorsSkipsSymlinks(t *testing.T) {
 	}
 	idx := buildIdx(t, root)
 	fake := newFake()
-	if _, err := BuildVectors(context.Background(), root, idx, fake, smallOpts()); err != nil {
+	if _, err := BuildVectors(context.Background(), root, idx, fake, optsPtr(smallOpts())); err != nil {
 		t.Fatal(err)
 	}
 	all := strings.Join(fake.take(), "\n")
@@ -277,7 +294,7 @@ func TestVectorsStale(t *testing.T) {
 	root := baseRepo(t)
 	fake := newFake()
 	o := smallOpts()
-	if _, err := BuildVectors(context.Background(), root, buildIdx(t, root), fake, o); err != nil {
+	if _, err := BuildVectors(context.Background(), root, buildIdx(t, root), fake, &o); err != nil {
 		t.Fatal(err)
 	}
 	s, err := LoadVectors(filepath.Join(root, ".toolbelt", "graph.vec"))
@@ -285,7 +302,7 @@ func TestVectorsStale(t *testing.T) {
 		t.Fatal(err)
 	}
 	info := fake.Info()
-	if s.Stale(o, info) {
+	if s.Stale(&o, info) {
 		t.Fatal("fresh store reported stale")
 	}
 	cases := map[string]func(*VectorOptions, *embed.Info){
@@ -300,14 +317,14 @@ func TestVectorsStale(t *testing.T) {
 	for name, mut := range cases {
 		o2, i2 := o, info
 		mut(&o2, &i2)
-		if !s.Stale(o2, i2) {
+		if !s.Stale(&o2, i2) {
 			t.Errorf("%s change not stale", name)
 		}
 	}
 	o2 := o
 	o2.DocPrefix = "x"
 	fake.take()
-	st, err := BuildVectors(context.Background(), root, buildIdx(t, root), fake, o2)
+	st, err := BuildVectors(context.Background(), root, buildIdx(t, root), fake, optsPtr(o2))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -320,14 +337,14 @@ func TestEmbedderErrorLeavesStore(t *testing.T) {
 	root := baseRepo(t)
 	fake := newFake()
 	o := smallOpts()
-	if _, err := BuildVectors(context.Background(), root, buildIdx(t, root), fake, o); err != nil {
+	if _, err := BuildVectors(context.Background(), root, buildIdx(t, root), fake, &o); err != nil {
 		t.Fatal(err)
 	}
 	path := filepath.Join(root, ".toolbelt", "graph.vec")
 	orig, _ := os.ReadFile(path)
 	writeRepo(t, root, map[string]string{"beta.go": "package m\n\n// changed body\nfunc Beta() {}\n"})
 	fake.fail = fmt.Errorf("%w: boom", embed.ErrEmbedCrashed)
-	_, err := BuildVectors(context.Background(), root, buildIdx(t, root), fake, o)
+	_, err := BuildVectors(context.Background(), root, buildIdx(t, root), fake, &o)
 	if !errors.Is(err, embed.ErrEmbedCrashed) {
 		t.Fatalf("err = %v", err)
 	}
@@ -348,7 +365,7 @@ func TestBuildVectorsTooMany(t *testing.T) {
 	o := smallOpts()
 	o.MaxChunks = 2
 	fake := newFake()
-	_, err := BuildVectors(context.Background(), root, buildIdx(t, root), fake, o)
+	_, err := BuildVectors(context.Background(), root, buildIdx(t, root), fake, &o)
 	if !errors.Is(err, ErrVectorsTooMany) || len(fake.take()) != 0 {
 		t.Fatalf("err = %v", err)
 	}
@@ -454,18 +471,30 @@ func TestSearchSemanticAndHybrid(t *testing.T) {
 	fake := newFake()
 	o := smallOpts()
 	idx := buildIdx(t, root)
-	if _, err := BuildVectors(context.Background(), root, idx, fake, o); err != nil {
+	if _, err := BuildVectors(context.Background(), root, idx, fake, &o); err != nil {
 		t.Fatal(err)
 	}
-	store, err := LoadVectorsOpts(filepath.Join(root, ".toolbelt", "graph.vec"), o)
+	store, err := LoadVectorsOpts(filepath.Join(root, ".toolbelt", "graph.vec"), &o)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if store.StaleGraph(idx) {
 		t.Fatal("fresh graph reported stale")
 	}
-	ctx := context.Background()
-	hits, err := SearchSemantic(ctx, idx, store, fake, "giraffe acacia leaves", 10)
+	checkSemanticTopHit(t, idx, store, fake)
+	checkHybridDeterministic(t, idx, store, fake)
+	checkPrunedIndex(t, idx, store, fake)
+
+	other := newFake()
+	other.info.ModelSHA256 = "m2"
+	if _, err := SearchSemantic(context.Background(), idx, store, other, "x", 5); !errors.Is(err, ErrVectorsStale) {
+		t.Fatalf("other model: %v", err)
+	}
+}
+
+func checkSemanticTopHit(t *testing.T, idx *Index, store *VectorStore, fake *fakeEmbedder) {
+	t.Helper()
+	hits, err := SearchSemantic(context.Background(), idx, store, fake, "giraffe acacia leaves", 10)
 	if err != nil || len(hits) == 0 {
 		t.Fatalf("semantic: %v %v", hits, err)
 	}
@@ -476,7 +505,11 @@ func TestSearchSemanticAndHybrid(t *testing.T) {
 	if !strings.Contains(string(b), `"lines":"1-3"`) || !strings.Contains(string(b), `"score_semantic"`) {
 		t.Fatalf("semantic JSON %s", b)
 	}
+}
 
+func checkHybridDeterministic(t *testing.T, idx *Index, store *VectorStore, fake *fakeEmbedder) {
+	t.Helper()
+	ctx := context.Background()
 	h1, err := SearchHybrid(ctx, idx, store, fake, "Alpha", 10)
 	if err != nil {
 		t.Fatal(err)
@@ -485,37 +518,35 @@ func TestSearchSemanticAndHybrid(t *testing.T) {
 	if !reflect.DeepEqual(h1, h2) || len(h1) == 0 {
 		t.Fatal("hybrid not deterministic")
 	}
-	for _, h := range h1 {
+	for i := range h1 {
+		h := &h1[i]
 		if h.ScoreFused == nil || (h.RankLexical == nil && h.RankSemantic == nil) {
 			t.Fatalf("hybrid hit missing fields: %+v", h)
 		}
 	}
+}
 
-	// A node gone from the index is dropped; the changed fingerprint flags
-	// the vectors without refusing the search.
+// checkPrunedIndex expects a node gone from the index to be dropped, and the
+// changed fingerprint to flag the vectors without refusing the search.
+func checkPrunedIndex(t *testing.T, idx *Index, store *VectorStore, fake *fakeEmbedder) {
+	t.Helper()
 	pruned := &Index{Root: idx.Root, Fingerprint: "other"}
 	for _, n := range idx.Nodes {
 		if n.Path != "docs/note.md" {
 			pruned.Nodes = append(pruned.Nodes, n)
 		}
 	}
-	hits, err = SearchSemantic(ctx, pruned, store, fake, "giraffe acacia leaves", 10)
+	hits, err := SearchSemantic(context.Background(), pruned, store, fake, "giraffe acacia leaves", 10)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, h := range hits {
-		if h.Node.Path == "docs/note.md" {
+	for i := range hits {
+		if hits[i].Node.Path == "docs/note.md" {
 			t.Fatal("hit for removed node")
 		}
 	}
 	if !store.StaleGraph(pruned) {
 		t.Fatal("changed fingerprint not reported")
-	}
-
-	other := newFake()
-	other.info.ModelSHA256 = "m2"
-	if _, err := SearchSemantic(ctx, idx, store, other, "x", 5); !errors.Is(err, ErrVectorsStale) {
-		t.Fatalf("other model: %v", err)
 	}
 }
 

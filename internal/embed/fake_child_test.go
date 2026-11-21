@@ -36,7 +36,7 @@ func TestMain(m *testing.M) {
 type fakeEngine struct{}
 
 // Embed gives text-dependent finite vectors; "LONG" marks a truncation.
-func (fakeEngine) Embed(t string) ([]float32, bool, error) {
+func (fakeEngine) Embed(t string) (vec []float32, truncated bool, err error) {
 	v := make([]float32, fakeDims)
 	for i := range v {
 		v[i] = float32(len(t) + i)
@@ -46,7 +46,7 @@ func (fakeEngine) Embed(t string) ([]float32, bool, error) {
 
 type funcEngine func(string) ([]float32, bool, error)
 
-func (f funcEngine) Embed(t string) ([]float32, bool, error) { return f(t) }
+func (f funcEngine) Embed(t string) (vec []float32, truncated bool, err error) { return f(t) }
 
 func fakeInfo(sha string) Info {
 	return Info{Engine: "fake", Commit: "c0ffee", ModelSHA256: sha, Dims: fakeDims, NCtx: 512}
@@ -132,30 +132,7 @@ func rawFake(mode, sha string) {
 			_ = writeLine(w, good)
 		case "record":
 			if len(req.Texts) == 1 && strings.HasSuffix(req.Texts[0], "__dump__") {
-				type entry struct {
-					Kind  Kind     `json:"kind"`
-					N     int      `json:"n"`
-					Bytes int      `json:"bytes"`
-					First string   `json:"first"`
-					Small []string `json:"small,omitempty"`
-				}
-				var out []entry
-				for _, r := range log {
-					e := entry{Kind: r.Kind, N: len(r.Texts)}
-					for _, t := range r.Texts {
-						e.Bytes += len(t)
-					}
-					e.First = r.Texts[0]
-					if len(e.First) > 40 {
-						e.First = e.First[:40]
-					}
-					if e.Bytes < 4096 {
-						e.Small = r.Texts
-					}
-					out = append(out, e)
-				}
-				b, _ := json.Marshal(out)
-				_ = writeLine(w, reply{ID: req.ID, Error: string(b)})
+				_ = writeLine(w, reply{ID: req.ID, Error: dumpLog(log)})
 				continue
 			}
 			log = append(log, req)
@@ -164,4 +141,32 @@ func rawFake(mode, sha string) {
 			return
 		}
 	}
+}
+
+// dumpLog summarizes the recorded requests as JSON for TestClientBatches.
+func dumpLog(log []request) string {
+	type entry struct {
+		Kind  Kind     `json:"kind"`
+		N     int      `json:"n"`
+		Bytes int      `json:"bytes"`
+		First string   `json:"first"`
+		Small []string `json:"small,omitempty"`
+	}
+	var out []entry
+	for _, r := range log {
+		e := entry{Kind: r.Kind, N: len(r.Texts)}
+		for _, t := range r.Texts {
+			e.Bytes += len(t)
+		}
+		e.First = r.Texts[0]
+		if len(e.First) > 40 {
+			e.First = e.First[:40]
+		}
+		if e.Bytes < 4096 {
+			e.Small = r.Texts
+		}
+		out = append(out, e)
+	}
+	b, _ := json.Marshal(out)
+	return string(b)
 }

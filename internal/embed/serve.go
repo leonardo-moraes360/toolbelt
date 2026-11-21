@@ -147,13 +147,13 @@ func writeLine(w *bufio.Writer, v any) error {
 }
 
 // readLine returns the next line without its newline, refusing to buffer
-// more than max bytes of it: a peer cannot make the reader grow without
+// more than limit bytes of it: a peer cannot make the reader grow without
 // bound. A final line without newline is io.ErrUnexpectedEOF.
-func readLine(br *bufio.Reader, max int) ([]byte, error) {
+func readLine(br *bufio.Reader, limit int) ([]byte, error) {
 	var line []byte
 	for {
 		chunk, err := br.ReadSlice('\n')
-		if len(line)+len(chunk) > max+1 {
+		if len(line)+len(chunk) > limit+1 {
 			if err == nil {
 				return nil, errLineTooLong
 			}

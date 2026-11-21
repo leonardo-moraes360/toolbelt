@@ -65,7 +65,13 @@ type VectorOptions struct {
 	Path string
 }
 
-func (o VectorOptions) normalized() VectorOptions {
+func (o *VectorOptions) normalized() VectorOptions {
+	n := *o
+	n.applyDefaults()
+	return n
+}
+
+func (o *VectorOptions) applyDefaults() {
 	if o.MaxChunks <= 0 {
 		o.MaxChunks = DefaultMaxChunks
 	}
@@ -84,10 +90,9 @@ func (o VectorOptions) normalized() VectorOptions {
 	if o.MaxFileBytes <= 0 {
 		o.MaxFileBytes = DefaultMaxFileBytes
 	}
-	return o
 }
 
-func (o VectorOptions) prefixesSHA() string {
+func (o *VectorOptions) prefixesSHA() string {
 	sum := sha256.Sum256([]byte(o.QueryPrefix + "\x00" + o.DocPrefix))
 	return hex.EncodeToString(sum[:])
 }
@@ -129,8 +134,8 @@ type VectorStore struct {
 // Stale reports whether the store was built with another model, engine,
 // dimension, chunk shape or prefixes; a stale store is never queried
 // (vectors_stale) and the next build re-embeds everything.
-func (s *VectorStore) Stale(o VectorOptions, info embed.Info) bool {
-	o = o.normalized()
+func (s *VectorStore) Stale(opts *VectorOptions, info embed.Info) bool {
+	o := opts.normalized()
 	h := s.Header
 	return h.V != vectorVersion ||
 		h.ModelSHA256 != info.ModelSHA256 ||
@@ -174,8 +179,11 @@ type unit struct {
 // BuildVectors embeds the units of idx's files, reusing vectors from the
 // existing store whose text sha256 is unchanged, and atomically replaces
 // graph.vec (0600). Any embedder error returns before the store is touched.
-func BuildVectors(ctx context.Context, repoRoot string, idx *Index, emb embed.Embedder, o VectorOptions) (VectorStats, error) {
-	o = o.normalized()
+func BuildVectors(ctx context.Context, repoRoot string, idx *Index, emb embed.Embedder, opts *VectorOptions) (VectorStats, error) {
+	if opts == nil {
+		opts = &VectorOptions{}
+	}
+	o := opts.normalized()
 	if o.Path == "" {
 		o.Path = filepath.Join(repoRoot, ".toolbelt", DefaultVectorFile)
 	}
@@ -188,7 +196,7 @@ func BuildVectors(ctx context.Context, repoRoot string, idx *Index, emb embed.Em
 		return st, fmt.Errorf("%w: embedder reports %d dims", embed.ErrEmbedProtocol, info.Dims)
 	}
 
-	units, files, denied, err := collectUnits(repoRoot, idx, o)
+	units, files, denied, err := collectUnits(repoRoot, idx, &o)
 	if err != nil {
 		return st, err
 	}
@@ -197,16 +205,8 @@ func BuildVectors(ctx context.Context, repoRoot string, idx *Index, emb embed.Em
 		return st, fmt.Errorf("%w: %d chunks > max_chunks %d", ErrVectorsTooMany, len(units), o.MaxChunks)
 	}
 
-	reuse := map[[32]byte]cachedVec{}
-	oldKeys := map[string]bool{}
-	if old, lerr := LoadVectors(o.Path); lerr == nil && !old.Stale(o, info) {
-		for _, r := range old.records {
-			reuse[r.SHA] = cachedVec{r.Vec, r.Truncated}
-			oldKeys[recordKey(r.Path, r.Start, r.End, r.SHA)] = true
-		}
-	} else {
-		st.Rebuilt = true
-	}
+	reuse, oldKeys, ok := reusableVectors(&o, info)
+	st.Rebuilt = !ok
 
 	n, err := embedPending(ctx, emb, info.Dims, units, reuse)
 	if err != nil {
@@ -214,6 +214,42 @@ func BuildVectors(ctx context.Context, repoRoot string, idx *Index, emb embed.Em
 	}
 	st.Embedded = n
 
+	recs := assembleRecords(units, reuse, oldKeys, &st)
+	store := &VectorStore{
+		Header: VectorHeader{
+			V: vectorVersion, EngineCommit: info.Commit, ModelSHA256: info.ModelSHA256, Dims: info.Dims,
+			ChunkLines: o.ChunkLines, ChunkBytes: o.ChunkBytes, OverlapLines: o.OverlapLines,
+			PrefixesSHA256: o.prefixesSHA(), GraphFingerprint: idx.Fingerprint, Count: len(recs),
+		},
+		records: recs,
+	}
+	data, err := store.encode()
+	if err != nil {
+		return st, err
+	}
+	return st, writeFileAtomic(o.Path, data)
+}
+
+// reusableVectors indexes the vectors of the existing store by text sha256,
+// plus the keys of its records; ok is false when no usable (present, valid,
+// not stale) store exists.
+func reusableVectors(o *VectorOptions, info embed.Info) (reuse map[[32]byte]cachedVec, oldKeys map[string]bool, ok bool) {
+	reuse = map[[32]byte]cachedVec{}
+	oldKeys = map[string]bool{}
+	old, err := LoadVectors(o.Path)
+	if err != nil || old.Stale(o, info) {
+		return reuse, oldKeys, false
+	}
+	for _, r := range old.records {
+		reuse[r.SHA] = cachedVec{r.Vec, r.Truncated}
+		oldKeys[recordKey(r.Path, r.Start, r.End, r.SHA)] = true
+	}
+	return reuse, oldKeys, true
+}
+
+// assembleRecords builds one record per unit from reuse and counts the
+// truncated, reused and dropped records into st.
+func assembleRecords(units []unit, reuse map[[32]byte]cachedVec, oldKeys map[string]bool, st *VectorStats) []vectorRecord {
 	recs := make([]vectorRecord, len(units))
 	newKeys := map[string]bool{}
 	for i, u := range units {
@@ -233,19 +269,7 @@ func BuildVectors(ctx context.Context, repoRoot string, idx *Index, emb embed.Em
 			st.Dropped++
 		}
 	}
-	store := &VectorStore{
-		Header: VectorHeader{
-			V: vectorVersion, EngineCommit: info.Commit, ModelSHA256: info.ModelSHA256, Dims: info.Dims,
-			ChunkLines: o.ChunkLines, ChunkBytes: o.ChunkBytes, OverlapLines: o.OverlapLines,
-			PrefixesSHA256: o.prefixesSHA(), GraphFingerprint: idx.Fingerprint, Count: len(recs),
-		},
-		records: recs,
-	}
-	data, err := store.encode()
-	if err != nil {
-		return st, err
-	}
-	return st, writeFileAtomic(o.Path, data)
+	return recs
 }
 
 type cachedVec struct {
@@ -288,7 +312,7 @@ func embedPending(ctx context.Context, emb embed.Embedder, dims int, units []uni
 			if len(vecs[j]) != dims || !finite(vecs[j]) {
 				return sent, fmt.Errorf("%w: vector %d has %d dims, want %d", embed.ErrEmbedProtocol, j, len(vecs[j]), dims)
 			}
-			reuse[units[ui].sha] = cachedVec{vecs[j], trunc != nil && trunc[j]}
+			reuse[units[ui].sha] = cachedVec{vecs[j], j < len(trunc) && trunc[j]}
 		}
 		sent += len(batch)
 	}
@@ -331,7 +355,7 @@ func unitFiles(idx *Index) []string {
 
 // collectUnits reads each file through an os.Root, so a symlink cannot lead
 // outside the repository, skipping deny-listed names before any read.
-func collectUnits(repoRoot string, idx *Index, o VectorOptions) (units []unit, files, denied int, err error) {
+func collectUnits(repoRoot string, idx *Index, o *VectorOptions) (units []unit, files, denied int, err error) {
 	abs, err := filepath.Abs(repoRoot)
 	if err != nil {
 		return nil, 0, 0, err
@@ -408,29 +432,7 @@ type segment struct {
 // than maxBytes is split into pieces cut at UTF-8 boundaries. Whitespace-only
 // chunks are skipped.
 func chunkText(text string, maxLines, maxBytes, overlap int) []chunk {
-	var segs []segment
-	line := 1
-	for rest := text; rest != ""; line++ {
-		l := rest
-		if i := strings.IndexByte(rest, '\n'); i >= 0 {
-			l = rest[:i+1]
-		}
-		rest = rest[len(l):]
-		for len(l) > maxBytes {
-			cut := maxBytes
-			for cut > 0 && !utf8.RuneStart(l[cut]) {
-				cut--
-			}
-			if cut == 0 {
-				cut = maxBytes
-			}
-			segs = append(segs, segment{line, l[:cut]})
-			l = l[cut:]
-		}
-		if l != "" {
-			segs = append(segs, segment{line, l})
-		}
-	}
+	segs := splitSegments(text, maxBytes)
 	var out []chunk
 	for i := 0; i < len(segs); {
 		j, size := i, 0
@@ -456,24 +458,62 @@ func chunkText(text string, maxLines, maxBytes, overlap int) []chunk {
 	return out
 }
 
+// splitSegments splits text into lines (keeping the newline), cutting a line
+// longer than maxBytes into pieces at UTF-8 boundaries.
+func splitSegments(text string, maxBytes int) []segment {
+	var segs []segment
+	line := 1
+	for rest := text; rest != ""; line++ {
+		l := rest
+		if i := strings.IndexByte(rest, '\n'); i >= 0 {
+			l = rest[:i+1]
+		}
+		rest = rest[len(l):]
+		for len(l) > maxBytes {
+			cut := maxBytes
+			for cut > 0 && !utf8.RuneStart(l[cut]) {
+				cut--
+			}
+			if cut == 0 {
+				cut = maxBytes
+			}
+			segs = append(segs, segment{line, l[:cut]})
+			l = l[cut:]
+		}
+		if l != "" {
+			segs = append(segs, segment{line, l})
+		}
+	}
+	return segs
+}
+
 func (s *VectorStore) encode() ([]byte, error) {
 	hdr, err := json.Marshal(s.Header)
 	if err != nil {
 		return nil, err
 	}
+	hl := len(hdr)
+	if hl > maxHeaderBytes {
+		return nil, fmt.Errorf("graph: vector header too large (%d bytes)", hl)
+	}
 	var buf bytes.Buffer
 	buf.WriteString(vectorMagic)
-	_ = binary.Write(&buf, binary.LittleEndian, uint32(len(hdr)))
+	_ = binary.Write(&buf, binary.LittleEndian, uint32(hl))
 	buf.Write(hdr)
 	for i := range s.records {
 		r := &s.records[i]
-		if len(r.Path) == 0 || len(r.Path) > maxUnitPath || len(r.Vec) != s.Header.Dims {
+		pl := len(r.Path)
+		if r.Path == "" || pl > maxUnitPath || len(r.Vec) != s.Header.Dims {
 			return nil, fmt.Errorf("graph: bad vector record %q", r.Path)
 		}
-		_ = binary.Write(&buf, binary.LittleEndian, uint16(len(r.Path)))
+		start, end := r.Start, r.End
+		if start < 0 || start > math.MaxUint32 || end < 0 || end > math.MaxUint32 {
+			return nil, fmt.Errorf("graph: vector record %q lines %d-%d out of range", r.Path, start, end)
+		}
+		_ = binary.Write(&buf, binary.LittleEndian, uint16(pl))
 		buf.WriteString(r.Path)
-		_ = binary.Write(&buf, binary.LittleEndian, uint32(r.Start))
-		_ = binary.Write(&buf, binary.LittleEndian, uint32(r.End))
+		_ = binary.Write(&buf, binary.LittleEndian, uint32(start))
+		_ = binary.Write(&buf, binary.LittleEndian, uint32(end))
 		buf.Write(r.SHA[:])
 		if r.Truncated {
 			buf.WriteByte(1)
@@ -490,8 +530,8 @@ func (s *VectorStore) encode() ([]byte, error) {
 // end line, 32-byte text sha256, u8 truncated, dims LE float32. Any
 // mismatch, including a size that is not exactly what the header implies,
 // is ErrVectorsInvalid; nothing is read past the end.
-func LoadVectors(path string) (*VectorStore, error) {
-	data, err := os.ReadFile(path)
+func LoadVectors(file string) (*VectorStore, error) {
+	data, err := os.ReadFile(file)
 	if err != nil {
 		return nil, err
 	}
@@ -499,8 +539,8 @@ func LoadVectors(path string) (*VectorStore, error) {
 }
 
 // LoadVectorsOpts is LoadVectors that also enforces o.MaxChunks on count.
-func LoadVectorsOpts(path string, o VectorOptions) (*VectorStore, error) {
-	data, err := os.ReadFile(path)
+func LoadVectorsOpts(file string, o *VectorOptions) (*VectorStore, error) {
+	data, err := os.ReadFile(file)
 	if err != nil {
 		return nil, err
 	}
@@ -512,66 +552,21 @@ func invalid(format string, a ...any) error {
 }
 
 func decodeVectors(data []byte, maxChunks int) (*VectorStore, error) {
-	if len(data) < len(vectorMagic)+4 || string(data[:len(vectorMagic)]) != vectorMagic {
-		return nil, invalid("bad magic")
-	}
-	p := data[len(vectorMagic):]
-	hl := binary.LittleEndian.Uint32(p)
-	p = p[4:]
-	if hl == 0 || hl > maxHeaderBytes || uint64(hl) > uint64(len(p)) {
-		return nil, invalid("bad header length")
-	}
-	var h VectorHeader
-	dec := json.NewDecoder(bytes.NewReader(p[:hl]))
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(&h); err != nil || dec.More() {
-		return nil, invalid("bad header")
-	}
-	p = p[hl:]
-	if h.V != vectorVersion || h.Dims <= 0 || h.Dims > maxVectorDims || h.Count < 0 {
-		return nil, invalid("bad header fields")
-	}
-	if maxChunks > 0 && h.Count > maxChunks {
-		return nil, invalid("count %d > max_chunks %d", h.Count, maxChunks)
+	h, p, err := decodeHeader(data, maxChunks)
+	if err != nil {
+		return nil, err
 	}
 	vecBytes := h.Dims * 4
 	minRec := 2 + 1 + 8 + 32 + 1 + vecBytes
-	if uint64(h.Count)*uint64(minRec) > uint64(len(p)) {
+	// Dividing instead of multiplying keeps a huge count from overflowing;
+	// for non-negative ints, count*minRec > len(p) iff count > len(p)/minRec.
+	if h.Count > len(p)/minRec {
 		return nil, invalid("file too short for %d records", h.Count)
 	}
 	s := &VectorStore{Header: h, records: make([]vectorRecord, h.Count)}
 	for i := range s.records {
-		if len(p) < 2 {
-			return nil, invalid("truncated record %d", i)
-		}
-		pl := int(binary.LittleEndian.Uint16(p))
-		p = p[2:]
-		if pl == 0 || pl > maxUnitPath || len(p) < pl+8+32+1+vecBytes {
-			return nil, invalid("truncated record %d", i)
-		}
-		r := &s.records[i]
-		r.Path = string(p[:pl])
-		p = p[pl:]
-		r.Start = int(binary.LittleEndian.Uint32(p))
-		r.End = int(binary.LittleEndian.Uint32(p[4:]))
-		p = p[8:]
-		copy(r.SHA[:], p[:32])
-		p = p[32:]
-		switch p[0] {
-		case 0:
-		case 1:
-			r.Truncated = true
-		default:
-			return nil, invalid("bad truncated flag in record %d", i)
-		}
-		p = p[1:]
-		r.Vec = make([]float32, h.Dims)
-		for d := range r.Vec {
-			r.Vec[d] = math.Float32frombits(binary.LittleEndian.Uint32(p[d*4:]))
-		}
-		p = p[vecBytes:]
-		if r.Start < 1 || r.End < r.Start || !finite(r.Vec) || path.IsAbs(r.Path) {
-			return nil, invalid("bad record %d", i)
+		if p, err = decodeRecord(p, h.Dims, i, &s.records[i]); err != nil {
+			return nil, err
 		}
 	}
 	if len(p) != 0 {
@@ -580,8 +575,74 @@ func decodeVectors(data []byte, maxChunks int) (*VectorStore, error) {
 	return s, nil
 }
 
-func writeFileAtomic(path string, data []byte) error {
-	dir := filepath.Dir(path)
+// decodeHeader validates the magic and the JSON header and returns the
+// header plus the bytes that follow it.
+func decodeHeader(data []byte, maxChunks int) (VectorHeader, []byte, error) {
+	var h VectorHeader
+	if len(data) < len(vectorMagic)+4 || string(data[:len(vectorMagic)]) != vectorMagic {
+		return h, nil, invalid("bad magic")
+	}
+	p := data[len(vectorMagic):]
+	hl := binary.LittleEndian.Uint32(p)
+	p = p[4:]
+	if hl == 0 || hl > maxHeaderBytes || uint64(hl) > uint64(len(p)) {
+		return h, nil, invalid("bad header length")
+	}
+	dec := json.NewDecoder(bytes.NewReader(p[:hl]))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&h); err != nil || dec.More() {
+		return h, nil, invalid("bad header")
+	}
+	p = p[hl:]
+	if h.V != vectorVersion || h.Dims <= 0 || h.Dims > maxVectorDims || h.Count < 0 {
+		return h, nil, invalid("bad header fields")
+	}
+	if maxChunks > 0 && h.Count > maxChunks {
+		return h, nil, invalid("count %d > max_chunks %d", h.Count, maxChunks)
+	}
+	return h, p, nil
+}
+
+// decodeRecord decodes record i of dims floats from p into r and returns the
+// remaining bytes.
+func decodeRecord(p []byte, dims, i int, r *vectorRecord) ([]byte, error) {
+	vecBytes := dims * 4
+	if len(p) < 2 {
+		return nil, invalid("truncated record %d", i)
+	}
+	pl := int(binary.LittleEndian.Uint16(p))
+	p = p[2:]
+	if pl == 0 || pl > maxUnitPath || len(p) < pl+8+32+1+vecBytes {
+		return nil, invalid("truncated record %d", i)
+	}
+	r.Path = string(p[:pl])
+	p = p[pl:]
+	r.Start = int(binary.LittleEndian.Uint32(p))
+	r.End = int(binary.LittleEndian.Uint32(p[4:]))
+	p = p[8:]
+	copy(r.SHA[:], p[:32])
+	p = p[32:]
+	switch p[0] {
+	case 0:
+	case 1:
+		r.Truncated = true
+	default:
+		return nil, invalid("bad truncated flag in record %d", i)
+	}
+	p = p[1:]
+	r.Vec = make([]float32, dims)
+	for d := range r.Vec {
+		r.Vec[d] = math.Float32frombits(binary.LittleEndian.Uint32(p[d*4:]))
+	}
+	p = p[vecBytes:]
+	if r.Start < 1 || r.End < r.Start || !finite(r.Vec) || path.IsAbs(r.Path) {
+		return nil, invalid("bad record %d", i)
+	}
+	return p, nil
+}
+
+func writeFileAtomic(dst string, data []byte) error {
+	dir := filepath.Dir(dst)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
@@ -611,14 +672,14 @@ func writeFileAtomic(path string, data []byte) error {
 	if err := f.Close(); err != nil {
 		return err
 	}
-	if err := os.Rename(tmp, path); err != nil {
+	if err := os.Rename(tmp, dst); err != nil {
 		return err
 	}
 	ok = true
 	// Persist the rename itself; on failure the old store comes back after a
 	// crash, which is safe, so the error only matters on platforms that
 	// support syncing a directory.
-	if d, err := os.Open(filepath.Dir(path)); err == nil {
+	if d, err := os.Open(dir); err == nil {
 		_ = d.Sync()
 		_ = d.Close()
 	}
@@ -676,24 +737,8 @@ func semanticRanking(ctx context.Context, idx *Index, store *VectorStore, emb em
 	if len(vecs) != 1 || len(vecs[0]) != store.Header.Dims || !finite(vecs[0]) {
 		return nil, fmt.Errorf("%w: bad query vector", embed.ErrEmbedProtocol)
 	}
-	q := vecs[0]
-	qn := norm(q)
 	nodes := unitNodes(idx)
-	type best struct {
-		score      float64
-		start, end int
-	}
-	byPath := map[string]best{}
-	for i := range store.records {
-		r := &store.records[i]
-		if _, ok := nodes[r.Path]; !ok {
-			continue
-		}
-		sc := cosine(q, qn, r.Vec)
-		if b, ok := byPath[r.Path]; !ok || sc > b.score || (sc == b.score && r.Start < b.start) {
-			byPath[r.Path] = best{sc, r.Start, r.End}
-		}
-	}
+	byPath := bestChunks(store, nodes, vecs[0])
 	hits := make([]SearchHit, 0, len(byPath))
 	for p, b := range byPath {
 		sc := b.score
@@ -709,6 +754,29 @@ func semanticRanking(ctx context.Context, idx *Index, store *VectorStore, emb em
 		return hits[a].Node.ID < hits[b].Node.ID
 	})
 	return hits, nil
+}
+
+type bestChunk struct {
+	score      float64
+	start, end int
+}
+
+// bestChunks returns, per path with a node, the chunk most similar to q; ties
+// go to the earliest start line.
+func bestChunks(store *VectorStore, nodes map[string]Node, q []float32) map[string]bestChunk {
+	qn := norm(q)
+	byPath := map[string]bestChunk{}
+	for i := range store.records {
+		r := &store.records[i]
+		if _, ok := nodes[r.Path]; !ok {
+			continue
+		}
+		sc := cosine(q, qn, r.Vec)
+		if b, ok := byPath[r.Path]; !ok || sc > b.score || (sc == b.score && r.Start < b.start) {
+			byPath[r.Path] = bestChunk{sc, r.Start, r.End}
+		}
+	}
+	return byPath
 }
 
 func norm(v []float32) float64 {

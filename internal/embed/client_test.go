@@ -31,7 +31,7 @@ func childMsg(t *testing.T, err error) string {
 
 // modelFile writes a model file CheckModel accepts and returns its path
 // and sha256.
-func modelFile(t *testing.T) (string, string) {
+func modelFile(t *testing.T) (model, sha string) {
 	t.Helper()
 	p := filepath.Join(tempDir(t), "m.gguf")
 	if err := os.WriteFile(p, []byte("GGUF fake model"), 0o600); err != nil {
@@ -41,14 +41,14 @@ func modelFile(t *testing.T) (string, string) {
 	return p, hex.EncodeToString(sum[:])
 }
 
-func fakeOptions(t *testing.T, mode string, extra ...string) StartOptions {
+func fakeOptions(t *testing.T, mode string, extra ...string) *StartOptions {
 	t.Helper()
 	model, sha := modelFile(t)
 	exe, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)
 	}
-	return StartOptions{
+	return &StartOptions{
 		Exe:   exe,
 		Args:  append([]string{fakeArg, mode, sha}, extra...),
 		Model: model, SHA256: sha,
@@ -70,6 +70,19 @@ func startFake(t *testing.T, mode string, extra ...string) *Client {
 
 func TestClientHappyPath(t *testing.T) {
 	c := startFake(t, "ok")
+	t.Run("info", func(t *testing.T) { checkFakeInfo(t, c) })
+	t.Run("doc", func(t *testing.T) { checkDocEmbed(t, c) })
+	t.Run("query", func(t *testing.T) {
+		vecs, _, err := c.Embed(context.Background(), KindQuery, []string{"q"})
+		if err != nil || vecs[0][0] != float32(len("query: q")) {
+			t.Fatalf("query: %v %v", vecs, err)
+		}
+	})
+	t.Run("edge", func(t *testing.T) { checkEmbedEdges(t, c) })
+}
+
+func checkFakeInfo(t *testing.T, c *Client) {
+	t.Helper()
 	info := c.Info()
 	if info.Dims != fakeDims || info.NCtx != 512 || info.Engine != "fake" || len(info.ModelSHA256) != 64 {
 		t.Fatalf("info = %+v", info)
@@ -77,6 +90,10 @@ func TestClientHappyPath(t *testing.T) {
 	if got, want := c.Unsandboxed(), !sandbox.NetworkDenyAvailable(); got != want {
 		t.Fatalf("Unsandboxed = %v, want %v", got, want)
 	}
+}
+
+func checkDocEmbed(t *testing.T, c *Client) {
+	t.Helper()
 	vecs, tr, err := c.Embed(context.Background(), KindDoc, []string{"a", "LONG text"})
 	if err != nil {
 		t.Fatal(err)
@@ -88,10 +105,10 @@ func TestClientHappyPath(t *testing.T) {
 	if tr[0] || !tr[1] {
 		t.Fatalf("truncated = %v", tr)
 	}
-	vecs, _, err = c.Embed(context.Background(), KindQuery, []string{"q"})
-	if err != nil || vecs[0][0] != float32(len("query: q")) {
-		t.Fatalf("query: %v %v", vecs, err)
-	}
+}
+
+func checkEmbedEdges(t *testing.T, c *Client) {
+	t.Helper()
 	if v, tr, err := c.Embed(context.Background(), KindDoc, nil); err != nil || len(v) != 0 || len(tr) != 0 {
 		t.Fatalf("empty: %v %v %v", v, tr, err)
 	}
@@ -310,22 +327,7 @@ func TestServeLoop(t *testing.T) {
 	if err := serve(context.Background(), &in, &out, fakeInfo(sha), fakeEngine{}); err != nil {
 		t.Fatal(err)
 	}
-	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
-	if len(lines) != 7 {
-		t.Fatalf("%d lines: %q", len(lines), out.String())
-	}
-	var h handshake
-	if err := json.Unmarshal([]byte(lines[0]), &h); err != nil || h.V != 1 || h.Dims != fakeDims || h.ModelSHA256 != sha {
-		t.Fatalf("handshake %q", lines[0])
-	}
-	var reps []reply
-	for _, l := range lines[1:] {
-		var r reply
-		if err := json.Unmarshal([]byte(l), &r); err != nil {
-			t.Fatal(err)
-		}
-		reps = append(reps, r)
-	}
+	reps := parseServeOutput(t, out.String(), sha)
 	if reps[0].ID != 1 || len(reps[0].Vectors) != 2 || fmt.Sprint(reps[0].Truncated) != "[1]" {
 		t.Fatalf("reply 1 = %+v", reps[0])
 	}
@@ -340,6 +342,29 @@ func TestServeLoop(t *testing.T) {
 	if reps[5].ID != 6 || len(reps[5].Vectors) != 1 {
 		t.Fatalf("reply 6 = %+v", reps[5])
 	}
+}
+
+// parseServeOutput checks the handshake line and decodes the six replies
+// TestServeLoop expects after it.
+func parseServeOutput(t *testing.T, out, sha string) []reply {
+	t.Helper()
+	lines := strings.Split(strings.TrimSpace(out), "\n")
+	if len(lines) != 7 {
+		t.Fatalf("%d lines: %q", len(lines), out)
+	}
+	var h handshake
+	if err := json.Unmarshal([]byte(lines[0]), &h); err != nil || h.V != 1 || h.Dims != fakeDims || h.ModelSHA256 != sha {
+		t.Fatalf("handshake %q", lines[0])
+	}
+	var reps []reply
+	for _, l := range lines[1:] {
+		var r reply
+		if err := json.Unmarshal([]byte(l), &r); err != nil {
+			t.Fatal(err)
+		}
+		reps = append(reps, r)
+	}
+	return reps
 }
 
 func TestServeUnavailable(t *testing.T) {

@@ -66,7 +66,7 @@ var (
 
 // MatchGlob matches a repo-relative slash path against a glob where `**`
 // spans directories (also mid-path), `*` and `?` stay inside one segment.
-func MatchGlob(pattern, path string) bool {
+func MatchGlob(pattern, rel string) bool {
 	globMu.Lock()
 	re, ok := globCache[pattern]
 	if !ok {
@@ -74,7 +74,7 @@ func MatchGlob(pattern, path string) bool {
 		globCache[pattern] = re
 	}
 	globMu.Unlock()
-	return re.MatchString(path)
+	return re.MatchString(rel)
 }
 
 func globRegexp(p string) string {
@@ -103,10 +103,10 @@ func globRegexp(p string) string {
 	return b.String()
 }
 
-// MatchAny reports whether path matches any of the globs.
-func MatchAny(globs []string, path string) bool {
+// MatchAny reports whether rel matches any of the globs.
+func MatchAny(globs []string, rel string) bool {
 	for _, g := range globs {
-		if MatchGlob(g, path) {
+		if MatchGlob(g, rel) {
 			return true
 		}
 	}

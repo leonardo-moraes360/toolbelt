@@ -89,18 +89,7 @@ func TestHostileChildIsContained(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	homeFile := ""
-	if entries, err := os.ReadDir(home); err == nil {
-		for _, e := range entries {
-			if e.Type().IsRegular() {
-				if f, err := os.Open(filepath.Join(home, e.Name())); err == nil {
-					_ = f.Close()
-					homeFile = filepath.Join(home, e.Name())
-					break
-				}
-			}
-		}
-	}
+	homeFile := readableHomeFile(home)
 	o := fakeOptions(t, "hostile", repoFile, home, homeFile)
 	o.AllowUnsandboxed = false
 	c, err := Start(context.Background(), o)
@@ -123,15 +112,7 @@ func TestHostileChildIsContained(t *testing.T) {
 		t.Fatalf("the child cannot write its own tmp, the test proves nothing: %v", res)
 	}
 	delete(res, "write_tmp")
-	want := []string{"read_repo", "list_repo", "list_home", "write_outside_tmp", "write_repo", "write_workdir", "socket_inet", "socket_inet6", "socket_unix", "socketpair"}
-	want = append(want, "io_uring")
-	if homeFile != "" {
-		want = append(want, "read_home")
-	}
-	if _, abi, _ := sandbox.CheckLandlockSupport(); abi >= 6 {
-		want = append(want, "signal_parent")
-	}
-	for _, k := range want {
+	for _, k := range wantDenied(homeFile != "") {
 		if res[k] != "denied" {
 			t.Errorf("%s = %q, want denied", k, res[k])
 		}
@@ -139,4 +120,37 @@ func TestHostileChildIsContained(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(repo, "escape")); err == nil {
 		t.Error("the child wrote into the repository")
 	}
+}
+
+// readableHomeFile returns a regular file in home the test process can
+// open, or "" when there is none, so read_home is only checked if it can
+// be denied.
+func readableHomeFile(home string) string {
+	entries, err := os.ReadDir(home)
+	if err != nil {
+		return ""
+	}
+	for _, e := range entries {
+		if !e.Type().IsRegular() {
+			continue
+		}
+		if f, err := os.Open(filepath.Join(home, e.Name())); err == nil {
+			_ = f.Close()
+			return filepath.Join(home, e.Name())
+		}
+	}
+	return ""
+}
+
+// wantDenied lists the probes the sandbox must deny on this host.
+func wantDenied(haveHomeFile bool) []string {
+	want := []string{"read_repo", "list_repo", "list_home", "write_outside_tmp", "write_repo", "write_workdir", "socket_inet", "socket_inet6", "socket_unix", "socketpair"}
+	want = append(want, "io_uring")
+	if haveHomeFile {
+		want = append(want, "read_home")
+	}
+	if _, abi, _ := sandbox.CheckLandlockSupport(); abi >= 6 {
+		want = append(want, "signal_parent")
+	}
+	return want
 }

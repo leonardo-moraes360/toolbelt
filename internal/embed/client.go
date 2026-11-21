@@ -83,7 +83,7 @@ var _ Embedder = (*Client)(nil)
 // Start checks the model, spawns the sandboxed child and reads its
 // handshake. Without a sandbox that denies the network it refuses with
 // ErrEmbedUnsandboxed unless AllowUnsandboxed.
-func Start(ctx context.Context, o StartOptions) (*Client, error) {
+func Start(ctx context.Context, o *StartOptions) (*Client, error) {
 	if _, err := CheckModel(o.Model, o.SHA256); err != nil {
 		return nil, err
 	}
@@ -129,7 +129,7 @@ func Start(ctx context.Context, o StartOptions) (*Client, error) {
 	return c, nil
 }
 
-func (c *Client) spawn(exe string, args []string, o StartOptions) (err error) {
+func (c *Client) spawn(exe string, args []string, o *StartOptions) (err error) {
 	if c.dir, err = os.MkdirTemp("", "tb-embed-"); err != nil {
 		return fmt.Errorf("embed: temp dir: %w", err)
 	}
@@ -252,11 +252,16 @@ func (c *Client) startErr(err error) error {
 	if !errors.Is(err, ErrEmbedCrashed) || c.res == nil {
 		return err
 	}
-	msg := lastLine(c.res.Output)
-	for _, known := range []error{native.ErrUnavailable, ErrModelMismatch, ErrModelPath, native.ErrUnsupported, native.ErrModelLoad} {
-		code, _, _ := strings.Cut(known.Error(), ":")
-		if strings.Contains(msg, code) {
-			return fmt.Errorf("%w (child: %s)", known, msg)
+	// Scan from the end: the runtime may print after the child's own message
+	// (a coverage build adds a GOCOVERDIR warning at exit).
+	lines := strings.Split(strings.TrimRight(c.res.Output, "\n"), "\n")
+	for i := len(lines) - 1; i >= 0; i-- {
+		msg := strings.TrimSpace(lines[i])
+		for _, known := range []error{native.ErrUnavailable, ErrModelMismatch, ErrModelPath, native.ErrUnsupported, native.ErrModelLoad} {
+			code, _, _ := strings.Cut(known.Error(), ":")
+			if strings.Contains(msg, code) {
+				return fmt.Errorf("%w (child: %s)", known, msg)
+			}
 		}
 	}
 	return err
@@ -272,7 +277,7 @@ func (c *Client) Unsandboxed() bool { return c.unsandboxed }
 // Embed prefixes the texts, splits them into batches within the protocol
 // limits and checks every reply. Any protocol fault, crash or timeout kills
 // the child; later calls return the same error.
-func (c *Client) Embed(ctx context.Context, kind Kind, texts []string) ([][]float32, []bool, error) {
+func (c *Client) Embed(ctx context.Context, kind Kind, texts []string) (vecs [][]float32, truncated []bool, err error) {
 	var prefix string
 	switch kind {
 	case KindDoc:
@@ -294,8 +299,8 @@ func (c *Client) Embed(ctx context.Context, kind Kind, texts []string) ([][]floa
 	if err != nil {
 		return nil, nil, err
 	}
-	vecs := make([][]float32, 0, len(texts))
-	truncated := make([]bool, 0, len(texts))
+	vecs = make([][]float32, 0, len(texts))
+	truncated = make([]bool, 0, len(texts))
 	for _, b := range batches {
 		v, tr, err := c.embedBatch(ctx, kind, b)
 		if err != nil {
@@ -336,7 +341,7 @@ func splitBatches(prefix string, texts []string) ([][]string, error) {
 	return out, nil
 }
 
-func (c *Client) embedBatch(ctx context.Context, kind Kind, texts []string) ([][]float32, []bool, error) {
+func (c *Client) embedBatch(ctx context.Context, kind Kind, texts []string) (vecs [][]float32, truncated []bool, err error) {
 	c.mu.Lock()
 	c.nextID++
 	id := c.nextID
@@ -372,13 +377,13 @@ func (c *Client) embedBatch(ctx context.Context, kind Kind, texts []string) ([][
 	if len(rep.Vectors) != len(texts) {
 		return nil, nil, c.fail(fmt.Errorf("%w: %d vectors for %d texts", ErrEmbedProtocol, len(rep.Vectors), len(texts)))
 	}
-	vecs := make([][]float32, len(texts))
+	vecs = make([][]float32, len(texts))
 	for i, s := range rep.Vectors {
 		if vecs[i], err = decodeVector(s, c.info.Dims); err != nil {
 			return nil, nil, c.fail(fmt.Errorf("%w: text %d: %v", ErrEmbedProtocol, i, err))
 		}
 	}
-	truncated := make([]bool, len(texts))
+	truncated = make([]bool, len(texts))
 	for _, i := range rep.Truncated {
 		if i < 0 || i >= len(texts) || truncated[i] {
 			return nil, nil, c.fail(fmt.Errorf("%w: bad truncated index %d", ErrEmbedProtocol, i))

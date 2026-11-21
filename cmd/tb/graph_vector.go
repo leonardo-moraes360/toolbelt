@@ -65,7 +65,7 @@ func (vs *vectorSettings) startEmbedder(ctx context.Context, repoRoot string) (*
 	if vs.embed.Model == "" || vs.embed.ModelSHA256 == "" {
 		return nil, fmt.Errorf("%w: graph.embed.model and graph.embed.model_sha256 must be set in the user config", embed.ErrModelPath)
 	}
-	c, err := embed.Start(ctx, embed.StartOptions{
+	c, err := embed.Start(ctx, &embed.StartOptions{
 		Model:            vs.embed.Model,
 		SHA256:           vs.embed.ModelSHA256,
 		Threads:          vs.embed.Threads,
@@ -110,7 +110,8 @@ func buildGraphVectors(ctx context.Context, s *graph.Store, idx *graph.Index) (*
 		return nil, vs.warnings, err
 	}
 	defer c.Close()
-	st, err := graph.BuildVectors(ctx, root, idx, c, vs.options(tbDir))
+	opts := vs.options(tbDir)
+	st, err := graph.BuildVectors(ctx, root, idx, c, &opts)
 	if err != nil {
 		return nil, vs.warnings, err
 	}
@@ -139,7 +140,7 @@ func runVectorSearch(cmd *cobra.Command, s *graph.Store, mode, query string, lim
 		return fmt.Errorf("%w: set graph.vector.enabled: true in the user config", graph.ErrVectorsDisabled)
 	}
 	opts := vs.options(tbDir)
-	store, err := graph.LoadVectorsOpts(opts.Path, opts)
+	store, err := graph.LoadVectorsOpts(opts.Path, &opts)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return fmt.Errorf("%w: no %s; run tb graph index --vectors", graph.ErrVectorsStale, opts.Path)
@@ -152,7 +153,7 @@ func runVectorSearch(cmd *cobra.Command, s *graph.Store, mode, query string, lim
 		return err
 	}
 	defer c.Close()
-	if store.Stale(opts, c.Info()) {
+	if store.Stale(&opts, c.Info()) {
 		return fmt.Errorf("%w: model, prefixes or chunk shape changed; run tb graph index --vectors", graph.ErrVectorsStale)
 	}
 	idx := s.Index()
@@ -170,7 +171,8 @@ func runVectorSearch(cmd *cobra.Command, s *graph.Store, mode, query string, lim
 		vs.warnings = append(vs.warnings, "vectors were built against an older graph index; run tb graph index --vectors")
 	}
 	out := make([]vectorHit, len(hits))
-	for i, h := range hits {
+	for i := range hits {
+		h := &hits[i]
 		out[i] = vectorHit{Node: h.Node, Lines: h.Lines, ScoreSemantic: h.ScoreSemantic,
 			RankLexical: h.RankLexical, RankSemantic: h.RankSemantic, ScoreFused: h.ScoreFused}
 	}
@@ -186,7 +188,8 @@ func runVectorSearch(cmd *cobra.Command, s *graph.Store, mode, query string, lim
 		fmt.Println("(empty)")
 		return nil
 	}
-	for _, h := range out {
+	for i := range out {
+		h := &out[i]
 		path := h.Path
 		if h.Lines != "" {
 			path += ":" + h.Lines
