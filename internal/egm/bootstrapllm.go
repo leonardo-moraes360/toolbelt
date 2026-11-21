@@ -76,7 +76,27 @@ func bootstrapDraft(ctx context.Context, repo *Repo, set *Settings, rel, docType
 	if err != nil {
 		return "", nil, err
 	}
+	if extra := newSkips(got.Skipped, final.Skipped); len(extra) > 0 || final.MaxExcluded {
+		return "", nil, errorf(ExitError, "bootstrap_sources", "the generated body cites files that are not accepted sources: %s; nothing was written", skippedList(extra))
+	}
 	return text, final.Warnings, nil
+}
+
+// newSkips are the skipped citations of the assembled draft that the
+// skeleton did not have: the body cited a file R7 skips (missing, denied,
+// secret-like, over a limit), which counts as citing another file.
+func newSkips(before, after []SkippedSource) []SkippedSource {
+	seen := map[SkippedSource]bool{}
+	for _, s := range before {
+		seen[s] = true
+	}
+	var out []SkippedSource
+	for _, s := range after {
+		if !seen[s] {
+			out = append(out, s)
+		}
+	}
+	return out
 }
 
 // bootstrapBody validates and cleans one payload: UTF-8, at most maxBytes,
@@ -120,7 +140,12 @@ func stripMarkdownFence(payload []byte) []byte {
 // markers included), every level-1 heading, every "Status:" line before the
 // first "##" and any "## Sources" section.
 func cleanBootstrapBody(body string) string {
-	body = reHTMLComment.ReplaceAllString(strings.ReplaceAll(body, "\r\n", "\n"), "")
+	body = strings.ReplaceAll(body, "\r\n", "\n")
+	// Repeat until stable: removing an inner comment must not rebuild an
+	// outer one (<!<!-- x -->-- tb:egm-example -->).
+	for prev := ""; prev != body; {
+		prev, body = body, reHTMLComment.ReplaceAllString(body, "")
+	}
 	var out []string
 	inFence, inSources, seenH2 := false, false, false
 	for _, l := range strings.Split(body, "\n") {

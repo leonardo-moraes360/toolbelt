@@ -75,6 +75,9 @@ func TestCleanBootstrapBody(t *testing.T) {
 	if got := cleanBootstrapBody(in); got != want {
 		t.Fatalf("got:\n%s\nwant:\n%s", got, want)
 	}
+	if got := cleanBootstrapBody("## A\n<!<!-- x -->-- tb:egm-example -->\n"); got != "## A" {
+		t.Fatalf("nested comment: %q", got)
+	}
 	for _, tc := range []struct {
 		in, reason string
 	}{

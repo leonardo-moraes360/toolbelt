@@ -206,7 +206,7 @@ func (dr *driftRun) packet(ctx context.Context, dd *DriftDoc, text, red, docSHA 
 		docs:   map[string]*Doc{dd.Doc: ParseDoc(red, nil)},
 		llm:    &DriftLLM{Diff: DiffNone, Omitted: []SkippedSource{}},
 	}
-	old, err := dr.usableCommit(ctx, dd.Doc, text, docSHA)
+	old, err := dr.usableCommit(ctx, dd, text, docSHA)
 	if err != nil {
 		return nil, err
 	}
@@ -258,10 +258,11 @@ func (dr *driftRun) sourceBlocks(ctx context.Context, p string, old map[string][
 		return nil, "secret_like", nil
 	}
 	blocks := []Block{{Path: p, Text: redCur}}
-	if old == nil {
+	ob, ok := old[p]
+	if !ok {
 		return blocks, "", nil
 	}
-	redOld, secret := Redact(string(old[p]))
+	redOld, secret := Redact(string(ob))
 	if secret {
 		return nil, "secret_like", nil
 	}
@@ -275,35 +276,90 @@ func (dr *driftRun) sourceBlocks(ctx context.Context, p string, old map[string][
 	return blocks, "", nil
 }
 
-// usableCommit returns the receipt sources' blobs at the receipt's commit
+// usableCommit returns the changed sources' blobs at the receipt's commit
 // when that commit exists and matches every hash the receipt records (the
 // document's included); nil means no_diff. The commit is advisory: any
-// mismatch or unreadable object only drops the diff.
-func (dr *driftRun) usableCommit(ctx context.Context, rel, text, docSHA string) (map[string][]byte, error) {
-	rc, _, err := readReceiptAt(ctx, dr.repo, dr.oid, rel, docLines(text))
+// mismatch, oversized or unreadable object only drops the diff. An
+// unchanged source matches when its blob object at the commit is the one
+// at --at (same object, same bytes); only changed sources are read, each
+// within max_source_bytes.
+func (dr *driftRun) usableCommit(ctx context.Context, dd *DriftDoc, text, docSHA string) (map[string][]byte, error) {
+	rc, _, err := readReceiptAt(ctx, dr.repo, dr.oid, dd.Doc, docLines(text))
 	if err != nil {
 		return nil, err
 	}
-	if rc == nil || rc.Commit == "" || rc.DocSHA256 != docSHA {
+	commit := dr.receiptCommit(ctx, rc, dd.Doc, docSHA)
+	if commit == "" {
 		return nil, nil
+	}
+	return dr.commitSources(ctx, rc, commit, dd.Changed), nil
+}
+
+// receiptCommit resolves the receipt's commit when it holds the receipted
+// document bytes; "" otherwise.
+func (dr *driftRun) receiptCommit(ctx context.Context, rc *Receipt, rel, docSHA string) string {
+	if rc == nil || rc.Commit == "" || rc.DocSHA256 != docSHA {
+		return ""
 	}
 	commit, err := dr.repo.RevParse(ctx, rc.Commit+"^{commit}")
 	if err != nil {
-		return nil, nil
+		return ""
 	}
 	b, _, err := readBlobFile(ctx, dr.repo, commit, rel, dr.set.MaxPacketBytes)
 	if err != nil || b == nil || sha256Hex(b) != rc.DocSHA256 {
-		return nil, nil
+		return ""
+	}
+	return commit
+}
+
+// commitSources checks every receipt source at commit and returns the
+// changed ones' blobs; nil when any does not match.
+func (dr *driftRun) commitSources(ctx context.Context, rc *Receipt, commit string, changed []string) map[string][]byte {
+	paths := make([]string, 0, len(rc.Sources))
+	for p := range rc.Sources {
+		paths = append(paths, p)
+	}
+	if len(paths) == 0 {
+		return map[string][]byte{}
+	}
+	then, err1 := dr.objects(ctx, commit, paths)
+	now, err2 := dr.objects(ctx, dr.oid, paths)
+	if err1 != nil || err2 != nil {
+		return nil
 	}
 	blobs := map[string][]byte{}
 	for p, want := range rc.Sources {
-		b, _, err := readBlobFile(ctx, dr.repo, commit, p, maxDriftBlobBytes)
-		if err != nil || b == nil || sha256Hex(b) != want {
-			return nil, nil
+		switch {
+		case then[p] == "":
+			return nil
+		case !containsStr(changed, p):
+			if then[p] != now[p] {
+				return nil
+			}
+			continue
+		}
+		b, err := dr.repo.CatFileBlob(ctx, commit, p, dr.set.MaxSourceBytes)
+		if err != nil || sha256Hex(b) != want {
+			return nil
 		}
 		blobs[p] = b
 	}
-	return blobs, nil
+	return blobs
+}
+
+// objects maps each regular file among paths to its blob object id at rev.
+func (dr *driftRun) objects(ctx context.Context, rev string, paths []string) (map[string]string, error) {
+	entries, err := dr.repo.lsTreeOID(ctx, rev, paths...)
+	if err != nil {
+		return nil, err
+	}
+	out := map[string]string{}
+	for _, e := range entries {
+		if regularMode(e.Mode) && containsStr(paths, e.Path) {
+			out[e.Path] = e.Object
+		}
+	}
+	return out, nil
 }
 
 // unifiedDiff diffs two redacted texts in a private temp dir with tb's

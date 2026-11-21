@@ -177,6 +177,8 @@ Nada é escrito quando aborta.
 - **Injeção numa fonte do drift.** Um match do `ScanInjectionSource` numa fonte atual ou num diff vira um finding `injection-scan` do documento; a fonte continua no pacote, como numa revisão da Fase A.
 - **Injeção numa fonte do bootstrap.** Um arquivo de `--from` que dá match no `ScanInjectionSource` recusa a execução com `bootstrap_injection` antes de rodar qualquer agente: o rascunho seria escrito a partir de um texto que fala com o modelo.
 - **Falhas do bootstrap.** Um goldfish que não completa depois do retry (timeout, uso de tools, processo escapado, orçamento) recusa com `bootstrap_not_run` e o motivo; um corpo vazio, grande demais ou fora de UTF-8 duas vezes recusa com `bootstrap_invalid`. Uma cerca em volta do corpo inteiro (```` ``` ````, ```` ```markdown ````, ```` ```md ````) é removida; um título setext de nível 1 (uma linha de `=` sob um texto) conta como título de nível 1.
+- **Citações que o R7 pula.** Um corpo que cita um arquivo que o R7 pula (ausente, negado, com cara de segredo, acima de um limite) também recusa com `bootstrap_sources`: ele cita outro arquivo, e a primeira revisão começaria rebaixada. Os comentários HTML são removidos até não sobrar nenhum, então um comentário aninhado não consegue remontar um marcador do tb.
+- **Leituras do diff.** Só as fontes mudadas são lidas no `commit` do recibo, cada uma dentro de `max_source_bytes` (uma maior dá `no_diff`); uma fonte que não mudou confere quando o objeto blob dela no commit é o mesmo de `--at`.
 - **Pacotes.** O pacote de cada goldfish fica num diretório temporário privado, removido depois da execução; nada vai para o diretório de estado do documento.
 
 ## Fora da Fase B

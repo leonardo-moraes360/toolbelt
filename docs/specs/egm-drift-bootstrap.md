@@ -177,6 +177,8 @@ Nothing is written on an abort.
 - **Injection in a drift source.** A match of `ScanInjectionSource` in a current source or in a diff is reported as an `injection-scan` finding of the document; the source stays in the packet, as in a Phase A review.
 - **Injection in a bootstrap source.** A `--from` file that matches `ScanInjectionSource` refuses the run with `bootstrap_injection` before any agent runs: the draft would be written from text that addresses the model.
 - **Bootstrap failures.** A goldfish that does not complete after its retry (timeout, tools used, escaped process, budget) refuses with `bootstrap_not_run` and the reason; an empty, oversized or non-UTF-8 body twice refuses with `bootstrap_invalid`. One fence around the whole body (```` ``` ````, ```` ```markdown ````, ```` ```md ````) is removed; a setext level-1 heading (a line of `=` under text) counts as a level-1 heading.
+- **Citations R7 skips.** A body that cites a file R7 skips (missing, denied, secret-like, over a limit) also refuses with `bootstrap_sources`: it cites another file, and its first review would start downgraded. HTML comments are removed until none is left, so a nested one cannot rebuild a tb marker.
+- **Diff reads.** Only the changed sources are read at the receipt's `commit`, each within `max_source_bytes` (a bigger one gives `no_diff`); an unchanged source matches when its blob object at the commit is the one at `--at`.
 - **Packets.** Each goldfish's packet lives in a private temp dir removed after the run; nothing goes into the document's state directory.
 
 ## Out of Phase B
