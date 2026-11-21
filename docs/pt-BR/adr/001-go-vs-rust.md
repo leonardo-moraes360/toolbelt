@@ -6,6 +6,8 @@
 
 accepted
 
+O requisito de "binário estático único" é emendado pela [ADR-018](018-cgo-componentes-nativos.md) (proposta): o release é compilado com cgo para o llama.cpp vendorizado, então os binários Linux precisam de glibc ≥ 2.28.
+
 ## Contexto
 
 O toolbelt precisa de uma linguagem para seu binário principal que atenda aos requisitos:

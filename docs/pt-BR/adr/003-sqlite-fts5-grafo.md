@@ -6,7 +6,7 @@
 
 accepted
 
-A seção "Sincronização Vault → SQLite" é substituída em parte na Fase A pela [ADR-016](016-vault-fase-a.md): o vault não tem índice derivado.
+A seção "Sincronização Vault → SQLite" é substituída em parte na Fase A pela [ADR-016](016-vault-fase-a.md): o vault não tem índice derivado. A seção "Índice vetorial opcional" é substituída pela [spec do índice vetorial](../specs/vector-index.md) e pela [ADR-018](018-cgo-componentes-nativos.md): os vetores ficam ao lado do `graph.json`, não no sqlite-vec.
 
 ## Contexto
 

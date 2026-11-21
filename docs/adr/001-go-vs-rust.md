@@ -6,6 +6,8 @@
 
 accepted
 
+The "single static binary" requirement is amended by [ADR-018](018-cgo-componentes-nativos.md) (proposed): the release is built with cgo for vendored llama.cpp, so Linux binaries need glibc ≥ 2.28.
+
 ## Context
 
 toolbelt needs a language for its main binary that meets these requirements:

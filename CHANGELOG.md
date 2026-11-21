@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Vector index draft spec (`docs/specs/vector-index.md`) and ADR-018 (proposed): the release moves to cgo for vendored llama.cpp (CPU-only at an x86-64-v2/armv8.0 floor, zig cross builds with named fallbacks, glibc ≥ 2.28, a six-target native smoke matrix) under a `native` C/C++ quality gate (shim lint and static analysis, per-platform hardening checked on the artifacts, sanitizer builds, libFuzzer, an allowlisted vendor subset with manifest and advisory checks); embeddings run in a sandboxed, network-less `tb __graph-embed` child (new seccomp socket block) with a user-pinned GGUF model; `tb graph search --mode lexical|semantic|hybrid` (RRF) stays opt-in, with a recall@10 evaluation gating its experimental status
+
 ## [0.0.10] - 2026-11-21
 
 ### Added

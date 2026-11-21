@@ -6,7 +6,7 @@
 
 accepted
 
-The "Vault → SQLite Sync" section is partially superseded for Phase A by [ADR-016](016-vault-fase-a.md): the vault has no derived index.
+The "Vault → SQLite Sync" section is partially superseded for Phase A by [ADR-016](016-vault-fase-a.md): the vault has no derived index. The "Optional Vector Index" section is replaced by the [vector index spec](../specs/vector-index.md) and [ADR-018](018-cgo-componentes-nativos.md): vectors live next to `graph.json`, not in sqlite-vec.
 
 ## Context
 

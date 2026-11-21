@@ -245,7 +245,7 @@ tb bus recv --channel feature-x --as grok-1 --wait 20s
 - [x] `tb ticket` / `tb board` — gerenciamento de tickets de trabalho
 - [x] `tb router` / `tb watchdog` — controle de delegação e saúde
 - [x] `tb merge` — agregação de resultados de workers (`fail` | `last_wins`)
-- [ ] Índice vetorial opcional
+- [ ] Índice vetorial opcional ([spec](specs/vector-index.md), [ADR-018](adr/018-cgo-componentes-nativos.md): release com cgo e llama.cpp vendorizado sob um gate de qualidade de C/C++; rascunho)
 - [x] Graphify: reimplementação própria ([ADR-014](adr/014-graphify-reimplementacao.md)) — `tb graph explain`/`path`
 - [x] `tb graph search` com ranking BM25 (título/path/pacote, quebra de camelCase/`snake_case`, multi-termo)
 - [x] Vault Markdown compatível com Obsidian, Fase A (`tb vault`, [ADR-016](adr/016-vault-fase-a.md), [spec](specs/vault.md)): notas com frontmatter e wikilinks, `new`/`list`/`show`/`search`/`links`/`backlinks`/`check`, tools MCP, `tb stack vault`, nós no grafo; Q4 (fixture dourada conferida no Obsidian real) aberta
