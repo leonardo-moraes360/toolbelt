@@ -48,6 +48,10 @@ type childProc struct {
 	pid, pgid int
 	zombie    bool
 	start     uint64 // starttime (field 22 of /proc/<pid>/stat, in ticks since boot)
+	// task is the /proc entry to read the environment and liveness from: pid
+	// itself, or a live thread when the leader thread already exited (see
+	// listChildren).
+	task int
 }
 
 // listChildren scans /proc for direct children of this process.
@@ -63,16 +67,7 @@ func listChildren() []childProc {
 		if err != nil || pid == self {
 			continue
 		}
-		data, err := os.ReadFile("/proc/" + e.Name() + "/stat") //nolint:gosec // procfs
-		if err != nil {
-			continue
-		}
-		s := string(data)
-		i := strings.LastIndexByte(s, ')')
-		if i < 0 {
-			continue
-		}
-		f := strings.Fields(s[i+1:]) // state ppid pgrp session ...
+		f := readStat(pid) // state ppid pgrp session ...
 		if len(f) < 3 {
 			continue
 		}
@@ -81,7 +76,19 @@ func listChildren() []childProc {
 		if err1 != nil || err2 != nil || ppid != self {
 			continue
 		}
-		cp := childProc{pid: pid, pgid: pgrp, zombie: f[0] == "Z"}
+		cp := childProc{pid: pid, pgid: pgrp, task: pid}
+		if f[0] == "Z" {
+			// The leader of a multithreaded process that called exit(2) (not
+			// exit_group) shows Z while its other threads keep running: it is
+			// live, wait4 cannot reap it, and its own environ is gone (no mm).
+			// Read through a live thread instead; only a group with no live
+			// thread is a real zombie.
+			if t := liveThread(pid); t != 0 {
+				cp.task = t
+			} else {
+				cp.zombie = true
+			}
+		}
 		if len(f) > 19 {
 			cp.start, _ = strconv.ParseUint(f[19], 10, 64)
 		}
@@ -90,18 +97,44 @@ func listChildren() []childProc {
 	return out
 }
 
-// readStartTime returns pid's starttime (ticks since boot), 0 if unreadable.
-func readStartTime(pid int) uint64 {
-	data, err := os.ReadFile("/proc/" + strconv.Itoa(pid) + "/stat") //nolint:gosec // procfs
+// liveThread returns a live thread of pid other than the leader, 0 if none.
+func liveThread(pid int) int {
+	dir := "/proc/" + strconv.Itoa(pid) + "/task"
+	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return 0
+	}
+	for _, e := range entries {
+		tid, err := strconv.Atoi(e.Name())
+		if err != nil || tid == pid {
+			continue
+		}
+		data, err := os.ReadFile(dir + "/" + e.Name() + "/stat") //nolint:gosec // procfs
+		if err == nil && statLive(string(data)) {
+			return tid
+		}
+	}
+	return 0
+}
+
+// readStat returns the fields of /proc/<pid>/stat after the comm (state ppid
+// pgrp ...), nil if unreadable.
+func readStat(pid int) []string {
+	data, err := os.ReadFile("/proc/" + strconv.Itoa(pid) + "/stat") //nolint:gosec // procfs
+	if err != nil {
+		return nil
 	}
 	s := string(data)
 	i := strings.LastIndexByte(s, ')')
 	if i < 0 {
-		return 0
+		return nil
 	}
-	f := strings.Fields(s[i+1:])
+	return strings.Fields(s[i+1:])
+}
+
+// readStartTime returns pid's starttime (ticks since boot), 0 if unreadable.
+func readStartTime(pid int) uint64 {
+	f := readStat(pid)
 	if len(f) <= 19 {
 		return 0
 	}
@@ -184,12 +217,13 @@ func statLive(s string) bool {
 // router's) and reaps only that pid with wait4. Called with the Registry mutex
 // held, so the pid is never a child tracked by os/exec.
 func killAndReap(c childProc) {
-	if !c.zombie {
-		if c.pgid == c.pid && c.pgid != syscall.Getpgrp() {
-			_ = syscall.Kill(-c.pgid, syscall.SIGKILL)
-		}
-		_ = syscall.Kill(c.pid, syscall.SIGKILL)
+	if !c.zombie && c.pgid == c.pid && c.pgid != syscall.Getpgrp() {
+		_ = syscall.Kill(-c.pgid, syscall.SIGKILL)
 	}
+	// Always signal the pid itself: a no-op for a real zombie, and it kills the
+	// whole thread group of a process whose leader thread exited but whose
+	// other threads still run (wait4 could never reap it otherwise).
+	_ = syscall.Kill(c.pid, syscall.SIGKILL)
 	deadline := time.Now().Add(2 * time.Second)
 	for {
 		var ws syscall.WaitStatus
