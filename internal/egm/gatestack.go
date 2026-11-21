@@ -3,7 +3,6 @@ package egm
 import (
 	"context"
 	"fmt"
-	"os"
 	"path"
 	"path/filepath"
 	"sort"
@@ -78,12 +77,16 @@ func Gate(ctx context.Context, o *GateOptions) (*GateResult, error) {
 	if err != nil {
 		return nil, err
 	}
-	repo, head, docs := sel.repo, sel.head, sel.docs
+	repo, head := sel.repo, sel.head
 	res := &GateResult{OK: true, Trust: GateModeLocal, Head: head, Docs: []GateDoc{}, Warnings: []GateWarning{}}
 	if ci {
 		res.Trust = GateModeCI
 	}
-	res.Warnings = append(res.Warnings, sourcesChanged(repo, docs, sel.changed)...)
+	dg := &driftGate{repo: repo, mb: sel.mb, head: head, set: sel.set, changed: sel.changed, diff: sel.diff}
+	if err := dg.applyDrift(ctx, sel, ci, res); err != nil {
+		return nil, err
+	}
+	docs := sel.docs
 	for _, p := range sel.removed {
 		// A gated path deleted or renamed out of the gate (T-R2).
 		res.Warnings = append(res.Warnings, GateWarning{Code: "gated_doc_removed", Path: p})
@@ -112,6 +115,8 @@ func Gate(ctx context.Context, o *GateOptions) (*GateResult, error) {
 type gateSelection struct {
 	repo    *Repo
 	head    string
+	mb      string
+	diff    []NameStatus
 	set     *Settings
 	docs    []string
 	changed map[string]bool
@@ -148,7 +153,7 @@ func gateSelect(ctx context.Context, o *GateOptions, ci bool) (*gateSelection, e
 	if err != nil {
 		return nil, err
 	}
-	sel := &gateSelection{repo: repo, head: head, set: set}
+	sel := &gateSelection{repo: repo, head: head, mb: mb, diff: diff, set: set}
 	sel.docs, sel.changed, sel.removed = selectGated(diff, set.GateDocGlobs)
 	if sel.removed, err = movedInGate(ctx, repo, mb, head, sel.removed, sel.docs); err != nil {
 		return nil, err
@@ -254,41 +259,6 @@ func gateDoc(ctx context.Context, root, doc, head string, o *GateOptions) GateDo
 		}
 	}
 	return gd
-}
-
-// sourcesChanged warns about documents with state, not selected, whose
-// recorded sources changed in the range (drift detection is Phase B).
-func sourcesChanged(repo *Repo, selected []string, changed map[string]bool) []GateWarning {
-	root, err := StateRoot()
-	if err != nil {
-		return nil
-	}
-	dirs, err := os.ReadDir(filepath.Join(root, "egm", repo.ID))
-	if err != nil {
-		return nil
-	}
-	var out []GateWarning
-	for _, d := range dirs {
-		st, err := loadState(filepath.Join(root, "egm", repo.ID, d.Name()))
-		if err != nil || st == nil || containsStr(selected, st.Doc) {
-			continue
-		}
-		last := st.lastRound()
-		if last == nil {
-			continue
-		}
-		paths := make([]string, 0, len(last.Sources))
-		for p := range last.Sources {
-			paths = append(paths, p)
-		}
-		sort.Strings(paths)
-		for _, p := range paths {
-			if changed[p] {
-				out = append(out, GateWarning{Code: "sources_changed", Doc: st.Doc, Path: p})
-			}
-		}
-	}
-	return out
 }
 
 // emptySelection is R33's empty case: warn (or fail with strict), and fail

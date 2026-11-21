@@ -32,7 +32,7 @@ A Fase A deixa três lacunas:
 - Defesas locais contra um processo do mesmo usuário (ver Mecanismos descartados).
 - Rodar os revisores sob outro usuário ou numa VM.
 - Unificar o endurecimento de git de router, merge e egm (`internal/gitsafe`).
-- Detecção de drift em documentos que não foram tocados (Fase B).
+- Detecção de drift em documentos que não foram tocados (Fase B, [egm-drift-bootstrap.md](egm-drift-bootstrap.md); B1 implementado).
 - Provedores além do GitHub Actions. Os requisitos não dependem de provedor, mas só sai um workflow de exemplo.
 
 ## Jornadas de usuário (CUJs)
@@ -128,7 +128,7 @@ A Fase A deixa três lacunas:
 - **A rodada nova é uma amostra só.** Um `major` que o loop local não achou e que uma rodada do CI também não acha entra no merge. A garantia é "pelo menos uma rodada independente", não convergência no CI.
 - **Processo versus resultado.** Um elephant que pula o loop local, escreve um recibo sem alegações e tem uma rodada nova limpa passa. O T-G1 vale. O loop local é só um jeito de deixar essa rodada limpa.
 - **A política do repositório está fora do tb.** Sem as configurações do T-R7, ou num repositório em que o único dono de código é também o admin cujo token `gh` o elephant pode usar, o elephant consegue mudar o workflow ou fazer o merge direto. O tb não detecta a falta de CODEOWNERS nem de proteção de branch.
-- **Drift só nas fontes não é verificado.** Uma mudança nas fontes de um documento que não toca o próprio documento não seleciona nada. Detectar isso é da Fase B.
+- **Drift só nas fontes não é verificado.** Uma mudança nas fontes de um documento que não toca o próprio documento não seleciona nada. Detectar isso é da Fase B: `ci_source_drift` e a seleção por edição de recibo ([egm-drift-bootstrap.md](egm-drift-bootstrap.md), B1).
 - **O vendor é confiável.** A credencial do CI e o modelo do vendor ficam fora do modelo de ameaças.
 
 ## Questões em aberto

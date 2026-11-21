@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `tb egm drift-report` (Phase B1, `docs/specs/egm-drift-bootstrap.md`): compares each gated document with the sources its baseline certified (the committed receipt for these document bytes, else a converged local round) by the hashes of the baseline's paths, with statuses `fresh`, `no_baseline`, `sources_differ`, `drifted`, `source_missing` and `unreadable`, `--at` from blobs and `--json` (`egm-source-drift/0.1`). In `--egm-mode ci`, a receipt edit selects its document, deleting the receipt of a still-gated document fails (`receipt_removed`), and `ci_source_drift` flags drift the range introduced against the merge-base receipt (`egm.drift.ci: warn|fail`, policy key). The local gate's `sources_changed` warning now uses receipts too
+
 ### Fixed
 - Escape sweep (`internal/sandbox` Registry): a process killed together with an escaped group is reparented to the subreaper while still exiting, with its environment already unreadable; it was reported as an unattributable escape, so `tb egm` could flag a round as unattributed (flaky `TestRunnerEscapeAttributed`). An exiting process (`PF_EXITING`) whose environment can no longer be read is now killed and reaped without being reported, like a zombie
 

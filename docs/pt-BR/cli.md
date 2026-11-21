@@ -771,17 +771,22 @@ commit, então um documento convergido que mudou depois da revisão fica `STALE`
 `forced_blocker`, é `ok: false`. Seleção vazia é `ok: true, warn: true` com
 `no_gated_docs` (`ok: false` com `--strict`), e `ok: false` com
 `uncommitted_gated_docs` quando a worktree tem documentos sob gate diferentes do head.
-Um documento com estado cujas fontes mudaram no intervalo, mas que não foi tocado, só
-recebe o aviso `sources_changed`. A `egm` nunca roda em paralelo e é sempre movida para
+Um documento sob gate que não foi tocado, mas cita um caminho que mudou no intervalo,
+recebe o aviso `sources_changed` para cada caminho do drift das fontes dele (contra o recibo,
+ou uma rodada local convergida; veja `tb egm drift-report`). A `egm` nunca roda em paralelo e é sempre movida para
 o fim; `Result.warn` é o OR dos `warn` das etapas e nunca muda o exit code. No
 `--egm-mode local` padrão o gate é local (`trust: "local"`): num checkout de CI não há
 estado, então o resultado é `NO_STATE`. Ele também avisa `receipt_missing`,
 `receipt_invalid` ou `receipt_stale` (nunca falha), para o autor ver o que o CI vai
-recusar, e `gated_doc_removed` para um caminho sob gate apagado ou renomeado para fora do
-gate.
+recusar, `gated_doc_removed` para um caminho sob gate apagado ou renomeado para fora do
+gate, e `receipt_removed` para o recibo apagado de um documento que continua sob gate.
 
 **`--egm-mode ci`** ([egm trust](specs/egm-trust.md); guia de configuração em [egm-ci.md](egm-ci.md)) é o gate do CI (`trust: "ci"`).
-Exige `-c` (a config de usuário do egm do próprio CI) e implica `--strict`. Para cada
+Exige `-c` (a config de usuário do egm do próprio CI) e implica `--strict`.
+Um intervalo que edita um recibo seleciona o documento dele; apagar o recibo de um documento
+que continua sob gate reprova (`receipt_removed`). O `ci_source_drift` aponta um documento
+intocado que estava fresh contra o recibo do **merge-base** e teve drift neste intervalo; é
+aviso, a menos que `egm.drift.ci: fail` (a config do repositório só pode endurecê-lo). Para cada
 documento selecionado verifica, em ordem: o recibo commitado em head (`tb egm receipt`)
 existe e é válido (`no_receipt`, `receipt_invalid`); os hashes do documento e das fontes
 batem com os do commit (`receipt_stale`); depois roda **uma rodada nova** com
@@ -1077,6 +1082,7 @@ tb egm resolve docs/specs/x.md --contest F-5 --evidence internal/x.go:40   # o �
 tb egm status docs/specs/x.md [--strict]  # 0 PASS, 1 FAIL, 3 IN_PROGRESS/STALE/NO_STATE
 tb egm status docs/specs/x.md --at HEAD   # modo gate: documento, fontes e config do commit
 tb egm receipt docs/specs/x.md            # grava .toolbelt/egm/receipts/<slug>.json (exige PASS ou PASS_PARTIAL)
+tb egm drift-report [doc...] [--at REV]   # drift das fontes contra o recibo: 0 fresh/no_baseline, 1 drift, 2 erro
 tb egm review docs/specs/x.md --restart   # novo ciclo depois do teto (exige edição)
 ```
 

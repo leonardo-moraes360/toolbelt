@@ -85,6 +85,9 @@ type repoEgm struct {
 	CI                 *struct {
 		MaxDocs *int `yaml:"max_docs"`
 	} `yaml:"ci"`
+	Drift *struct {
+		CI *string `yaml:"ci"`
+	} `yaml:"drift"`
 }
 
 // ApplyRepoConfig overlays the repository's egm: section on the user config
@@ -206,6 +209,7 @@ func (s *Settings) applyPolicy(r *repoEgm) {
 			s.untrusted("egm.require_full_coverage can only become true; ignored")
 		}
 	}
+	s.applyDriftPolicy(r)
 	if r.Attest != nil && r.Attest.MinQuotes != nil {
 		if *r.Attest.MinQuotes < s.Attest.MinQuotes {
 			s.untrusted("egm.attest.min_quotes can only go up; ignored")
@@ -311,4 +315,22 @@ func validDocGlob(g string) bool {
 		}
 	}
 	return true
+}
+
+// applyDriftPolicy: egm.drift.ci is a policy key; the repository can only
+// raise it to fail (docs/specs/egm-drift-bootstrap.md, B1).
+func (s *Settings) applyDriftPolicy(r *repoEgm) {
+	if r.Drift == nil || r.Drift.CI == nil {
+		return
+	}
+	switch *r.Drift.CI {
+	case DriftFail:
+		s.Drift.CI = DriftFail
+	case DriftWarn:
+		if s.Drift.CI == DriftFail {
+			s.untrusted("egm.drift.ci can only harden to fail; ignored")
+		}
+	default:
+		s.untrusted(fmt.Sprintf("egm.drift.ci %q invalid (warn or fail); ignored", *r.Drift.CI))
+	}
 }

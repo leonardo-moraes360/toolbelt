@@ -32,7 +32,7 @@ Phase A leaves three gaps:
 - Local defenses against a process of the same user (see Dropped Mechanisms).
 - Running reviewers under another user or in a VM.
 - Unifying git hardening across router, merge and egm (`internal/gitsafe`).
-- Drift detection for documents that were not touched (Phase B).
+- Drift detection for documents that were not touched (Phase B, [egm-drift-bootstrap.md](egm-drift-bootstrap.md); B1 implemented).
 - Hosting providers other than GitHub Actions. The requirements are provider-neutral, but only one example workflow ships.
 
 ## Critical User Journeys (CUJs)
@@ -128,7 +128,7 @@ Phase A leaves three gaps:
 - **The fresh round is a single sample.** A `major` that the local loop missed and a single CI round also misses gets merged. The guarantee is "at least one independent round", not convergence in CI.
 - **Process versus outcome.** An elephant that skips the local loop, writes a receipt without claims and gets a clean fresh round passes. T-G1 holds. The local loop is just a way to make that round clean.
 - **Repository policy is outside tb.** Without the T-R7 settings, or in a repository where the only code owner is also the admin whose `gh` token the elephant can use, the elephant can change the workflow or merge directly. tb cannot detect missing CODEOWNERS or branch protection.
-- **Source-only drift is not checked.** A change to a document's sources that does not touch the document itself selects nothing. Detecting it is Phase B.
+- **Source-only drift is not checked.** A change to a document's sources that does not touch the document itself selects nothing. Detecting it is Phase B: `ci_source_drift` and receipt-edit selection ([egm-drift-bootstrap.md](egm-drift-bootstrap.md), B1).
 - **The vendor is trusted.** CI's credential and the vendor's model are outside the threat model.
 
 ## Open Questions
