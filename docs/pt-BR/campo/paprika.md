@@ -156,3 +156,73 @@ Os 9 avisos são definições de schema e registro de rotas/ferramentas (listas 
 Resolvido na v10, em relação aos adendos anteriores: `PLAYWRIGHT_BROWSERS_PATH`/`PUPPETEER_*` no allowlist padrão (P1 do filtro de env), `filtered_env` no resultado não-PASS, fallback de `--base` em repo de 1 commit, grafo resolve pacotes de workspace pnpm, `tb mem init` não semeia mais a invariante de `thresholds.yaml` (a do Paprika continua porque foi semeada antes; não removi, é `immutable`).
 
 Proposta principal: `tb init --migrate` (ou `tb config migrate`) que faça merge das chaves padrão ausentes, com `--dry-run` mostrando o diff, e um aviso no `tb init` quando o `config.yaml` existente estiver atrás da versão do binário (ex.: campo `version:` no config).
+
+## Adendo 2026-11-21: bus local multi-vendor (máquina do usuário, PR #12)
+
+`tb bus` (toolbelt 0.0.10, commit f376165c) no checkout do Paprika. Smoke test num canal descartável passou de ponta a ponta (join, assign, recv, claim, segundo claim recusado nomeando o dono, complete com epoch, log, show); `tb mcp` lista 54 ferramentas, as `tb_bus_*` incluídas. Canal real `paprika` criado com `--lease 5m`, supervisor `agent:leonardo`, invite de worker de 24h para o agente externo. Nenhum arquivo versionado precisou mudar: `.toolbelt/bus/` já estava no `.gitignore` e no `.git/info/exclude`.
+
+| Comando | Esperado | Obtido | Severidade |
+|---------|----------|--------|------------|
+| `tb bus invite --ttl 24h` | Validade com data completa | `expires 16:28:07Z` sem data: parece que vence agora; a data real só lendo o `bus.db` | média |
+| Saídas de horário | Um fuso só | `channel extend` e o log do `tb mcp` em hora local (`-03:00`); create, invite, list e show em `Z` | baixa |
+| `channel create --ttl 15m` | Owner invite com a mesma validade, ou aviso | Owner invite com 10m (padrão de `--invite-ttl`), sem dizer que é outro valor | baixa |
+| Lease do canal | Escolher/alterar depois | Padrão 2m só aparece após o create; não há comando para mudar o lease de um canal existente | baixa |
+| `channel list` com canal expirado | Marcar `expired` | Lista igual aos ativos; só comparando a data | baixa |
+| Encerrar canal | `channel close`/`delete` | Não existe; usei `channel extend --ttl 1s`, contraintuitivo | média |
+| Invites pendentes | `invite list` / `invite revoke` | Não existem; um invite de 24h vazado não tem revogação além de esperar | média |
+| `tb bus discover` com Codex instalado | Ler `~/.codex/config.toml` | `exists (not parsed)`; não diz se o `tb mcp` está configurado lá | baixa |
+| Threads de agente na nuvem | Entrar no mesmo bus | Impossível: o `bus.db` é local e as threads Claude na nuvem não alcançam a máquina; a coordenação entre nuvem e bus fica só por convenção (raias de caminhos) | média (limite de desenho, não bug) |
+| Divisão de trabalho | Claim protegendo arquivos | Claim protege a *thread*, não caminhos; tive de inventar `paths` no payload e checagem manual pelo supervisor | média |
+
+Propostas: imprimir `expires` em RFC 3339 completo e sempre em UTC; `tb bus invite list|revoke`; `tb bus channel close`; `channel list` com coluna `state`; `discover` parsear TOML do Codex; um campo opcional `paths` no `claim` (ou `tb bus lock <glob>`) que recuse sobreposição com claims abertos, o que tornaria a divisão por raias verificável em vez de convenção. Para agentes na nuvem, um modo de transporte opcional (ex.: espelhar o board num arquivo versionado ou numa branch `bus/board`) permitiria que threads remotas ao menos lessem os claims.
+
+## Adendo 2026-11-21: thread "primeira leva do backlog", item 1 (container na nuvem)
+
+`tb guard check 1a5e5c0..HEAD` e `tb verify run --base 1a5e5c0 --head HEAD` (toolbelt v0.0.10) na branch do item 1 (grupos, páginas, seleção múltipla). Ambos passaram: guard 4 regras/0 violações, verify PASS em 1 iteração (build, lint e testes visíveis).
+
+| Comando | Esperado | Obtido | Severidade |
+|---------|----------|--------|------------|
+| `tb guard check` numa branch com 2+ commits | Base = merge-base com a branch padrão | Padrão `HEAD~1`: checaria só o último commit; precisei passar o intervalo à mão | média |
+| `tb verify run` com testes pulados | Contar e mostrar `skipped` (ou falhar com `--no-skip`) | PASS sem dizer que 4 E2E do WASM tinham sido pulados (faltava `wasm32-unknown-unknown`); só descobri lendo o log do vitest | média |
+| Resumo do `verify` | Quantos testes rodaram por comando | Só `Visible: true`; nada de contagem | baixa |
+| Raias de caminhos (bus, PR #12) | Ver a raia de outra thread antes de editar | A raia está só em `docs/agent-bus.md`, sem checagem; o aviso de conflito chegou por mensagem entre threads | baixa (ver adendo do bus) |
+
+Propostas: `guard check` com base padrão = `merge-base origin/HEAD`; `verify` extrair `skipped` do output de vitest/go test (como já extrai falhas) e mostrar no veredito.
+
+### Handshake com o primeiro agente externo (`agent:iq3`, 2026-11-21 16:42Z)
+
+| Comando | Esperado | Obtido | Severidade |
+|---------|----------|--------|------------|
+| `tb bus log paprika --limit 30` antes da query | Mostrar as mensagens seq 1–2 (ou dizer por que estão ocultas) | "no messages in the channel", mas a query seguinte recebeu seq=3; depois o log mostrou só a #3 | média |
+| Agente MCP ocioso | Saber se ele vai acordar | iq3 ficou `alive=false` 5 min após o último heartbeat e não leu a query; nada no `channel show` diz o `wake` do Agent Card (manual/notify/harness), então o supervisor não sabe se precisa cutucar o humano | média |
+| Card do agente | Ver vendor/modelo/capacidades de quem entrou | `channel show` mostra só nome, role e alive; não há `tb bus agent show <nome>` | baixa |
+| Agent Card × wake file | Corrigir o `wake` do card sem trocar o token | `--check` avisa `wake_mismatch (card says manual, wake file says notify)`; corrigir exige novo invite + re-join (troca token, reinicia harness). Proposta: `tb bus card update` para campos informativos | baixa |
+| Agente lendo a doc do tb | Exemplos de `send` coerentes | O handoff do iq3 usou `send --json '{…}'` como payload; na v10 `--json` é formato de saída e o payload é `--payload`. Sinal de que a flag confunde agentes | baixa |
+
+### Item 3 do backlog (colar SVG/HTML, export SVG), 2026-11-21
+
+`tb guard check 63a90b0..HEAD` (4 regras, 0 violações) e `tb verify run --base 63a90b0 --head HEAD` (PASS em 1 iteração) na branch empilhada do item 3.
+
+| Comando | Esperado | Obtido | Severidade |
+|---------|----------|--------|------------|
+| `tb guard --base <branch>` / `tb verify --base` | Aceitar a forma curta, ou sugerir o subcomando | "unknown flag: --base" e o help genérico; a flag só existe em `guard check`/`verify run`. Proposta: "did you mean `tb verify run --base`?" | baixa |
+| `verify` com branches empilhadas | Base = a branch de baixo da pilha | Precisei passar o SHA do commit do item 2 à mão de novo (mesmo atrito do item 1) | média |
+| `verify` × paridade/E2E do servidor Go | Rodar também os suítes que dependem de binário externo | `test_cmd` cobre só os testes TS visíveis; paridade e E2E contra o Go rodaram fora do tb (`pnpm test:parity:go`, `test:e2e:go`) e o veredito não diz isso | baixa |
+| `tb bus send` fora da raiz do repo | Achar o bus pelo canal ou avisar que não há `.toolbelt/` no cwd | De /tmp: `no session for "leonardo" on channel "paprika": run tb bus join first` (o bus é resolvido pelo cwd; a mensagem sugere um join que trocaria a sessão). Proposta: dizer qual raiz foi usada e sugerir `--root`/cd | média |
+
+## Adendo 2026-11-21: `tb` garantido nas sessões da nuvem (hook SessionStart, container efêmero)
+
+Objetivo: threads na nuvem pulavam `tb verify` porque o container nasce sem `tb`. Solução no Paprika: hook `SessionStart` versionado (`.claude/hooks/session-start.sh`) que roda `go install github.com/leonardo-moraes360/toolbelt/cmd/tb@v0.0.10` com sumdb forçado e confere o hash do módulo no binário (`go version -m`, `h1:q1ojb4SU…`). Container com go1.24.7; primeira instalação ~28–34 s (inclui baixar a toolchain go1.27.4), execuções seguintes ~20 ms. Depois: `tb mem list` (9 invariantes, igual ao repo), `tb stack verify guard` ok: verify PASS em 1 iteração (22,6 s) e guard 4 regras/0 violações.
+
+| Situação | Esperado | Obtido | Severidade |
+|----------|----------|--------|------------|
+| Instalação em ambiente efêmero | Binário de release com checksum (`SHA256SUMS`) ou script de instalação fixável | Único caminho é `go install`: exige Go no container, baixa a toolchain e compila (~30 s por container novo). A API de releases do GitHub nem é alcançável pelo proxy da sessão; `proxy.golang.org`/`sum.golang.org` são | média |
+| `tb version` após `go install …@v0.0.10` | `toolbelt 0.0.10` + commit | `toolbelt dev`, `commit: unknown`, `built: unknown`. O P2 só foi resolvido para `make build`; quem instala pelo caminho documentado volta a não saber a versão. Proposta: fallback para `debug.ReadBuildInfo().Main.Version` (e `vcs.revision` quando houver) | média |
+| Checar programaticamente "é o tb fixado?" | `tb version --json` com versão e hash do módulo | Tive de usar `go version -m` e `awk` na linha `mod`; sem Go no PATH não haveria como checar | baixa |
+| `go 1.27.4` no `go.mod` do toolbelt | Mínimo por minor (`go 1.27`) | Patch exato força download de toolchain em qualquer Go < 1.27.4 (o container tinha 1.24.7); funciona com `GOTOOLCHAIN=auto`, mas quebra onde `GOTOOLCHAIN=local` | baixa |
+| Bootstrap num clone novo | Não precisar de `tb init` | Ajudou: `config.yaml`, `invariants.yaml` e `agent_docs.yaml` versionados bastaram; `tb mem list` e `stack` rodaram sem init nem estado em `$XDG_STATE_HOME` | ajudou |
+| `env.allow` no container | Repassar o Chromium da imagem | Ajudou: `PAPRIKA_CHROMIUM=/opt/pw-browsers/chromium` (escrito pelo hook no `CLAUDE_ENV_FILE`) chegou ao E2E sem mexer no config | ajudou |
+| Saída do `tb stack` | Resumo curto para agentes | JSON único grande (~centenas de linhas); para ler veredito e iterações precisei de script. Proposta: `--summary` com uma linha por etapa (`verify PASS 1 it 22.6s · guard 0/4`) | baixa |
+| Recomendação de integração com harness | Doc do toolbelt sobre agentes na nuvem | Não há; cada repo reinventa o hook. Proposta: `tb init --claude-hook` (ou exemplo em docs) gerando o `SessionStart` com versão e hash fixados | média |
+
+Propostas principais: publicar binários com `SHA256SUMS` assinado nas releases, corrigir a versão de builds `go install`, `tb version --json`, e um gerador oficial do hook de sessão.

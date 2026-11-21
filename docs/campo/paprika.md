@@ -156,3 +156,73 @@ The 9 warnings are schema definitions and route/tool registrations (long lists, 
 Resolved in v10, relative to the earlier addenda: `PLAYWRIGHT_BROWSERS_PATH`/`PUPPETEER_*` in the default allowlist (env filter P1), `filtered_env` in non-PASS results, `--base` fallback in a 1-commit repo, graph resolves pnpm workspace packages, `tb mem init` no longer seeds the `thresholds.yaml` invariant (Paprika's remains because it was seeded earlier; I did not remove it, it is `immutable`).
 
 Main proposal: `tb init --migrate` (or `tb config migrate`) that merges missing default keys, with `--dry-run` showing the diff, and a warning in `tb init` when the existing `config.yaml` is behind the binary's version (e.g. a `version:` field in the config).
+
+## Addendum 2026-11-21: multi-vendor local bus (user's machine, PR #12)
+
+`tb bus` (toolbelt 0.0.10, commit f376165c) in the Paprika checkout. A smoke test on a throwaway channel passed end to end (join, assign, recv, claim, second claim rejected naming the owner, complete with epoch, log, show); `tb mcp` lists 54 tools, including the `tb_bus_*` ones. Real channel `paprika` created with `--lease 5m`, supervisor `agent:leonardo`, a 24h worker invite for the external agent. No versioned file had to change: `.toolbelt/bus/` was already in `.gitignore` and `.git/info/exclude`.
+
+| Command | Expected | Got | Severity |
+|---------|----------|-----|----------|
+| `tb bus invite --ttl 24h` | Expiry with a full date | `expires 16:28:07Z` with no date: looks like it expires now; the real date only by reading `bus.db` | medium |
+| Time outputs | A single time zone | `channel extend` and the `tb mcp` log in local time (`-03:00`); create, invite, list and show in `Z` | low |
+| `channel create --ttl 15m` | Owner invite with the same validity, or a warning | Owner invite with 10m (the `--invite-ttl` default), without saying it is a different value | low |
+| Channel lease | Choose/change it later | The 2m default only shows after create; there is no command to change the lease of an existing channel | low |
+| `channel list` with an expired channel | Mark it `expired` | Listed the same as active ones; only by comparing the date | low |
+| Closing a channel | `channel close`/`delete` | Does not exist; I used `channel extend --ttl 1s`, which is counterintuitive | medium |
+| Pending invites | `invite list` / `invite revoke` | Do not exist; a leaked 24h invite has no revocation other than waiting | medium |
+| `tb bus discover` with Codex installed | Read `~/.codex/config.toml` | `exists (not parsed)`; does not say whether `tb mcp` is configured there | low |
+| Cloud agent threads | Join the same bus | Impossible: `bus.db` is local and Claude cloud threads cannot reach the machine; coordination between cloud and bus is by convention only (path lanes) | medium (design limit, not a bug) |
+| Splitting work | Claim protecting files | Claim protects the *thread*, not paths; I had to invent `paths` in the payload and have the supervisor check by hand | medium |
+
+Proposals: print `expires` as full RFC 3339 and always in UTC; `tb bus invite list|revoke`; `tb bus channel close`; `channel list` with a `state` column; `discover` parsing Codex's TOML; an optional `paths` field on `claim` (or `tb bus lock <glob>`) that rejects overlap with open claims, which would make lane splitting verifiable instead of a convention. For cloud agents, an optional transport mode (e.g. mirroring the board into a versioned file or a `bus/board` branch) would let remote threads at least read the claims.
+
+## Addendum 2026-11-21: "first backlog batch" thread, item 1 (cloud container)
+
+`tb guard check 1a5e5c0..HEAD` and `tb verify run --base 1a5e5c0 --head HEAD` (toolbelt v0.0.10) on the item 1 branch (groups, pages, multi-select). Both passed: guard 4 rules/0 violations, verify PASS in 1 iteration (build, lint and visible tests).
+
+| Command | Expected | Got | Severity |
+|---------|----------|-----|----------|
+| `tb guard check` on a branch with 2+ commits | Base = merge-base with the default branch | Default `HEAD~1`: would check only the last commit; I had to pass the range by hand | medium |
+| `tb verify run` with skipped tests | Count and show `skipped` (or fail with `--no-skip`) | PASS without saying that 4 WASM E2E tests were skipped (`wasm32-unknown-unknown` was missing); I only found out by reading the vitest log | medium |
+| `verify` summary | How many tests ran per command | Only `Visible: true`; no count | low |
+| Path lanes (bus, PR #12) | See another thread's lane before editing | The lane lives only in `docs/agent-bus.md`, with no check; the conflict warning arrived through a message between threads | low (see the bus addendum) |
+
+Proposals: `guard check` with default base = `merge-base origin/HEAD`; `verify` extracts `skipped` from vitest/go test output (as it already extracts failures) and shows it in the verdict.
+
+### Handshake with the first external agent (`agent:iq3`, 2026-11-21 16:42Z)
+
+| Command | Expected | Got | Severity |
+|---------|----------|-----|----------|
+| `tb bus log paprika --limit 30` before the query | Show messages seq 1–2 (or say why they are hidden) | "no messages in the channel", but the next query got seq=3; afterwards the log showed only #3 | medium |
+| Idle MCP agent | Know whether it will wake up | iq3 went `alive=false` 5 min after the last heartbeat and did not read the query; nothing in `channel show` gives the Agent Card's `wake` (manual/notify/harness), so the supervisor cannot tell whether to nudge the human | medium |
+| Agent card | See vendor/model/capabilities of whoever joined | `channel show` shows only name, role and alive; there is no `tb bus agent show <name>` | low |
+| Agent Card vs wake file | Fix the card's `wake` without changing the token | `--check` warns `wake_mismatch (card says manual, wake file says notify)`; fixing it needs a new invite + re-join (changes the token, restarts the harness). Proposal: `tb bus card update` for informational fields | low |
+| Agent reading the tb docs | Consistent `send` examples | iq3's handoff used `send --json '{…}'` as the payload; in v10 `--json` is the output format and the payload is `--payload`. A sign that the flag confuses agents | low |
+
+### Backlog item 3 (paste SVG/HTML, SVG export), 2026-11-21
+
+`tb guard check 63a90b0..HEAD` (4 rules, 0 violations) and `tb verify run --base 63a90b0 --head HEAD` (PASS in 1 iteration) on the stacked item 3 branch.
+
+| Command | Expected | Got | Severity |
+|---------|----------|-----|----------|
+| `tb guard --base <branch>` / `tb verify --base` | Accept the short form, or suggest the subcommand | "unknown flag: --base" and the generic help; the flag only exists on `guard check`/`verify run`. Proposal: "did you mean `tb verify run --base`?" | low |
+| `verify` with stacked branches | Base = the branch below in the stack | I had to pass the item 2 commit SHA by hand again (same friction as item 1) | medium |
+| `verify` vs Go server parity/E2E | Also run the suites that depend on an external binary | `test_cmd` covers only the visible TS tests; parity and E2E against Go ran outside tb (`pnpm test:parity:go`, `test:e2e:go`) and the verdict does not say so | low |
+| `tb bus send` outside the repo root | Find the bus by channel or warn that there is no `.toolbelt/` in the cwd | From /tmp: `no session for "leonardo" on channel "paprika": run tb bus join first` (the bus is resolved from the cwd; the message suggests a join that would replace the session). Proposal: say which root was used and suggest `--root`/cd | medium |
+
+## Addendum 2026-11-21: `tb` guaranteed in cloud sessions (SessionStart hook, ephemeral container)
+
+Goal: cloud threads skipped `tb verify` because the container starts without `tb`. Solution in Paprika: a versioned `SessionStart` hook (`.claude/hooks/session-start.sh`) that runs `go install github.com/leonardo-moraes360/toolbelt/cmd/tb@v0.0.10` with sumdb enforced and checks the module hash in the binary (`go version -m`, `h1:q1ojb4SU…`). Container with go1.24.7; first install ~28–34 s (includes downloading the go1.27.4 toolchain), later runs ~20 ms. Afterwards: `tb mem list` (9 invariants, same as the repo), `tb stack verify guard` ok: verify PASS in 1 iteration (22.6 s) and guard 4 rules/0 violations.
+
+| Situation | Expected | Got | Severity |
+|-----------|----------|-----|----------|
+| Install in an ephemeral environment | Release binary with checksum (`SHA256SUMS`) or a pinnable install script | The only path is `go install`: needs Go in the container, downloads the toolchain and compiles (~30 s per new container). The GitHub releases API is not even reachable through the session proxy; `proxy.golang.org`/`sum.golang.org` are | medium |
+| `tb version` after `go install …@v0.0.10` | `toolbelt 0.0.10` + commit | `toolbelt dev`, `commit: unknown`, `built: unknown`. The P2 was only fixed for `make build`; anyone installing via the documented path is back to not knowing the version. Proposal: fall back to `debug.ReadBuildInfo().Main.Version` (and `vcs.revision` when present) | medium |
+| Check programmatically "is this the pinned tb?" | `tb version --json` with version and module hash | I had to use `go version -m` and `awk` on the `mod` line; without Go on PATH there would be no way to check | low |
+| `go 1.27.4` in toolbelt's `go.mod` | Minimum by minor (`go 1.27`) | An exact patch forces a toolchain download on any Go < 1.27.4 (the container had 1.24.7); works with `GOTOOLCHAIN=auto`, but breaks where `GOTOOLCHAIN=local` | low |
+| Bootstrap in a fresh clone | Not needing `tb init` | Helped: versioned `config.yaml`, `invariants.yaml` and `agent_docs.yaml` were enough; `tb mem list` and `stack` ran without init or state in `$XDG_STATE_HOME` | helped |
+| `env.allow` in the container | Pass through the image's Chromium | Helped: `PAPRIKA_CHROMIUM=/opt/pw-browsers/chromium` (written by the hook into `CLAUDE_ENV_FILE`) reached E2E without touching the config | helped |
+| `tb stack` output | Short summary for agents | One large JSON (~hundreds of lines); I needed a script to read the verdict and iterations. Proposal: `--summary` with one line per step (`verify PASS 1 it 22.6s · guard 0/4`) | low |
+| Harness integration guidance | toolbelt docs on cloud agents | None; every repo reinvents the hook. Proposal: `tb init --claude-hook` (or an example in docs) generating the `SessionStart` with pinned version and hash | medium |
+
+Main proposals: publish binaries with a signed `SHA256SUMS` in releases, fix the version for `go install` builds, `tb version --json`, and an official generator for the session hook.
