@@ -8,18 +8,21 @@ import (
 )
 
 type jsPathConfig struct {
-	baseURL string
-	paths   map[string][]string
+	baseURL   string
+	paths     map[string][]string
+	workspace *jsWorkspace
 }
 
 func loadJSPathConfig(root string) *jsPathConfig {
+	ws := loadJSWorkspace(root)
 	for _, name := range []string{"tsconfig.json", "jsconfig.json"} {
 		cfg, ok := readJSConfigFile(filepath.Join(root, name), root, map[string]bool{})
 		if ok {
+			cfg.workspace = ws
 			return cfg
 		}
 	}
-	return &jsPathConfig{paths: map[string][]string{}}
+	return &jsPathConfig{paths: map[string][]string{}, workspace: ws}
 }
 
 type jsConfigFile struct {
@@ -203,7 +206,13 @@ func resolveJSImport(root, fromRel, imp string, cfg *jsPathConfig) (string, bool
 			candidates = append(candidates, filepath.ToSlash(filepath.Clean(filepath.Join(base, exp))))
 		}
 	case isJSBarePackage(imp):
-		return "", false
+		if cfg == nil {
+			return "", false
+		}
+		candidates = cfg.workspace.resolve(imp)
+		if len(candidates) == 0 {
+			return "", false
+		}
 	case cfg != nil && cfg.baseURL != "":
 		candidates = append(candidates, filepath.ToSlash(filepath.Clean(filepath.Join(cfg.baseURL, imp))))
 	default:

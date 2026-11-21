@@ -35,10 +35,21 @@ func (e *Error) Error() string {
 		fmt.Fprintf(&b, "\nstderr: %s", stderr)
 	}
 	for _, ref := range e.MissingRefs {
+		ref = strings.TrimSuffix(ref, "^{commit}")
 		fmt.Fprintf(&b, "\nref missing: %s", ref)
-		fmt.Fprintf(&b, "\nhint: git fetch origin %s", ref)
+		fmt.Fprintf(&b, "\nhint: %s", missingRefHint(ref))
 	}
 	return b.String()
+}
+
+// missingRefHint avoids suggesting `git fetch origin HEAD~1`: a relative ref
+// (ancestor/parent syntax) is missing because history is short — a single-commit
+// repository or a shallow clone — not because a branch was never fetched.
+func missingRefHint(ref string) string {
+	if strings.ContainsAny(ref, "~^") {
+		return "history too short for " + ref + " (single-commit repo or shallow clone): pass --base <sha> or run git fetch --deepen=1"
+	}
+	return "git fetch origin " + ref
 }
 
 func (e *Error) Unwrap() error {

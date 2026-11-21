@@ -2,6 +2,7 @@ package execenv
 
 import (
 	"os"
+	"sort"
 	"strings"
 )
 
@@ -37,6 +38,13 @@ var defaultAllowExact = map[string]struct{}{
 	"HOMEBREW_PREFIX": {}, "HOMEBREW_CELLAR": {}, "HOMEBREW_REPOSITORY": {},
 	"TB_HOME": {}, "TB_GRAPH": {}, "TB_BROWSER": {}, "TB_COLOR": {}, "TB_COLOR_MODE": {},
 	"TB_BENCH_PROMPT": {}, "TB_BENCH_WORKDIR": {}, "TB_BENCH_TIMEOUT": {},
+	// Browser test runners locate their browsers through these; without them
+	// E2E suites fail only inside tb verify (field study: paprika). Exact names,
+	// not prefixes: other PLAYWRIGHT_*/PUPPETEER_* vars can carry endpoints
+	// with credentials (e.g. a browserless WS URL with ?token=).
+	"PLAYWRIGHT_BROWSERS_PATH": {}, "PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD": {},
+	"PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH": {},
+	"PUPPETEER_CACHE_DIR":                 {}, "PUPPETEER_EXECUTABLE_PATH": {}, "PUPPETEER_SKIP_DOWNLOAD": {},
 }
 
 var defaultAllowPrefixes = []string{
@@ -97,6 +105,36 @@ func Filter(environ []string, opts Options) []string {
 		seen[key] = struct{}{}
 		out = append(out, entry)
 	}
+	return out
+}
+
+// Dropped returns the sorted, de-duplicated names (never values) that Filter
+// removes from environ. Used to explain failures caused by the allowlist.
+// Secret-looking names are left out: the agent reading the result should not
+// get an inventory of the secrets the allowlist hides.
+func Dropped(environ []string, opts Options) []string {
+	kept := map[string]struct{}{}
+	for _, entry := range Filter(environ, opts) {
+		key, _, _ := strings.Cut(entry, "=")
+		kept[key] = struct{}{}
+	}
+	seen := map[string]struct{}{}
+	var out []string
+	for _, entry := range environ {
+		key, _, ok := strings.Cut(entry, "=")
+		if !ok || key == "" {
+			continue
+		}
+		if _, k := kept[key]; k || IsSecret(key) {
+			continue
+		}
+		if _, dup := seen[key]; dup {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, key)
+	}
+	sort.Strings(out)
 	return out
 }
 

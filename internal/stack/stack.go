@@ -130,6 +130,9 @@ type Shared struct {
 	Changed    []string
 	Invariants []mem.Invariant
 	GraphIndex *graph.Index
+	// VerifyVerdict is the verdict of a verify step that already ran in this
+	// stack (verify is never parallel, so later review steps can read it).
+	VerifyVerdict string
 
 	DiffLoads       int
 	NameStatusLoads int
@@ -580,6 +583,9 @@ func runVerify(ctx context.Context, opts *Options, shared *Shared) (StepResult, 
 	if err != nil {
 		return StepResult{}, err
 	}
+	if !res.DryRun {
+		shared.VerifyVerdict = string(res.Verdict)
+	}
 	return verifyStepResult(res), nil
 }
 
@@ -788,6 +794,7 @@ func reviewShared(shared *Shared) *review.Shared {
 		Diff:          shared.Diff,
 		Changed:       shared.Changed,
 		Invariants:    shared.Invariants,
+		VerifyVerdict: shared.VerifyVerdict,
 		HasDiff:       true,
 		HasChanged:    true,
 		HasInvariants: true,

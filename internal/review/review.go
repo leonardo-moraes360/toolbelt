@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"unicode"
 
@@ -29,6 +30,7 @@ type Finding struct {
 	Category  string   `json:"category"`
 	Message   string   `json:"message"`
 	File      string   `json:"file,omitempty"`
+	Line      int      `json:"line,omitempty"`
 	Reviewer  string   `json:"reviewer"`
 	Role      string   `json:"role"`
 	Agreement int      `json:"agreement"`
@@ -52,6 +54,9 @@ type Shared struct {
 	HasDiff       bool
 	HasChanged    bool
 	HasInvariants bool
+	// VerifyVerdict is the verdict of a verify that ran earlier in the same
+	// tb stack; "PASS" counts as evidence for toolchain acceptance criteria.
+	VerifyVerdict string
 }
 
 type Config struct {
@@ -148,7 +153,11 @@ func Run(cfg *Config) (*Report, error) {
 		return nil, err
 	}
 
-	report.Findings = aggregateFindings(collectGoldfishFindings(roster, ticket, diff, changed, invariants))
+	verifyVerdict := ""
+	if cfg.Shared != nil {
+		verifyVerdict = cfg.Shared.VerifyVerdict
+	}
+	report.Findings = aggregateFindings(collectGoldfishFindings(roster, ticket, diff, changed, invariants, verifyVerdict))
 	return report, nil
 }
 
@@ -174,16 +183,17 @@ func attachPinnedApproval(cfg *Config, report *Report, drift *DriftReport) error
 	return nil
 }
 
-func collectGoldfishFindings(roster []reviewerRole, ticket *TicketScope, diff string, changed []string, invariants []mem.Invariant) []Finding {
+func collectGoldfishFindings(roster []reviewerRole, ticket *TicketScope, diff string, changed []string, invariants []mem.Invariant, verifyVerdict string) []Finding {
 	var all []Finding
 	for _, role := range roster {
 		ctx := FreshContext{
-			Reviewer:   role.Name,
-			Ticket:     ticket,
-			Diff:       diff,
-			Changed:    changed,
-			Invariants: invariants,
-			Standards:  role.Standards,
+			Reviewer:      role.Name,
+			Ticket:        ticket,
+			Diff:          diff,
+			Changed:       changed,
+			Invariants:    invariants,
+			Standards:     role.Standards,
+			VerifyVerdict: verifyVerdict,
 		}
 		all = append(all, Fresh(&ctx)...)
 	}
@@ -249,6 +259,8 @@ type FreshContext struct {
 	Changed    []string
 	Invariants []mem.Invariant
 	Standards  []string
+	// VerifyVerdict: see Shared.VerifyVerdict.
+	VerifyVerdict string
 }
 
 func Fresh(ctx *FreshContext) []Finding {
@@ -354,8 +366,12 @@ func reviewAcceptance(ctx *FreshContext) []Finding {
 	evidence := acceptanceEvidence(ctx, tests)
 	summary := summarizeAcceptanceEvidence(ctx, tests)
 	var out []Finding
+	verifyPassed := ctx.VerifyVerdict == "PASS"
 	for i, crit := range ctx.Ticket.Acceptance {
 		if acceptanceCovered(crit, evidence, tests) {
+			continue
+		}
+		if verifyPassed && toolchainCriterion(crit) {
 			continue
 		}
 		out = append(out, Finding{
@@ -414,6 +430,41 @@ func summarizeAcceptanceEvidence(ctx *FreshContext, tests []string) string {
 		return "no test or code file in the diff"
 	}
 	return strings.Join(parts, "; ")
+}
+
+var (
+	toolchainSubjectRe = regexp.MustCompile(`(?i)\b(tests?|testes|suites?|su[ií]tes?|build|builds|compil\w*|typecheck\w*|type-check\w*|lint\w*|e2e|unit\w*|unit[aá]rios?|verify)\b`)
+	toolchainOutcomeRe = regexp.MustCompile(`(?i)\b(pass|passes|passing|passed|passam|passa|passando|green|verdes?|succeed\w*|ok|clean|limpos?)\b`)
+)
+
+// toolchainFiller are the words a pure toolchain criterion may contain
+// besides subjects and outcomes; anything else ("refund", "404") means the
+// criterion names a feature, which verify PASS alone does not evidence.
+var toolchainFiller = map[string]bool{
+	"and": true, "all": true, "the": true, "are": true, "must": true, "should": true, "with": true,
+	"without": true, "errors": true, "error": true, "local": true, "locally": true, "full": true,
+	"e": true, "os": true, "as": true, "todos": true, "todas": true, "devem": true, "deve": true,
+	"com": true, "sem": true, "erros": true, "erro": true, "de": true, "do": true, "da": true,
+	"no": true, "na": true, "em": true, "suite": true, "suíte": true, "projeto": true, "project": true,
+}
+
+// toolchainCriterion reports criteria like "build, typecheck, tests and E2E
+// pass": a verify PASS in the same stack is their evidence, not the diff.
+func toolchainCriterion(crit string) bool {
+	if !toolchainSubjectRe.MatchString(crit) || !toolchainOutcomeRe.MatchString(crit) {
+		return false
+	}
+	for _, tok := range strings.Fields(strings.ToLower(crit)) {
+		tok = strings.Trim(tok, ".,;:()[]{}\"'`!")
+		if tok == "" || toolchainFiller[tok] {
+			continue
+		}
+		if toolchainSubjectRe.MatchString(tok) || toolchainOutcomeRe.MatchString(tok) {
+			continue
+		}
+		return false
+	}
+	return true
 }
 
 func acceptanceCovered(crit, evidence string, tests []string) bool {
@@ -656,56 +707,121 @@ func qualityMarkerInComment(content string) bool {
 
 var addedFuncRe = regexp.MustCompile(`(?i)^\+\s*(?:export\s+)?(?:async\s+)?(?:pub(?:\([^)]*\))?\s+)?(?:func|function|def|fn)\s+`)
 
+var (
+	hunkNewStartRe = regexp.MustCompile(`^@@ -\d+(?:,\d+)? \+(\d+)`)
+	funcNameRe     = regexp.MustCompile(`(?:func|function|def|fn)\s+(?:\([^)]*\)\s*)?([A-Za-z_$][\w$]*)`)
+	// jsxMarkupRe matches lines that are JSX markup rather than logic:
+	// opening/closing tags, self-closing ends and bare attribute lines.
+	jsxMarkupRe = regexp.MustCompile(`^(?:</?[A-Za-z>]|/>|>$|[A-Za-z-]+=(?:"[^"]*"|\{[^}]*\})\s*/?>?$)`)
+)
+
+// largeComponentLogicLines is the limit for React components (capitalized
+// functions in .tsx/.jsx), whose JSX markup lines are not counted.
+const largeComponentLogicLines = 120
+
+func isJSXFile(file string) bool {
+	ext := strings.ToLower(filepath.Ext(file))
+	return ext == ".tsx" || ext == ".jsx"
+}
+
+// largeFuncScanner walks a unified diff and reports added functions (and
+// React components, measured without JSX markup) above the size limits.
+type largeFuncScanner struct {
+	reviewer  string
+	file      string
+	counting  bool
+	component bool
+	inHeader  bool
+	added     int
+	markup    int
+	newLine   int
+	startLine int
+	emitted   map[string]bool
+	out       []Finding
+}
+
 func reviewQualityLargeFuncs(ctx *FreshContext) []Finding {
-	var out []Finding
-	file := ""
-	counting := false
-	added := 0
-	emitted := map[string]bool{}
-	flush := func() {
-		if !counting || added < largeFuncAddedLines || file == "" {
-			counting = false
-			added = 0
-			return
-		}
-		id := "quality-large-func-" + file
-		if !emitted[id] {
-			emitted[id] = true
-			out = append(out, Finding{
-				ID: "quality-large-func", Severity: SeverityWarning, Category: "quality", Role: "quality",
-				Message:  fmt.Sprintf("added function is too large (%d lines +)", added),
-				File:     file,
-				Reviewer: ctx.Reviewer, Agreement: 1,
-			})
-		}
-		counting = false
-		added = 0
-	}
+	sc := &largeFuncScanner{reviewer: ctx.Reviewer, emitted: map[string]bool{}}
 	for _, line := range strings.Split(ctx.Diff, "\n") {
-		if strings.HasPrefix(line, "diff --git ") {
-			flush()
-			file = diffPath(line)
-			continue
+		sc.line(line)
+	}
+	sc.flush()
+	return sc.out
+}
+
+func (sc *largeFuncScanner) line(line string) {
+	switch {
+	case strings.HasPrefix(line, "diff --git "):
+		sc.flush()
+		sc.file = diffPath(line)
+		sc.newLine = 0
+		sc.inHeader = true
+		return
+	case strings.HasPrefix(line, "@@"):
+		sc.flush()
+		sc.inHeader = false
+		if m := hunkNewStartRe.FindStringSubmatch(line); len(m) > 1 {
+			sc.newLine, _ = strconv.Atoi(m[1])
 		}
-		if strings.HasPrefix(line, "@@") {
-			flush()
-			continue
-		}
-		if !strings.HasPrefix(line, "+") || strings.HasPrefix(line, "+++") {
-			continue
-		}
-		if addedFuncRe.MatchString(line) {
-			flush()
-			counting = true
-			added = 0
-			continue
-		}
-		if counting {
-			added++
+		return
+	case sc.inHeader:
+		return
+	}
+	cur := sc.newLine
+	if strings.HasPrefix(line, "+") || strings.HasPrefix(line, " ") {
+		sc.newLine++
+	}
+	if !strings.HasPrefix(line, "+") {
+		return
+	}
+	if addedFuncRe.MatchString(line) {
+		sc.flush()
+		sc.counting = true
+		sc.startLine = cur
+		sc.component = isJSXFile(sc.file) && isComponentDecl(line)
+		return
+	}
+	if sc.counting {
+		sc.added++
+		if sc.component && jsxMarkupRe.MatchString(strings.TrimSpace(line[1:])) {
+			sc.markup++
 		}
 	}
-	flush()
-	return out
+}
+
+func isComponentDecl(line string) bool {
+	m := funcNameRe.FindStringSubmatch(line)
+	return len(m) > 1 && m[1] != "" && unicode.IsUpper(rune(m[1][0]))
+}
+
+func (sc *largeFuncScanner) reset() {
+	sc.counting, sc.component = false, false
+	sc.added, sc.markup, sc.startLine = 0, 0, 0
+}
+
+func (sc *largeFuncScanner) flush() {
+	defer sc.reset()
+	if !sc.counting || sc.file == "" {
+		return
+	}
+	limit, size := largeFuncAddedLines, sc.added
+	msg := fmt.Sprintf("added function is too large (%d lines +)", sc.added)
+	if sc.component {
+		limit, size = largeComponentLogicLines, sc.added-sc.markup
+		msg = fmt.Sprintf("added React component is too large (%d logic lines +, %d JSX lines not counted)", size, sc.markup)
+	}
+	id := "quality-large-func-" + sc.file
+	if size < limit || sc.emitted[id] {
+		return
+	}
+	sc.emitted[id] = true
+	sc.out = append(sc.out, Finding{
+		ID: "quality-large-func", Severity: SeverityWarning, Category: "quality", Role: "quality",
+		Message:  msg,
+		File:     sc.file,
+		Line:     sc.startLine,
+		Reviewer: sc.reviewer, Agreement: 1,
+	})
 }
 
 func reviewQualityMissingTests(ctx *FreshContext) []Finding {
@@ -1256,13 +1372,9 @@ func loadInvariants(repo string) ([]mem.Invariant, error) {
 }
 
 func pinGitRefs(cfg *Config) error {
-	base, err := resolveGitRef(cfg.RepoDir, cfg.BaseRef)
+	base, head, err := gitref.ResolvePair(cfg.RepoDir, cfg.BaseRef, cfg.HeadRef)
 	if err != nil {
-		return fmt.Errorf("base: %w", err)
-	}
-	head, err := resolveGitRef(cfg.RepoDir, cfg.HeadRef)
-	if err != nil {
-		return fmt.Errorf("head: %w", err)
+		return err
 	}
 	cfg.BaseRef = base
 	cfg.HeadRef = head

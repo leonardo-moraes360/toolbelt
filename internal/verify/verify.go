@@ -69,6 +69,9 @@ type Result struct {
 	Metrics         map[string]string  `json:"metrics,omitempty"`
 	DryRun          bool               `json:"dry_run,omitempty"`
 	Plan            *Plan              `json:"plan,omitempty"`
+	// FilteredEnv lists the variable names (never values) the env allowlist
+	// removed from the child commands; set only when the verdict is not PASS.
+	FilteredEnv []string `json:"filtered_env,omitempty"`
 }
 
 type Plan struct {
@@ -81,6 +84,9 @@ type cmdCache struct {
 	buildOK   bool
 	lintDone  bool
 	lintOK    bool
+	// lastFailSig is the failure signature of the previous iteration's tests;
+	// an identical signature means a deterministic failure, so stop retrying.
+	lastFailSig string
 }
 
 type MissingCommandError struct {
@@ -162,7 +168,11 @@ func Run(ctx context.Context, cfg *Config) (*Result, error) {
 	if cfg.DryRun {
 		return dryRunResult(res, &execCfg), nil
 	}
-	return runVerifyLoops(ctx, &execCfg, res)
+	out, runErr := runVerifyLoops(ctx, &execCfg, res)
+	if out != nil && out.Verdict != VerdictPass {
+		out.FilteredEnv = execenv.Dropped(os.Environ(), execenv.Options{Allow: cfg.EnvAllow, Pass: cfg.EnvPass})
+	}
+	return out, runErr
 }
 
 func dryRunResult(res *Result, execCfg *Config) *Result {
@@ -361,28 +371,50 @@ func runVerifyIteration(ctx context.Context, cfg *Config, res *Result, cache *cm
 		return false, true, err
 	}
 	res.VisiblePassed = visibleOK
+	failSig := ""
 	if !visibleOK {
 		setFailure(res, "verify.test_cmd", failReason("verify.test_cmd", out))
-	}
-	hiddenOK := true
-	if res.HiddenAvailable {
-		hiddenOK, out, err = runConfiguredCmd(ctx, cfg, cfg.HiddenTest, "verify.hidden_test_cmd")
-		if err != nil {
-			setFailure(res, "verify.hidden_test_cmd", err.Error())
-			return false, true, err
+		if sig := failureSignature(out); sig != "" {
+			failSig = "test\x00" + sig
 		}
-		res.HiddenPassed = boolPtr(hiddenOK)
-		if !hiddenOK {
-			setFailure(res, "verify.hidden_test_cmd", failReason("verify.hidden_test_cmd", out))
-		}
-	} else {
-		res.HiddenPassed = nil
 	}
+	hiddenOK, hiddenSig, err := runHiddenStep(ctx, cfg, res)
+	if err != nil {
+		return false, true, err
+	}
+	failSig += hiddenSig
 	if visibleOK && hiddenOK {
 		return true, false, nil
 	}
 	log.Info("verify iteration failed", "n", res.Iterations)
+	if failSig != "" && failSig == cache.lastFailSig {
+		res.Reason = "deterministic failure (identical across iterations " + fmt.Sprint(res.Iterations-1) + " and " + fmt.Sprint(res.Iterations) + "): " + res.Reason
+		res.Error = res.Reason
+		return false, true, nil
+	}
+	cache.lastFailSig = failSig
 	return false, false, nil
+}
+
+func runHiddenStep(ctx context.Context, cfg *Config, res *Result) (ok bool, sig string, err error) {
+	if !res.HiddenAvailable {
+		res.HiddenPassed = nil
+		return true, "", nil
+	}
+	ok, out, err := runConfiguredCmd(ctx, cfg, cfg.HiddenTest, "verify.hidden_test_cmd")
+	if err != nil {
+		setFailure(res, "verify.hidden_test_cmd", err.Error())
+		return false, "", err
+	}
+	res.HiddenPassed = boolPtr(ok)
+	if ok {
+		return true, "", nil
+	}
+	setFailure(res, "verify.hidden_test_cmd", failReason("verify.hidden_test_cmd", out))
+	if s := failureSignature(out); s != "" {
+		sig = "\x00hidden\x00" + s
+	}
+	return false, sig, nil
 }
 
 func runBuildAndLint(ctx context.Context, cfg *Config, res *Result, cache *cmdCache) (ok, deterministic bool, err error) {
@@ -430,15 +462,14 @@ func setFailure(res *Result, step, reason string) {
 	res.Error = reason
 }
 
+const failReasonMax = 1024
+
 func failReason(step, output string) string {
-	out := strings.TrimSpace(output)
+	out := strings.TrimSpace(stripANSI(output))
 	if out == "" {
 		return step + " failed"
 	}
-	if len(out) > 512 {
-		out = out[:512] + "…"
-	}
-	return step + " failed: " + out
+	return step + " failed: " + excerpt(out, failReasonMax)
 }
 
 func runConfiguredCmd(ctx context.Context, cfg *Config, command, configKey string) (ok bool, output string, err error) {
@@ -446,7 +477,7 @@ func runConfiguredCmd(ctx context.Context, cfg *Config, command, configKey strin
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "sh", "-c", command) //nolint:gosec // operator-configured ruler
 	cmd.Dir = cfg.RepoDir
-	cmd.Env = execenv.Environ(execenv.Options{Allow: cfg.EnvAllow, Pass: cfg.EnvPass})
+	cmd.Env = withNoColor(execenv.Environ(execenv.Options{Allow: cfg.EnvAllow, Pass: cfg.EnvPass}))
 	out, runErr := cmd.CombinedOutput()
 	output = string(out)
 	if runErr == nil {

@@ -319,11 +319,27 @@ func TestSearchAccentInsensitive(t *testing.T) {
 func TestEnsureDefaultAntiCheatReportsCreated(t *testing.T) {
 	dir := t.TempDir()
 	first, err := EnsureDefaultAntiCheat(dir)
-	if err != nil || !first.Created || first.Count != 3 {
+	if err != nil || !first.Created || first.Count != 2 {
 		t.Fatalf("first: %+v err=%v", first, err)
 	}
+	for _, inv := range first.Invariants {
+		if strings.Contains(inv.Rule, "thresholds.yaml") {
+			t.Fatalf("thresholds invariant seeded without the file: %+v", inv)
+		}
+	}
 	second, err := EnsureDefaultAntiCheat(dir)
-	if err != nil || second.Created || second.Count != 3 {
+	if err != nil || second.Created || second.Count != 2 {
 		t.Fatalf("second: %+v err=%v", second, err)
+	}
+}
+
+func TestEnsureDefaultAntiCheatSeedsThresholdsWhenPresent(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "thresholds.yaml"), []byte("x: 1\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	res, err := EnsureDefaultAntiCheat(dir)
+	if err != nil || res.Count != 3 {
+		t.Fatalf("res=%+v err=%v", res, err)
 	}
 }

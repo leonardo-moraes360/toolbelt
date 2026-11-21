@@ -830,3 +830,10 @@ func TestStackMissingTicketFails(t *testing.T) {
 		}
 	}
 }
+
+func TestReviewSharedCarriesVerifyVerdict(t *testing.T) {
+	got := reviewShared(&Shared{VerifyVerdict: "PASS"})
+	if got.VerifyVerdict != "PASS" {
+		t.Fatalf("review must see the verify verdict of the same stack, got %q", got.VerifyVerdict)
+	}
+}

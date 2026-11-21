@@ -27,7 +27,7 @@ func (SvelteIndexer) IndexFile(root, rel string) ([]Node, []Edge, error) {
 	nodes, edges, _, fileID := baseFileNodes(modName, rel, 0.9)
 
 	script := firstMatchingBlock(src, []string{"<script"}, "</script>")
-	nodes, edges = appendImportEdges(nodes, edges, fileID, extractImportPaths(script), 0.9)
+	nodes, edges = appendJSImportEdges(nodes, edges, root, rel, fileID, extractImportPaths(script), 0.9)
 
 	compName := filepath.Base(strings.TrimSuffix(rel, filepath.Ext(rel)))
 	nodes, edges, compIDs := appendComponentNodes(nodes, edges, fileID, modName, rel, []string{compName}, 0.9)
