@@ -44,7 +44,7 @@ A config do repositório em `--at` rege a comparação (globs e limites), como n
 Para cada documento com gate em `--at`, a base é, nesta ordem:
 
 1. o **recibo commitado** em `--at`, quando o `doc_sha256` dele é igual ao documento em `--at`;
-2. senão, a **rodada do estado local** deste documento cujo `doc_sha256` é igual a ele **e cujo ciclo convergiu para `PASS` ou `PASS_PARTIAL`** (as rodadas a partir das quais um recibo poderia ter sido escrito);
+2. senão, a **rodada do estado local** deste documento cujo `doc_sha256` é igual a ele **e cujo conteúdo e política têm veredito `PASS` ou `PASS_PARTIAL`** (as rodadas a partir das quais um recibo poderia ter sido escrito);
 3. senão, **nenhuma**.
 
 Uma base de outra versão do documento não é base: o próprio documento mudou, e isso é trabalho do `tb egm review` e do gate.
@@ -54,7 +54,8 @@ Uma base de outra versão do documento não é base: o próprio documento mudou,
 O drift compara **hashes dos caminhos da base**, não pacotes de revisão, então o orçamento do pacote nunca decide:
 
 - Cada caminho de fonte da base é resolvido em `--at` com as regras de caminho da Fase A (dentro da raiz, sem symlink em nenhum componente, rastreado no índice com modo `100644` ou `100755`, não negado pela config em `--at`), **sem limite de tamanho**. Se resolver, o sha256 é comparado com o da base.
-- À parte, o conjunto de fontes R7 do documento em `--at` é coletado como numa revisão. Um caminho que ele inclui e a base não é **acrescentado**.
+- À parte, todo candidato a fonte do documento (links e spans da R7) que resolve pelas mesmas regras de caminho e não está na base é **acrescentado**. Nem o orçamento do pacote nem as checagens de conteúdo decidem isso.
+- Uma fonte da base acima de 256 MiB conta como mudada (o hash de uma base sempre vem de uma fonte R7 menor).
 
 | Status | Significado | Saída |
 |---|---|---|
@@ -62,14 +63,14 @@ O drift compara **hashes dos caminhos da base**, não pacotes de revisão, entã
 | `no_baseline` | nenhum recibo ou rodada convergida bate com esta versão do documento | 0 |
 | `sources_differ` | os caminhos da base não mudaram, mas um caminho que passou a resolver foi acrescentado | 1 |
 | `drifted` | ao menos um caminho da base resolve com outro sha256 (`changed`) | 1 |
-| `source_missing` | um caminho da base não resolve mais (`missing`, cada um com o motivo: apagado, symlink, não regular, não rastreado, negado) | 1 |
+| `source_missing` | um caminho da base não resolve mais (`missing`, cada um com o motivo: `deleted`, `symlink` (o caminho ou um diretório acima dele), `not_regular`, `denied`) | 1 |
 | `unreadable` | o documento ou o recibo não puderam ser lidos em `--at` | 2 |
 
 Um documento recebe o status mais grave (`unreadable` > `source_missing` > `drifted` > `sources_differ` > `fresh` > `no_baseline`), e todas as listas são informadas. O código de saída do comando é o maior entre os documentos; erros de uso saem com 2, como a R32 define (`ExitError`).
 
 ### Saída
 
-O texto agrupa os documentos por status, do mais grave ao menos grave. `--json` (chaves ordenadas, como todo JSON do egm):
+O texto agrupa os documentos por status, do mais grave ao menos grave. `--json` (ordem de chaves estável; `reason` só aparece em `unreadable`):
 
 ```json
 {"at": "<commit>", "documents": [
@@ -88,12 +89,13 @@ O `--egm-mode ci` ganha duas checagens. As duas usam o **recibo no merge-base** 
 2. **`ci_source_drift`.** Para cada documento com gate que o intervalo não tocou, cujo recibo no merge-base bate com o conteúdo dele no merge-base e estava `fresh` lá, a comparação acima roda em head contra esse recibo do merge-base. Um documento que fica `drifted`, `source_missing` ou `sources_differ` neste intervalo gera `ci_source_drift`. Documentos que já tinham drift no merge-base não culpam este intervalo.
    - A gravidade é `egm.drift.ci`: `warn` (padrão) ou `fail`. É uma chave de política: a config do repositório só pode subi-la para `fail`.
    - O jeito de resolver é atualizar o documento ou revisá-lo de novo; a checagem 1 então exige uma revisão completa no CI para o recibo novo.
+   - As duas comparações usam as configurações do **merge-base** (a config de usuário `-c` mais a config do repositório no branch de destino), então a config do próprio pull request não consegue baixar um limite para esconder o drift.
 
 O custo é uma coleta de fontes por documento com gate no merge-base e em head, sem rodar agente; o `egm.ci.max_docs` não vale aqui (ele limita execuções de agente).
 
 ### Gate local
 
-A op `egm` do `tb stack` mantém o código de aviso `sources_changed` (consumidores o interpretam), agora calculado pela comparação acima para documentos cujos caminhos da base mudaram no intervalo da stack: primeiro pelos recibos, e pelas rodadas convergidas do estado quando não há recibo. Continua sendo um aviso.
+A op `egm` do `tb stack` mantém o código de aviso `sources_changed` (consumidores o interpretam), agora calculado pela comparação acima para documentos cujos caminhos da base mudaram no intervalo da stack: primeiro pelos recibos, e pelas rodadas convergidas do estado quando não há recibo. Continua sendo um aviso; um documento cujo drift não pode ser calculado recebe `drift_unavailable` em vez de sumir.
 
 ## Parte B2: `tb egm bootstrap`
 

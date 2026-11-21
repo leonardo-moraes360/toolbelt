@@ -18,6 +18,7 @@ type driftGate struct {
 	mb      string
 	head    string
 	set     *Settings
+	cfg     string // the user config file (-c), as the gate's
 	changed map[string]bool
 	diff    []NameStatus
 }
@@ -79,7 +80,9 @@ func (g *driftGate) sourceDrift(ctx context.Context, selected []string) ([]Drift
 	if err != nil {
 		return nil, err
 	}
-	mbSet, err := gateSettings(ctx, g.repo, g.mb, "")
+	// The comparison uses the merge-base settings: the pull request's own
+	// config must not lower limits to hide drift.
+	mbSet, err := gateSettings(ctx, g.repo, g.mb, g.cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -99,28 +102,45 @@ func (g *driftGate) sourceDrift(ctx context.Context, selected []string) ([]Drift
 	return out, nil
 }
 
-// driftSinceMB compares d at head with its merge-base receipt; ok is false
-// when the document has no usable merge-base baseline, already drifted
-// there, or cites nothing the range changed.
-func (g *driftGate) driftSinceMB(ctx context.Context, mbSet *Settings, d string) (DriftDoc, bool, error) {
-	text, sha, ok, err := docAt(ctx, g.repo, g.set, g.head, d)
-	if err != nil || !ok || !g.citesChanged(d, text) {
-		return DriftDoc{}, false, err
+// driftSinceMB compares d at head with its merge-base receipt, using the
+// merge-base settings throughout; ok is false when the document has no
+// usable merge-base baseline, already drifted there, or nothing it cites
+// (or its receipt holds) changed in the range.
+func (g *driftGate) driftSinceMB(ctx context.Context, mbSet *Settings, d string) (dd DriftDoc, ok bool, err error) {
+	text, sha, readable, err := docAt(ctx, g.repo, mbSet, g.mb, d)
+	if err != nil || !readable {
+		return dd, false, err
 	}
-	rc, code, err := readReceiptAt(ctx, g.repo, g.mb, d, strings.Count(text, "\n")+1)
-	if err != nil || code != "" || rc == nil || rc.DocSHA256 != sha {
-		return DriftDoc{}, false, err
+	rc, code, err := readReceiptAt(ctx, g.repo, g.mb, d, docLines(text))
+	if err != nil || code != "" || rc == nil || rc.DocSHA256 != sha || !g.touches(d, text, rc.Sources) {
+		return dd, false, err
 	}
 	// Fresh at the merge-base: drift already there is not this range's.
-	at := DriftDoc{Doc: d, Baseline: BaselineReceipt, Changed: []string{}, Missing: []MissingSource{}, Added: []string{}}
+	at := newDriftDoc(d, BaselineReceipt)
 	if err := compareSources(ctx, g.repo, mbSet, g.mb, d, text, rc.Sources, &at); err != nil || at.Status != DriftFresh {
-		return DriftDoc{}, false, err
+		return dd, false, err
 	}
-	dd := DriftDoc{Doc: d, Baseline: BaselineReceipt, Changed: []string{}, Missing: []MissingSource{}, Added: []string{}}
-	if err := compareSources(ctx, g.repo, g.set, g.head, d, text, rc.Sources, &dd); err != nil {
-		return DriftDoc{}, false, err
+	// Not touched in the range, so the document bytes at head are the same.
+	dd = newDriftDoc(d, BaselineReceipt)
+	if err := compareSources(ctx, g.repo, mbSet, g.head, d, text, rc.Sources, &dd); err != nil {
+		return dd, false, err
 	}
 	return dd, true, nil
+}
+
+func newDriftDoc(doc, base string) DriftDoc {
+	return DriftDoc{Doc: doc, Baseline: base, Changed: []string{}, Missing: []MissingSource{}, Added: []string{}}
+}
+
+// touches: a source candidate of the document, or a path its receipt
+// certified, changed in the range.
+func (g *driftGate) touches(doc, text string, sources map[string]string) bool {
+	for p := range sources {
+		if g.changed[p] {
+			return true
+		}
+	}
+	return g.citesChanged(doc, text)
 }
 
 // citesChanged: some source candidate of the document changed in the range
@@ -141,7 +161,7 @@ func (g *driftGate) citesChanged(doc, text string) bool {
 func (g *driftGate) localSourcesChanged(ctx context.Context, selected []string) []GateWarning {
 	docs, err := gatedAt(ctx, g.repo, g.head, g.set.GateDocGlobs)
 	if err != nil {
-		return nil
+		return []GateWarning{{Code: "drift_unavailable", Path: err.Error()}}
 	}
 	var out []GateWarning
 	for _, d := range docs {
@@ -149,11 +169,16 @@ func (g *driftGate) localSourcesChanged(ctx context.Context, selected []string) 
 			continue
 		}
 		text, _, ok, err := docAt(ctx, g.repo, g.set, g.head, d)
-		if err != nil || !ok || !g.citesChanged(d, text) {
+		if err != nil {
+			out = append(out, GateWarning{Code: "drift_unavailable", Doc: d, Path: err.Error()})
+			continue
+		}
+		if !ok || !g.citesChanged(d, text) {
 			continue
 		}
 		dd, err := driftOf(ctx, g.repo, g.set, g.head, d, true)
 		if err != nil {
+			out = append(out, GateWarning{Code: "drift_unavailable", Doc: d, Path: err.Error()})
 			continue
 		}
 		var paths []string

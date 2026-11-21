@@ -82,7 +82,7 @@ func Gate(ctx context.Context, o *GateOptions) (*GateResult, error) {
 	if ci {
 		res.Trust = GateModeCI
 	}
-	dg := &driftGate{repo: repo, mb: sel.mb, head: head, set: sel.set, changed: sel.changed, diff: sel.diff}
+	dg := &driftGate{repo: repo, mb: sel.mb, head: head, set: sel.set, cfg: o.ConfigFile, changed: sel.changed, diff: sel.diff}
 	if err := dg.applyDrift(ctx, sel, ci, res); err != nil {
 		return nil, err
 	}

@@ -160,10 +160,12 @@ func TestCIReceiptEdits(t *testing.T) {
 	}
 }
 
-// AC11: the local gate warns sources_changed from the receipt baseline.
+// AC11: the local gate warns sources_changed from the receipt baseline,
+// even on a machine with no state for the document.
 func TestLocalGateSourcesChanged(t *testing.T) {
 	f, ctx := convergedAtHead(t)
 	f.commitReceipt(ctx)
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	writeFile(t, filepath.Join(f.root, "internal", "kept.go"), "package internal // changed\n")
 	gitT(t, f.root, "commit", "-qam", "source")
 	if r := f.gate(ctx, "HEAD~1", false); !hasGateWarning(r, "sources_changed") {
@@ -181,5 +183,70 @@ func TestDriftCIPolicy(t *testing.T) {
 	user.Drift.CI = DriftFail
 	if s := ApplyRepoConfig(&user, []byte("egm:\n  drift: {ci: warn}\n")); s.Drift.CI != DriftFail || len(s.Warnings) == 0 {
 		t.Fatalf("lowered: %+v", s.Drift)
+	}
+}
+
+// Blocker regression: a pull request lowering limits in its own config
+// cannot hide ci_source_drift (the comparison uses the merge-base config).
+func TestCISourceDriftIgnoresPRLimits(t *testing.T) {
+	f, ctx := convergedAtHead(t)
+	f.commitReceipt(ctx)
+	ciOffline(t, f, "  drift: {ci: fail}\n")
+	writeFile(t, filepath.Join(f.root, "internal", "kept.go"), "package internal // changed\n")
+	writeFile(t, filepath.Join(f.root, ".toolbelt", "config.yaml"), "egm:\n  max_packet_bytes: 1\n  max_source_bytes: 1\n")
+	gitT(t, f.root, "add", "-f", ".toolbelt/config.yaml", "internal/kept.go")
+	gitT(t, f.root, "commit", "-qm", "source and tiny limits")
+	if r := f.ciGate(ctx, "HEAD~1", false); r.OK || !hasGateWarning(r, "ci_source_drift") {
+		t.Fatalf("PR limits hid drift: %+v", r)
+	}
+}
+
+// AC5 (negative): a round that did not pass is never a baseline.
+func TestDriftUnpassedRoundNoBaseline(t *testing.T) {
+	f := newFlow(t, "  clean_rounds: 1\n")
+	ctx := context.Background()
+	if r := f.must(Review(ctx, f.optsP())).Report; r.Verdict == VerdictPass || r.Verdict == VerdictPassPartial {
+		t.Fatalf("fixture should not pass: %s", r.Verdict)
+	}
+	if d := driftOfDoc(f.drift(ctx, ""), f.doc); d.Status != DriftNoBaseline {
+		t.Fatalf("FAIL round used: %+v", d)
+	}
+}
+
+// AC2 (symlink) and AC7 (exit codes): a source turned into a symlink is
+// source_missing/symlink; an unreadable receipt exits 2.
+func TestDriftSymlinkAndUnreadable(t *testing.T) {
+	f, ctx := convergedAtHead(t)
+	f.commitReceipt(ctx)
+	src := filepath.Join(f.root, "internal", "kept.go")
+	if err := os.Remove(src); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("../README.md", src); err != nil {
+		t.Fatal(err)
+	}
+	gitT(t, f.root, "add", "-A")
+	gitT(t, f.root, "commit", "-qm", "symlink")
+	r := f.drift(ctx, "")
+	if d := driftOfDoc(r, f.doc); d.Status != DriftSourceMissing || d.Missing[0].Reason != "symlink" || r.ExitCode() != ExitFail {
+		t.Fatalf("symlink: %+v", d)
+	}
+	writeFile(t, filepath.Join(f.root, filepath.FromSlash(ReceiptPath(f.doc))), "{not json\n")
+	gitT(t, f.root, "commit", "-qam", "broken receipt")
+	if r := f.drift(ctx, ""); driftOfDoc(r, f.doc).Status != DriftUnreadable || r.ExitCode() != ExitError {
+		t.Fatalf("unreadable: %+v", driftOfDoc(r, f.doc))
+	}
+}
+
+// Deleting a document together with its receipt is gated_doc_removed, not
+// receipt_removed.
+func TestCIDocAndReceiptRemoved(t *testing.T) {
+	f, ctx := convergedAtHead(t)
+	f.commitReceipt(ctx)
+	ciOffline(t, f, "")
+	gitT(t, f.root, "rm", "-q", f.doc, ReceiptPath(f.doc))
+	gitT(t, f.root, "commit", "-qm", "drop both")
+	if r := f.ciGate(ctx, "HEAD~1", false); hasGateWarning(r, "receipt_removed") || !hasGateWarning(r, "gated_doc_removed") {
+		t.Fatalf("warnings: %+v", r.Warnings)
 	}
 }

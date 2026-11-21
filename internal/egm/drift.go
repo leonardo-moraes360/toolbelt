@@ -3,9 +3,9 @@ package egm
 import (
 	"context"
 	"errors"
+	"path"
 	"path/filepath"
 	"sort"
-	"strings"
 )
 
 // Source drift (docs/specs/egm-drift-bootstrap.md, B1): a gated document is
@@ -31,8 +31,13 @@ const (
 	DriftFail = "fail"
 
 	// maxDriftBlobBytes bounds one source read for hashing: drift has no
-	// R7 size limit, but a blob must still fit in memory.
+	// R7 size limit, but a blob must still fit in memory. A bigger blob
+	// cannot match a baseline hash (baselines come from R7 sources, at most
+	// max_source_bytes), so it counts as changed.
 	maxDriftBlobBytes = 256 << 20
+
+	// maxGatedEntries bounds the tree listing of the gated globs.
+	maxGatedEntries = 500000
 )
 
 // driftRank orders statuses by severity.
@@ -160,7 +165,7 @@ func driftDocs(ctx context.Context, repo *Repo, oid string, o *DriftOptions, set
 func gatedAt(ctx context.Context, repo *Repo, oid string, globs []string) ([]string, error) {
 	var out []string
 	for _, dir := range globDirs(globs) {
-		names, err := repo.LsTreeNames(ctx, oid, dir, 10000)
+		names, err := repo.LsTreeNames(ctx, oid, dir, maxGatedEntries)
 		if err != nil {
 			return nil, err
 		}
@@ -225,7 +230,7 @@ func docAt(ctx context.Context, repo *Repo, set *Settings, oid, rel string) (tex
 // baselineOf: the committed receipt at oid when it certifies these
 // document bytes, else a converged state round for them.
 func baselineOf(ctx context.Context, repo *Repo, oid, rel, text, docSHA string, withState bool) (*baseline, string, error) {
-	rc, code, err := readReceiptAt(ctx, repo, oid, rel, strings.Count(text, "\n")+1)
+	rc, code, err := readReceiptAt(ctx, repo, oid, rel, docLines(text))
 	if err != nil {
 		return nil, "", err
 	}
@@ -245,7 +250,8 @@ func baselineOf(ctx context.Context, repo *Repo, oid, rel, text, docSHA string, 
 }
 
 // convergedRound returns the sources of the latest round over docSHA whose
-// content converged (the rounds a receipt could have been written from).
+// content and policy have a PASS or PASS_PARTIAL verdict (the rounds a
+// receipt could have been written from).
 func convergedRound(repo *Repo, rel, docSHA string) map[string]string {
 	dir, err := StateDir(repo.ID, Slug(rel))
 	if err != nil {
@@ -255,18 +261,20 @@ func convergedRound(repo *Repo, rel, docSHA string) map[string]string {
 	if err != nil || st == nil {
 		return nil
 	}
-	converged := map[string]bool{}
-	for i := range st.Convergences {
-		converged[st.Convergences[i].Content] = true
-	}
 	for i := len(st.Rounds) - 1; i >= 0; i-- {
 		r := &st.Rounds[i]
-		if r.DocSHA256 == docSHA && converged[r.Content] {
+		if r.DocSHA256 != docSHA {
+			continue
+		}
+		if v, _ := Verdict(st, r.Content, r.PolicySHA); v == VerdictPass || v == VerdictPassPartial {
 			return r.Sources
 		}
 	}
 	return nil
 }
+
+// docLines counts lines as the review does (ParseDoc), for claim checks.
+func docLines(text string) int { return len(ParseDoc(text, nil).Lines) }
 
 // compareSources hashes each baseline path at oid (no size limit) and
 // collects the R7 sources that are new.
@@ -279,24 +287,48 @@ func compareSources(ctx context.Context, repo *Repo, set *Settings, oid, rel, te
 	if err := hashBaseline(ctx, repo, set, oid, rel, paths, base, dd); err != nil {
 		return err
 	}
-	cur, err := CollectSourcesAt(ctx, repo, set, oid, rel, text)
+	added, err := addedSources(ctx, repo, set, oid, rel, text, base)
 	if err != nil {
 		return err
 	}
-	for _, src := range cur.Included {
-		if _, ok := base[src.Path]; !ok {
-			dd.Added = append(dd.Added, src.Path)
-		}
-	}
-	sort.Strings(dd.Added)
+	dd.Added = added
 	dd.Status = driftStatus(dd)
 	return nil
+}
+
+// addedSources: the document's source candidates that resolve under the
+// path rules (regular, tracked, not denied) and are not in the baseline.
+// The packet budget and content checks never decide it.
+func addedSources(ctx context.Context, repo *Repo, set *Settings, oid, rel, text string, base map[string]string) ([]string, error) {
+	rels, _ := sourceCandidates(rel, text)
+	var look []string
+	for _, r := range rels {
+		if _, ok := base[r]; ok || denied(r, rel, set.DocGlobs) || validRelPath(r) != nil {
+			continue
+		}
+		look = append(look, r)
+	}
+	added := []string{}
+	if len(look) == 0 {
+		return added, nil
+	}
+	entries, err := repo.lsTreeOID(ctx, oid, look...)
+	if err != nil {
+		return nil, err
+	}
+	for _, e := range entries {
+		if regularMode(e.Mode) && containsStr(look, e.Path) {
+			added = appendNew(added, []string{e.Path})
+		}
+	}
+	sort.Strings(added)
+	return added, nil
 }
 
 func hashBaseline(ctx context.Context, repo *Repo, set *Settings, oid, rel string, paths []string, base map[string]string, dd *DriftDoc) error {
 	var lookup []string
 	for _, p := range paths {
-		if validRelPath(p) != nil || denied(p, rel, set.DocGlobs) {
+		if denied(p, rel, set.DocGlobs) {
 			dd.Missing = append(dd.Missing, MissingSource{Path: p, Reason: "denied"})
 			continue
 		}
@@ -316,20 +348,59 @@ func hashBaseline(ctx context.Context, repo *Repo, set *Settings, oid, rel strin
 	for _, p := range lookup {
 		switch m := modes[p]; {
 		case m == "":
-			dd.Missing = append(dd.Missing, MissingSource{Path: p, Reason: "deleted"})
-		case !regularMode(m):
-			dd.Missing = append(dd.Missing, MissingSource{Path: p, Reason: "mode_" + m})
-		default:
-			b, err := repo.CatFileBlob(ctx, oid, p, maxDriftBlobBytes)
+			reason, err := goneReason(ctx, repo, oid, p)
 			if err != nil {
 				return err
 			}
-			if sha256Hex(b) != base[p] {
-				dd.Changed = append(dd.Changed, p)
+			dd.Missing = append(dd.Missing, MissingSource{Path: p, Reason: reason})
+		case m == modeSymlink:
+			dd.Missing = append(dd.Missing, MissingSource{Path: p, Reason: "symlink"})
+		case !regularMode(m):
+			dd.Missing = append(dd.Missing, MissingSource{Path: p, Reason: "not_regular"})
+		default:
+			if err := hashOne(ctx, repo, oid, p, base[p], dd); err != nil {
+				return err
 			}
 		}
 	}
 	return nil
+}
+
+func hashOne(ctx context.Context, repo *Repo, oid, p, want string, dd *DriftDoc) error {
+	b, err := repo.CatFileBlob(ctx, oid, p, maxDriftBlobBytes)
+	var e *Error
+	switch {
+	case errors.As(err, &e) && e.Reason == "blob_too_large":
+		dd.Changed = append(dd.Changed, p) // cannot match a baseline hash
+		return nil
+	case err != nil:
+		return err
+	}
+	if sha256Hex(b) != want {
+		dd.Changed = append(dd.Changed, p)
+	}
+	return nil
+}
+
+// goneReason tells a deleted path from one behind a symlinked directory.
+func goneReason(ctx context.Context, repo *Repo, oid, p string) (string, error) {
+	var parents []string
+	for d := path.Dir(p); d != "." && d != "/"; d = path.Dir(d) {
+		parents = append(parents, d)
+	}
+	if len(parents) == 0 {
+		return "deleted", nil
+	}
+	entries, err := repo.lsTreeOID(ctx, oid, parents...)
+	if err != nil {
+		return "", err
+	}
+	for _, e := range entries {
+		if e.Mode == modeSymlink && containsStr(parents, e.Path) {
+			return "symlink", nil
+		}
+	}
+	return "deleted", nil
 }
 
 func driftStatus(dd *DriftDoc) string {
