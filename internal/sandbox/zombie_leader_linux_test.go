@@ -75,7 +75,7 @@ func leaderIsZombie(pid int) bool {
 
 // An escaped process whose leader thread called exit(2) while other threads
 // keep running shows state Z. It used to be taken for a zombie: never
-// classified, never signalled, and wait4 cannot reap a leader with live
+// classified, never signaled, and wait4 cannot reap a leader with live
 // threads, so every sweep spun for 2 s with the mutex held and the live escape
 // was never killed or reported.
 func TestRegistrySweepKillsZombieLeaderWithLiveThreads(t *testing.T) {
