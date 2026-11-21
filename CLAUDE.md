@@ -5,13 +5,13 @@ This repository uses its own `tb` (dogfooding). Also read [AGENTS.md](AGENTS.md)
 ## Setup
 
 ```bash
-# tb in ~/go/bin = verified release binary (currently v0.0.9, sha256 + bundle cert).
+# tb in ~/go/bin = verified release binary (currently v0.0.10, sha256 + bundle cert).
 # `make install` overwrites it with the local build — use ./bin/tb (make build) to test changes.
 tb mem check            # invariants intact (fail-closed)
 TB_GRAPH=on tb graph index
 ```
 
-The `toolbelt` MCP server (`.mcp.json`) exposes `tb_*` with `TB_GRAPH=on` (54 tools in v0.0.9).
+The `toolbelt` MCP server (`.mcp.json`) exposes `tb_*` with `TB_GRAPH=on` (54 tools in v0.0.10).
 
 ## Map
 
