@@ -12,6 +12,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Escape sweep (`internal/sandbox` Registry): a process killed together with an escaped group is reparented to the subreaper while still exiting, with its environment already unreadable; it was reported as an unattributable escape, so `tb egm` could flag a round as unattributed (flaky `TestRunnerEscapeAttributed`). An exiting process (`PF_EXITING`) whose environment can no longer be read is now killed and reaped without being reported, like a zombie
 
+### Changed
+- `tb egm` Phase B draft spec (`docs/specs/egm-drift-bootstrap.md`): B1 deterministic `drift-report` (source drift against the committed receipt, by path hashes) and CI checks against the merge-base receipt (`ci_source_drift`, receipt edits selecting their document, `receipt_removed`); B2 deterministic `bootstrap` (a skeleton with linked sources, never overwriting); B3 the LLM drift and bootstrap goldfish and an advisory receipt `commit`
+
 ## [0.0.9] - 2026-11-20
 
 ### Added
