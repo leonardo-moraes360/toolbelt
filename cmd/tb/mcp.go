@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -33,6 +35,21 @@ aligned with stateless MCP. The same tools as the CLI are available via tools/li
 		// is open (docs/bus-lease.md R7).
 		ctx, cancel := context.WithCancel(cmd.Context())
 		defer cancel()
+		// The warm embedding child must not outlive the server (EOF or
+		// cancellation both end Run).
+		defer registry.Shutdown()
+		// Run blocks in a stdin read that a signal does not interrupt, so
+		// a signal shuts the pool down here (the child's private tmp would
+		// leak otherwise) and exits.
+		sigCtx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
+		defer stop()
+		go func() {
+			<-sigCtx.Done()
+			if ctx.Err() == nil {
+				registry.Shutdown()
+				os.Exit(130)
+			}
+		}()
 		go registry.RunBusHeartbeats(ctx, 5*time.Second)
 		return srv.Run(ctx, os.Stdin, os.Stdout)
 	},

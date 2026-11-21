@@ -1,0 +1,14 @@
+{
+  "nodes": [
+    {
+      "id": "func:a.Foo",
+      "type": "function",
+      "path": "a.go",
+      "title": "Foo",
+      "package": "a",
+      "source": "extracted",
+      "confidence": 1
+    }
+  ],
+  "stale": false
+}

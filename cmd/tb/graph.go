@@ -10,6 +10,7 @@ import (
 	"github.com/leonardo-moraes360/toolbelt/internal/config"
 	"github.com/leonardo-moraes360/toolbelt/internal/graph"
 	"github.com/leonardo-moraes360/toolbelt/internal/mem"
+	"github.com/leonardo-moraes360/toolbelt/internal/vecsearch"
 )
 
 var graphCmd = &cobra.Command{
@@ -86,6 +87,11 @@ var graphIndexCmd = &cobra.Command{
 			return err
 		}
 		vectors, _ := cmd.Flags().GetBool("vectors")
+		if vectors {
+			if err := vecsearch.CheckVectorRoot(s, root); err != nil {
+				return err
+			}
+		}
 		opts := graphBuildOptions()
 		idx, err := s.RebuildOpts(root, &opts)
 		if err != nil {

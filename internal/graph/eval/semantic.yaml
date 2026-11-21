@@ -1,0 +1,93 @@
+# Intent queries for the vector index evaluation (docs/specs/vector-index.md,
+# Evaluation (V2)). Queries paraphrase behavior: they must not reuse the
+# identifiers or file-name words of their expected paths, so lexical search
+# cannot win by name alone.
+queries:
+  - query: where are symlinked inputs refused when building the review packet
+    expect: [internal/egm/sources.go]
+  - query: how does the sandbox stop the child from opening network connections
+    expect: [internal/sandbox/seccomp_linux.go]
+  - query: what keeps a repository from choosing which model native code loads
+    expect: [internal/config/graphvector.go]
+  - query: why can the confined process not write to the user's terminals
+    expect: [internal/sandbox/landlock_linux.go]
+  - query: kill the child automatically if the parent process dies abruptly
+    expect: [internal/sandbox/pdeathsig_linux.go]
+  - query: adopt orphaned descendants that detached into their own session so they can be found later
+    expect: [internal/sandbox/subreaper_linux.go]
+  - query: grandchildren holding the output pipe must not hang the run after a timeout
+    expect: [internal/sandbox/procgroup_unix.go]
+  - query: detect weakened tests such as skipped cases or assertions that compare constants
+    expect: [internal/guard/guard.go]
+  - query: stop retrying when the same named test keeps breaking in identical ways
+    expect: [internal/verify/failure_output.go, internal/verify/verify.go]
+  - query: compare captured screenshots against reference images pixel by pixel
+    expect: [internal/verify/visual.go]
+  - query: has the approved change been rewritten since a human signed off on it
+    expect: [internal/review/pinned.go]
+  - query: protected project rules that need an explicit override and a justification to edit or retire
+    expect: [internal/mem/mem.go]
+  - query: append-only audit log of who changed a protected rule
+    expect: [internal/mem/history.go]
+  - query: integrate several worktree branches into one target and detect conflicts atomically
+    expect: [internal/merge/merge.go]
+  - query: refuse to integrate changes to git hooks or CI files that could run code outside isolation
+    expect: [internal/merge/sensitive.go]
+  - query: keep line numbers stable when masking credentials in excerpts sent to a model
+    expect: [internal/secrets/secrets.go, internal/egm/redact.go]
+  - query: paths that must never leave the process when sending repository text out
+    expect: [internal/secrets/secrets.go]
+  - query: refuse a weights file whose parent folders other users could write to
+    expect: [internal/embed/owner_unix.go, internal/embed/model.go]
+  - query: the child re-checks the weights hash itself instead of trusting its arguments
+    expect: [internal/embed/serve.go]
+  - query: split file text into overlapping windows of lines before computing embeddings
+    expect: [internal/graph/vector.go]
+  - query: rank nodes with BM25 after splitting identifiers on case changes and underscores
+    expect: [internal/graph/search.go]
+  - query: decide whether the code index is out of date by hashing what was indexed
+    expect: [internal/graph/fingerprint.go]
+  - query: walk notes on disk without following links and skip hidden directories
+    expect: [internal/vault/scan.go]
+  - query: find the targets of wikilinks by partial path the way Obsidian does
+    expect: [internal/vault/resolve.go]
+  - query: create a note without ever overwriting and without front matter injection through the title
+    expect: [internal/vault/new.go]
+  - query: agent access tokens stored outside the repository so a woken agent cannot read the others
+    expect: [internal/bus/session.go]
+  - query: heartbeat renewal and expiry of an agent's claim on a thread
+    expect: [internal/bus/lease.go]
+  - query: a reused pid in saved state must never block a new scheduler instance
+    expect: [internal/router/lock_unix.go]
+  - query: alert when workers are slow or stuck and when the ready queue grows too much
+    expect: [internal/router/watchdog.go]
+  - query: dry run that simulates which worker takes which ticket each round
+    expect: [internal/router/plan.go]
+  - query: which status changes a work item may go through
+    expect: [internal/ticket/ticket.go, internal/ticket/store.go]
+  - query: pause or drain the queue of work items and resume it later
+    expect: [internal/ticket/board.go]
+  - query: neutralize repository git settings that could trick an allowed subcommand
+    expect: [internal/egm/gitconfig.go]
+  - query: flag prompt-like instructions hidden inside a reviewed document
+    expect: [internal/egm/injection.go]
+  - query: a reviewer proves it read the document by quoting passages that must match the text
+    expect: [internal/egm/attest.go]
+  - query: turn off every tool and MCP server of the headless coding assistant before reviewing
+    expect: [internal/egm/vendor.go]
+  - query: a gated document is compared with the hashes of the sources its baseline certified
+    expect: [internal/egm/drift.go]
+  - query: committed claims about a document's review that continuous integration checks
+    expect: [internal/egm/receipt.go]
+  - query: refuse environment variables that an agent asks to forward unless a human opted them in
+    expect: [internal/registry/passenv.go]
+  - query: run a shell command requested over the tool protocol confined to the repository
+    expect: [internal/registry/runsandbox.go]
+  - query: behavior hints for each tool such as read-only or destructive
+    expect: [internal/registry/annotations.go]
+  - query: which protocol revisions the stdio endpoint accepts during the initial handshake
+    expect: [internal/mcp/server.go]
+  - query: guess the build and lint commands from markers like go.mod or Cargo.toml
+    expect: [internal/config/detect.go]
+  - query: the decision to accept a C library in the build and the quality gate around it
+    expect: [docs/adr/018-cgo-componentes-nativos.md]

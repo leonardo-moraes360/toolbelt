@@ -28,6 +28,7 @@ type Property struct {
 	Description string    `json:"description,omitempty"`
 	Default     any       `json:"default,omitempty"`
 	Items       *Property `json:"items,omitempty"`
+	Enum        []string  `json:"enum,omitempty"`
 }
 
 type ToolHandler func(ctx context.Context, args map[string]any) (any, error)
