@@ -1083,6 +1083,7 @@ tb egm status docs/specs/x.md [--strict]  # 0 PASS, 1 FAIL, 3 IN_PROGRESS/STALE/
 tb egm status docs/specs/x.md --at HEAD   # modo gate: documento, fontes e config do commit
 tb egm receipt docs/specs/x.md            # grava .toolbelt/egm/receipts/<slug>.json (exige PASS ou PASS_PARTIAL)
 tb egm drift-report [doc...] [--at REV]   # drift das fontes contra o recibo: 0 fresh/no_baseline, 1 drift, 2 erro
+tb egm bootstrap docs/specs/novo.md --from internal/x/  # esqueleto novo ligado ao código (nunca sobrescreve, nunca commita)
 tb egm review docs/specs/x.md --restart   # novo ciclo depois do teto (exige edição)
 ```
 

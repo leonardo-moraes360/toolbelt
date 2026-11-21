@@ -2,7 +2,7 @@
 
 # `tb egm drift-report` e `tb egm bootstrap` — spec da Fase B
 
-Status: **B1 implementado**; B2 e B3 não implementados (spec na rodada 2, depois de uma revisão em contexto novo).
+Status: **B1 e B2 implementados**; B3 não implementado (spec na rodada 2, depois de uma revisão em contexto novo).
 
 Fase B do [ADR-015](../adr/015-egm-nativo.md) (§8). Apoia-se no núcleo ([egm-nativo.md](egm-nativo.md), Fase A) e na spec de confiança ([egm-trust.md](egm-trust.md), Fase A.2). Os nomes vêm do upstream, citado no [ADR-007](../adr/007-inspiracao-elephant-goldfish.md): `drift-report` "compara docs com o código atual" e `bootstrap` "documenta uma base de código existente".
 

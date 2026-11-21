@@ -1071,6 +1071,7 @@ tb egm status docs/specs/x.md [--strict]  # 0 PASS, 1 FAIL, 3 IN_PROGRESS/STALE/
 tb egm status docs/specs/x.md --at HEAD   # gate mode: document, sources and config from the commit
 tb egm receipt docs/specs/x.md            # writes .toolbelt/egm/receipts/<slug>.json (needs PASS or PASS_PARTIAL)
 tb egm drift-report [doc...] [--at REV]   # source drift against the receipt: 0 fresh/no_baseline, 1 drift, 2 error
+tb egm bootstrap docs/specs/new.md --from internal/x/   # new skeleton wired to the code (never overwrites, never commits)
 tb egm review docs/specs/x.md --restart   # new cycle after a cap (needs an edit)
 ```
 
