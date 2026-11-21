@@ -101,12 +101,12 @@ func newSkips(before, after []SkippedSource) []SkippedSource {
 
 // bootstrapBody validates and cleans one payload: UTF-8, at most maxBytes,
 // and not empty once cleaned.
-func bootstrapBody(payload []byte, maxBytes int64) (string, string) {
+func bootstrapBody(payload []byte, maxBytes int64) (body, reason string) {
 	p := stripMarkdownFence(payload)
 	if int64(len(p)) > maxBytes || !utf8.Valid(p) || bytes.ContainsRune(p, 0) {
 		return "", reasonBootstrapInvalid
 	}
-	body := cleanBootstrapBody(string(p))
+	body = cleanBootstrapBody(string(p))
 	if body == "" {
 		return "", reasonBootstrapInvalid
 	}
