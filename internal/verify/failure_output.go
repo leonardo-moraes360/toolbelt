@@ -8,7 +8,7 @@ import (
 )
 
 var (
-	ansiRE = regexp.MustCompile(`\x1b\[[0-9;?]*[\x20-\x2f]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)`)
+	ansiRE = regexp.MustCompile(`\x1b\[[0-9;?]*[\x20-\x2f]*[\x40-\x7e]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)`)
 	// failLineRE matches the lines a test runner uses to name what broke
 	// (go test, vitest/jest, pytest, playwright, cargo, tsc, generic errors).
 	// Case-sensitive and anchored at line start, so ordinary log noise
