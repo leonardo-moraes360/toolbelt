@@ -25,13 +25,18 @@ var PersonaNames = []string{
 	"style", "implementation-readiness", "codebase-details", "arbiter",
 }
 
+// UtilityPersonaNames are the Phase B personas (docs/specs/egm-drift-bootstrap.md,
+// B3): embedded, but not reviewers. Neither is in the preset, so
+// --reviewers and the arbiter never select them.
+var UtilityPersonaNames = []string{"drift", "bootstrap"}
+
 // StandardNames lists the embedded standards (R10, R13).
 var StandardNames = []string{"feature-spec", "adr", "implementation-readiness", "zoom-out"}
 
 // LoadPersona returns an embedded persona. The name is checked against the
 // closed list so a config value can never select an arbitrary file.
 func LoadPersona(name string) (*Persona, error) {
-	if !containsName(PersonaNames, name) {
+	if !containsName(PersonaNames, name) && !containsName(UtilityPersonaNames, name) {
 		return nil, errorf(ExitError, "unknown_persona", "unknown persona %q", name)
 	}
 	b, err := contentFS.ReadFile("personas/" + name + ".md")

@@ -2,7 +2,7 @@
 
 # `tb egm drift-report` and `tb egm bootstrap` — Phase B spec
 
-Status: **B1 and B2 implemented**; B3 not implemented (spec round 2, after one fresh-context review).
+Status: **implemented** (B1, B2 and B3; spec round 2, after one fresh-context review). [Implementation notes](#implementation-notes-b3) record the choices the text left open.
 
 Phase B of [ADR-015](../adr/015-egm-nativo.md) (§8). It builds on the core ([egm-nativo.md](egm-nativo.md), Phase A) and the trust spec ([egm-trust.md](egm-trust.md), Phase A.2). The upstream names come from [ADR-007](../adr/007-inspiracao-elephant-goldfish.md): `drift-report` "compares docs with current code" and `bootstrap` "documents an existing codebase".
 
@@ -169,6 +169,17 @@ Nothing is written on an abort.
 ### Personas
 
 `drift` and `bootstrap` are embedded but kept off the reviewer list: `egm.reviewers` and the arbiter refuse them.
+
+### Implementation notes (B3)
+
+- **Reviewer list.** There is no `egm.reviewers` key; `--reviewers` accepts only preset names, so it refuses `drift` and `bootstrap` (`usage`), and the arbiter always loads its own persona.
+- **Drift report fields.** Each document the goldfish considered carries `llm`: `status` (`completed`, `not_run` or `skipped`), `reason` (`max_docs`, `no_sources` when every changed source was left out, or the Phase A goldfish reason), `diff` (`diff` or `no_diff`) and `omitted` (each left-out source with `secret_like`, `max_source_bytes` or `max_packet_bytes`). The report gains `engine`. Findings get occurrences `drift-1`, `drift-2`, ….
+- **Injection in a drift source.** A match of `ScanInjectionSource` in a current source or in a diff is reported as an `injection-scan` finding of the document; the source stays in the packet, as in a Phase A review.
+- **Injection in a bootstrap source.** A `--from` file that matches `ScanInjectionSource` refuses the run with `bootstrap_injection` before any agent runs: the draft would be written from text that addresses the model.
+- **Bootstrap failures.** A goldfish that does not complete after its retry (timeout, tools used, escaped process, budget) refuses with `bootstrap_not_run` and the reason; an empty, oversized or non-UTF-8 body twice refuses with `bootstrap_invalid`. One fence around the whole body (```` ``` ````, ```` ```markdown ````, ```` ```md ````) is removed; a setext level-1 heading (a line of `=` under text) counts as a level-1 heading.
+- **Citations R7 skips.** A body that cites a file R7 skips (missing, denied, secret-like, over a limit) also refuses with `bootstrap_sources`: it cites another file, and its first review would start downgraded. HTML comments are removed until none is left, so a nested one cannot rebuild a tb marker.
+- **Diff reads.** Only the changed sources are read at the receipt's `commit`, each within `max_source_bytes` (a bigger one gives `no_diff`); an unchanged source matches when its blob object at the commit is the one at `--at`.
+- **Packets.** Each goldfish's packet lives in a private temp dir removed after the run; nothing goes into the document's state directory.
 
 ## Out of Phase B
 

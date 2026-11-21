@@ -2,7 +2,7 @@
 
 # `tb egm drift-report` e `tb egm bootstrap` — spec da Fase B
 
-Status: **B1 e B2 implementados**; B3 não implementado (spec na rodada 2, depois de uma revisão em contexto novo).
+Status: **implementada** (B1, B2 e B3; spec na rodada 2, depois de uma revisão em contexto novo). As [notas de implementação](#notas-de-implementação-b3) registram as escolhas que o texto deixou em aberto.
 
 Fase B do [ADR-015](../adr/015-egm-nativo.md) (§8). Apoia-se no núcleo ([egm-nativo.md](egm-nativo.md), Fase A) e na spec de confiança ([egm-trust.md](egm-trust.md), Fase A.2). Os nomes vêm do upstream, citado no [ADR-007](../adr/007-inspiracao-elephant-goldfish.md): `drift-report` "compara docs com o código atual" e `bootstrap` "documenta uma base de código existente".
 
@@ -169,6 +169,17 @@ Nada é escrito quando aborta.
 ### Personas
 
 `drift` e `bootstrap` são embutidas, mas ficam fora da lista de reviewers: o `egm.reviewers` e o árbitro as recusam.
+
+### Notas de implementação (B3)
+
+- **Lista de reviewers.** Não existe a chave `egm.reviewers`; o `--reviewers` só aceita nomes do preset, então recusa `drift` e `bootstrap` (`usage`), e o árbitro sempre carrega a própria persona.
+- **Campos do relatório de drift.** Cada documento que o goldfish considerou traz `llm`: `status` (`completed`, `not_run` ou `skipped`), `reason` (`max_docs`, `no_sources` quando todas as fontes mudadas ficaram de fora, ou o motivo de goldfish da Fase A), `diff` (`diff` ou `no_diff`) e `omitted` (cada fonte deixada de fora, com `secret_like`, `max_source_bytes` ou `max_packet_bytes`). O relatório ganha `engine`. Os findings recebem as ocorrências `drift-1`, `drift-2`, ….
+- **Injeção numa fonte do drift.** Um match do `ScanInjectionSource` numa fonte atual ou num diff vira um finding `injection-scan` do documento; a fonte continua no pacote, como numa revisão da Fase A.
+- **Injeção numa fonte do bootstrap.** Um arquivo de `--from` que dá match no `ScanInjectionSource` recusa a execução com `bootstrap_injection` antes de rodar qualquer agente: o rascunho seria escrito a partir de um texto que fala com o modelo.
+- **Falhas do bootstrap.** Um goldfish que não completa depois do retry (timeout, uso de tools, processo escapado, orçamento) recusa com `bootstrap_not_run` e o motivo; um corpo vazio, grande demais ou fora de UTF-8 duas vezes recusa com `bootstrap_invalid`. Uma cerca em volta do corpo inteiro (```` ``` ````, ```` ```markdown ````, ```` ```md ````) é removida; um título setext de nível 1 (uma linha de `=` sob um texto) conta como título de nível 1.
+- **Citações que o R7 pula.** Um corpo que cita um arquivo que o R7 pula (ausente, negado, com cara de segredo, acima de um limite) também recusa com `bootstrap_sources`: ele cita outro arquivo, e a primeira revisão começaria rebaixada. Os comentários HTML são removidos até não sobrar nenhum, então um comentário aninhado não consegue remontar um marcador do tb.
+- **Leituras do diff.** Só as fontes mudadas são lidas no `commit` do recibo, cada uma dentro de `max_source_bytes` (uma maior dá `no_diff`); uma fonte que não mudou confere quando o objeto blob dela no commit é o mesmo de `--at`.
+- **Pacotes.** O pacote de cada goldfish fica num diretório temporário privado, removido depois da execução; nada vai para o diretório de estado do documento.
 
 ## Fora da Fase B
 

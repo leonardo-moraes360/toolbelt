@@ -331,8 +331,8 @@ func TestGitArgvShape(t *testing.T) {
 
 func TestGitClosedList(t *testing.T) {
 	allowed := map[string]bool{"ls-files": true, "ls-tree": true, "hash-object": true, "cat-file": true, "rev-parse": true, "merge-base": true, "diff": true, "check-ignore": true, "config": true}
-	if len(gitOps) != 13 {
-		t.Fatalf("gitOps has %d shapes, the R4c table has 13", len(gitOps))
+	if len(gitOps) != 14 {
+		t.Fatalf("gitOps has %d shapes, the R4c table has 14", len(gitOps))
 	}
 	for op, prefix := range gitOps {
 		if !allowed[prefix[0]] {

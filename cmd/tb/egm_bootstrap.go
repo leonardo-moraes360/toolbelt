@@ -12,7 +12,10 @@ import (
 	"github.com/leonardo-moraes360/toolbelt/internal/egm"
 )
 
-var egmBootstrapFrom []string
+var (
+	egmBootstrapFrom   []string
+	egmBootstrapEngine string
+)
 
 var egmBootstrapCmd = &cobra.Command{
 	Use:   "bootstrap <new-doc> --from <path> [--from <path>...]",
@@ -23,11 +26,18 @@ egm.doc_types for the path) with TODO, and a Sources section linking each
 --from file. Directories expand to their tracked files; untracked, denied,
 symlinked or non-regular files are skipped with the reason. The skeleton
 is refused unless the review would include exactly the accepted files as
-sources. No file content goes into the draft (it is read only for that R7
-check), no agent runs, and nothing is staged or committed.
-Spec: docs/specs/egm-drift-bootstrap.md (B2).`,
+sources. Nothing is staged or committed.
+
+--engine deterministic (the default) runs no agent and puts no file content
+in the draft (it is read only for that R7 check). --engine llm runs one
+isolated goldfish (egm.agent_cmd) over the accepted files, redacted, and
+puts its Markdown body in place of the TODO sections; the body is cleaned
+(no HTML comments, title, Status line or Sources section), scanned for
+injection and checked to cite only the accepted files, or nothing is
+written. Spec: docs/specs/egm-drift-bootstrap.md (B2, B3).`,
 	Example: `  tb egm bootstrap docs/specs/router.md --from internal/router/
-  tb egm bootstrap docs/adr/020-x.md --from internal/x/x.go --from cmd/tb/x.go`,
+  tb egm bootstrap docs/adr/020-x.md --from internal/x/x.go --from cmd/tb/x.go
+  tb egm bootstrap docs/specs/router.md --from internal/router/ --engine llm`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cwd, err := os.Getwd()
@@ -35,7 +45,7 @@ Spec: docs/specs/egm-drift-bootstrap.md (B2).`,
 			return err
 		}
 		ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
-		res, err := egm.Bootstrap(ctx, &egm.BootstrapOptions{Cwd: cwd, Target: args[0], From: egmBootstrapFrom, ConfigFile: cfgFile})
+		res, err := egm.Bootstrap(ctx, &egm.BootstrapOptions{Cwd: cwd, Target: args[0], From: egmBootstrapFrom, ConfigFile: cfgFile, Engine: egmBootstrapEngine})
 		stop()
 		if err != nil {
 			return egmFail(err)
@@ -45,7 +55,7 @@ Spec: docs/specs/egm-drift-bootstrap.md (B2).`,
 			fmt.Println(string(b))
 			return nil
 		}
-		fmt.Printf("wrote %s (%s, %d sources)\n", res.Doc, res.Type, len(res.Sources))
+		fmt.Printf("wrote %s (%s, %d sources, engine %s)\n", res.Doc, res.Type, len(res.Sources), res.Engine)
 		for _, s := range res.Skipped {
 			fmt.Printf("  skipped %s (%s)\n", s.Path, s.Reason)
 		}
@@ -56,5 +66,6 @@ Spec: docs/specs/egm-drift-bootstrap.md (B2).`,
 
 func init() {
 	egmBootstrapCmd.Flags().StringArrayVar(&egmBootstrapFrom, "from", nil, "file or directory the document describes (repeatable)")
+	egmBootstrapCmd.Flags().StringVar(&egmBootstrapEngine, "engine", egm.EngineDeterministic, "deterministic | llm (one goldfish drafts the body)")
 	egmCmd.AddCommand(egmBootstrapCmd)
 }

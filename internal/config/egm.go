@@ -41,6 +41,20 @@ type EgmConfig struct {
 	MaxStdoutBytes      int64             `yaml:"max_stdout_bytes"`
 	CI                  EgmCI             `yaml:"ci"`
 	Drift               EgmDrift          `yaml:"drift"`
+	Bootstrap           EgmBootstrap      `yaml:"bootstrap"`
+	Receipt             EgmReceipt        `yaml:"receipt"`
+}
+
+// EgmBootstrap tunes tb egm bootstrap --engine llm (docs/specs/egm-drift-bootstrap.md, B3).
+type EgmBootstrap struct {
+	// MaxBytes bounds the model body. Limit key: the repository can only lower it.
+	MaxBytes int64 `yaml:"max_bytes" json:"max_bytes"`
+}
+
+// EgmReceipt tunes the receipt writer (B3). User-only: a CI pinned to an
+// older tb must be upgraded before receipts move to version 2.
+type EgmReceipt struct {
+	WriteV2 bool `yaml:"write_v2,omitempty" json:"write_v2,omitempty"`
 }
 
 // EgmDrift tunes source drift (docs/specs/egm-drift-bootstrap.md, B1).
@@ -48,6 +62,9 @@ type EgmDrift struct {
 	// CI is ci_source_drift's severity: warn (default) or fail. Policy key:
 	// the repository config can only raise it to fail.
 	CI string `yaml:"ci" json:"ci"`
+	// MaxDocs bounds the drift goldfish of one drift-report --engine llm
+	// (B3). Limit key: the repository can only lower it.
+	MaxDocs int `yaml:"max_docs" json:"max_docs"`
 }
 
 // EgmCI tunes the CI mode of the egm gate (docs/specs/egm-trust.md, T-R6).
@@ -88,7 +105,8 @@ func DefaultEgmConfig() EgmConfig {
 		TimeoutPerReviewer: "5m",
 		MaxStdoutBytes:     1 << 20,
 		CI:                 EgmCI{MaxDocs: 5},
-		Drift:              EgmDrift{CI: "warn"},
+		Drift:              EgmDrift{CI: "warn", MaxDocs: 5},
+		Bootstrap:          EgmBootstrap{MaxBytes: 32 << 10},
 	}
 }
 
@@ -110,6 +128,8 @@ func (e *EgmConfig) Validate() error {
 		{e.CleanRounds < 1 || e.CleanRounds > e.MaxRounds, "egm.clean_rounds must be between 1 and max_rounds"},
 		{e.MaxAgentRuns < 1, "egm.max_agent_runs must be >= 1"},
 		{e.CI.MaxDocs < 1, "egm.ci.max_docs must be >= 1"},
+		{e.Drift.MaxDocs < 1, "egm.drift.max_docs must be >= 1"},
+		{e.Bootstrap.MaxBytes < 1, "egm.bootstrap.max_bytes must be >= 1"},
 		{e.MaxParallel < 1, "egm.max_parallel must be >= 1"},
 		{e.MaxSourceBytes < 1 || e.MaxPacketBytes < 1 || e.MaxStdoutBytes < 1, "egm.max_*_bytes must be >= 1"},
 	}

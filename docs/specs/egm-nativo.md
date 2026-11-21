@@ -214,6 +214,7 @@ The result goes in `docs/campo/dogfood.md` (PT and EN).
     | `rev-parse --verify`, `merge-base <a> <b>` | Refs and three-dot base (R33) |
     | `diff --name-status --no-renames -z <a> <b>` | Tree diff between commits (R33) |
     | `diff --no-index -U0` | Diff between snapshots, outside any repository (env above) |
+    | `diff --no-index -U3` | Redacted source diff for the drift goldfish ([egm-drift-bootstrap.md](egm-drift-bootstrap.md), B3), in a private temp dir (env above) |
     | `check-ignore --no-index -- <paths>` | Exclusion of ignored files (R7) |
     | `config --file <path> --no-includes --null --list` | Reading `config` and `config.worktree` for the allowlist (R4d); executes nothing |
 

@@ -58,6 +58,7 @@ type repoEgm struct {
 	ToolsDisabled  any `yaml:"tools_disabled"`
 	ToolsCheck     any `yaml:"tools_check"`
 	ForbiddenFlags any `yaml:"forbidden_flags"`
+	Receipt        any `yaml:"receipt"`
 
 	DocTypes       any `yaml:"doc_types"`
 	RefsIgnore     any `yaml:"refs_ignore"`
@@ -86,8 +87,12 @@ type repoEgm struct {
 		MaxDocs *int `yaml:"max_docs"`
 	} `yaml:"ci"`
 	Drift *struct {
-		CI *string `yaml:"ci"`
+		CI      *string `yaml:"ci"`
+		MaxDocs *int    `yaml:"max_docs"`
 	} `yaml:"drift"`
+	Bootstrap *struct {
+		MaxBytes *int64 `yaml:"max_bytes"`
+	} `yaml:"bootstrap"`
 }
 
 // ApplyRepoConfig overlays the repository's egm: section on the user config
@@ -124,7 +129,7 @@ func (s *Settings) applyUserOnly(r *repoEgm) {
 		"agent_cmd": r.AgentCmd, "path": r.Path, "env": r.Env, "home": r.Home, "vendor": r.Vendor,
 		"output": r.Output, "tools_disabled": r.ToolsDisabled, "tools_check": r.ToolsCheck,
 		"forbidden_flags": r.ForbiddenFlags, "doc_types": r.DocTypes, "refs_ignore": r.RefsIgnore,
-		"detail_headings": r.DetailHeadings,
+		"detail_headings": r.DetailHeadings, "receipt": r.Receipt,
 	}
 	var present []string
 	for k, v := range keys {
@@ -169,6 +174,12 @@ func (s *Settings) applyLimits(r *repoEgm) {
 	lowerInt64(s, "max_stdout_bytes", &s.MaxStdoutBytes, r.MaxStdoutBytes)
 	if r.CI != nil {
 		lowerInt(s, "ci.max_docs", &s.CI.MaxDocs, r.CI.MaxDocs)
+	}
+	if r.Drift != nil {
+		lowerInt(s, "drift.max_docs", &s.Drift.MaxDocs, r.Drift.MaxDocs)
+	}
+	if r.Bootstrap != nil {
+		lowerInt64(s, "bootstrap.max_bytes", &s.Bootstrap.MaxBytes, r.Bootstrap.MaxBytes)
 	}
 	if r.TimeoutPerReviewer != nil {
 		cur, _ := time.ParseDuration(s.TimeoutPerReviewer)

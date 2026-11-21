@@ -16,8 +16,11 @@ import (
 // receipt is a claim, not a proof.
 
 const (
-	receiptVersion = 1
-	receiptDir     = ".toolbelt/egm/receipts"
+	// receiptVersion is written by default; receiptVersionCommit (with the
+	// advisory commit) only under egm.receipt.write_v2 (B3). Readers accept both.
+	receiptVersion       = 1
+	receiptVersionCommit = 2
+	receiptDir           = ".toolbelt/egm/receipts"
 
 	ClaimArbiterWithdrawn = "arbiter_withdrawn"
 	ClaimDeclined         = "declined"
@@ -27,7 +30,10 @@ const (
 // Receipt is the committed file. Fields are declared in key order, so the
 // encoding is deterministic.
 type Receipt struct {
-	Claims    []Claim           `json:"claims"`
+	Claims []Claim `json:"claims"`
+	// Commit is HEAD when the receipt was written (version 2). Advisory: it
+	// only builds the drift diff, never judges a receipt (B3).
+	Commit    string            `json:"commit,omitempty"`
 	Doc       string            `json:"doc"`
 	DocSHA256 string            `json:"doc_sha256"`
 	Sources   map[string]string `json:"sources"`
@@ -91,12 +97,16 @@ func WriteReceipt(ctx context.Context, o *Options) (*Outcome, error) {
 		return &Outcome{Report: rep, ExitCode: statusExit(rep.Verdict, false),
 			Message: "no receipt written: the verdict is " + rep.Verdict + " (needs PASS or PASS_PARTIAL)"}, nil
 	}
-	if err := s.committedAtHead(ctx); err != nil {
+	head, err := s.committedAtHead(ctx)
+	if err != nil {
 		return nil, err
 	}
 	rc, err := s.buildReceipt(ctx, st)
 	if err != nil {
 		return nil, err
+	}
+	if s.set.Receipt.WriteV2 {
+		rc.Version, rc.Commit = receiptVersionCommit, head
 	}
 	rel := ReceiptPath(s.rel)
 	if err := writeReceiptFile(s.repo.Root, rel, rc.Encode()); err != nil {
@@ -108,12 +118,16 @@ func WriteReceipt(ctx context.Context, o *Options) (*Outcome, error) {
 // committedAtHead refuses when the document or an included source differs
 // from HEAD's blob: CI recomputes the hashes from the commit (R7a), so a
 // receipt over uncommitted bytes (or bytes an eol/LFS filter rewrites) would
-// always be receipt_stale there.
-func (s *snapshot) committedAtHead(ctx context.Context) error {
+// always be receipt_stale there. It returns HEAD's object id.
+func (s *snapshot) committedAtHead(ctx context.Context) (string, error) {
 	head, err := s.repo.RevParse(ctx, "HEAD")
 	if err != nil {
-		return err
+		return "", err
 	}
+	return head, s.headMatches(ctx, head)
+}
+
+func (s *snapshot) headMatches(ctx context.Context, head string) error {
 	b, _, err := readBlobFile(ctx, s.repo, head, s.rel, s.set.MaxPacketBytes)
 	if err != nil {
 		return err
