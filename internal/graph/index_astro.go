@@ -27,7 +27,7 @@ func (AstroIndexer) IndexFile(root, rel string) ([]Node, []Edge, error) {
 	nodes, edges, _, fileID := baseFileNodes(modName, rel, 0.9)
 
 	fm, body := splitAstroFrontmatter(src)
-	nodes, edges = appendImportEdges(nodes, edges, fileID, extractImportPaths(fm), 0.9)
+	nodes, edges = appendJSImportEdges(nodes, edges, root, rel, fileID, extractImportPaths(fm), 0.9)
 
 	compName := filepath.Base(strings.TrimSuffix(rel, filepath.Ext(rel)))
 	nodes, edges, compIDs := appendComponentNodes(nodes, edges, fileID, modName, rel, []string{compName}, 0.85)

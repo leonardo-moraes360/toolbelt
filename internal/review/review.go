@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"unicode"
 
@@ -29,6 +30,7 @@ type Finding struct {
 	Category  string   `json:"category"`
 	Message   string   `json:"message"`
 	File      string   `json:"file,omitempty"`
+	Line      int      `json:"line,omitempty"`
 	Reviewer  string   `json:"reviewer"`
 	Role      string   `json:"role"`
 	Agreement int      `json:"agreement"`
@@ -52,6 +54,9 @@ type Shared struct {
 	HasDiff       bool
 	HasChanged    bool
 	HasInvariants bool
+	// VerifyVerdict is the verdict of a verify that ran earlier in the same
+	// tb stack; "PASS" counts as evidence for toolchain acceptance criteria.
+	VerifyVerdict string
 }
 
 type Config struct {
@@ -148,7 +153,11 @@ func Run(cfg *Config) (*Report, error) {
 		return nil, err
 	}
 
-	report.Findings = aggregateFindings(collectGoldfishFindings(roster, ticket, diff, changed, invariants))
+	verifyVerdict := ""
+	if cfg.Shared != nil {
+		verifyVerdict = cfg.Shared.VerifyVerdict
+	}
+	report.Findings = aggregateFindings(collectGoldfishFindings(roster, ticket, diff, changed, invariants, verifyVerdict))
 	return report, nil
 }
 
@@ -174,16 +183,17 @@ func attachPinnedApproval(cfg *Config, report *Report, drift *DriftReport) error
 	return nil
 }
 
-func collectGoldfishFindings(roster []reviewerRole, ticket *TicketScope, diff string, changed []string, invariants []mem.Invariant) []Finding {
+func collectGoldfishFindings(roster []reviewerRole, ticket *TicketScope, diff string, changed []string, invariants []mem.Invariant, verifyVerdict string) []Finding {
 	var all []Finding
 	for _, role := range roster {
 		ctx := FreshContext{
-			Reviewer:   role.Name,
-			Ticket:     ticket,
-			Diff:       diff,
-			Changed:    changed,
-			Invariants: invariants,
-			Standards:  role.Standards,
+			Reviewer:      role.Name,
+			Ticket:        ticket,
+			Diff:          diff,
+			Changed:       changed,
+			Invariants:    invariants,
+			Standards:     role.Standards,
+			VerifyVerdict: verifyVerdict,
 		}
 		all = append(all, Fresh(&ctx)...)
 	}
@@ -249,6 +259,8 @@ type FreshContext struct {
 	Changed    []string
 	Invariants []mem.Invariant
 	Standards  []string
+	// VerifyVerdict: see Shared.VerifyVerdict.
+	VerifyVerdict string
 }
 
 func Fresh(ctx *FreshContext) []Finding {
@@ -354,8 +366,12 @@ func reviewAcceptance(ctx *FreshContext) []Finding {
 	evidence := acceptanceEvidence(ctx, tests)
 	summary := summarizeAcceptanceEvidence(ctx, tests)
 	var out []Finding
+	verifyPassed := ctx.VerifyVerdict == "PASS"
 	for i, crit := range ctx.Ticket.Acceptance {
 		if acceptanceCovered(crit, evidence, tests) {
+			continue
+		}
+		if verifyPassed && toolchainCriterion(crit) {
 			continue
 		}
 		out = append(out, Finding{
@@ -414,6 +430,41 @@ func summarizeAcceptanceEvidence(ctx *FreshContext, tests []string) string {
 		return "no test or code file in the diff"
 	}
 	return strings.Join(parts, "; ")
+}
+
+var (
+	toolchainSubjectRe = regexp.MustCompile(`(?i)\b(tests?|testes|suites?|su[ií]tes?|build|builds|compil\w*|typecheck\w*|type-check\w*|lint\w*|e2e|unit\w*|unit[aá]rios?|verify)\b`)
+	toolchainOutcomeRe = regexp.MustCompile(`(?i)\b(pass|passes|passing|passed|passam|passa|passando|green|verdes?|succeed\w*|ok|clean|limpos?)\b`)
+)
+
+// toolchainFiller are the words a pure toolchain criterion may contain
+// besides subjects and outcomes; anything else ("refund", "404") means the
+// criterion names a feature, which verify PASS alone does not evidence.
+var toolchainFiller = map[string]bool{
+	"and": true, "all": true, "the": true, "are": true, "must": true, "should": true, "with": true,
+	"without": true, "errors": true, "error": true, "local": true, "locally": true, "full": true,
+	"e": true, "os": true, "as": true, "todos": true, "todas": true, "devem": true, "deve": true,
+	"com": true, "sem": true, "erros": true, "erro": true, "de": true, "do": true, "da": true,
+	"no": true, "na": true, "em": true, "suite": true, "suíte": true, "projeto": true, "project": true,
+}
+
+// toolchainCriterion reports criteria like "build, typecheck, tests and E2E
+// pass": a verify PASS in the same stack is their evidence, not the diff.
+func toolchainCriterion(crit string) bool {
+	if !toolchainSubjectRe.MatchString(crit) || !toolchainOutcomeRe.MatchString(crit) {
+		return false
+	}
+	for _, tok := range strings.Fields(strings.ToLower(crit)) {
+		tok = strings.Trim(tok, ".,;:()[]{}\"'`!")
+		if tok == "" || toolchainFiller[tok] {
+			continue
+		}
+		if toolchainSubjectRe.MatchString(tok) || toolchainOutcomeRe.MatchString(tok) {
+			continue
+		}
+		return false
+	}
+	return true
 }
 
 func acceptanceCovered(crit, evidence string, tests []string) bool {
@@ -656,16 +707,48 @@ func qualityMarkerInComment(content string) bool {
 
 var addedFuncRe = regexp.MustCompile(`(?i)^\+\s*(?:export\s+)?(?:async\s+)?(?:pub(?:\([^)]*\))?\s+)?(?:func|function|def|fn)\s+`)
 
+var (
+	hunkNewStartRe = regexp.MustCompile(`^@@ -\d+(?:,\d+)? \+(\d+)`)
+	funcNameRe     = regexp.MustCompile(`(?:func|function|def|fn)\s+(?:\([^)]*\)\s*)?([A-Za-z_$][\w$]*)`)
+	// jsxMarkupRe matches lines that are JSX markup rather than logic:
+	// opening/closing tags, self-closing ends and bare attribute lines.
+	jsxMarkupRe = regexp.MustCompile(`^(?:</?[A-Za-z>]|/>|>$|[A-Za-z-]+=(?:"[^"]*"|\{[^}]*\})\s*/?>?$)`)
+)
+
+// largeComponentLogicLines is the limit for React components (capitalized
+// functions in .tsx/.jsx), whose JSX markup lines are not counted.
+const largeComponentLogicLines = 120
+
+func isJSXFile(file string) bool {
+	ext := strings.ToLower(filepath.Ext(file))
+	return ext == ".tsx" || ext == ".jsx"
+}
+
 func reviewQualityLargeFuncs(ctx *FreshContext) []Finding {
 	var out []Finding
 	file := ""
 	counting := false
-	added := 0
+	added, markup, newLine, startLine := 0, 0, 0, 0
+	component := false
+	inHeader := false
 	emitted := map[string]bool{}
+	reset := func() {
+		counting = false
+		added, markup, startLine = 0, 0, 0
+		component = false
+	}
 	flush := func() {
-		if !counting || added < largeFuncAddedLines || file == "" {
-			counting = false
-			added = 0
+		if !counting || file == "" {
+			reset()
+			return
+		}
+		limit, size, msg := largeFuncAddedLines, added, fmt.Sprintf("added function is too large (%d lines +)", added)
+		if component {
+			limit, size = largeComponentLogicLines, added-markup
+			msg = fmt.Sprintf("added React component is too large (%d logic lines +, %d JSX lines not counted)", size, markup)
+		}
+		if size < limit {
+			reset()
 			return
 		}
 		id := "quality-large-func-" + file
@@ -673,35 +756,56 @@ func reviewQualityLargeFuncs(ctx *FreshContext) []Finding {
 			emitted[id] = true
 			out = append(out, Finding{
 				ID: "quality-large-func", Severity: SeverityWarning, Category: "quality", Role: "quality",
-				Message:  fmt.Sprintf("added function is too large (%d lines +)", added),
+				Message:  msg,
 				File:     file,
+				Line:     startLine,
 				Reviewer: ctx.Reviewer, Agreement: 1,
 			})
 		}
-		counting = false
-		added = 0
+		reset()
 	}
 	for _, line := range strings.Split(ctx.Diff, "\n") {
 		if strings.HasPrefix(line, "diff --git ") {
 			flush()
 			file = diffPath(line)
+			newLine = 0
+			inHeader = true
 			continue
 		}
 		if strings.HasPrefix(line, "@@") {
 			flush()
+			inHeader = false
+			if m := hunkNewStartRe.FindStringSubmatch(line); m != nil {
+				newLine, _ = strconv.Atoi(m[1])
+			}
 			continue
 		}
-		if !strings.HasPrefix(line, "+") || strings.HasPrefix(line, "+++") {
+		if inHeader {
+			continue
+		}
+		cur := newLine
+		if strings.HasPrefix(line, "+") || strings.HasPrefix(line, " ") {
+			newLine++
+		}
+		if !strings.HasPrefix(line, "+") {
 			continue
 		}
 		if addedFuncRe.MatchString(line) {
 			flush()
 			counting = true
-			added = 0
+			startLine = cur
+			if isJSXFile(file) {
+				if m := funcNameRe.FindStringSubmatch(line); m != nil && m[1] != "" && unicode.IsUpper(rune(m[1][0])) {
+					component = true
+				}
+			}
 			continue
 		}
 		if counting {
 			added++
+			if component && jsxMarkupRe.MatchString(strings.TrimSpace(line[1:])) {
+				markup++
+			}
 		}
 	}
 	flush()
@@ -1256,13 +1360,9 @@ func loadInvariants(repo string) ([]mem.Invariant, error) {
 }
 
 func pinGitRefs(cfg *Config) error {
-	base, err := resolveGitRef(cfg.RepoDir, cfg.BaseRef)
+	base, head, err := gitref.ResolvePair(cfg.RepoDir, cfg.BaseRef, cfg.HeadRef)
 	if err != nil {
-		return fmt.Errorf("base: %w", err)
-	}
-	head, err := resolveGitRef(cfg.RepoDir, cfg.HeadRef)
-	if err != nil {
-		return fmt.Errorf("head: %w", err)
+		return err
 	}
 	cfg.BaseRef = base
 	cfg.HeadRef = head

@@ -150,6 +150,7 @@ func BuildFromRoot(root string) (*Index, error) {
 }
 
 func BuildFromRootOpts(root string, opts *BuildOptions) (*Index, error) {
+	resetJSWorkspaceCache()
 	if opts == nil {
 		def := DefaultBuildOptions()
 		opts = &def
@@ -366,22 +367,40 @@ func resolveCallSym(
 	return matched[0], conf, true
 }
 
-func filterByModuleHint(nodes map[string]Node, ids []string, moduleHint string) []string {
-	hint := stripJSImportExt(filepath.ToSlash(moduleHint))
-	var out []string
-	for _, id := range ids {
-		n := nodes[id]
-		if n.Path == "" {
-			continue
-		}
-		path := filepath.ToSlash(n.Path)
-		base := stripJSImportExt(strings.TrimSuffix(path, filepath.Ext(path)))
-		if path == moduleHint || base == hint || strings.HasPrefix(base, hint+"/") {
-			out = append(out, id)
-		}
+// barrelHint turns a resolved barrel module (".../index") into its directory,
+// so a call imported through `export * from "./render"` still matches.
+func barrelHint(hint string) string {
+	if strings.HasSuffix(hint, "/index") {
+		return strings.TrimSuffix(hint, "/index")
 	}
-	if len(out) > 0 {
+	return hint
+}
+
+func filterByModuleHint(nodes map[string]Node, ids []string, moduleHint string) []string {
+	exact := stripJSImportExt(filepath.ToSlash(moduleHint))
+	match := func(hint string) []string {
+		var out []string
+		for _, id := range ids {
+			n := nodes[id]
+			if n.Path == "" {
+				continue
+			}
+			path := filepath.ToSlash(n.Path)
+			base := stripJSImportExt(strings.TrimSuffix(path, filepath.Ext(path)))
+			if path == moduleHint || base == hint || strings.HasPrefix(base, hint+"/") {
+				out = append(out, id)
+			}
+		}
 		return out
+	}
+	if out := match(exact); len(out) > 0 {
+		return out
+	}
+	// Barrel (".../index") defining nothing itself: fall back to its directory.
+	if dir := barrelHint(exact); dir != exact {
+		if out := match(dir); len(out) > 0 {
+			return out
+		}
 	}
 	return ids
 }
@@ -464,7 +483,7 @@ func fileImportCovers(imp string, n *Node) bool {
 		return true
 	}
 	base := stripJSImportExt(strings.TrimSuffix(path, filepath.Ext(path)))
-	hint := stripJSImportExt(impSlash)
+	hint := barrelHint(stripJSImportExt(impSlash))
 	return base == hint || strings.HasPrefix(base, hint+"/")
 }
 

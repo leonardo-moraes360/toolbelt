@@ -83,3 +83,24 @@ func TestIsSecret(t *testing.T) {
 		}
 	}
 }
+
+func TestPlaywrightPrefixAllowedByDefault(t *testing.T) {
+	got := Filter([]string{"PLAYWRIGHT_BROWSERS_PATH=/opt/ms", "PUPPETEER_CACHE_DIR=/c", "PLAYWRIGHT_API_TOKEN=x", "PUPPETEER_BROWSERLESS_WS_ENDPOINT=wss://h?token=x"}, Options{})
+	if len(got) != 2 || got[0] != "PLAYWRIGHT_BROWSERS_PATH=/opt/ms" || got[1] != "PUPPETEER_CACHE_DIR=/c" {
+		t.Fatalf("got %v (only the exact browser-path names pass)", got)
+	}
+}
+
+func TestDroppedListsNamesOnly(t *testing.T) {
+	env := []string{"PATH=/bin", "DISPLAY=:0", "AWS_SECRET_ACCESS_KEY=s3cr3t", "DISPLAY=:1", "CUSTOM=v"}
+	got := Dropped(env, Options{Allow: []string{"CUSTOM"}})
+	want := []string{"DISPLAY"} // secret-looking names are never listed
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("got %v want %v", got, want)
+	}
+	for _, n := range got {
+		if strings.Contains(n, "=") {
+			t.Fatalf("value leaked: %q", n)
+		}
+	}
+}

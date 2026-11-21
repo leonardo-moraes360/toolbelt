@@ -64,7 +64,7 @@ func (AngularIndexer) IndexFile(root, rel string) ([]Node, []Edge, error) {
 		return nodes, edges, nil
 	}
 
-	nodes, edges = appendImportEdges(nodes, edges, fileID, extractImportPaths(src), 0.9)
+	nodes, edges = appendJSImportEdges(nodes, edges, root, rel, fileID, extractImportPaths(src), 0.9)
 	classes := uniqueMatches(reNgClass, src)
 	isComp := reNgComponent.MatchString(src)
 	isInj := reNgInjectable.MatchString(src)

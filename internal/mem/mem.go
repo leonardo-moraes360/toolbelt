@@ -317,14 +317,18 @@ func EnsureDefaultAntiCheat(toolbeltDir string) (*InitResult, error) {
 			Invariants: invs,
 		}, nil
 	}
-	defaults := []struct {
+	type seed struct {
 		cat  string
 		rule string
-	}{
-		{"anti_cheat", "NEVER modify files in tests/hidden/"},
-		{"anti_cheat", "NEVER change thresholds in .toolbelt/thresholds.yaml"},
-		{"security", "Secrets never appear in logs or prompts"},
 	}
+	defaults := []seed{{"anti_cheat", "NEVER modify files in tests/hidden/"}}
+	// Only point at thresholds.yaml when it exists: nothing creates it, and an
+	// invariant about a missing file reads as broken setup (field study: paprika).
+	// guard keeps protecting the path either way.
+	if _, statErr := os.Stat(filepath.Join(toolbeltDir, "thresholds.yaml")); statErr == nil {
+		defaults = append(defaults, seed{"anti_cheat", "NEVER change thresholds in .toolbelt/thresholds.yaml"})
+	}
+	defaults = append(defaults, seed{"security", "Secrets never appear in logs or prompts"})
 	created := make([]Invariant, 0, len(defaults))
 	for _, d := range defaults {
 		inv, err := s.Add(d.cat, d.rule, "", true)

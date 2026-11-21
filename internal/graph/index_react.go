@@ -35,7 +35,7 @@ func (ReactIndexer) IndexFile(root, rel string) ([]Node, []Edge, error) {
 	}
 	modName := moduleNameFromRel(rel)
 	nodes, edges, _, fileID := baseFileNodes(modName, rel, 0.9)
-	nodes, edges = appendImportEdges(nodes, edges, fileID, extractImportPaths(src), 0.9)
+	nodes, edges = appendJSImportEdges(nodes, edges, root, rel, fileID, extractImportPaths(src), 0.9)
 
 	compNames := uniqueMatchesMulti([]*regexp.Regexp{
 		reReactFuncComp, reReactConstFC, reReactConstJSX, reReactTypedFC,

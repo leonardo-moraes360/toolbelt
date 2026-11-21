@@ -30,7 +30,7 @@ func (MDXIndexer) IndexFile(root, rel string) ([]Node, []Edge, error) {
 	modName := moduleNameFromRel(rel)
 	slash := filepath.ToSlash(rel)
 	fileID := "file:" + slash
-	nodes, edges = appendImportEdges(nodes, edges, fileID, extractImportPaths(src), 0.85)
+	nodes, edges = appendJSImportEdges(nodes, edges, root, rel, fileID, extractImportPaths(src), 0.85)
 	used := extractJSXComponents(src)
 	edges = appendFileRenderEdges(edges, fileID, used, modName)
 	return nodes, edges, nil

@@ -30,7 +30,7 @@ func (VueIndexer) IndexFile(root, rel string) ([]Node, []Edge, error) {
 
 	script := firstMatchingBlock(src, []string{"<script setup", "<script"}, "</script>")
 	template := firstMatchingBlock(src, []string{"<template"}, "</template>")
-	nodes, edges = appendImportEdges(nodes, edges, fileID, extractImportPaths(script), 0.9)
+	nodes, edges = appendJSImportEdges(nodes, edges, root, rel, fileID, extractImportPaths(script), 0.9)
 
 	compName := filepath.Base(strings.TrimSuffix(rel, filepath.Ext(rel)))
 	if names := uniqueMatches(reVueName, script); len(names) > 0 {

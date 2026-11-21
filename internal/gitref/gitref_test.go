@@ -72,6 +72,69 @@ func TestResolveRejectsOptionInjection(t *testing.T) {
 	}
 }
 
+func TestResolvePairDefaultBaseOnRootCommit(t *testing.T) {
+	repo := initRepo(t)
+	head, err := Resolve(repo, "HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+	base, gotHead, err := ResolvePair(repo, DefaultBase, "HEAD")
+	if err != nil {
+		t.Fatalf("single-commit repo with default base should not fail: %v", err)
+	}
+	if base != head || gotHead != head {
+		t.Fatalf("base=%s head=%s want both %s", base, gotHead, head)
+	}
+}
+
+func TestResolvePairExplicitMissingBaseStillFails(t *testing.T) {
+	repo := initRepo(t)
+	_, _, err := ResolvePair(repo, "HEAD~2", "HEAD")
+	if err == nil {
+		t.Fatal("explicit missing base must fail")
+	}
+	if !strings.Contains(err.Error(), "history too short") {
+		t.Fatalf("relative ref should get a history hint, not fetch origin: %v", err)
+	}
+	if strings.Contains(err.Error(), "git fetch origin") {
+		t.Fatalf("no fetch-origin hint for relative refs: %v", err)
+	}
+}
+
+func TestResolvePairOrphanNextToHistoryFailsClosed(t *testing.T) {
+	repo := initRepo(t)
+	for _, args := range [][]string{
+		{"commit", "--allow-empty", "-m", "second"},
+		{"checkout", "-q", "--orphan", "squashed"},
+		{"commit", "-q", "-m", "orphan root"},
+	} {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = repo
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v (%s)", args, err, out)
+		}
+	}
+	if _, _, err := ResolvePair(repo, DefaultBase, "HEAD"); err == nil {
+		t.Fatal("orphan root next to other history must not fall back to an empty diff")
+	}
+}
+
+func TestResolvePairShallowCloneFailsClosed(t *testing.T) {
+	src := initRepo(t)
+	cmd := exec.Command("git", "commit", "--allow-empty", "-m", "second")
+	cmd.Dir = src
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("%v %s", err, out)
+	}
+	dst := filepath.Join(t.TempDir(), "shallow")
+	if out, err := exec.Command("git", "clone", "-q", "--depth", "1", "file://"+src, dst).CombinedOutput(); err != nil {
+		t.Fatalf("clone: %v %s", err, out)
+	}
+	if _, _, err := ResolvePair(dst, DefaultBase, "HEAD"); err == nil {
+		t.Fatal("shallow clone must not fall back to an empty diff")
+	}
+}
+
 func initRepo(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()

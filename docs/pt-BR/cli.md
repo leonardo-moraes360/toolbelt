@@ -1225,6 +1225,22 @@ exit 0. Comando inexistente usa exit **127** (ver tabela de códigos). O JSON
 de verify (e cada etapa do `tb stack`) inclui `reason`/`error` com o motivo da
 falha ou do ESCALATE (não só em DEBUG no stderr).
 
+A saída de falha é pensada para agentes: os comandos filhos recebem `NO_COLOR=1 FORCE_COLOR=0`
+(a menos que um dos dois já esteja definido), os escapes ANSI são removidos do `reason` e uma
+saída longa mantém primeiro as linhas de falha (`FAIL`, `Error:`, `✗`, `panic:` …) e depois o
+final, onde os runners imprimem o resumo. Quando duas iterações seguidas falham com as mesmas
+linhas de falha nomeadas (durações, endereços e portas ignorados), o verify para com `ESCALATE`
+e `reason: deterministic failure …` em vez de gastar o resto do `--max-iter`; uma falha
+silenciosa (sem linha reconhecível) continua sendo repetida. Em veredicto diferente de PASS, o
+JSON traz `filtered_env`: os **nomes** (nunca os valores, e nunca nomes com cara de segredo) das variáveis que a allowlist
+removeu, para que uma falha que só acontece dentro do `tb verify` aponte a entrada que falta
+em `env.allow`.
+
+Num repositório que tem um único commit, o `--base HEAD~1` implícito cai para `HEAD` (diff vazio,
+aviso no stderr) em vez de falhar; build, lint e testes rodam normalmente. Clones rasos, uma
+branch órfã ao lado de outro histórico e um `--base` explícito que não resolve continuam
+falhando (ali um diff vazio esconderia edições em paths protegidos).
+
 **Guard dentro do verify (anti-cheat vs mandate):**
 
 O verify sempre roda `tb guard` no diff e inclui o resultado em `guard`. A decisão
@@ -2235,7 +2251,8 @@ Variáveis planejadas (ainda não lidas pela CLI): `TB_VAULT`, `TB_LOG_LEVEL`,
 
 `tb verify` / `tb stack` (etapa verify), MCP `tb_run` / `tb_verify_run` / `tb_stack`
 não repassam o ambiente completo ao `sh -c`. Só passam chaves da allowlist embutida
-(PATH, HOME, LANG, TMPDIR, toolchain Go/Node/npm/pnpm, proxies, XDG, etc.), mais:
+(PATH, HOME, LANG, TMPDIR, toolchain Go/Node/npm/pnpm, paths de navegador
+(`PLAYWRIGHT_BROWSERS_PATH`, `PUPPETEER_CACHE_DIR`, `PUPPETEER_EXECUTABLE_PATH`, …), proxies, XDG, etc.), mais:
 
 | Fonte | Efeito |
 |-------|--------|
@@ -2288,7 +2305,7 @@ menos que `sandbox.allow_unsandboxed: true`. O resultado traz
 - Erros esperados de domínio/runtime (`RunE`, ex.: flag de negócio obrigatória ausente, falha de git, arquivo inexistente) saem com **exit ≠ 0** e mensagem em stderr **sem** dump de `Usage` do Cobra.
 - Erros genuínos de parse de **flags** ou **args** (flag desconhecida, `ExactArgs`/`MinimumNArgs`, etc.) mantêm `Usage` no stderr para orientar a invocação.
 - Subcomando desconhecido em qualquer nível (ex.: `tb mem nao-existe`, `tb bench nope`) sai com **exit ≠ 0** e erro `unknown command "…"`, em vez de imprimir help com exit 0.
-- Falhas de git em `guard` / `review` / `drift` / `verify` (e no `stack` que os empilha) **não** mostram só `exit status 128/129`: a mensagem inclui o stderr do git, a ref ausente (`ref missing: …`) e uma dica `git fetch origin <ref>`.
+- Falhas de git em `guard` / `review` / `drift` / `verify` (e no `stack` que os empilha) **não** mostram só `exit status 128/129`: a mensagem inclui o stderr do git, a ref ausente (`ref missing: …`) e uma dica `git fetch origin <ref>`. Para uma ref relativa (`HEAD~2`, `main^`), a dica fala de histórico curto (repo de um commit ou clone raso: `--base <sha>` ou `git fetch --deepen=1`).
 - `--approved-sha` igual à base (intervalo `base..approved` vazio) não despeja o usage do `git range-diff`; sai com mensagem clara sobre o intervalo inválido.
 
 ## Códigos de Saída

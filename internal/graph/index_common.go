@@ -91,6 +91,16 @@ func appendNamedNodes(
 	return nodes, edges
 }
 
+// appendJSImportEdges is appendImportEdges for JS-family sources: relative,
+// tsconfig-alias and workspace imports become file: edges, the rest pkg:.
+func appendJSImportEdges(nodes []Node, edges []Edge, root, rel, fileID string, imports []string, conf float64) ([]Node, []Edge) {
+	cfg := loadJSPathConfig(root)
+	for _, imp := range imports {
+		nodes, edges = appendResolvedJSImport(nodes, edges, root, rel, fileID, imp, cfg, conf)
+	}
+	return nodes, edges
+}
+
 func appendImportEdges(nodes []Node, edges []Edge, fileID string, imports []string, conf float64) ([]Node, []Edge) {
 	for _, imp := range imports {
 		target := "pkg:" + imp

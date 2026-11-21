@@ -1203,6 +1203,23 @@ command failures (exit ≠ 0/126/127) continue in the `--max-iter` loop.
 (same as text mode). Only `PASS` and `SKIPPED` (visual ruler) use exit 0.
 A missing command uses exit **127** (see the exit-code table).
 
+Failure output is meant for agents: child commands get `NO_COLOR=1 FORCE_COLOR=0`
+(unless either is already set), ANSI escapes are stripped from `reason`, and a long
+output keeps the failure lines (`FAIL`, `Error:`, `✗`, `panic:` …) first, then
+the tail where runners print their summary. When two iterations in a row fail
+with the same named failure lines (durations, addresses and ports ignored),
+verify stops with `ESCALATE` and `reason: deterministic failure …` instead of
+spending the remaining `--max-iter`; a silent failure (no recognizable line) is
+still retried. On a non-PASS verdict the JSON carries `filtered_env`: the
+**names** (never values, and never secret-looking names) of the variables the allowlist removed, so a failure
+that only happens inside `tb verify` points at the missing `env.allow` entry.
+
+In a repository that holds a single commit, the implicit `--base HEAD~1` falls back
+to `HEAD` (empty diff, a warning on stderr) instead of failing; build, lint and
+tests still run. Shallow clones, an orphan branch next to other history, and an
+explicit `--base` that does not resolve still fail (an empty diff there would hide
+edits to protected paths).
+
 **Guard inside verify (anti-cheat vs mandate):**
 
 Verify always runs `tb guard` on the diff and includes the result in `guard`. The decision
@@ -2212,7 +2229,8 @@ Planned variables (not yet read by the CLI): `TB_VAULT`, `TB_LOG_LEVEL`,
 
 `tb verify` / `tb stack` (verify step), MCP `tb_run` / `tb_verify_run` / `tb_stack`
 do not pass the full environment to `sh -c`. They only pass keys from the built-in allowlist
-(PATH, HOME, LANG, TMPDIR, Go/Node/npm/pnpm toolchain, proxies, XDG, etc.), plus:
+(PATH, HOME, LANG, TMPDIR, Go/Node/npm/pnpm toolchain, browser paths
+(`PLAYWRIGHT_BROWSERS_PATH`, `PUPPETEER_CACHE_DIR`, `PUPPETEER_EXECUTABLE_PATH`, …), proxies, XDG, etc.), plus:
 
 | Source | Effect |
 |--------|--------|
@@ -2265,7 +2283,7 @@ closed unless `sandbox.allow_unsandboxed: true`. The result carries
 - Expected domain/runtime errors (`RunE`, e.g. missing required business flag, git failure, missing file) exit with **exit ≠ 0** and a stderr message **without** a Cobra `Usage` dump.
 - Genuine **flag** or **args** parse errors (unknown flag, `ExactArgs`/`MinimumNArgs`, etc.) keep `Usage` on stderr to guide invocation.
 - An unknown subcommand at any level (e.g. `tb mem nao-existe`, `tb bench nope`) exits with **exit ≠ 0** and error `unknown command "…"`, instead of printing help with exit 0.
-- Git failures in `guard` / `review` / `drift` / `verify` (and in the `stack` that stacks them) do **not** show only `exit status 128/129`: the message includes git stderr, the missing ref (`ref missing: …`), and a `git fetch origin <ref>` hint.
+- Git failures in `guard` / `review` / `drift` / `verify` (and in the `stack` that stacks them) do **not** show only `exit status 128/129`: the message includes git stderr, the missing ref (`ref missing: …`), and a `git fetch origin <ref>` hint. For a relative ref (`HEAD~2`, `main^`) the hint is about short history instead (single-commit repo or shallow clone: `--base <sha>` or `git fetch --deepen=1`).
 - `--approved-sha` equal to the base (empty `base..approved` range) does not dump `git range-diff` usage; exits with a clear message about the invalid range.
 
 ## Exit Codes
