@@ -10,6 +10,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/leonardo-moraes360/toolbelt/internal/envelope"
 	"github.com/leonardo-moraes360/toolbelt/internal/merge"
 )
 
@@ -81,9 +82,10 @@ changing refs, unless --allow-sensitive is used (dry-run only reports).`,
 		})
 		if res != nil {
 			if asJSON {
-				if jerr := printJSON(res); jerr != nil {
+				if jerr := emitJSONIndent(envelope.Merge, res); jerr != nil {
 					return jerr
 				}
+				err = alreadyReported(err)
 			} else {
 				printMergeTable(res)
 			}

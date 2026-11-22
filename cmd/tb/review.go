@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
@@ -9,6 +8,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/leonardo-moraes360/toolbelt/internal/config"
+	"github.com/leonardo-moraes360/toolbelt/internal/envelope"
 	"github.com/leonardo-moraes360/toolbelt/internal/review"
 )
 
@@ -85,15 +85,7 @@ func emitReview(cmd *cobra.Command, rep *review.Report) error {
 		printReviewReport(rep)
 		return nil
 	}
-	data, err := json.MarshalIndent(rep, "", "  ")
-	if err != nil {
-		return err
-	}
-	if outPath != "" {
-		return os.WriteFile(outPath, data, 0o600)
-	}
-	fmt.Println(string(data))
-	return nil
+	return emitJSONOrFile(envelope.Review, rep, outPath)
 }
 
 func reviewBlockingError(rep *review.Report) error {

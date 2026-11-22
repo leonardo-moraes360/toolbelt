@@ -1,13 +1,13 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
 
+	"github.com/leonardo-moraes360/toolbelt/internal/envelope"
 	"github.com/leonardo-moraes360/toolbelt/internal/mem"
 )
 
@@ -50,7 +50,7 @@ var memAddCmd = &cobra.Command{
 		}
 		out := mem.RedactInvariant(inv)
 		if jsonOutput {
-			return json.NewEncoder(os.Stdout).Encode(out)
+			return emitJSON(envelope.Mem, out)
 		}
 		fmt.Printf("invariant %s added\n", out.ID)
 		return nil
@@ -72,7 +72,7 @@ var memListCmd = &cobra.Command{
 		}
 		list = mem.RedactInvariants(list)
 		if jsonOutput {
-			return json.NewEncoder(os.Stdout).Encode(list)
+			return emitJSON(envelope.Mem, list)
 		}
 		for i := range list {
 			fmt.Println(formatInvariantLine(&list[i]))
@@ -93,7 +93,7 @@ var memShowCmd = &cobra.Command{
 		}
 		out := mem.RedactInvariant(inv)
 		if jsonOutput {
-			return json.NewEncoder(os.Stdout).Encode(out)
+			return emitJSON(envelope.Mem, out)
 		}
 		printInvariant(&out)
 		return nil
@@ -127,7 +127,7 @@ var memEditCmd = &cobra.Command{
 		}
 		out := mem.RedactInvariant(inv)
 		if jsonOutput {
-			return json.NewEncoder(os.Stdout).Encode(out)
+			return emitJSON(envelope.Mem, out)
 		}
 		fmt.Printf("invariant %s updated\n", out.ID)
 		return nil
@@ -148,7 +148,7 @@ var memRetireCmd = &cobra.Command{
 		}
 		out := mem.RedactInvariant(inv)
 		if jsonOutput {
-			return json.NewEncoder(os.Stdout).Encode(out)
+			return emitJSON(envelope.Mem, out)
 		}
 		fmt.Printf("invariant %s retired\n", out.ID)
 		return nil
@@ -169,7 +169,7 @@ var memSearchCmd = &cobra.Command{
 		}
 		list = mem.RedactInvariants(list)
 		if jsonOutput {
-			return json.NewEncoder(os.Stdout).Encode(list)
+			return emitJSON(envelope.Mem, list)
 		}
 		for i := range list {
 			fmt.Println(formatInvariantLine(&list[i]))
@@ -196,10 +196,14 @@ var memCheckCmd = &cobra.Command{
 			ids = append(ids, inv.ID)
 		}
 		rep, err := s.Check(sha, ids, all)
+		printed := false
 		if rep != nil && jsonOutput {
-			_ = json.NewEncoder(os.Stdout).Encode(rep)
+			printed = emitJSON(envelope.Mem, rep) == nil
 		}
 		if err != nil {
+			if printed {
+				return alreadyReported(err)
+			}
 			return err
 		}
 		if jsonOutput {
@@ -225,7 +229,7 @@ var memInitCmd = &cobra.Command{
 			return err
 		}
 		if jsonOutput {
-			return json.NewEncoder(os.Stdout).Encode(result)
+			return emitJSON(envelope.Mem, result)
 		}
 		if result.Created {
 			fmt.Printf("created %d invariants in %s\n", result.Count, result.Path)

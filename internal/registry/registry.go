@@ -4,7 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"sort"
+
+	"github.com/leonardo-moraes360/toolbelt/internal/envelope"
 )
 
 type Tool struct {
@@ -83,18 +86,20 @@ func (r *Registry) List() []*Tool {
 func (r *Registry) Call(ctx context.Context, name string, args map[string]any) (*ToolResult, error) {
 	tool, ok := r.Get(name)
 	if !ok {
-		return &ToolResult{
-			Content: []ContentBlock{{Type: "text", Text: fmt.Sprintf("tool not found: %s", name)}},
-			IsError: true,
-		}, nil
+		return errorResult(fmt.Sprintf("tool not found: %s", name), "tool_not_found", 2), nil
 	}
 
 	result, err := tool.Handler(ctx, args)
 	if err != nil {
-		return &ToolResult{
-			Content: []ContentBlock{{Type: "text", Text: err.Error()}},
-			IsError: true,
-		}, nil
+		return errorResult(err.Error(), errorReason(err.Error()), 1), nil
+	}
+
+	if kind, ok := envelope.ToolKinds[name]; ok {
+		stamped, serr := stampResult(kind, result)
+		if serr != nil {
+			return nil, serr
+		}
+		result = stamped
 	}
 
 	text, err := formatResult(result)
@@ -103,6 +108,32 @@ func (r *Registry) Call(ctx context.Context, name string, args map[string]any) (
 	}
 
 	return &ToolResult{Content: []ContentBlock{{Type: "text", Text: text}}}, nil
+}
+
+// stampResult adds the envelope "v" to a structured result; strings and byte
+// slices are plain text and stay as they are.
+func stampResult(kind string, result any) (any, error) {
+	switch result.(type) {
+	case string, []byte:
+		return result, nil
+	}
+	return envelope.Stamp(kind, result)
+}
+
+func errorResult(msg, reason string, exitCode int) *ToolResult {
+	b, _ := json.MarshalIndent(envelope.NewError(msg, reason, exitCode), "", "  ")
+	return &ToolResult{Content: []ContentBlock{{Type: "text", Text: string(b)}}, IsError: true}
+}
+
+var reasonPrefix = regexp.MustCompile(`^([a-z][a-z0-9_]*):`)
+
+// errorReason is the machine-readable reason: the "reason_code:" prefix some
+// tool errors already carry (prompt_cli_only, ...), otherwise "error".
+func errorReason(msg string) string {
+	if m := reasonPrefix.FindStringSubmatch(msg); m != nil {
+		return m[1]
+	}
+	return "error"
 }
 
 func formatResult(result any) (string, error) {

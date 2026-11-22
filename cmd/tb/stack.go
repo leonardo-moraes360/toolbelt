@@ -2,13 +2,13 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"time"
 
 	"github.com/spf13/cobra"
 
+	"github.com/leonardo-moraes360/toolbelt/internal/envelope"
 	"github.com/leonardo-moraes360/toolbelt/internal/stack"
 	"github.com/leonardo-moraes360/toolbelt/internal/verify"
 )
@@ -174,11 +174,9 @@ func runStack(cmd *cobra.Command, args []string) error {
 }
 
 func emitStackResult(res *stack.Result) error {
-	data, err := json.MarshalIndent(res, "", "  ")
-	if err != nil {
+	if err := emitJSONIndent(envelope.Stack, res); err != nil {
 		return err
 	}
-	fmt.Println(string(data))
 	if !jsonOutput {
 		printStackVerifyNotices(res)
 	}

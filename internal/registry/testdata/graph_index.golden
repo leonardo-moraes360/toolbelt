@@ -1,4 +1,5 @@
 {
+  "v": "graph-index/1.0",
   "edges": 14,
   "nodes": 24,
   "path": "$REPO/.toolbelt/graph.json",

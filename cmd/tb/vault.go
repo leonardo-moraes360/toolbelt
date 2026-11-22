@@ -192,8 +192,7 @@ func vaultFail(err error) error {
 		code, reason = e.Code, e.Reason
 	}
 	if jsonOutput {
-		b, _ := json.Marshal(map[string]any{"error": err.Error(), "reason": reason, "exit_code": code})
-		fmt.Println(string(b))
+		printErrorBody(err, reason, code)
 	} else {
 		fmt.Fprintln(os.Stderr, "tb vault:", err)
 	}

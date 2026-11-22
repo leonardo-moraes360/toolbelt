@@ -2,14 +2,16 @@ package main
 
 import (
 	"context"
-	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"runtime"
 	"time"
 
 	"github.com/spf13/cobra"
 
+	"github.com/leonardo-moraes360/toolbelt/internal/envelope"
 	"github.com/leonardo-moraes360/toolbelt/internal/sandbox"
 )
 
@@ -40,17 +42,38 @@ var sandboxRunCmd = &cobra.Command{
 		}
 		res, err := sb.Run(context.Background(), args[0], args[1:]...)
 		if err != nil {
+			if errors.Is(err, exec.ErrNotFound) {
+				return &exitCodeError{code: exitNotFound, err: err}
+			}
 			return err
 		}
 		if jsonOutput {
-			return json.NewEncoder(os.Stdout).Encode(res)
+			if err := emitJSON(envelope.SandboxRun, res); err != nil {
+				return err
+			}
+		} else {
+			fmt.Print(res.Output)
 		}
-		fmt.Print(res.Output)
-		if res.ExitCode != 0 && !res.TimedOut {
-			os.Exit(res.ExitCode)
+		if code := sandboxExitCode(res); code != 0 {
+			os.Exit(code)
 		}
 		return nil
 	},
+}
+
+// sandboxExitCode is the code tb sandbox run exits with: 124 when the child
+// hit --timeout, 130 when interrupted, otherwise the child's own code. A child
+// killed by a signal has no code of its own and counts as 1.
+func sandboxExitCode(res *sandbox.Result) int {
+	switch {
+	case res.TimedOut:
+		return exitTimeout
+	case res.Canceled:
+		return exitInterrupt
+	case res.ExitCode < 0:
+		return exitFail
+	}
+	return res.ExitCode
 }
 
 var sandboxCheckCmd = &cobra.Command{
@@ -69,7 +92,7 @@ var sandboxCheckCmd = &cobra.Command{
 			info["landlock"] = false
 		}
 		if jsonOutput {
-			return json.NewEncoder(os.Stdout).Encode(info)
+			return emitJSON(envelope.SandboxCheck, info)
 		}
 		fmt.Printf("Landlock: %v\n", info["landlock"])
 		if ver, ok := info["version"]; ok {

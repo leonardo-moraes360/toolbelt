@@ -2406,25 +2406,53 @@ menos que `sandbox.allow_unsandboxed: true`. O resultado traz
 
 ---
 
+## Envelopes JSON
+
+Todo documento JSON que o `tb` imprime no stdout com `--json`, e todo corpo de resultado de ferramenta MCP, tem um campo string de nível superior `v` = `<kind>/<major>.<minor>`. Um bump de minor adiciona campos; qualquer outra mudança sobe o major. Consumidores devem ignorar campos desconhecidos. A CLI e a ferramenta MCP correspondente emitem o mesmo kind. Os kinds ficam definidos num lugar só, `internal/envelope`.
+
+| Kind | Produtor |
+|------|----------|
+| `error/1.0` | o corpo de erro (abaixo); erros de ferramentas MCP |
+| `version/1.0` | `tb version`, `tb_version` |
+| `init/1.0` | `tb init` |
+| `mem/1.0` | `tb mem *`, `tb_mem_*` (uma lista é `{"v", "invariants": [...]}`) |
+| `verify/1.0` | `tb verify run`, `tb_verify_run` |
+| `guard/1.0` | `tb guard check`, `tb_guard_check` |
+| `review/1.0`, `drift/1.0`, `stack/1.0` | `tb review`, `tb drift`, `tb stack` e suas ferramentas |
+| `sandbox-run/1.0`, `sandbox-check/1.0` | `tb sandbox run`, `tb_run`; `tb sandbox check` |
+| `graph-<op>/1.0` | `tb graph search\|callers\|deps\|impact\|explain\|path\|stats\|index\|rebuild`, `tb_graph_*` |
+| `ticket/1.0`, `ticket-list/1.0` | `tb ticket *`, `tb_ticket_*` (uma lista é `{"v", "tickets": [...]}`) |
+| `workspace/1.0` | `tb workspace *` (uma lista é `{"v", "workspaces": [...]}`) |
+| `merge/1.0` | `tb merge`, `tb_merge` |
+
+Os comandos experimentais carimbam `board/1.0`, `router/1.0`, `router-status/1.0` e `watchdog/1.0` pela mesma regra (não congelados; `tb watchdog alerts` é `{"v", "alerts": [...]}`); as saídas de bus, egm, vault, red, blue, lab e bench ainda não são carimbadas. Envelopes que já tinham `v` o mantêm na própria versão (`bus/0.1`, `bus-wake/0.1`, `bus-discover/0.1`, `router-task/0.1`, `egm-source-drift/0.2`, `egm-draft/0.1`, `egm-brainstorm/0.1`).
+
+Arquivos em disco usam um `version` inteiro: `.toolbelt/graph.json` (cache derivado: um arquivo sem `version` ou com outra é descartado e reconstruído pelo próximo `tb graph index`, ou aparece como `stale: true` via MCP) e `.toolbelt/tickets/TKT-*.yaml` (`version: 1` opcional, ausente vale 1; uma versão mais nova é recusada, nunca reescrita).
+
 ## Erros e Usage
 
-- Erros esperados de domínio/runtime (`RunE`, ex.: flag de negócio obrigatória ausente, falha de git, arquivo inexistente) saem com **exit ≠ 0** e mensagem em stderr **sem** dump de `Usage` do Cobra.
-- Erros genuínos de parse de **flags** ou **args** (flag desconhecida, `ExactArgs`/`MinimumNArgs`, etc.) mantêm `Usage` no stderr para orientar a invocação.
-- Subcomando desconhecido em qualquer nível (ex.: `tb mem nao-existe`, `tb bench nope`) sai com **exit ≠ 0** e erro `unknown command "…"`, em vez de imprimir help com exit 0.
+- Erros esperados de domínio/runtime (`RunE`, ex.: flag de negócio obrigatória ausente, falha de git, arquivo inexistente) saem com **exit 1** e mensagem em stderr **sem** dump de `Usage` do Cobra.
+- Erros genuínos de parse de **flags** ou **args** (flag desconhecida, `ExactArgs`/`MinimumNArgs`, flag obrigatória ausente, etc.) saem com **exit 2** e mantêm `Usage` no stderr para orientar a invocação.
+- Subcomando desconhecido em qualquer nível (ex.: `tb mem nao-existe`, `tb bench nope`) sai com **exit 2** e erro `unknown command "…"`, em vez de imprimir help com exit 0.
+- Com `--json`, o erro também sai no stdout como um documento `error/1.0`, `{"v": "error/1.0", "error": "<mensagem>", "reason": "<código>", "exit_code": <n>}`; a mensagem em texto continua no stderr. `reason` é `usage` no exit 2, `command_not_found` no exit 127, o motivo próprio do comando onde existe (egm, vault), senão `error`. Um comando que já imprimiu seu documento de resultado e depois falha (`tb mem check`, `tb merge`) não acrescenta um segundo. Via MCP, um erro de ferramenta é `isError: true` com o mesmo corpo como texto (`reason` é o prefixo `código:` da mensagem quando existe, `tool_not_found` com exit code 2 para ferramenta desconhecida, senão `error` com exit code 1).
 - Falhas de git em `guard` / `review` / `drift` / `verify` (e no `stack` que os empilha) **não** mostram só `exit status 128/129`: a mensagem inclui o stderr do git, a ref ausente (`ref missing: …`) e uma dica `git fetch origin <ref>`. Para uma ref relativa (`HEAD~2`, `main^`), a dica fala de histórico curto (repo de um commit ou clone raso: `--base <sha>` ou `git fetch --deepen=1`).
 - `--approved-sha` igual à base (intervalo `base..approved` vazio) não despeja o usage do `git range-diff`; sai com mensagem clara sobre o intervalo inválido.
 
 ## Códigos de Saída
 
-A CLI atual não usa uma tabela estável de códigos 2–7. Na prática:
+A tabela é estável (a 1.x pode acrescentar códigos, nunca mudar um significado).
 
 | Código | Significado |
 |--------|-------------|
-| 0 | Sucesso (`PASS`/`SKIPPED` no verify; guard sem `SeverityError` ou com `--warn-only`) |
-| ≠0 (tipicamente 1) | Erro de parse/domínio, `FAIL`/`ESCALATE` no verify, `SeverityError` no guard, subcomando desconhecido |
-| 2 | `tb verify run`: `--ruler` inválido (nome desconhecido, ou `visual` combinada com outra régua); nada roda |
-| 127 | `tb verify run`: `test_cmd` / `build_cmd` / `typecheck_cmd` / `lint_cmd` / um check nomeado / `hidden_test_cmd` não encontrado (ou não executável / `ErrNotFound`); com `--json` emite o envelope `verify.Result` com campo `error` |
-| exit do filho | `tb sandbox run` propaga o exit code do processo quando ≠ 0 e sem timeout |
+| 0 | Sucesso: `PASS`/`SKIPPED` no verify; guard sem `SeverityError` ou com `--warn-only`; um check que passou |
+| 1 | O check rodou e falhou (`FAIL`/`ESCALATE` no verify, `SeverityError` no guard, vault check, egm `FAIL`), ou erro de runtime depois que o trabalho começou |
+| 2 | Erro de uso ou recusa antes de qualquer trabalho: flag ou argumento inválido, subcomando desconhecido, flag obrigatória ausente, `--ruler`/`--check` inválido (`tb verify run`, `tb stack`), motivos de recusa do egm/vault |
+| 3 | `tb egm`: o veredito não permite a operação (`receipt` é recusado sem `PASS`/`PASS_PARTIAL`) |
+| 124 | `tb sandbox run`: o filho estourou `--timeout` (também com `--json`; o documento tem `timed_out: true`) |
+| 127 | Comando configurado não encontrado ou não executável: `tb verify run` (`test_cmd` / `build_cmd` / `typecheck_cmd` / `lint_cmd` / um check nomeado / `hidden_test_cmd`; com `--json` emite o envelope `verify.Result` com campo `error`) e o comando do `tb sandbox run` |
+| 130 | Interrompido por SIGINT/SIGTERM (`tb mcp`; `tb sandbox run` quando cancelado) |
+| do filho | `tb sandbox run` sai com o código não zero do filho, com ou sem `--json` (filho morto por sinal conta como 1) |
+| max | `tb stack` sai com o maior exit code entre os seus passos |
 
 Quando o comando configurado no verify não existe/não é executável, o verify falha imediatamente (sem retries) e o processo `tb` sai **127**.
 

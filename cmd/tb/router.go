@@ -16,6 +16,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/leonardo-moraes360/toolbelt/internal/config"
+	"github.com/leonardo-moraes360/toolbelt/internal/envelope"
 	"github.com/leonardo-moraes360/toolbelt/internal/execenv"
 	"github.com/leonardo-moraes360/toolbelt/internal/router"
 	"github.com/leonardo-moraes360/toolbelt/internal/ticket"
@@ -114,7 +115,7 @@ var routerRunCmd = &cobra.Command{
 				return err
 			}
 			if jsonOutput {
-				return printJSON(map[string]any{"ok": true, "channel": rc.Bus.Channel, "as": rc.Bus.As})
+				return emitJSONIndent(envelope.Router, map[string]any{"ok": true, "channel": rc.Bus.Channel, "as": rc.Bus.As})
 			}
 			fmt.Printf("ok: router bus %s/%s ready\n", rc.Bus.Channel, rc.Bus.As)
 			return nil
@@ -125,7 +126,7 @@ var routerRunCmd = &cobra.Command{
 				return err
 			}
 			if jsonOutput {
-				return printJSON(plan)
+				return emitJSONIndent(envelope.Router, plan)
 			}
 			renderPlan(&plan)
 			return nil
@@ -138,7 +139,7 @@ var routerRunCmd = &cobra.Command{
 			return err
 		}
 		if jsonOutput {
-			if err := printJSON(sum); err != nil {
+			if err := emitJSONIndent(envelope.Router, sum); err != nil {
 				return err
 			}
 		} else {
@@ -219,7 +220,7 @@ var routerStatusCmd = &cobra.Command{
 		rep, err := router.LoadStatus(root)
 		if errors.Is(err, router.ErrNoState) {
 			if jsonOutput {
-				return printJSON(map[string]any{"status": "none"})
+				return emitJSONIndent(envelope.RouterStatus, map[string]any{"status": "none"})
 			}
 			fmt.Println("No router has run in this repository (use `tb router run`).")
 			return nil
@@ -228,7 +229,7 @@ var routerStatusCmd = &cobra.Command{
 			return err
 		}
 		if jsonOutput {
-			return printJSON(rep)
+			return emitJSONIndent(envelope.RouterStatus, rep)
 		}
 		renderRouterStatus(rep, "")
 		return nil
@@ -296,7 +297,7 @@ var routerConfigCmd = &cobra.Command{
 			return err
 		}
 		if jsonOutput {
-			return printJSON(rc)
+			return emitJSONIndent(envelope.Router, rc)
 		}
 		data, err := yaml.Marshal(map[string]config.RouterConfig{"router": rc})
 		if err != nil {

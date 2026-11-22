@@ -11,6 +11,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/leonardo-moraes360/toolbelt/internal/envelope"
 	"github.com/leonardo-moraes360/toolbelt/internal/ticket"
 )
 
@@ -85,7 +86,7 @@ var boardListCmd = &cobra.Command{
 			return err
 		}
 		if jsonOutput {
-			return printJSON(v)
+			return emitJSONIndent(envelope.Board, v)
 		}
 		renderBoard(&v)
 		return nil
@@ -116,7 +117,7 @@ func watchBoard(ctx context.Context, cmd *cobra.Command, interval time.Duration)
 			return err
 		}
 		if jsonOutput {
-			if err := printJSONLine(v); err != nil {
+			if err := emitJSON(envelope.Board, v); err != nil {
 				return err
 			}
 		} else {
@@ -146,7 +147,7 @@ func boardControlCmd(use, short, done string, fn func(root string) (ticket.Contr
 				return err
 			}
 			if jsonOutput {
-				return printJSON(c)
+				return emitJSONIndent(envelope.Board, c)
 			}
 			fmt.Println(done)
 			return nil

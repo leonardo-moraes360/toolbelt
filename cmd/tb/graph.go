@@ -1,13 +1,13 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 
 	"github.com/spf13/cobra"
 
 	"github.com/leonardo-moraes360/toolbelt/internal/config"
+	"github.com/leonardo-moraes360/toolbelt/internal/envelope"
 	"github.com/leonardo-moraes360/toolbelt/internal/graph"
 	"github.com/leonardo-moraes360/toolbelt/internal/mem"
 	"github.com/leonardo-moraes360/toolbelt/internal/vecsearch"
@@ -114,7 +114,7 @@ var graphIndexCmd = &cobra.Command{
 			if vst != nil {
 				payload["vectors"] = vst
 			}
-			return json.NewEncoder(os.Stdout).Encode(payload)
+			return emitJSON(graphIndexKind(cmd), payload)
 		}
 		fmt.Printf("graph indexed: %d nodes, %d edges → %s\n", len(idx.Nodes), len(idx.Edges), s.Path())
 		if vst != nil {
@@ -149,7 +149,7 @@ var graphSearchCmd = &cobra.Command{
 			return runVectorSearch(cmd, s, mode, args[0], limit)
 		}
 		hits := s.Search(args[0], limit)
-		return printGraphNodes(s, hits)
+		return printGraphNodes(envelope.GraphSearch, s, hits)
 	},
 }
 
@@ -172,7 +172,7 @@ var graphCallersCmd = &cobra.Command{
 				return reason
 			}
 		}
-		return printGraphNodes(s, nodes)
+		return printGraphNodes(envelope.GraphCallers, s, nodes)
 	},
 }
 
@@ -194,7 +194,7 @@ var graphDepsCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		return printGraphNodes(s, s.Deps(target, transitive))
+		return printGraphNodes(envelope.GraphDeps, s, s.Deps(target, transitive))
 	},
 }
 
@@ -217,7 +217,7 @@ var graphImpactCmd = &cobra.Command{
 				return reason
 			}
 		}
-		return printGraphNodes(s, nodes)
+		return printGraphNodes(envelope.GraphImpact, s, nodes)
 	},
 }
 
@@ -236,7 +236,7 @@ var graphExplainCmd = &cobra.Command{
 			return err
 		}
 		if jsonOutput {
-			return json.NewEncoder(os.Stdout).Encode(map[string]any{
+			return emitJSON(envelope.GraphExplain, map[string]any{
 				"stale": s.Stale(),
 				"nodes": exps,
 			})
@@ -283,7 +283,7 @@ var graphPathCmd = &cobra.Command{
 			return err
 		}
 		if jsonOutput {
-			return json.NewEncoder(os.Stdout).Encode(map[string]any{
+			return emitJSON(envelope.GraphPath, map[string]any{
 				"stale": s.Stale(),
 				"hops":  len(steps) - 1,
 				"steps": steps,
@@ -313,7 +313,7 @@ var graphStatsCmd = &cobra.Command{
 			return err
 		}
 		if jsonOutput {
-			return json.NewEncoder(os.Stdout).Encode(graphStatsPayload(s))
+			return emitJSON(envelope.GraphStats, graphStatsPayload(s))
 		}
 		if s.Stale() {
 			fmt.Println("stale: true")
@@ -362,6 +362,13 @@ func graphBuildOptions() graph.BuildOptions {
 	return opts
 }
 
+func graphIndexKind(cmd *cobra.Command) string {
+	if cmd.Name() == "rebuild" {
+		return envelope.GraphRebuild
+	}
+	return envelope.GraphIndex
+}
+
 func graphStatsPayload(s *graph.Store) map[string]any {
 	out := map[string]any{"stale": s.Stale()}
 	for k, v := range s.Stats() {
@@ -370,9 +377,9 @@ func graphStatsPayload(s *graph.Store) map[string]any {
 	return out
 }
 
-func printGraphNodes(s *graph.Store, nodes []graph.Node) error {
+func printGraphNodes(kind string, s *graph.Store, nodes []graph.Node) error {
 	if jsonOutput {
-		return json.NewEncoder(os.Stdout).Encode(map[string]any{
+		return emitJSON(kind, map[string]any{
 			"stale": s.Stale(),
 			"nodes": nodes,
 		})

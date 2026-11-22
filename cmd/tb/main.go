@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -12,10 +11,10 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/leonardo-moraes360/toolbelt/internal/config"
+	"github.com/leonardo-moraes360/toolbelt/internal/envelope"
 	"github.com/leonardo-moraes360/toolbelt/internal/log"
 	_ "github.com/leonardo-moraes360/toolbelt/internal/registry"
 	"github.com/leonardo-moraes360/toolbelt/internal/vault"
-	"github.com/leonardo-moraes360/toolbelt/internal/verify"
 	"github.com/leonardo-moraes360/toolbelt/internal/version"
 )
 
@@ -30,17 +29,10 @@ var (
 func main() {
 	rejectUnknownSubcommands(rootCmd)
 	if err := rootCmd.Execute(); err != nil {
-		os.Exit(exitCodeFor(err))
+		code := exitCodeFor(err)
+		reportError(err, code, os.Args[1:])
+		os.Exit(code)
 	}
-}
-
-// exitCodeFor maps a typed usage error (bad --ruler, unknown --no-check) to
-// 2; every other error keeps 1.
-func exitCodeFor(err error) int {
-	if verify.IsUsageError(err) {
-		return 2
-	}
-	return 1
 }
 
 var rootCmd = &cobra.Command{
@@ -57,6 +49,7 @@ Example:
   tb version                 Shows version
   tb --version               Shows version (global flag)`,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+		markRunStarted()
 		cmd.SilenceUsage = true
 
 		log.Init(jsonOutput)
@@ -128,8 +121,10 @@ var versionCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		info := version.Get()
 		if jsonOutput {
-			fmt.Printf("{\"version\":%q,\"commit\":%q,\"build_time\":%q,\"go_version\":%q,\"embed\":%q}\n",
-				info.Version, info.Commit, info.BuildTime, info.GoVersion, info.Embed)
+			if err := emitJSON(envelope.Version, info); err != nil {
+				fmt.Fprintln(os.Stderr, err)
+				os.Exit(exitFail)
+			}
 		} else {
 			fmt.Println(info.String())
 		}
@@ -221,9 +216,7 @@ Example:
 			if vaultInit.gitignored {
 				payload["vault_gitignored"] = vaultInit.path
 			}
-			enc := json.NewEncoder(os.Stdout)
-			enc.SetIndent("", "  ")
-			return enc.Encode(payload)
+			return emitJSONIndent(envelope.Init, payload)
 		}
 
 		log.Info("configuration initialized", "path", dir)

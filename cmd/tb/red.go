@@ -180,6 +180,7 @@ enforces. Search is compact; load respects a token budget. Playbooks are
 reference text — tb red never executes anything.`,
 	// Authorized-use notice, once per repo.
 	PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
+		markRunStarted()
 		dir := secToolbeltDir()
 		if secplay.NeedsAck(dir) {
 			// Always to stderr, so it shows in --json mode too without

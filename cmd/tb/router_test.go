@@ -157,10 +157,13 @@ func (c *routerCLI) checkCrashAlerts() {
 	if err == nil || !strings.Contains(out, "TKT-004") {
 		t.Fatalf("falha deveria dar exit != 0: %v %s", err, out)
 	}
-	var alerts []map[string]any
-	if err := json.Unmarshal([]byte(c.must("watchdog", "alerts", "--kind", "worker_crash", "--json")), &alerts); err != nil || len(alerts) != 2 {
-		t.Fatalf("alerts: %v %v", err, alerts)
+	var alertsDoc struct {
+		Alerts []map[string]any `json:"alerts"`
 	}
+	if err := json.Unmarshal([]byte(c.must("watchdog", "alerts", "--kind", "worker_crash", "--json")), &alertsDoc); err != nil || len(alertsDoc.Alerts) != 2 {
+		t.Fatalf("alerts: %v %v", err, alertsDoc)
+	}
+	alerts := alertsDoc.Alerts
 	if alerts[0]["action"] != "retry" || alerts[1]["action"] != "escalate" || alerts[1]["ticket"] != "TKT-004" {
 		t.Fatalf("alerts: %v", alerts)
 	}

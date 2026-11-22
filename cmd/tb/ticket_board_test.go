@@ -38,9 +38,11 @@ func TestTicketBoardCLI(t *testing.T) {
 	}
 	must("ticket", "create", "--title", "seco", "--dry-run")
 
-	var list []map[string]any
-	if err := json.Unmarshal([]byte(must("ticket", "list", "--json")), &list); err != nil || len(list) != 3 {
-		t.Fatalf("list: %v %d", err, len(list))
+	var listDoc struct {
+		Tickets []map[string]any `json:"tickets"`
+	}
+	if err := json.Unmarshal([]byte(must("ticket", "list", "--json")), &listDoc); err != nil || len(listDoc.Tickets) != 3 {
+		t.Fatalf("list: %v %d", err, len(listDoc.Tickets))
 	}
 	if out := must("ticket", "show", "TKT-002"); !strings.Contains(out, "TKT-001") {
 		t.Fatalf("show: %s", out)
