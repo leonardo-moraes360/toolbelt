@@ -1,19 +1,16 @@
 package registry
 
 import (
-	"bytes"
-	"encoding/json"
 	"flag"
 	"go/ast"
 	"go/parser"
 	"go/token"
-	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
-	"strings"
 	"testing"
 
+	"github.com/leonardo-moraes360/toolbelt/internal/contracttest"
 	"github.com/leonardo-moraes360/toolbelt/internal/envelope"
 )
 
@@ -88,42 +85,5 @@ func TestMCPContract(t *testing.T) {
 	sort.Slice(doc.Tools, func(i, j int) bool { return doc.Tools[i].Name < doc.Tools[j].Name })
 	doc.EnvelopeKinds = envelopeKinds(t)
 
-	var buf bytes.Buffer
-	enc := json.NewEncoder(&buf)
-	enc.SetEscapeHTML(false)
-	enc.SetIndent("", "  ")
-	if err := enc.Encode(doc); err != nil {
-		t.Fatal(err)
-	}
-	path := filepath.Join("testdata", "contract", "mcp.json")
-	if *updateContract {
-		if err := os.WriteFile(path, buf.Bytes(), 0o644); err != nil {
-			t.Fatal(err)
-		}
-		return
-	}
-	want, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("%v\n%s", err, contractHowTo)
-	}
-	if !bytes.Equal(want, buf.Bytes()) {
-		t.Fatalf("%s differs from the registry.\n%s\n\nfirst difference: %s", path, contractHowTo, firstDiff(string(want), buf.String()))
-	}
-}
-
-func firstDiff(want, got string) string {
-	w, g := strings.Split(want, "\n"), strings.Split(got, "\n")
-	for i := 0; i < len(w) || i < len(g); i++ {
-		var a, b string
-		if i < len(w) {
-			a = w[i]
-		}
-		if i < len(g) {
-			b = g[i]
-		}
-		if a != b {
-			return "line " + strconv.Itoa(i+1) + ": snapshot " + strconv.Quote(a) + ", now " + strconv.Quote(b)
-		}
-	}
-	return "none"
+	contracttest.Check(t, "mcp.json", doc, *updateContract, contractHowTo)
 }

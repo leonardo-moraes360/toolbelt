@@ -1,8 +1,6 @@
 package main
 
 import (
-	"bytes"
-	"encoding/json"
 	"flag"
 	"os"
 	"path/filepath"
@@ -12,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/leonardo-moraes360/toolbelt/internal/contracttest"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -144,42 +143,5 @@ func TestExitCodeTableMatchesDocs(t *testing.T) {
 func TestCLIContract(t *testing.T) {
 	applyTiers(rootCmd)
 	doc := cliContract{Commands: collectContract(rootCmd), ExitCodes: exitCodeConstants()}
-	var buf bytes.Buffer
-	enc := json.NewEncoder(&buf)
-	enc.SetEscapeHTML(false)
-	enc.SetIndent("", "  ")
-	if err := enc.Encode(doc); err != nil {
-		t.Fatal(err)
-	}
-	path := filepath.Join("testdata", "contract", "cli.json")
-	if *updateContract {
-		if err := os.WriteFile(path, buf.Bytes(), 0o644); err != nil {
-			t.Fatal(err)
-		}
-		return
-	}
-	want, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("%v\n%s", err, contractHowTo)
-	}
-	if !bytes.Equal(want, buf.Bytes()) {
-		t.Fatalf("%s differs from the command tree.\n%s\n\nfirst difference: %s", path, contractHowTo, firstDiff(string(want), buf.String()))
-	}
-}
-
-func firstDiff(want, got string) string {
-	w, g := strings.Split(want, "\n"), strings.Split(got, "\n")
-	for i := 0; i < len(w) || i < len(g); i++ {
-		var a, b string
-		if i < len(w) {
-			a = w[i]
-		}
-		if i < len(g) {
-			b = g[i]
-		}
-		if a != b {
-			return "line " + strconv.Itoa(i+1) + ": snapshot " + strconv.Quote(a) + ", now " + strconv.Quote(b)
-		}
-	}
-	return "none"
+	contracttest.Check(t, "cli.json", doc, *updateContract, contractHowTo)
 }
