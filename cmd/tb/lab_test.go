@@ -78,15 +78,33 @@ func TestLabLifecycleCLI(t *testing.T) {
 	}
 }
 
+// withoutPodman points PATH at a directory holding only git, so tb finds no
+// podman whether or not the machine has one (runners ship it). Without this
+// the fail-closed path never ran on CI.
+func withoutPodman(t *testing.T, env []string) []string {
+	t.Helper()
+	bin := t.TempDir()
+	if git, err := exec.LookPath("git"); err == nil {
+		if err := os.Symlink(git, filepath.Join(bin, "git")); err != nil {
+			t.Skipf("cannot stub PATH: %v", err)
+		}
+	}
+	out := make([]string, 0, len(env)+1)
+	for _, e := range env {
+		if !strings.HasPrefix(e, "PATH=") {
+			out = append(out, e)
+		}
+	}
+	return append(out, "PATH="+bin)
+}
+
 func TestLabUpPodmanFailsClosedCLI(t *testing.T) {
 	if testing.Short() {
 		t.Skip()
 	}
-	if _, err := exec.LookPath("podman"); err == nil {
-		t.Skip("podman present; fail-closed path not exercised")
-	}
 	tbBin := buildTB(t)
 	dir, env := labRepo(t)
+	env = withoutPodman(t, env)
 	if out, err := runLab(t, tbBin, dir, env, "new", "demo", "--class", "sql-injection"); err != nil {
 		t.Fatalf("new: %v\n%s", err, out)
 	}
