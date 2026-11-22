@@ -269,8 +269,8 @@ func TestBusGUIOnboardingBusAs(t *testing.T) {
 		{"channel": "fx", "invite": workerCode, "name": "claude-main", "cwd": dir},
 		{"channel": "fx", "invite": workerCode, "name": "other", "cwd": dir},
 	} {
-		if out, isErr := c.call("tb_bus_join", args); !isErr {
-			t.Fatalf("tb_bus_join on a bound connection succeeded: %s", out)
+		if out, isErr := c.call("tb_bus_join", args); !isErr || !strings.Contains(out, "already in channel") {
+			t.Fatalf("tb_bus_join on a bound connection must answer \"already in channel\": %v %s", isErr, out)
 		}
 	}
 	after, err := os.ReadFile(filepath.Join(agentDir, "token"))
@@ -446,6 +446,8 @@ func TestBusIdentityHeldByOneClient(t *testing.T) {
 	}
 	refused("second mcp", exec.Command(tbBin, "mcp", "--bus-as", "fx/claude-main", "--bus-root", dir))
 	refused("one-shot send", exec.Command(tbBin, "bus", "send", "--channel", "fx", "--as", "claude-main", "--to", "topic:x", "--type", "query"))
+	// recv --peek reads without moving the cursor: allowed while a client holds the identity.
+	runBus(t, tbBin, dir, "recv", "--channel", "fx", "--as", "claude-main", "--peek")
 	refused("one-shot recv", exec.Command(tbBin, "bus", "recv", "--channel", "fx", "--as", "claude-main"))
 	var inv struct{ Code string }
 	unmarshalOut(t, runBus(t, tbBin, dir, "invite", "fx", "--role", "supervisor", "--name", "claude-main"), &inv)

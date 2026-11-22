@@ -28,7 +28,7 @@ var busClientLocks []func()
 
 // busMember authenticates --channel/--as against the CLI session. Every
 // caller mutates (send, recv advancing the cursor, claim, complete,
-// heartbeat), so it takes the identity's client lock for the whole command
+// heartbeat) except recv --peek, so it takes the identity's client lock for the whole command
 // and refuses with session_in_use while another client serves the identity.
 func busMember(cmd *cobra.Command) (*bus.Store, bus.Member, error) {
 	channel, _ := cmd.Flags().GetString("channel")
@@ -40,12 +40,16 @@ func busMember(cmd *cobra.Command) (*bus.Store, bus.Member, error) {
 	if err != nil {
 		return nil, bus.Member{}, err
 	}
-	release, err := bus.LockClient(s.Root(), channel, as, "tb bus "+cmd.Name())
-	if err != nil {
-		_ = s.Close()
-		return nil, bus.Member{}, err
+	// recv --peek reads without moving the cursor, and the notify
+	// notification tells humans to run it while the GUI client holds the lock.
+	if peek, _ := cmd.Flags().GetBool("peek"); !peek {
+		release, err := bus.LockClient(s.Root(), channel, as, "tb bus "+cmd.Name())
+		if err != nil {
+			_ = s.Close()
+			return nil, bus.Member{}, err
+		}
+		busClientLocks = append(busClientLocks, release)
 	}
-	busClientLocks = append(busClientLocks, release)
 	m, err := s.LoadMember(channel, as)
 	if err != nil {
 		_ = s.Close()

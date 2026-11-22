@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // ErrSessionInUse: another process already holds the identity <channel>/<name>.
@@ -42,6 +43,8 @@ func (e *SessionInUseError) Is(target error) bool { return target == ErrSessionI
 //
 // flock is host-local: on an NFS mount mounted with nolock it only covers
 // processes of one machine.
+const probeKind = "probe"
+
 const (
 	clientSuffix  = ".lock"
 	harnessSuffix = ".harness.lock"
@@ -73,6 +76,9 @@ func EnsureClientLockFile(root, channel, name string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	if fileExistenceIsLock {
+		return p, nil
+	}
 	if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
 		return "", err
 	}
@@ -91,12 +97,22 @@ func lockNamed(root, channel, name, suffix, kind string) (release func(), err er
 	if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
 		return nil, err
 	}
-	rel, err := lockFile(p, kind)
-	if errors.Is(err, errLockHeld) {
+	var rel func()
+	for try := 0; ; try++ {
+		rel, err = lockFile(p, kind)
+		if !errors.Is(err, errLockHeld) {
+			return rel, err
+		}
+		// A probe holds the lock for microseconds and leaves the previous
+		// holder's record in place, so retry over ~50 ms before blaming the
+		// pid in the file.
+		if try < 5 {
+			time.Sleep(10 * time.Millisecond)
+			continue
+		}
 		pid, k := readHolder(p)
 		return nil, &SessionInUseError{Channel: channel, Name: name, PID: pid, Kind: k}
 	}
-	return rel, err
 }
 
 // LockClient takes the client lock without waiting. kind is recorded with
@@ -113,7 +129,7 @@ func LockHarness(root, channel, name string) (release func(), err error) {
 // ProbeClient reports session_in_use when a client holds the identity,
 // without keeping the lock.
 func ProbeClient(root, channel, name string) error {
-	rel, err := LockClient(root, channel, name, "probe")
+	rel, err := LockClient(root, channel, name, probeKind)
 	if err == nil {
 		rel()
 	}
@@ -122,7 +138,7 @@ func ProbeClient(root, channel, name string) error {
 
 // ProbeHarness is ProbeClient for the harness lock.
 func ProbeHarness(root, channel, name string) error {
-	rel, err := LockHarness(root, channel, name)
+	rel, err := lockNamed(root, channel, name, harnessSuffix, probeKind)
 	if err == nil {
 		rel()
 	}

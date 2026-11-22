@@ -7,6 +7,9 @@ import (
 	"syscall"
 )
 
+// fileExistenceIsLock: false where the lock is a flock on an existing file.
+const fileExistenceIsLock = false
+
 func lockFile(path, kind string) (func(), error) {
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {
@@ -25,7 +28,14 @@ func lockFile(path, kind string) (func(), error) {
 		}
 		return nil, err
 	}
-	// Holder info is advisory (for the contender's message); the flock is the lock.
+	// Holder info is advisory (for the contender's message); the flock is the
+	// lock. A probe leaves the real holder's record alone.
+	if kind == probeKind {
+		return func() {
+			_ = syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
+			_ = f.Close()
+		}, nil
+	}
 	if err := f.Truncate(0); err == nil {
 		_, _ = f.WriteAt([]byte(holderRecord(kind)), 0)
 	}

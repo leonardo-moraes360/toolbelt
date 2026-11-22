@@ -207,9 +207,48 @@ func (a claudeAdapter) Wake(ctx context.Context, p *Packet, st *State) (Outcome,
 			return out, err
 		}
 	}
+	if out.ExitCode == 0 && !out.TimedOut {
+		// A client that took the identity between the probe and the child's own
+		// lock makes the child's tb mcp exit 2; claude carries on without the
+		// server and still exits 0, so the init event is the only witness.
+		if msg := toolbeltServerFailure(out.Output); msg != "" {
+			out.ExitCode = 1
+			out.Output = msg
+			return out, nil
+		}
+	}
 	out.Session = lastSessionID(out.Output)
 	out.Output = resultSummary(out.Output, out.ExitCode, a.h.redactor.redact)
 	return out, nil
+}
+
+// toolbeltServerFailure reads the stream-json system/init event: it returns
+// a failure detail when the toolbelt MCP server is listed but not connected.
+func toolbeltServerFailure(output string) string {
+	for _, line := range strings.Split(output, "\n") {
+		var ev struct {
+			Type       string `json:"type"`
+			Subtype    string `json:"subtype"`
+			MCPServers []struct {
+				Name   string `json:"name"`
+				Status string `json:"status"`
+			} `json:"mcp_servers"`
+		}
+		if !strings.HasPrefix(strings.TrimSpace(line), "{") || json.Unmarshal([]byte(line), &ev) != nil {
+			continue
+		}
+		if ev.Type != "system" || ev.Subtype != "init" {
+			continue
+		}
+		for _, srv := range ev.MCPServers {
+			if srv.Name == "toolbelt" && srv.Status != "connected" {
+				return "session_in_use: the toolbelt MCP server did not connect (status " + srv.Status +
+					"); another client probably took the identity right before the wake"
+			}
+		}
+		return ""
+	}
+	return ""
 }
 
 // resultSummary reduces stream-json to a content-free summary: the stream

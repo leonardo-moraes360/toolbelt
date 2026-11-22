@@ -13,6 +13,8 @@ import (
 // lies far past the holder record and a contender can still read the record.
 const lockOffset = 1 << 30
 
+const fileExistenceIsLock = false
+
 func lockFile(path, kind string) (func(), error) {
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {
@@ -27,6 +29,12 @@ func lockFile(path, kind string) (func(), error) {
 			return nil, errLockHeld
 		}
 		return nil, err
+	}
+	if kind == probeKind {
+		return func() {
+			_ = windows.UnlockFileEx(h, 0, 1, 0, &windows.Overlapped{Offset: lockOffset})
+			_ = f.Close()
+		}, nil
 	}
 	if err := f.Truncate(0); err == nil {
 		_, _ = f.WriteAt([]byte(holderRecord(kind)), 0)
