@@ -3,8 +3,11 @@ package config
 import (
 	"fmt"
 	"io"
+	"maps"
 	"os"
+	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"sync"
 
@@ -22,7 +25,14 @@ var warnedFiles sync.Map
 // does not know, with its full path. It never fails: an old file with a
 // removed key keeps loading and the key is ignored.
 func warnUnknownKeys(path string, data []byte) {
-	if _, dup := warnedFiles.LoadOrStore(path, true); dup {
+	key := path
+	if abs, err := filepath.Abs(path); err == nil {
+		key = abs
+		if resolved, err := filepath.EvalSymlinks(abs); err == nil {
+			key = resolved
+		}
+	}
+	if _, dup := warnedFiles.LoadOrStore(key, true); dup {
 		return
 	}
 	var doc yaml.Node
@@ -53,28 +63,71 @@ func unknownKeys(n *yaml.Node, t reflect.Type, prefix string) []string {
 	if reflect.PointerTo(t).Implements(reflect.TypeOf((*yaml.Unmarshaler)(nil)).Elem()) {
 		return nil
 	}
+	fields := yamlFields(t)
+	var out []string
+	for i := 0; i+1 < len(n.Content); i += 2 {
+		k, v := n.Content[i], n.Content[i+1]
+		if k.Tag == "!!merge" {
+			for _, m := range mergeTargets(v) {
+				out = append(out, unknownKeys(m, t, prefix)...)
+			}
+			continue
+		}
+		path := k.Value
+		if prefix != "" {
+			path = prefix + "." + k.Value
+		}
+		ft, ok := fields[k.Value]
+		if !ok {
+			out = append(out, path)
+			continue
+		}
+		out = append(out, unknownKeys(v, ft, path)...)
+	}
+	return out
+}
+
+// mergeTargets resolves the value of a `<<` key: one alias or a sequence of
+// them (a literal mapping is accepted too).
+func mergeTargets(v *yaml.Node) []*yaml.Node {
+	switch v.Kind {
+	case yaml.AliasNode:
+		return []*yaml.Node{v.Alias}
+	case yaml.SequenceNode:
+		var out []*yaml.Node
+		for _, item := range v.Content {
+			out = append(out, mergeTargets(item)...)
+		}
+		return out
+	}
+	return []*yaml.Node{v}
+}
+
+// yamlFields maps yaml key names to field types; `,inline` structs
+// contribute their own fields, `-` and unexported fields none.
+func yamlFields(t reflect.Type) map[string]reflect.Type {
 	fields := map[string]reflect.Type{}
 	for i := 0; i < t.NumField(); i++ {
 		f := t.Field(i)
-		name, _, _ := strings.Cut(f.Tag.Get("yaml"), ",")
+		tag := f.Tag.Get("yaml")
+		if tag == "-" || (!f.IsExported() && !f.Anonymous) {
+			continue
+		}
+		name, opts, _ := strings.Cut(tag, ",")
+		if slices.Contains(strings.Split(opts, ","), "inline") {
+			ft := f.Type
+			for ft.Kind() == reflect.Pointer {
+				ft = ft.Elem()
+			}
+			if ft.Kind() == reflect.Struct {
+				maps.Copy(fields, yamlFields(ft))
+			}
+			continue
+		}
 		if name == "" {
 			name = strings.ToLower(f.Name)
 		}
 		fields[name] = f.Type
 	}
-	var out []string
-	for i := 0; i+1 < len(n.Content); i += 2 {
-		k := n.Content[i].Value
-		path := k
-		if prefix != "" {
-			path = prefix + "." + k
-		}
-		ft, ok := fields[k]
-		if !ok {
-			out = append(out, path)
-			continue
-		}
-		out = append(out, unknownKeys(n.Content[i+1], ft, path)...)
-	}
-	return out
+	return fields
 }

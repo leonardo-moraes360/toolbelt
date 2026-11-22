@@ -20,7 +20,7 @@ const DefaultConfigDir = ".toolbelt"
 const DefaultConfigFile = "config.yaml"
 
 type Config struct {
-	Sandbox SandboxConfig `yaml:"sandbox"`
+	Sandbox SandboxConfig `yaml:"sandbox,omitempty"`
 
 	Graph GraphConfig `yaml:"graph"`
 

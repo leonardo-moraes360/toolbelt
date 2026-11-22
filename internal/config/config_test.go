@@ -382,3 +382,56 @@ func TestDefaultConfigHasNoUnknownKeys(t *testing.T) {
 		t.Errorf("a written config warns about itself: %v", got)
 	}
 }
+
+func TestUnknownKeysMergeInlineAndSkips(t *testing.T) {
+	parse := func(y string, typ any) []string {
+		var doc yaml.Node
+		if err := yaml.Unmarshal([]byte(y), &doc); err != nil {
+			t.Fatal(err)
+		}
+		return unknownKeys(doc.Content[0], reflect.TypeOf(typ), "")
+	}
+	got := parse("base: &b {test_cmd: a, bogus: 1}\nverify:\n  <<: *b\n  lint_cmd: x\n", struct {
+		Base   map[string]any `yaml:"base"`
+		Verify VerifyConfig   `yaml:"verify"`
+	}{})
+	if len(got) != 1 || got[0] != "verify.bogus" {
+		t.Errorf("merge key: got %v, want [verify.bogus]", got)
+	}
+	type embedded struct {
+		In string `yaml:"in"`
+	}
+	type local struct {
+		embedded `yaml:",inline"`
+		Skip     string `yaml:"-"`
+		hidden   string
+		Name     string `yaml:"name"`
+	}
+	_ = local{}.hidden
+	got = parse("in: 1\nname: a\nSkip: b\nhidden: c\n", local{})
+	if len(got) != 2 || got[0] != "Skip" || got[1] != "hidden" {
+		t.Errorf("inline/skip: got %v, want [Skip hidden]", got)
+	}
+}
+
+func TestUnknownKeysDedupAcrossPathSpellings(t *testing.T) {
+	var buf strings.Builder
+	old := warnOut
+	warnOut = &buf
+	t.Cleanup(func() { warnOut = old; warnedFiles = sync.Map{} })
+	warnedFiles = sync.Map{}
+
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "c.yaml"), []byte("logging: {}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(dir)
+	for _, p := range []string{"c.yaml", filepath.Join(dir, "c.yaml"), "./c.yaml"} {
+		if err := loadFromFile(p, DefaultConfig()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if n := strings.Count(buf.String(), "unknown config key logging"); n != 1 {
+		t.Errorf("warned %d times, want 1:\n%s", n, buf.String())
+	}
+}
