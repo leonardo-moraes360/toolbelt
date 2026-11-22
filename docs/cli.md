@@ -2410,6 +2410,13 @@ When the configured verify command does not exist/is not executable, verify fail
 Local configuration file at `.toolbelt/config.yaml` (global:
 `~/.config/toolbelt/config.yaml`). The `-c/--config` flag points to an alternate YAML.
 
+A key `tb` does not know (a typo, or a key removed before 1.0) is ignored: each file prints
+one stderr line per such key, once per run, with the full key path
+(`warning: .toolbelt/config.yaml: unknown config key graph.auto_index (ignored)`). It is never an
+error, so old files keep loading. Removed keys: `defaults.*`, `sandbox.allow_net`, `sandbox.cpu_limit`,
+`sandbox.mem_limit`, `sandbox.time_limit`, `graph.auto_index`, `graph.infer_relations`,
+`vault.sync_on_change` and `logging.*`; they were parsed but no command read them, so they enforced nothing.
+
 ```yaml
 # .toolbelt/config.yaml (exemplo)
 verify:
