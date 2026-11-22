@@ -10,13 +10,12 @@
 graph TB
     subgraph "Human Interface"
         CLI[tb CLI]
-        TUI[tb md - TUI Markdown]
         OBS[Obsidian]
     end
 
     subgraph "Protocol Layer"
         MCP[MCP Server]
-        A2A[A2A - Agent to Agent]
+        BUS[tb bus - bus/0.1, A2A-shaped]
         RPC[JSON-RPC 2.0]
     end
 
@@ -41,10 +40,9 @@ graph TB
     end
 
     CLI --> ORCH
-    TUI --> VAULT
     OBS --> VAULT
     MCP --> ORCH
-    A2A --> ORCH
+    BUS --> ORCH
 
     ORCH --> MEM
     ORCH --> CTX
@@ -541,51 +539,17 @@ persona: |
 
 ---
 
-## 7. TUI Markdown (`tb md`)
+## 7. TUI Markdown (`tb md`) — dropped
 
-### 7.1 Features
-
-Terminal User Interface (TUI) using Bubble Tea to:
-
-- **Navigate** the memory vault
-- **Visualize** the relationship graph
-- **Edit** Markdown files in-place
-- **Review** agent plans and logs
-- **Approve** pending actions
-
-### 7.2 Visual Theme
-
-The TUI follows the **Synthwave** theme defined in [docs/identidade-visual.md](identidade-visual.md). Design tokens in `assets/theme/theme.css` should be used to keep visual consistency:
-
-- Background: violet (`--tb-bg`) or dark surface (`--tb-surface`)
-- Headers: primary purple (`--tb-primary`)
-- Links and interactive elements: cyan (`--tb-accent`)
-- Code: mono font on surface with accent color
-- Status: success/error/warning per semantic tokens
-
-### 7.3 Interoperability with Obsidian
-
-The vault at `.tb/vault/` is a valid Obsidian vault:
-
-```bash
-# Open in Obsidian
-obsidian .tb/vault
-
-# Or via tb
-tb md --obsidian  # opens Obsidian if installed
-```
-
-Sync is bidirectional for human edits:
-1. Human edits in Obsidian
-2. Watcher detects the change
-3. SQLite index is updated
-4. Agents see updated data
+There is no TUI. `tb md` and `tb md --obsidian` were dropped from the vault's Phase A ([ADR-016](adr/016-vault-fase-a.md)) and are not planned ([ADR-020](adr/020-agent-hierarchy-a2a.md)). Any editor, Obsidian included, edits the vault (`.toolbelt/vault/`, read from disk by `tb vault`, with no watcher or sync); see [specs/vault.md](specs/vault.md). The visual theme applies to terminal output and the site ([identidade-visual.md](identidade-visual.md)).
 
 ---
 
 ## 8. Agent Network
 
 ### 8.1 Hierarchy
+
+> **What exists ([ADR-020](adr/020-agent-hierarchy-a2a.md)):** the diagram below is the original vision, not the implementation. Delegation today is `tb router run` (§8.6) handing tickets to local workers or to agents on a `tb bus` channel, and bus roles fixed by the human's invites (`router`, `supervisor`, `worker`, `reviewer`). There is no planner process and no `tb agent spawn`. A second level (a supervisor delegating sub-threads with a broker-checked `parent`, bounded depth and fan-out, `tb bus tree`) is specified in [specs/agent-hierarchy.md](specs/agent-hierarchy.md).
 
 ```mermaid
 graph TB
@@ -649,6 +613,8 @@ stateDiagram-v2
 ```
 
 ### 8.4 Budgets
+
+> **Not implemented, and token budgets are not planned ([ADR-020](adr/020-agent-hierarchy-a2a.md)):** `tb` cannot meter a vendor agent's tokens. What exists are the router's timeouts and `retry.max_attempts`, the harness wake budget (`budget.max_wakes`) and, in the delegation-tree spec, depth and fan-out limits.
 
 Each agent has limits:
 
@@ -941,15 +907,15 @@ graph LR
 
     subgraph "toolbelt"
         MCP_S[MCP Server]
-        A2A_S[A2A Handler]
+        BUS_S[tb bus store]
         RPC[JSON-RPC Router]
         CORE[Core]
     end
 
     IDE -->|MCP/stdio| MCP_S
-    OTHER -->|A2A/HTTP| A2A_S
+    OTHER -->|tb bus CLI / tb_bus_* MCP| BUS_S
     MCP_S --> RPC
-    A2A_S --> RPC
+    BUS_S --> RPC
     RPC --> CORE
 ```
 
@@ -1002,6 +968,8 @@ graph LR
 
 For communication between agents in the hierarchy:
 
+> **Decision ([ADR-020](adr/020-agent-hierarchy-a2a.md)):** A2A is not a transport in `tb`. The local `bus/0.1` envelope is A2A-shaped, and `tb` has no A2A server, client, socket or HTTP. A remote A2A agent can take part only through a bridge the human writes and runs outside `tb`, admitted as an ordinary bus agent with its own invite and role.
+
 > **Implemented (v0.0.5):** local agent ↔ agent transport is the `tb bus` bus ([ADR-013](adr/013-barramento-multi-vendor.md)), with the `bus/0.1` JSON-RPC envelope specified in [bus-protocolo.md](bus-protocolo.md) over a SQLite store (`.toolbelt/bus/bus.db`), not a Unix socket. The example below is illustrative.
 
 ```json
@@ -1035,8 +1003,8 @@ For communication between agents in the hierarchy:
 |----------|-----------|
 | IDE ↔ tb | stdio (MCP standard) |
 | tb ↔ child process | stdio + JSON-RPC |
-| agent ↔ agent (local) | Unix socket |
-| agent ↔ agent (remote) | HTTP/2 + mTLS |
+| agent ↔ agent (local) | `tb bus`: SQLite store (`.toolbelt/bus/bus.db`), CLI or `tb_bus_*` MCP tools; no socket |
+| agent ↔ agent (remote) | none in `tb`; a bridge the human runs is an ordinary bus agent ([ADR-020](adr/020-agent-hierarchy-a2a.md)) |
 
 ---
 

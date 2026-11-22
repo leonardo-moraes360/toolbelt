@@ -64,8 +64,11 @@ type snapshot struct {
 	at          string // gate mode: commit oid; "" in interactive mode
 	target      string // report target: "worktree" or the --at rev
 	hasDetailed bool
-	warnings    []Warning
-	stateRoot   string // "" = StateRoot()
+	// symbols are the resolved, unambiguous symbol citations ("path#Name" →
+	// sha256 of the symbol's raw bytes), C4.
+	symbols   map[string]string
+	warnings  []Warning
+	stateRoot string // "" = StateRoot()
 }
 
 func docPathIn(cwd, doc string) (string, error) {
@@ -190,6 +193,7 @@ func (s *snapshot) phase1(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	s.symbols = checkSymbols(s.doc, s.rel, s.text, &s.set, s.sources, s.checks)
 	pairs := []string{s.rel + "\t" + s.docSHA}
 	for _, src := range s.sources.Included {
 		pairs = append(pairs, src.Path+"\t"+src.SHA256)

@@ -1,0 +1,22 @@
+{
+  "build_passed": false,
+  "build_ran": true,
+  "error": "verify.build_cmd failed: build broke",
+  "filtered_env": "\u003cfiltered_env\u003e",
+  "guard": {
+    "base_ref": "\u003csha\u003e",
+    "head_ref": "\u003csha\u003e",
+    "rules_checked": "\u003cn\u003e",
+    "violations": []
+  },
+  "head_sha": "\u003chead_sha\u003e",
+  "hidden_available": false,
+  "hidden_passed": null,
+  "iterations": 1,
+  "lint_passed": false,
+  "lint_ran": false,
+  "reason": "verify.build_cmd failed: build broke",
+  "verdict": "ESCALATE",
+  "visible_passed": false,
+  "workdir": "\u003cworkdir\u003e"
+}

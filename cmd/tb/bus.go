@@ -322,6 +322,7 @@ var busSendCmd = &cobra.Command{
 		to, _ := f.GetString("to")
 		typ, _ := f.GetString("type")
 		thread, _ := f.GetString("thread")
+		parent, _ := f.GetString("parent")
 		causation, _ := f.GetString("causation")
 		idem, _ := f.GetString("idempotency-key")
 		ttl, _ := f.GetString("ttl")
@@ -336,7 +337,7 @@ var busSendCmd = &cobra.Command{
 		}
 		defer s.Close()
 		res, err := s.Send(m, &bus.SendInput{
-			To: to, Type: bus.Type(typ), Thread: thread, CausationID: causation,
+			To: to, Type: bus.Type(typ), Thread: thread, Parent: parent, CausationID: causation,
 			IdempotencyKey: idem, TTL: ttl, Payload: payload,
 		})
 		if err != nil {
@@ -441,8 +442,16 @@ var busCompleteCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		if len(res.OpenChildren) > 0 {
+			fmt.Fprintf(os.Stderr, "warning: %s completed with %d open children (%s)\n",
+				res.Claim.Thread, len(res.OpenChildren), strings.Join(res.OpenChildren, ", "))
+		}
 		if jsonOutput {
-			return printBusJSON(map[string]any{"claim": res.Claim, "envelope": bus.Wrap(&res.Message)})
+			out := map[string]any{"claim": res.Claim, "envelope": bus.Wrap(&res.Message)}
+			if len(res.OpenChildren) > 0 {
+				out["open_children"] = res.OpenChildren
+			}
+			return printBusJSON(out)
 		}
 		fmt.Printf("%s completed by %s (task.result %s)\n", res.Claim.Thread, res.Claim.Owner, res.Message.ID)
 		return nil
@@ -533,6 +542,65 @@ var busLogCmd = &cobra.Command{
 	},
 }
 
+var busTreeCmd = &cobra.Command{
+	Use:   "tree <channel>",
+	Short: "Delegation trees of a channel: threads linked by task.assign --parent, with their state (human only, no payloads)",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		f := cmd.Flags()
+		thread, _ := f.GetString("thread")
+		all, _ := f.GetBool("all")
+		limit, _ := f.GetInt("limit")
+		s, err := openBusStore()
+		if err != nil {
+			return err
+		}
+		defer s.Close()
+		tr, err := s.Tree(args[0], thread, all, limit)
+		if err != nil {
+			return err
+		}
+		if jsonOutput {
+			return printBusJSON(tr)
+		}
+		if len(tr.Nodes) == 0 {
+			fmt.Println("no delegation trees (--all also lists threads without children)")
+			return nil
+		}
+		fmt.Print(formatTree(tr.Nodes))
+		return nil
+	},
+}
+
+// formatTree prints one node per line, indented two spaces per level below the
+// first node of each tree, with the columns aligned.
+func formatTree(nodes []bus.TreeNode) string {
+	base := nodes[0].Depth
+	labels := make([]string, len(nodes))
+	var wThread, wState, wOwner int
+	for i := range nodes {
+		n := &nodes[i]
+		if n.Parent == "" {
+			base = n.Depth
+		}
+		labels[i] = strings.Repeat("  ", max(n.Depth-base, 0)) + n.Thread
+		wThread, wState, wOwner = max(wThread, len(labels[i])), max(wState, len(n.State)), max(wOwner, len(n.Owner))
+	}
+	var sb strings.Builder
+	for i := range nodes {
+		n := &nodes[i]
+		line := fmt.Sprintf("%-*s  %-*s  %-*s", wThread, labels[i], wState, n.State, wOwner, n.Owner)
+		if n.Epoch > 0 {
+			line += fmt.Sprintf("  epoch %d", n.Epoch)
+		}
+		if n.OpenChildren > 0 {
+			line += fmt.Sprintf("  open %d", n.OpenChildren)
+		}
+		sb.WriteString(strings.TrimRight(line, " ") + "\n")
+	}
+	return sb.String()
+}
+
 func init() {
 	busChannelCreateCmd.Flags().String("owner", "", "owner agent name (receives supervisor invite)")
 	busChannelCreateCmd.Flags().Duration("ttl", 0, "channel duration (0 = no expiry)")
@@ -562,6 +630,7 @@ func init() {
 	sf.String("to", "", "destination: agent:<name> | role:<role> | topic:<name>")
 	sf.String("type", "", "task.assign|task.status|query|reply|ack|urgent")
 	sf.String("thread", "", "thread (ex.: TKT-001)")
+	sf.String("parent", "", "task.assign only: parent thread you hold, linking this sub-task into its delegation tree (max depth 3, 8 open children)")
 	sf.String("causation", "", "ID of the message that caused this one")
 	sf.String("idempotency-key", "", "dedupe key per sender")
 	sf.String("ttl", "", "message duration (e.g. 30m)")
@@ -584,6 +653,10 @@ func init() {
 	busLogCmd.Flags().String("thread", "", "filters by thread")
 	busLogCmd.Flags().Int("limit", 100, "last N messages")
 
-	busCmd.AddCommand(busChannelCmd, busInviteCmd, busJoinCmd, busSendCmd, busRecvCmd, busClaimCmd, busCompleteCmd, busHeartbeatCmd, busWatchdogCmd, busLogCmd)
+	busTreeCmd.Flags().String("thread", "", "only the subtree rooted at this thread")
+	busTreeCmd.Flags().Bool("all", false, "also list threads without children")
+	busTreeCmd.Flags().Int("limit", bus.DefaultTreeLimit, "at most N trees, newest first")
+
+	busCmd.AddCommand(busChannelCmd, busInviteCmd, busJoinCmd, busSendCmd, busRecvCmd, busClaimCmd, busCompleteCmd, busHeartbeatCmd, busWatchdogCmd, busLogCmd, busTreeCmd)
 	rootCmd.AddCommand(busCmd)
 }

@@ -170,6 +170,7 @@ type Message struct {
 	From           string          `json:"from"`
 	To             string          `json:"to"`
 	Thread         string          `json:"thread,omitempty"`
+	Parent         string          `json:"parent,omitempty"`
 	Type           Type            `json:"type"`
 	CausationID    string          `json:"causation_id,omitempty"`
 	IdempotencyKey string          `json:"idempotency_key,omitempty"`

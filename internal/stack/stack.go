@@ -2,6 +2,7 @@ package stack
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -90,6 +91,24 @@ type Options struct {
 	LintCmdSet         bool
 	NoBuild            bool
 	NoLint             bool
+	// Ruler is the verify op's --ruler list (empty = tests); visual is
+	// refused in a stack.
+	Ruler           string
+	TypecheckCmd    string
+	TypecheckCmdSet bool
+	NoTypecheck     bool
+	// Checks adds or overrides named checks; SkipChecks drops some by name;
+	// NoChecks drops them all.
+	Checks     []config.VerifyCheck
+	SkipChecks []string
+	NoChecks   bool
+	// Coverage ruler (R4): the *Set flags tell an explicit empty value from
+	// an absent one; MinCoverage only raises the base threshold.
+	CoverageCmd        string
+	CoverageCmdSet     bool
+	CoveragePattern    string
+	CoveragePatternSet bool
+	MinCoverage        *float64
 	DryRun             bool
 	MaxIter            int
 	Timeout            time.Duration
@@ -208,7 +227,34 @@ func validateOptions(opts *Options) error {
 			return err
 		}
 	}
-	return nil
+	if _, err := verifyRulers(opts.Ruler); err != nil {
+		return err
+	}
+	if err := verify.ValidateChecks(opts.Checks); err != nil {
+		return &verify.UsageError{Msg: "--check: " + strings.TrimPrefix(err.Error(), "verify.checks: ")}
+	}
+	// The coverage overrides fail the same way inside the verify step; checking
+	// here turns a bad pattern or floor into exit 2 before any stage runs.
+	cfg := verify.DefaultConfig(opts.RepoDir)
+	return verify.MergeFlags(&cfg, nil, &verify.FlagOverrides{
+		CoveragePattern: verify.CmdOverride{Cmd: opts.CoveragePattern, Set: opts.CoveragePatternSet},
+		MinCoverage:     opts.MinCoverage,
+	})
+}
+
+// verifyRulers parses the verify op's ruler list; visual needs a browser and
+// screens, not the stack's shared diff, so it is refused here.
+func verifyRulers(s string) ([]string, error) {
+	names, err := verify.ParseRulers(s)
+	if err != nil {
+		return nil, err
+	}
+	for _, n := range names {
+		if n == verify.RulerVisual {
+			return nil, &verify.UsageError{Msg: "ruler visual is not available in tb stack; run tb verify run --ruler visual"}
+		}
+	}
+	return names, nil
 }
 
 func Run(ctx context.Context, opts *Options) (*Result, error) {
@@ -578,44 +624,45 @@ func runOp(ctx context.Context, op Op, opts *Options, shared *Shared) (StepResul
 }
 
 func runVerify(ctx context.Context, opts *Options, shared *Shared) (StepResult, error) {
-	cfg := buildVerifyConfig(opts, shared)
-	res, err := verify.Run(ctx, &cfg)
+	names, err := verifyRulers(opts.Ruler)
 	if err != nil {
 		return StepResult{}, err
 	}
-	if !res.DryRun {
-		shared.VerifyVerdict = string(res.Verdict)
+	cfg, err := buildVerifyConfig(opts, shared)
+	if err != nil {
+		return StepResult{}, err
 	}
-	return verifyStepResult(res), nil
+	multi, err := verify.RunRulers(ctx, &cfg, names)
+	if err != nil {
+		return StepResult{}, err
+	}
+	// A missing command stays a step error, as with verify.Run before.
+	for _, rr := range multi.Results {
+		if res, ok := rr.Payload.(*verify.Result); ok && rr.ExitCode == 127 {
+			return StepResult{}, errors.New(res.Error)
+		}
+	}
+	if !multi.DryRun {
+		shared.VerifyVerdict = string(multi.Verdict)
+	}
+	return verifyStepResult(multi), nil
 }
 
-func buildVerifyConfig(opts *Options, shared *Shared) verify.Config {
+// buildVerifyConfig leaves the command merge to verify: R0 reads the verify
+// section from the base ref over the trusted config, then the stack flags
+// apply as overrides.
+func buildVerifyConfig(opts *Options, shared *Shared) (verify.Config, error) {
 	cfg := verify.DefaultConfig(shared.RepoDir)
 	cfg.BaseRef = shared.Base
 	cfg.HeadRef = shared.Head
 	cfg.NameStatusDiff = shared.NameStatus
 	cfg.DryRun = opts.DryRun
-	if shared.FileConfig != nil {
-		if shared.FileConfig.Verify.TestCmd != "" {
-			cfg.VisibleTest = shared.FileConfig.Verify.TestCmd
-		}
-		if shared.FileConfig.Verify.HiddenTestCmd != "" {
-			cfg.HiddenTest = shared.FileConfig.Verify.HiddenTestCmd
-		}
-		if shared.FileConfig.Verify.BuildCmd != "" {
-			cfg.BuildCmd = shared.FileConfig.Verify.BuildCmd
-		}
-		if shared.FileConfig.Verify.LintCmd != "" {
-			cfg.LintCmd = shared.FileConfig.Verify.LintCmd
-		}
+	trusted, err := config.LoadTrusted()
+	if err != nil {
+		return cfg, err
 	}
-	if opts.TestCmd != "" {
-		cfg.VisibleTest = opts.TestCmd
-	}
-	if opts.HiddenTestCmd != "" {
-		cfg.HiddenTest = opts.HiddenTestCmd
-	}
-	verify.ApplyCmdOverrides(&cfg, opts.BuildCmd, opts.BuildCmdSet, opts.NoBuild, opts.LintCmd, opts.LintCmdSet, opts.NoLint)
+	cfg.TrustedConfig = trusted
+	cfg.Overrides = verifyOverrides(opts)
 	if opts.MaxIter > 0 {
 		cfg.MaxIterations = opts.MaxIter
 	}
@@ -627,23 +674,47 @@ func buildVerifyConfig(opts *Options, shared *Shared) verify.Config {
 	}
 	cfg.EnvAllow = append(cfg.EnvAllow, opts.EnvAllow...)
 	cfg.EnvPass = append(cfg.EnvPass, opts.EnvPass...)
-	if shared.FileConfig != nil {
-		cfg.EnvAllow = append(cfg.EnvAllow, shared.FileConfig.Env.Allow...)
-		cfg.EnvPass = append(cfg.EnvPass, shared.FileConfig.Env.Pass...)
-	}
-	return cfg
+	// env.allow/pass from config come through R0 (base ref), never the
+	// working tree, so a change cannot grant its tests secrets.
+	return cfg, nil
 }
 
-func verifyStepResult(res *verify.Result) StepResult {
-	ok := res.Verdict == verify.VerdictPass || res.Verdict == verify.VerdictSkipped
-	exit := 0
-	if !ok {
-		exit = 1
+// verifyOverrides maps the stack options; the hidden command only overrides
+// when non-empty, as tb stack always did.
+func verifyOverrides(opts *Options) *verify.FlagOverrides {
+	return &verify.FlagOverrides{
+		TestCmd:         verify.CmdOverride{Cmd: opts.TestCmd, Set: opts.TestCmd != ""},
+		HiddenTestCmd:   verify.CmdOverride{Cmd: opts.HiddenTestCmd, Set: opts.HiddenTestCmd != ""},
+		BuildCmd:        verify.CmdOverride{Cmd: opts.BuildCmd, Set: opts.BuildCmdSet},
+		LintCmd:         verify.CmdOverride{Cmd: opts.LintCmd, Set: opts.LintCmdSet},
+		TypecheckCmd:    verify.CmdOverride{Cmd: opts.TypecheckCmd, Set: opts.TypecheckCmdSet},
+		NoBuild:         opts.NoBuild,
+		NoLint:          opts.NoLint,
+		NoTypecheck:     opts.NoTypecheck,
+		Checks:          opts.Checks,
+		SkipChecks:      opts.SkipChecks,
+		NoChecks:        opts.NoChecks,
+		CoverageCmd:     verify.CmdOverride{Cmd: opts.CoverageCmd, Set: opts.CoverageCmdSet},
+		CoveragePattern: verify.CmdOverride{Cmd: opts.CoveragePattern, Set: opts.CoveragePatternSet},
+		MinCoverage:     opts.MinCoverage,
 	}
-	step := StepResult{Op: string(OpVerify), OK: ok, ExitCode: exit, Result: res}
-	if res.Reason != "" {
-		step.Reason = res.Reason
-		step.Error = res.Error
+}
+
+func verifyStepResult(multi *verify.MultiResult) StepResult {
+	exit := multi.ExitCode()
+	step := StepResult{Op: string(OpVerify), OK: exit == 0, ExitCode: exit, Result: multi.Payload()}
+	switch p := step.Result.(type) {
+	case *verify.Result:
+		step.Reason, step.Error = p.Reason, p.Error
+	case *verify.CoverageReport:
+		if p.Verdict != verify.VerdictPass {
+			step.Reason, step.Error = p.Reason, p.Reason
+		}
+	default:
+		if !step.OK {
+			step.Reason = multi.FirstReason()
+			step.Error = step.Reason
+		}
 	}
 	return step
 }

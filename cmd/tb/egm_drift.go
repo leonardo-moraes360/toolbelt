@@ -25,7 +25,10 @@ var egmDriftCmd = &cobra.Command{
 	Long: `Compares each gated document (or the given ones) with the sources its
 baseline certified: the committed receipt for these document bytes, or a
 converged local round. Drift is decided by the hashes of the baseline's
-source paths at --at (default HEAD), read from blobs.
+source paths at --at (default HEAD), read from blobs. A Go file cited only
+as path.go#Name is compared by those symbols' own bytes: a symbol_changed or
+symbol_missing status is drift, while a change elsewhere in the file is listed
+as outside_symbols and is not.
 
 --engine deterministic (the default) runs no agent. --engine llm also runs
 one isolated drift goldfish per drifted document (up to egm.drift.max_docs)
@@ -34,7 +37,7 @@ commit is usable, its diff; its findings are reported, never stored, and do
 not change the exit code.
 
 Exit 0: every document fresh or without a baseline; 1: some document
-drifted, lost a source or cites a new one; 2: unreadable or usage error.
+drifted, lost a source or a symbol or cites a new source; 2: unreadable or usage error.
 Spec: docs/specs/egm-drift-bootstrap.md.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cwd, err := os.Getwd()
@@ -80,6 +83,15 @@ func printDrift(w io.Writer, rep *egm.DriftReport) {
 		}
 		for _, p := range d.Added {
 			fmt.Fprintln(w, "      added:   "+p)
+		}
+		for _, c := range d.SymbolsChanged {
+			fmt.Fprintf(w, "      symbol changed: %s#%s\n", c.Path, c.Symbol)
+		}
+		for _, m := range d.SymbolsMissing {
+			fmt.Fprintf(w, "      symbol missing: %s#%s (%s)\n", m.Path, m.Symbol, m.Reason)
+		}
+		for _, p := range d.OutsideSymbols {
+			fmt.Fprintln(w, "      outside cited symbols: "+p)
 		}
 		if d.Reason != "" {
 			fmt.Fprintln(w, "      "+d.Reason)

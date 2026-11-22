@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/leonardo-moraes360/toolbelt/internal/stack"
+	"github.com/leonardo-moraes360/toolbelt/internal/verify"
 )
 
 var stackCmd = &cobra.Command{
@@ -54,6 +55,13 @@ func init() {
 	stackCmd.Flags().String("lint-cmd", "", "verify: lint command (empty + explicit flag or --no-lint to skip)")
 	stackCmd.Flags().Bool("no-build", false, "verify: skips build_cmd")
 	stackCmd.Flags().Bool("no-lint", false, "verify: skips lint_cmd")
+	stackCmd.Flags().String("ruler", "tests", "verify: rulers, comma-separated (tests|coverage; visual is refused here)")
+	stackCmd.Flags().String("typecheck-cmd", "", "verify: typecheck command (empty + explicit flag or --no-typecheck to skip)")
+	stackCmd.Flags().Bool("no-typecheck", false, "verify: skips typecheck_cmd")
+	stackCmd.Flags().StringArray("check", nil, "verify: named check name=cmd (repeatable; adds one or overrides its cmd)")
+	stackCmd.Flags().StringArray("no-check", nil, "verify: skips the named check (repeatable)")
+	stackCmd.Flags().Bool("no-checks", false, "verify: skips every verify.checks entry")
+	addCoverageFlags(stackCmd, "verify: ")
 	stackCmd.Flags().Bool("dry-run", false, "verify: shows the plan (cmds/dir) without executing")
 	stackCmd.Flags().Int("max-iter", 0, "verify: maximum iterations")
 	stackCmd.Flags().String("timeout", "10m", "verify: timeout")
@@ -99,12 +107,11 @@ func runStack(cmd *cobra.Command, args []string) error {
 	approved, _ := cmd.Flags().GetString("approved-sha")
 	approvedBase, _ := cmd.Flags().GetString("approved-base")
 	warnOnly, _ := cmd.Flags().GetBool("warn-only")
-	testCmd, _ := cmd.Flags().GetString("test-cmd")
-	hiddenCmd, _ := cmd.Flags().GetString("hidden-test-cmd")
-	buildCmd, _ := cmd.Flags().GetString("build-cmd")
-	lintCmd, _ := cmd.Flags().GetString("lint-cmd")
-	noBuild, _ := cmd.Flags().GetBool("no-build")
-	noLint, _ := cmd.Flags().GetBool("no-lint")
+	vo, err := verifyFlagOverrides(cmd)
+	if err != nil {
+		return err
+	}
+	ruler, _ := cmd.Flags().GetString("ruler")
 	dryRun, _ := cmd.Flags().GetBool("dry-run")
 	maxIter, _ := cmd.Flags().GetInt("max-iter")
 	reviewers, _ := cmd.Flags().GetInt("reviewers")
@@ -126,14 +133,26 @@ func runStack(cmd *cobra.Command, args []string) error {
 		ApprovedBase:       approvedBase,
 		RequireApprovedSHA: requireApprovedSHAFrom(cmd),
 		WarnOnly:           warnOnly,
-		TestCmd:            testCmd,
-		HiddenTestCmd:      hiddenCmd,
-		BuildCmd:           buildCmd,
-		LintCmd:            lintCmd,
-		BuildCmdSet:        cmd.Flags().Changed("build-cmd"),
-		LintCmdSet:         cmd.Flags().Changed("lint-cmd"),
-		NoBuild:            noBuild,
-		NoLint:             noLint,
+		TestCmd:            vo.TestCmd.Cmd,
+		HiddenTestCmd:      vo.HiddenTestCmd.Cmd,
+		BuildCmd:           vo.BuildCmd.Cmd,
+		LintCmd:            vo.LintCmd.Cmd,
+		BuildCmdSet:        vo.BuildCmd.Set,
+		LintCmdSet:         vo.LintCmd.Set,
+		NoBuild:            vo.NoBuild,
+		NoLint:             vo.NoLint,
+		Ruler:              ruler,
+		TypecheckCmd:       vo.TypecheckCmd.Cmd,
+		TypecheckCmdSet:    vo.TypecheckCmd.Set,
+		NoTypecheck:        vo.NoTypecheck,
+		Checks:             vo.Checks,
+		SkipChecks:         vo.SkipChecks,
+		NoChecks:           vo.NoChecks,
+		CoverageCmd:        vo.CoverageCmd.Cmd,
+		CoverageCmdSet:     vo.CoverageCmd.Set,
+		CoveragePattern:    vo.CoveragePattern.Cmd,
+		CoveragePatternSet: vo.CoveragePattern.Set,
+		MinCoverage:        vo.MinCoverage,
 		DryRun:             dryRun,
 		MaxIter:            maxIter,
 		Timeout:            timeout,
@@ -160,8 +179,27 @@ func emitStackResult(res *stack.Result) error {
 		return err
 	}
 	fmt.Println(string(data))
+	if !jsonOutput {
+		printStackVerifyNotices(res)
+	}
 	if code := stack.ExitCode(res); code != 0 {
 		os.Exit(code)
 	}
 	return nil
+}
+
+// printStackVerifyNotices prints the verify step's warnings (ignored keys,
+// base == head, symlinked config) and applied overrides to stderr.
+func printStackVerifyNotices(res *stack.Result) {
+	for _, step := range res.Steps {
+		if step.Op != string(stack.OpVerify) {
+			continue
+		}
+		switch p := step.Result.(type) {
+		case *verify.Result:
+			printVerifyNotices(p.Warnings, p.Overrides)
+		case *verify.MultiResult:
+			printVerifyNotices(p.Warnings, p.Overrides)
+		}
+	}
 }

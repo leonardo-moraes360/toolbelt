@@ -110,6 +110,37 @@ func TestBusMCPFlow(t *testing.T) {
 	}
 }
 
+// TestBusMCPParent: tb_bus_send carries parent; the broker, not the client,
+// decides who may link; the tree stays CLI only.
+func TestBusMCPParent(t *testing.T) {
+	ResetBusSessions()
+	t.Cleanup(ResetBusSessions)
+	root, ownerCode, _ := busChannel(t)
+	mustBus(t, "tb_bus_join", map[string]any{"channel": "fx", "invite": ownerCode, "name": "claude-main", "cwd": root})
+	assignArgs := func(thread, parent string) map[string]any {
+		a := map[string]any{"to": "role:worker", "type": "task.assign", "thread": thread}
+		if parent != "" {
+			a["parent"] = parent
+		}
+		return a
+	}
+	mustBus(t, "tb_bus_send", assignArgs("TKT-001", ""))
+	failBus(t, "tb_bus_send", assignArgs("TKT-001/api", "TKT-001"), "parent_not_owned")
+	mustBus(t, "tb_bus_claim", map[string]any{"thread": "TKT-001"})
+	out := mustBus(t, "tb_bus_send", assignArgs("TKT-001/api", "TKT-001"))
+	if !strings.Contains(out, `"parent": "TKT-001"`) {
+		t.Fatalf("envelope without parent: %s", out)
+	}
+	failBus(t, "tb_bus_send", map[string]any{"to": "topic:x", "type": "query", "thread": "a", "parent": "TKT-001"}, "parent_requires_assign")
+	out = mustBus(t, "tb_bus_complete", map[string]any{"thread": "TKT-001", "epoch": 1})
+	if !strings.Contains(out, "TKT-001/api") {
+		t.Fatalf("complete should warn about the open child: %s", out)
+	}
+	if _, ok := Default().Get("tb_bus_tree"); ok {
+		t.Fatal("the delegation tree is CLI only")
+	}
+}
+
 func TestBusMCPNoChannelCreateTool(t *testing.T) {
 	for _, tool := range Default().List() {
 		if strings.HasPrefix(tool.Name, "tb_bus_") && (strings.Contains(tool.Name, "channel") || strings.Contains(tool.Name, "invite")) {

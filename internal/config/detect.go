@@ -1,6 +1,7 @@
 package config
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -8,11 +9,14 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 )
 
 var (
 	makeTargetRe = regexp.MustCompile(`(?m)^([a-zA-Z0-9][^:\n]*):`)
 	lookPath     = exec.LookPath
+	// cargoClippyWorks is a var so tests need no Rust toolchain.
+	cargoClippyWorks = defaultCargoClippyWorks
 )
 
 // DetectedCmd is the test command chosen for a repo plus an optional warning.
@@ -91,7 +95,8 @@ func DetectBuildCmd(root string) string {
 }
 
 // DetectLintCmd is conservative: golangci config / make lint, scripts.lint,
-// cargo clippy, ruff/mypy in pyproject; else returns "".
+// cargo clippy, ruff in pyproject; else returns "". mypy is a typecheck
+// (DetectTypecheckCmd), not a lint.
 func DetectLintCmd(root string) string {
 	if root == "" {
 		return ""
@@ -131,13 +136,147 @@ func detectGoLintCmd(root string) string {
 	return detectMakeTargetCmd(root, "lint")
 }
 
+// Only the build script is a build: typecheck scripts go to
+// verify.typecheck_cmd (DetectTypecheckCmd).
 func detectNodeBuildCmd(root string) string {
-	for _, script := range []string{"build", "typecheck", "type-check"} {
+	return detectNodeScriptCmd(root, "build")
+}
+
+// DetectTypecheckCmd is conservative: a Node typecheck script, a tsconfig.json
+// with a local tsc, or a configured mypy/pyright that resolves on PATH (or in
+// .venv/bin); else "". Go and Rust get none because the build type-checks.
+func DetectTypecheckCmd(root string) string {
+	if root == "" {
+		return ""
+	}
+	if fileExists(filepath.Join(root, "go.mod")) {
+		return ""
+	}
+	if fileExists(filepath.Join(root, "package.json")) {
+		return detectNodeTypecheckCmd(root)
+	}
+	if fileExists(filepath.Join(root, "Cargo.toml")) {
+		return ""
+	}
+	return detectPythonTypecheckCmd(root)
+}
+
+func detectNodeTypecheckCmd(root string) string {
+	for _, script := range []string{"typecheck", "type-check"} {
 		if cmd := detectNodeScriptCmd(root, script); cmd != "" {
 			return cmd
 		}
 	}
+	if !fileExists(filepath.Join(root, "tsconfig.json")) ||
+		!fileExists(filepath.Join(root, "node_modules", ".bin", "tsc")) {
+		return ""
+	}
+	return nodeTscCommand(nodePackageManager(root, readPackageManagerField(root)))
+}
+
+// nodeTscCommand runs the local tsc through the package manager: npm exec
+// needs "--" so --noEmit reaches tsc, and yarn/bun have no exec subcommand
+// with that meaning.
+func nodeTscCommand(pm string) string {
+	switch pm {
+	case "pnpm":
+		return "pnpm exec tsc --noEmit"
+	case "yarn":
+		return "yarn tsc --noEmit"
+	case "bun":
+		return "bunx tsc --noEmit"
+	default:
+		return "npm exec -- tsc --noEmit"
+	}
+}
+
+func readPackageManagerField(root string) string {
+	data, err := os.ReadFile(filepath.Join(root, "package.json"))
+	if err != nil {
+		return ""
+	}
+	var pkg struct {
+		PackageManager string `json:"packageManager"`
+	}
+	if err := json.Unmarshal(data, &pkg); err != nil {
+		return ""
+	}
+	return pkg.PackageManager
+}
+
+func detectPythonTypecheckCmd(root string) string {
+	if !isPythonProject(root) &&
+		!fileExists(filepath.Join(root, "mypy.ini")) &&
+		!fileExists(filepath.Join(root, "pyrightconfig.json")) {
+		return ""
+	}
+	pyproject, _ := os.ReadFile(filepath.Join(root, "pyproject.toml"))
+	content := string(pyproject)
+	setupCfg, _ := os.ReadFile(filepath.Join(root, "setup.cfg"))
+	useUV := fileExists(filepath.Join(root, "uv.lock"))
+
+	mypyConfigured := hasPythonTool(content, "mypy") ||
+		fileExists(filepath.Join(root, "mypy.ini")) ||
+		fileExists(filepath.Join(root, ".mypy.ini")) ||
+		strings.Contains(string(setupCfg), "[mypy]")
+	if mypyConfigured {
+		if cmd := pythonTypecheckCmd(root, useUV, "mypy", " ."); cmd != "" {
+			return cmd
+		}
+	}
+	pyrightConfigured := hasPythonTool(content, "pyright") ||
+		fileExists(filepath.Join(root, "pyrightconfig.json"))
+	if pyrightConfigured {
+		return pythonTypecheckCmd(root, useUV, "pyright", "")
+	}
 	return ""
+}
+
+// pythonTypecheckCmd is "uv run <tool>" with uv.lock, the bare name when the
+// tool is on PATH, ".venv/bin/<tool>" when it resolves only there, else "".
+func pythonTypecheckCmd(root string, useUV bool, tool, args string) string {
+	_, err := lookPath(tool)
+	onPath := err == nil
+	inVenv := fileExists(filepath.Join(root, ".venv", "bin", tool))
+	switch {
+	case !onPath && !inVenv:
+		return ""
+	case useUV:
+		return "uv run " + tool + args
+	case onPath:
+		return tool + args
+	default:
+		return ".venv/bin/" + tool + args
+	}
+}
+
+// DetectSuggestedChecks returns the named checks tb init offers (R3):
+// govulncheck for Go when on PATH, clippy for Rust when `cargo clippy -V`
+// works. Never written unless the caller asks (tb init --write-checks).
+func DetectSuggestedChecks(root string) []VerifyCheck {
+	if root == "" {
+		return nil
+	}
+	var out []VerifyCheck
+	if fileExists(filepath.Join(root, "go.mod")) {
+		if _, err := lookPath("govulncheck"); err == nil {
+			out = append(out, VerifyCheck{Name: "govulncheck", Cmd: "govulncheck ./..."})
+		}
+	}
+	if fileExists(filepath.Join(root, "Cargo.toml")) && cargoClippyWorks() {
+		out = append(out, VerifyCheck{Name: "clippy", Cmd: "cargo clippy --all-targets -- -D warnings"})
+	}
+	return out
+}
+
+func defaultCargoClippyWorks() bool {
+	cargo, err := lookPath("cargo")
+	if err != nil {
+		return false
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	return exec.CommandContext(ctx, cargo, "clippy", "-V").Run() == nil //nolint:gosec // fixed argv, cargo resolved via PATH
 }
 
 func detectNodeScriptCmd(root, script string) string {
@@ -292,18 +431,12 @@ func detectPythonLintCmd(root string) string {
 	content := string(pyproject)
 	useUV := fileExists(filepath.Join(root, "uv.lock"))
 
-	switch {
-	case hasPythonTool(content, "ruff") ||
+	if hasPythonTool(content, "ruff") ||
 		fileExists(filepath.Join(root, "ruff.toml")) ||
-		fileExists(filepath.Join(root, ".ruff.toml")):
+		fileExists(filepath.Join(root, ".ruff.toml")) {
 		return pythonToolCmd(useUV, "ruff check .")
-	case hasPythonTool(content, "mypy") ||
-		fileExists(filepath.Join(root, "mypy.ini")) ||
-		fileExists(filepath.Join(root, ".mypy.ini")):
-		return pythonToolCmd(useUV, "mypy .")
-	default:
-		return ""
 	}
+	return ""
 }
 
 func isPythonProject(root string) bool {
