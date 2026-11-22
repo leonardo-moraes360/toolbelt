@@ -4,7 +4,7 @@
 
 ## Status
 
-accepted (2026-11-19). O spike R0 da [spec do núcleo](../specs/egm-nativo.md) rodou ([dogfood #30–#34](../campo/dogfood.md)) e revisou o desenho de matching e convergência; a Fase A está implementada (PRs [#115](https://github.com/leonardo-moraes360/toolbelt/pull/115), [#116](https://github.com/leonardo-moraes360/toolbelt/pull/116) e [#117](https://github.com/leonardo-moraes360/toolbelt/pull/117)). O item 8 do R0 (git sobre um repositório de outro uid, que precisa de um segundo usuário) continua aberto. A [spec de confiança](../specs/egm-trust.md) segue em rascunho. Fase B ([spec](../specs/egm-drift-bootstrap.md)): o B1 `drift-report`, o B2 `bootstrap` e o B3 (os goldfish de drift e de bootstrap, e o `commit` consultivo do recibo) estão implementados.
+accepted (2026-11-19). O spike R0 da [spec do núcleo](../specs/egm-nativo.md) rodou ([dogfood #30–#34](../campo/dogfood.md)) e revisou o desenho de matching e convergência; a Fase A está implementada (PRs [#115](https://github.com/leonardo-moraes360/toolbelt/pull/115), [#116](https://github.com/leonardo-moraes360/toolbelt/pull/116) e [#117](https://github.com/leonardo-moraes360/toolbelt/pull/117)). O item 8 do R0 (git sobre um repositório de outro uid, que precisa de um segundo usuário) continua aberto e acompanhado; não bloqueia mais a aceitação (o ADR foi aceito com ele aberto). A [spec de confiança](../specs/egm-trust.md) está implementada (fatias 1–3; a medição de instabilidade está pendente). Fase B ([spec](../specs/egm-drift-bootstrap.md)): o B1 `drift-report`, o B2 `bootstrap` e o B3 (os goldfish de drift e de bootstrap, e o `commit` consultivo do recibo) estão implementados. Fase C ([spec](../specs/egm-phase-c.md)): `brainstorm`, `draft` e `draft --update` (C1–C3) estão implementados; o drift por símbolo e os itens do grafo (C4–C6) não.
 
 ## Contexto
 
@@ -170,7 +170,7 @@ As perguntas interativas do upstream viram subcomandos idempotentes do `tb egm r
 - **Trust (Fase A.2):** ver a [spec](../specs/egm-trust.md).
 - **Specs seguintes:**
   - **Fase B:** `drift-report` e `bootstrap`.
-  - **Fase C:** `draft` e `brainstorm`, outros presets, personas customizadas por path, perfil `codex`, override de agente por revisor, verificação de símbolos no grafo, churn e o adaptador `review.Finding` → `egm.Finding`.
+  - **Fase C** ([spec](../specs/egm-phase-c.md); `draft` e `brainstorm` estão implementados): `draft` e `brainstorm`, outros presets, personas customizadas por path, perfil `codex`, override de agente por revisor, verificação de símbolos no grafo, churn e o adaptador `review.Finding` → `egm.Finding`.
 - **Rede.** O `tb` continua sem falar com a rede. Quem fala com o provedor é o processo do agente. Sem agente, tudo é 100% offline.
 - **Relação com o ADR-013.** Os goldfish são workers one-shot, não agentes do barramento.
 - **Localização dos docs.** As specs ficam em `docs/specs/` e os ADRs em `docs/adr/`.

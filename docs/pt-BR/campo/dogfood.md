@@ -108,6 +108,15 @@ apontando para ele. Flags do goldfish: `-p --output-format json --tools "" --str
 | 41 | `tb egm review docs/specs/vault.md --engine deterministic` | só problemas reais | 2 findings reais de `required-sections` (`## Non-goals` e `## Technical plan` não batem com a caixa do padrão) e 6 reais de `plan-files-listed` (arquivos de teste escritos sem o diretório). Mas 6 majors de `refs-exist` apontam para caminhos que a spec planeja criar ou que são do Obsidian (`.obsidian`, `.trash`, `internal/vault/testdata/obsidian`), e uma spec antes da implementação não converge sem recusá-los um a um. Além disso, o `plan-files-listed` só lê a primeira tabela depois do heading do plano: dividir o plano em uma tabela por fatia transformou 16 arquivos `Create` em findings de `refs-exist` | minor |
 | 42 | `tb bus discover` (2026-11-20, build local) | o `.mcp.json` deste repositório aponta para um `tb` conhecido | a entrada `toolbelt` roda um `tb` puro, então `same_tb` é `null`: o cliente o resolve no próprio `PATH`, que aqui é a release em `~/go/bin` (v0.0.8), não o build local em teste. É intencional (o CLAUDE.md manda testar com `./bin/tb`), mas o discover deixa a ambiguidade visível | info |
 
+## 2026-11-22 — backlog de estabilidade (nota, não correção)
+
+Encontrado ao especificar o drift por símbolo ([egm Fase C](../specs/egm-phase-c.md)); nenhum comando `tb graph` foi rodado. Os dois vêm do indexador Go em `internal/graph/index_go.go` e ficam registrados para o slice do grafo (C6), sem correção:
+
+- Métodos perdem o receptor no ID (`func:<pkg>.<name>`, linha 52) e `funcIDs` usa só o nome (linha 54), então `(A) Name` e `(B) Name` no mesmo pacote viram um nó e as arestas de chamada do segundo são atribuídas ao primeiro.
+- IDs de pacote são `pkg:<name>` (linha 34), então vários pacotes chamados `main` (todo `cmd/*`) viram um só nó.
+
+O `tb egm` não depende de nenhum dos dois: seus símbolos têm escopo de arquivo.
+
 ## 2026-11-21 — índice vetorial V1 (`tb graph index --vectors`, build local `embednative`, all-MiniLM-L6-v2 Q8_0)
 
 | # | Comando | Esperado | Obtido | Sev. |

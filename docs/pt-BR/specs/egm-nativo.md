@@ -121,7 +121,7 @@ O tb só chama git nas fases 1 e 3, nunca enquanto um goldfish roda (R3).
 
 ### Requisitos
 
-**R0: spike.** Este requisito bloqueia R1, R2, R3, R4, R4b e R5, e a passagem do ADR-015 para `accepted`. R4c e R4d não dependem do spike. R18 a R27 foram revistos com os dados do R0 ([dogfood #31–#33](../campo/dogfood.md)). A convergência foi medida duas vezes e nenhuma convergiu dentro do orçamento; a Fase A aceita isso (ver Questões em aberto), então só o item 8 ainda impede o ADR-015 de ir para `accepted`.
+**R0: spike.** Este requisito bloqueia R1, R2, R3, R4, R4b e R5 (exceto o item 8, veja abaixo). R4c e R4d não dependem do spike. R18 a R27 foram revistos com os dados do R0 ([dogfood #31–#33](../campo/dogfood.md)). A convergência foi medida duas vezes e nenhuma convergiu dentro do orçamento; a Fase A aceita isso (ver Questões em aberto), o item 8 é uma lacuna aberta conhecida, acompanhada aqui, que não bloqueia mais o ADR-015: ele foi aceito em 2026-11-19 com o item 8 aberto.
 
 Um protótipo em `bench/egm-spike/` deve provar que `claude -p`:
 1. roda em `sandbox.New` com o pacote como workdir só-leitura, `TMPDIR` privado, HOME descartável, env mínimo (R4b) e `PATH` mínimo;
