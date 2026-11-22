@@ -36,6 +36,11 @@ type FlagOverrides struct {
 	Checks     []config.VerifyCheck
 	SkipChecks []string
 	NoChecks   bool
+	// CoverageCmd and CoveragePattern replace the file config whenever Set.
+	// MinCoverage only raises the base threshold (the ruler takes the max).
+	CoverageCmd     CmdOverride
+	CoveragePattern CmdOverride
+	MinCoverage     *float64
 }
 
 // MergeFlags is the one merge of file config and caller overrides into cfg:
@@ -55,7 +60,10 @@ func MergeFlags(cfg *Config, vc *config.VerifyConfig, o *FlagOverrides) error {
 		}
 		cfg.AppliedOverrides = appliedOverrides(&before, cfg, o)
 	}
-	return ValidateChecks(cfg.Checks)
+	if err := ValidateChecks(cfg.Checks); err != nil {
+		return err
+	}
+	return ValidateCoveragePattern(cfg.CoveragePattern)
 }
 
 // appliedOverrides names each key whose value o changed from before, and
@@ -77,6 +85,13 @@ func appliedOverrides(before, after *Config, o *FlagOverrides) []string {
 		default:
 			out = append(out, key)
 		}
+	}
+	cmd("coverage_cmd", before.CoverageCmd, after.CoverageCmd)
+	cmd("coverage_pattern", before.CoveragePattern, after.CoveragePattern)
+	if o.MinCoverage != nil {
+		// Listed here; the run drops it once the base threshold shows the
+		// flag does not raise it (dropNoopMinCoverage).
+		out = append(out, "min_coverage")
 	}
 	gate("build_cmd", "no_build", before.BuildCmd, after.BuildCmd, o.NoBuild)
 	gate("lint_cmd", "no_lint", before.LintCmd, after.LintCmd, o.NoLint)
@@ -108,6 +123,8 @@ func mergeFileConfig(cfg *Config, vc *config.VerifyConfig) {
 	setIfNonEmpty(&cfg.BuildCmd, vc.BuildCmd)
 	setIfNonEmpty(&cfg.LintCmd, vc.LintCmd)
 	setIfNonEmpty(&cfg.TypecheckCmd, vc.TypecheckCmd)
+	setIfNonEmpty(&cfg.CoverageCmd, vc.CoverageCmd)
+	setIfNonEmpty(&cfg.CoveragePattern, vc.CoveragePattern)
 	if len(vc.Checks) > 0 {
 		cfg.Checks = append([]config.VerifyCheck(nil), vc.Checks...)
 	}
@@ -123,7 +140,32 @@ func applyOverrides(cfg *Config, o *FlagOverrides) error {
 	applyGateOverride(&cfg.BuildCmd, o.BuildCmd, o.NoBuild)
 	applyGateOverride(&cfg.LintCmd, o.LintCmd, o.NoLint)
 	applyGateOverride(&cfg.TypecheckCmd, o.TypecheckCmd, o.NoTypecheck)
+	if err := applyCoverageOverrides(cfg, o); err != nil {
+		return err
+	}
 	return applyCheckOverrides(cfg, o)
+}
+
+// applyCoverageOverrides reports caller mistakes (bad pattern, floor out of
+// range) as usage errors, like a malformed --check.
+func applyCoverageOverrides(cfg *Config, o *FlagOverrides) error {
+	if o.CoverageCmd.Set {
+		cfg.CoverageCmd = o.CoverageCmd.Cmd
+	}
+	if o.CoveragePattern.Set {
+		if err := ValidateCoveragePattern(o.CoveragePattern.Cmd); err != nil {
+			return &UsageError{Msg: "--coverage-pattern: " + strings.TrimPrefix(err.Error(), "verify.coverage_pattern: ")}
+		}
+		cfg.CoveragePattern = o.CoveragePattern.Cmd
+	}
+	if o.MinCoverage != nil {
+		if !validPercent(*o.MinCoverage) {
+			return &UsageError{Msg: fmt.Sprintf("--min-coverage %v: want a number in [0, 100]", *o.MinCoverage)}
+		}
+		v := *o.MinCoverage
+		cfg.MinCoverage = &v
+	}
+	return nil
 }
 
 func applyCheckOverrides(cfg *Config, o *FlagOverrides) error {

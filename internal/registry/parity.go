@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -170,6 +171,19 @@ var (
 	}
 )
 
+// Coverage ruler (R4) arguments, shared by tb_verify_run and tb_stack.
+var (
+	coverageCmdProperty     = Property{Type: "string", Description: "Coverage command (default with go.mod: go test -coverprofile)"}
+	coveragePatternProperty = Property{
+		Type:        "string",
+		Description: "Regexp with exactly one capture group; its last match in the coverage command's output is the percentage",
+	}
+	minCoverageProperty = Property{
+		Type:        "number",
+		Description: "Coverage floor in [0, 100]; only raises the base ref's .toolbelt/thresholds.yaml",
+	}
+)
+
 func registerVerifyTools() {
 	Register(&Tool{
 		Name:        "tb_verify_run",
@@ -189,12 +203,15 @@ func registerVerifyTools() {
 				"dry_run":          {Type: "boolean", Description: "Shows the plan without running", Default: false},
 				"max_iter":         {Type: "integer", Description: "Maximum iterations", Default: 0},
 				"timeout":          {Type: "string", Description: "Timeout", Default: "10m"},
-				"ruler":            {Type: "string", Description: "Rulers, comma-separated: tests|visual (visual runs alone; an unknown name is an error)", Default: "tests"},
+				"ruler":            {Type: "string", Description: "Rulers, comma-separated: tests|coverage|visual (visual runs alone; an unknown name is an error)", Default: "tests"},
 				"typecheck_cmd":    {Type: "string", Description: "Typecheck command (empty to skip)"},
 				"no_typecheck":     {Type: "boolean", Description: "Skips typecheck_cmd", Default: false},
 				"checks":           checksProperty,
 				"skip_checks":      skipChecksProperty,
 				"no_checks":        {Type: "boolean", Description: "Skips every verify.checks entry", Default: false},
+				"coverage_cmd":     coverageCmdProperty,
+				"coverage_pattern": coveragePatternProperty,
+				"min_coverage":     minCoverageProperty,
 				"manifest":         {Type: "string", Description: "Visual manifest"},
 				"threshold":        {Type: "number", Description: "Threshold visual", Default: 0.95},
 				"skip_unavailable": {Type: "boolean", Description: "Graceful skip if ruler is unavailable", Default: true},
@@ -305,12 +322,15 @@ func registerStackTools() {
 				"lint_cmd":             {Type: "string", Description: "verify: lint command (empty to skip)"},
 				"no_build":             {Type: "boolean", Description: "verify: skips build_cmd", Default: false},
 				"no_lint":              {Type: "boolean", Description: "verify: skips lint_cmd", Default: false},
-				"ruler":                {Type: "string", Description: "verify: rulers, comma-separated (tests; visual is refused here)", Default: "tests"},
+				"ruler":                {Type: "string", Description: "verify: rulers, comma-separated (tests|coverage; visual is refused here)", Default: "tests"},
 				"typecheck_cmd":        {Type: "string", Description: "verify: typecheck command (empty to skip)"},
 				"no_typecheck":         {Type: "boolean", Description: "verify: skips typecheck_cmd", Default: false},
 				"checks":               checksProperty,
 				"skip_checks":          skipChecksProperty,
 				"no_checks":            {Type: "boolean", Description: "verify: skips every verify.checks entry", Default: false},
+				"coverage_cmd":         coverageCmdProperty,
+				"coverage_pattern":     coveragePatternProperty,
+				"min_coverage":         minCoverageProperty,
 				"dry_run":              {Type: "boolean", Description: "verify: shows the plan without running", Default: false},
 				"max_iter":             {Type: "integer", Description: "verify: maximum iterations", Default: 0},
 				"timeout":              {Type: "string", Description: "verify: timeout", Default: "10m"},
@@ -592,16 +612,24 @@ func verifyOverridesFromArgs(args map[string]any) (*verify.FlagOverrides, error)
 		return verify.CmdOverride{Cmd: StringArg(args, key), Set: HasArg(args, key)}
 	}
 	o := &verify.FlagOverrides{
-		TestCmd:       cmdArg("test_cmd"),
-		HiddenTestCmd: cmdArg("hidden_test_cmd"),
-		BuildCmd:      cmdArg("build_cmd"),
-		LintCmd:       cmdArg("lint_cmd"),
-		TypecheckCmd:  cmdArg("typecheck_cmd"),
-		NoBuild:       BoolArg(args, "no_build", false),
-		NoLint:        BoolArg(args, "no_lint", false),
-		NoTypecheck:   BoolArg(args, "no_typecheck", false),
-		SkipChecks:    StringSliceArg(args, "skip_checks", nil),
-		NoChecks:      BoolArg(args, "no_checks", false),
+		TestCmd:         cmdArg("test_cmd"),
+		HiddenTestCmd:   cmdArg("hidden_test_cmd"),
+		BuildCmd:        cmdArg("build_cmd"),
+		LintCmd:         cmdArg("lint_cmd"),
+		TypecheckCmd:    cmdArg("typecheck_cmd"),
+		NoBuild:         BoolArg(args, "no_build", false),
+		NoLint:          BoolArg(args, "no_lint", false),
+		NoTypecheck:     BoolArg(args, "no_typecheck", false),
+		SkipChecks:      StringSliceArg(args, "skip_checks", nil),
+		NoChecks:        BoolArg(args, "no_checks", false),
+		CoverageCmd:     cmdArg("coverage_cmd"),
+		CoveragePattern: cmdArg("coverage_pattern"),
+	}
+	if raw, ok := args["min_coverage"]; ok && raw != nil {
+		// NaN marks an unparsable value, which MergeFlags rejects as out of
+		// range instead of silently dropping the floor.
+		v := FloatArg(args, "min_coverage", math.NaN())
+		o.MinCoverage = &v
 	}
 	checks, err := checksArg(args)
 	if err != nil {
@@ -891,6 +919,11 @@ func handleStack(ctx context.Context, args map[string]any) (any, error) {
 		Checks:             vo.Checks,
 		SkipChecks:         vo.SkipChecks,
 		NoChecks:           vo.NoChecks,
+		CoverageCmd:        vo.CoverageCmd.Cmd,
+		CoverageCmdSet:     vo.CoverageCmd.Set,
+		CoveragePattern:    vo.CoveragePattern.Cmd,
+		CoveragePatternSet: vo.CoveragePattern.Set,
+		MinCoverage:        vo.MinCoverage,
 		DryRun:             BoolArg(args, "dry_run", false),
 		MaxIter:            IntArg(args, "max_iter", 0),
 		Timeout:            timeout,

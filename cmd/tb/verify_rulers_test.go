@@ -113,7 +113,7 @@ func TestVerifyCLIUnknownRulerExit2(t *testing.T) {
 	tbBin := buildTB(t)
 	dir := rulersRepo(t, "")
 	marker := filepath.Join(dir, "ran.flag")
-	for _, ruler := range []string{"foo", "visual,tests", "coverage"} {
+	for _, ruler := range []string{"foo", "visual,tests", "coverage,visual"} {
 		_, stderr, code := runTBIsolated(t, tbBin, dir, "verify", "run", "--ruler", ruler, "--test-cmd", "touch "+marker, "--max-iter", "1")
 		if code != 2 {
 			t.Fatalf("--ruler %s: exit=%d want 2\n%s", ruler, code, stderr)
@@ -494,5 +494,101 @@ func TestVerifyCLISymlinkedBaseConfig(t *testing.T) {
 	}
 	if !slices.Contains(res.Warnings, verify.SymlinkConfigWarning) {
 		t.Fatalf("warnings=%v", res.Warnings)
+	}
+}
+
+// coverageMultiJSON is the --ruler tests,coverage payload.
+type coverageMultiJSON struct {
+	Verdict verify.Verdict `json:"verdict"`
+	Rulers  struct {
+		Tests    verify.Result         `json:"tests"`
+		Coverage verify.CoverageReport `json:"coverage"`
+	} `json:"rulers"`
+	Overrides []string `json:"overrides"`
+}
+
+func runCoverageJSON(t *testing.T, tbBin, dir string, args ...string) (m coverageMultiJSON, code int) {
+	t.Helper()
+	out, stderr, code := runTBIsolated(t, tbBin, dir, append([]string{"verify", "run", "--json"}, args...)...)
+	if err := json.Unmarshal([]byte(out), &m); err != nil {
+		t.Fatalf("json: %v\n%s\n%s", err, out, stderr)
+	}
+	if m.Rulers.Coverage.Coverage == nil {
+		t.Fatalf("no coverage block:\n%s", out)
+	}
+	return m, code
+}
+
+// R4 through the CLI: tb verify run and tb stack verify with --ruler
+// tests,coverage, the coverage flags and the base-pinned threshold.
+func TestVerifyCLICoverageRuler(t *testing.T) {
+	if testing.Short() {
+		t.Skip()
+	}
+	tbBin := buildTB(t)
+	dir := rulersRepo(t, "")
+	if err := os.MkdirAll(filepath.Join(dir, ".toolbelt"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeTestFile(t, filepath.Join(dir, ".toolbelt", "thresholds.yaml"), "version: 1\ncoverage:\n  min_percent: 70\n")
+	gitCommitAll(t, dir, "thresholds")
+	args := []string{"--base", "HEAD", "--head", "HEAD", "--ruler", "tests,coverage", "--test-cmd", "true", "--max-iter", "1",
+		"--coverage-cmd", "echo 'TOTAL 75%'", "--coverage-pattern", `TOTAL (\d+)%`}
+	checkVerifyCLICoverageFlags(t, tbBin, dir, args)
+	checkStackCLICoverage(t, tbBin, dir, args)
+	checkCLICoverageLoweredFloor(t, tbBin, dir)
+}
+
+func checkVerifyCLICoverageFlags(t *testing.T, tbBin, dir string, args []string) {
+	t.Helper()
+	m, code := runCoverageJSON(t, tbBin, dir, args...)
+	if code != 0 || m.Verdict != verify.VerdictPass || m.Rulers.Coverage.Coverage.Threshold != 70 {
+		t.Fatalf("exit=%d %+v", code, m)
+	}
+	if !slices.Contains(m.Overrides, "coverage_cmd") || !slices.Contains(m.Overrides, "coverage_pattern") {
+		t.Fatalf("overrides=%v", m.Overrides)
+	}
+	m, code = runCoverageJSON(t, tbBin, dir, append(args, "--min-coverage", "60")...)
+	if code != 0 || m.Rulers.Coverage.Coverage.ThresholdSource != verify.ThresholdSourceBase {
+		t.Fatalf("below base: exit=%d %+v", code, m.Rulers.Coverage)
+	}
+	m, code = runCoverageJSON(t, tbBin, dir, append(args, "--min-coverage", "80")...)
+	if code != 1 || m.Verdict != verify.VerdictFail || m.Rulers.Coverage.Coverage.ThresholdSource != verify.ThresholdSourceFlag {
+		t.Fatalf("above base: exit=%d %+v", code, m.Rulers.Coverage)
+	}
+	if !slices.Contains(m.Overrides, "min_coverage") {
+		t.Fatalf("overrides=%v", m.Overrides)
+	}
+	if _, stderr, code := runTBIsolated(t, tbBin, dir, append([]string{"verify", "run"}, append(args, "--coverage-pattern", "nogroup")...)...); code != 2 {
+		t.Fatalf("bad pattern: exit=%d want 2\n%s", code, stderr)
+	}
+	out, stderr, code := runTBIsolated(t, tbBin, dir, append([]string{"verify", "run", "--json", "--dry-run"}, args...)...)
+	if code != 0 || !strings.Contains(out, `"coverage": "echo 'TOTAL 75%'"`) {
+		t.Fatalf("dry-run: exit=%d\n%s\n%s", code, out, stderr)
+	}
+}
+
+func checkStackCLICoverage(t *testing.T, tbBin, dir string, args []string) {
+	t.Helper()
+	stackArgs := append([]string{"stack", "verify", "--ticket", "rd.md"}, args...)
+	out, stderr, code := runTBIsolated(t, tbBin, dir, append(stackArgs, "--min-coverage", "80")...)
+	if code != 1 || !strings.Contains(out, "below the threshold 80% (flag)") {
+		t.Fatalf("stack: exit=%d\n%s\n%s", code, out, stderr)
+	}
+	if out, stderr, code = runTBIsolated(t, tbBin, dir, stackArgs...); code != 0 {
+		t.Fatalf("stack pass: exit=%d\n%s\n%s", code, out, stderr)
+	}
+}
+
+// A change that lowers the floor is caught by guard; the base value still
+// applies.
+func checkCLICoverageLoweredFloor(t *testing.T, tbBin, dir string) {
+	t.Helper()
+	writeTestFile(t, filepath.Join(dir, ".toolbelt", "thresholds.yaml"), "version: 1\ncoverage:\n  min_percent: 1\n")
+	gitCommitAll(t, dir, "lower floor")
+	out, stderr, code := runTBIsolated(t, tbBin, dir, "verify", "run", "--json", "--base", "HEAD~1", "--head", "HEAD",
+		"--ruler", "coverage", "--coverage-cmd", "echo 'TOTAL 50%'", "--coverage-pattern", `TOTAL (\d+)%`)
+	if code != 1 || !strings.Contains(out, "guard aborted verify") || !strings.Contains(out, ".toolbelt/thresholds.yaml") {
+		t.Fatalf("lowered floor: exit=%d\n%s\n%s", code, out, stderr)
 	}
 }
