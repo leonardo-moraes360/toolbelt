@@ -84,8 +84,6 @@ func hasStrictError(violations []guard.Violation) bool {
 
 func init() {
 	guardCheckCmd.Flags().Bool("warn-only", false, "do not fail the exit code on SeverityError (opt-out of the CI-safe default)")
-	guardCheckCmd.Flags().Bool("strict", false, "fail on SeverityError (already the default)")
-	_ = guardCheckCmd.Flags().MarkDeprecated("strict", "failing on SeverityError is already the default; use --warn-only to opt out")
 	guardCheckCmd.Flags().String("base", "HEAD~1", "base ref")
 	guardCheckCmd.Flags().String("head", "HEAD", "head ref")
 	guardCmd.AddCommand(guardCheckCmd)

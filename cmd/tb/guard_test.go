@@ -31,7 +31,12 @@ func TestGuardDefaultExitOnError(t *testing.T) {
 	dir, base, head := setupProtectedDiff(t)
 	rangeArg := base + ".." + head
 
-	out, err := runGuardErr(tbBin, dir, rangeArg)
+	out, err := runGuardErr(tbBin, dir, rangeArg, "--strict")
+	if ee, ok := err.(*exec.ExitError); !ok || ee.ExitCode() != 2 || !strings.Contains(string(out), "unknown flag: --strict") {
+		t.Fatalf("--strict was removed in 1.0 and must be a usage error (exit 2): %v\n%s", err, out)
+	}
+
+	out, err = runGuardErr(tbBin, dir, rangeArg)
 	if err == nil {
 		t.Fatalf("default com SeverityError deveria sair ≠ 0\n%s", out)
 	}
@@ -62,9 +67,9 @@ func TestGuardDefaultExitOnError(t *testing.T) {
 	}
 	assertGuardJSON(t, out, true)
 
-	out, err = runGuardErr(tbBin, dir, rangeArg, "--strict", "--json")
+	out, err = runGuardErr(tbBin, dir, rangeArg, "--json")
 	if err == nil {
-		t.Fatalf("--strict --json com SeverityError deveria sair ≠ 0\n%s", out)
+		t.Fatalf("--json com SeverityError deveria sair ≠ 0\n%s", out)
 	}
 	assertGuardJSON(t, out, true)
 }
@@ -128,9 +133,9 @@ func TestGuardCheckBaseHeadFlags(t *testing.T) {
 	}
 	assertGuardJSON(t, out, true)
 
-	out, err = runGuardFlags(tbBin, dir, "--base", base, "--head", head, "--strict", "--json")
+	out, err = runGuardFlags(tbBin, dir, "--base", base, "--head", head, "--json")
 	if err == nil {
-		t.Fatalf("--base/--head --strict --json deveria sair ≠ 0\n%s", out)
+		t.Fatalf("--base/--head --json deveria sair ≠ 0\n%s", out)
 	}
 	assertGuardJSON(t, out, true)
 }

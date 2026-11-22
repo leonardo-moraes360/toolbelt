@@ -287,7 +287,6 @@ func registerGuardTools() {
 				"head":      {Type: "string", Description: "Ref head", Default: "HEAD"},
 				"range":     {Type: "string", Description: "base..head range (alternative to base/head)"},
 				"warn_only": {Type: "boolean", Description: "true to not set strict_fail on SeverityError (opt-out)", Default: false},
-				"strict":    {Type: "boolean", Description: "deprecated: strict_fail is already the default on SeverityError; use warn_only=true to opt out", Default: false},
 			},
 		},
 		Handler: handleGuardCheck,
@@ -317,7 +316,7 @@ func registerStackTools() {
 				"require_approved_sha": {Type: "boolean", Description: "Fails if approved_sha is missing", Default: false},
 				"warn_only":            {Type: "boolean", Description: "guard: does not flag failure on SeverityError", Default: false},
 				"test_cmd":             {Type: "string", Description: "verify: visible tests"},
-				"hidden_test_cmd":      {Type: "string", Description: "verify: testes ocultos"},
+				"hidden_test_cmd":      {Type: "string", Description: "verify: hidden-test command"},
 				"build_cmd":            {Type: "string", Description: "verify: build command (empty to skip)"},
 				"lint_cmd":             {Type: "string", Description: "verify: lint command (empty to skip)"},
 				"no_build":             {Type: "boolean", Description: "verify: skips build_cmd", Default: false},
@@ -373,6 +372,19 @@ func resolveToolCWD(args map[string]any) (string, error) {
 	cwd, err := os.Getwd()
 	if err != nil {
 		return "", err
+	}
+	return cwd, nil
+}
+
+// absToolCWD is resolveToolCWD for the tools that refuse a relative cwd: an
+// absent cwd is the server's working directory.
+func absToolCWD(args map[string]any) (string, error) {
+	cwd := StringArg(args, "cwd")
+	if cwd == "" {
+		return os.Getwd()
+	}
+	if !filepath.IsAbs(cwd) {
+		return "", fmt.Errorf("cwd must be an absolute path")
 	}
 	return cwd, nil
 }

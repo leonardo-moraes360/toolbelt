@@ -35,7 +35,7 @@ func TestMCPSchemaTypesAndGraphImpact(t *testing.T) {
 		{"tb_graph_callers", "depth", "integer"},
 		{"tb_graph_search", "limit", "integer"},
 		{"tb_graph_deps", "transitive", "boolean"},
-		{"tb_guard_check", "strict", "boolean"},
+		{"tb_stack", "strict", "boolean"},
 		{"tb_review", "reviewers", "integer"},
 		{"tb_review", "require_approved_sha", "boolean"},
 		{"tb_drift", "require_approved_sha", "boolean"},

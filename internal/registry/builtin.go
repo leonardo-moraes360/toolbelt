@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"time"
 
@@ -24,23 +23,6 @@ func RegisterBuiltins() {
 		Name:        "tb_version",
 		Description: "Returns toolbelt version information",
 		Handler:     handleVersion,
-	})
-	Register(&Tool{
-		Name:        "tb_echo",
-		Description: "Echoes the input message",
-		InputSchema: &InputSchema{
-			Type: "object",
-			Properties: map[string]Property{
-				"message": {Type: "string", Description: "Message to echo"},
-			},
-			Required: []string{"message"},
-		},
-		Handler: handleEcho,
-	})
-	Register(&Tool{
-		Name:        "tb_env",
-		Description: "Returns information about the runtime environment",
-		Handler:     handleEnv,
 	})
 	Register(&Tool{
 		Name:        "tb_run",
@@ -70,22 +52,6 @@ func RegisterBuiltins() {
 
 func handleVersion(_ context.Context, _ map[string]any) (any, error) {
 	return version.Get(), nil
-}
-
-func handleEcho(_ context.Context, args map[string]any) (any, error) {
-	msg, _ := args["message"].(string)
-	return msg, nil
-}
-
-func handleEnv(_ context.Context, _ map[string]any) (any, error) {
-	cwd, _ := os.Getwd()
-	return map[string]any{
-		"cwd":        cwd,
-		"os":         runtime.GOOS,
-		"arch":       runtime.GOARCH,
-		"go_version": runtime.Version(),
-		"tb_home":    os.Getenv("TB_HOME"),
-	}, nil
 }
 
 func handleRun(ctx context.Context, args map[string]any) (any, error) {

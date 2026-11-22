@@ -108,7 +108,7 @@ func TestCallStampsKindAndErrorBody(t *testing.T) {
 
 // Every tb_* tool is stamped, or is on this list because it belongs to an
 // experimental family not stamped yet or carries its own versioned envelope.
-var unstampedTools = []string{"tb_bus_", "tb_egm_", "tb_vault_", "tb_red_", "tb_blue_", "tb_sec_", "tb_echo", "tb_env"}
+var unstampedTools = []string{"tb_bus_", "tb_egm_", "tb_vault_", "tb_red_", "tb_blue_", "tb_sec_"}
 
 func TestEveryToolIsStampedOrAllowlisted(t *testing.T) {
 	for _, tool := range Default().List() {
