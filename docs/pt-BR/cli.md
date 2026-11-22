@@ -758,6 +758,12 @@ Flags:
   --lint-cmd <cmd>       verify: lint command (empty + explicit flag or --no-lint to skip)
   --no-build             verify: skips build_cmd
   --no-lint              verify: skips lint_cmd
+  --ruler <list>         verify: comma-separated rulers (slice 1: tests; visual is refused here)
+  --typecheck-cmd <cmd>  verify: typecheck command (gate step after build)
+  --no-typecheck         verify: skips typecheck_cmd
+  --check <name=cmd>     verify: adds or overrides a named check (repeatable)
+  --no-check <name>      verify: skips one named check (repeatable)
+  --no-checks            verify: skips every named check
   --dry-run              verify: shows the plan (cmds/dir) without executing
   --max-iter <n>         verify: max iterations
   --timeout <duration>   verify: timeout (default: 10m)
@@ -787,6 +793,7 @@ tb stack review drift --base HEAD~1 --head HEAD --ticket rd.md
 tb stack verify guard --test-cmd "true" --max-iter 1
 tb stack guard drift review --jobs 1
 tb stack verify --test-cmd "pnpm test" --no-build --no-lint --max-iter 1
+tb stack verify --typecheck-cmd "pnpm exec tsc --noEmit" --check "audit=pnpm audit" --max-iter 1
 tb stack verify --dry-run --test-cmd "go test ./..."
 tb stack verify --test-cmd "true" --env APP_ENV --pass-env GITHUB_TOKEN
 ```
@@ -1180,13 +1187,18 @@ Executa o loop gerador→discriminador com rulers plugáveis.
 tb verify run [flags]
 
 Flags:
-  --ruler <type>           Ruler: tests|visual (default: tests)
+  --ruler <list>           Comma-separated rulers (default: tests). Slice 1: tests, visual; visual cannot be combined; unknown name → exit 2 (coverage is planned)
   --test-cmd <cmd>         Visible tests command (default: verify.test_cmd; `tb init` detects go/npm/pnpm/yarn/pytest/cargo/make and also build_cmd/lint_cmd)
   --hidden-test-cmd <cmd>  Hidden tests command (verify.hidden_test_cmd; runs even without tests/hidden/; if the dir exists and the cmd is empty: detects the toolchain or marks N/A)
   --build-cmd <cmd>        Build command (default: verify.build_cmd; empty + explicit flag or --no-build to skip)
   --lint-cmd <cmd>         Lint command (default: verify.lint_cmd; empty + explicit flag or --no-lint to skip)
   --no-build               Skips build_cmd (config and default)
   --no-lint                Skips lint_cmd (config and default)
+  --typecheck-cmd <cmd>    Typecheck command (default: verify.typecheck_cmd; gate step after build, before lint)
+  --no-typecheck           Skips typecheck_cmd (config and flag)
+  --check <name=cmd>       Adds or overrides a named check (repeatable; name [a-z0-9-]{1,32})
+  --no-check <name>        Skips one named check (repeatable)
+  --no-checks              Skips every named check (verify.checks)
   --dry-run                Shows the plan (cmds and directory) without executing
   --max-iter <n>           Maximum iterations (default: 3)
   --timeout <dur>          Timeout (default: 10m)
@@ -1233,16 +1245,28 @@ Quando há `AGENTS.md`/`CLAUDE.md`, o init grava `.toolbelt/agent_docs.yaml` com
 “use/run/prefer …”). Fences de código longo (ex. ` ```go `) são ignorados para
 não poluir as dicas.
 
-Quando há marcadores claros, o init também preenche `verify.build_cmd` e
-`verify.lint_cmd` de forma conservadora:
+Quando há marcadores claros, o init também preenche `verify.build_cmd`,
+`verify.typecheck_cmd` e `verify.lint_cmd` de forma conservadora (uma ferramenta só
+é gravada quando resolve no `PATH` ou pelo gerenciador de pacotes):
 
-| Toolchain | `build_cmd` | `lint_cmd` |
-|-----------|-------------|------------|
-| `go.mod` | `go build ./...` | `.golangci.y*ml`/`.toml` → `golangci-lint run` se o binário estiver no PATH, senão `go vet ./...`; sem config, target `make lint` |
-| `package.json` | script `build`, senão `typecheck`/`type-check` → `npm run …` / `pnpm run …` / `yarn …` | script `lint` → análogo |
-| `Cargo.toml` | `cargo build` | `cargo clippy` |
-| Python (`pyproject`/`uv.lock`/…) | (vazio) | `[tool.ruff]`/`ruff.toml` → `ruff check .` (ou `uv run …`); senão mypy |
-| só `Makefile` | target `build` → `make build` | target `lint` → `make lint` |
+| Toolchain | `build_cmd` | `typecheck_cmd` | `lint_cmd` |
+|-----------|-------------|-----------------|------------|
+| `go.mod` | `go build ./...` | (nenhum: o build já checa tipos) | `.golangci.y*ml`/`.toml` → `golangci-lint run` se o binário estiver no PATH, senão `go vet ./...`; sem config, target `make lint` |
+| `package.json` | script `build` → `npm run …` / `pnpm run …` / `yarn …` | script `typecheck`/`type-check` → `<pm> run …`; senão `tsconfig.json` + `tsc` local em `node_modules/.bin` → `npm exec -- tsc --noEmit` / `pnpm exec tsc --noEmit` / `yarn tsc --noEmit` / `bunx tsc --noEmit` | script `lint` → análogo |
+| `Cargo.toml` | `cargo build` | (nenhum: o build já checa tipos) | `cargo clippy` |
+| Python (`pyproject`/`uv.lock`/…) | (vazio) | mypy (`[tool.mypy]`, `mypy.ini`, `.mypy.ini`, `setup.cfg [mypy]`) ou pyright (`[tool.pyright]`, `pyrightconfig.json`) configurado e no PATH ou em `.venv/bin` → `mypy .` / `pyright` (`uv run …` com `uv.lock`; `.venv/bin/mypy .` / `.venv/bin/pyright` quando só em `.venv/bin`) | `[tool.ruff]`/`ruff.toml` → `ruff check .` (ou `uv run …`); mypy deixou de ser fallback de lint |
+| só `Makefile` | target `build` → `make build` | (nenhum) | target `lint` → `make lint` |
+
+Rodar `tb init` de novo numa config nova, portanto, grava um script `typecheck` do
+Node como `typecheck_cmd` (antes era `build_cmd`) e não grava mais mypy como lint do
+Python. Um `build_cmd` existente que seja um script de typecheck continua
+funcionando como build até você movê-lo.
+
+Checks nomeados são sugeridos, nunca adicionados em silêncio: `govulncheck ./...`
+(Go, quando `govulncheck` está no PATH) e `cargo clippy --all-targets -- -D warnings`
+(Rust, quando `cargo clippy -V` funciona). `tb init --write-checks` grava-os em
+`verify.checks` de um `config.yaml` novo; senão o init registra cada sugestão no log
+e, com `--json`, lista-as em `suggested_checks`.
 
 Ausência de script/config → campo omitido. Sem `test_cmd` detectado, o verify
 não inventa `go test` (configure à mão ou adicione script/marcador).
@@ -1313,10 +1337,64 @@ quando o manifesto lista o próprio arquivo da tarefa.
 # .toolbelt/config.yaml
 verify:
   build_cmd: "pnpm --filter @pkg build"
+  typecheck_cmd: "pnpm exec tsc --noEmit"
   lint_cmd: "pnpm --filter @pkg lint"
   test_cmd: "pnpm --filter @pkg test"
   hidden_test_cmd: "pnpm --filter @pkg test:hidden"
+  checks:
+    - name: audit              # [a-z0-9-]{1,32}, único
+      cmd: "pnpm audit --prod"
 ```
+
+**Etapas da régua `tests`.** Cada iteração roda, nesta ordem: build → typecheck →
+lint → checks nomeados → testes visíveis → testes ocultos. Build, typecheck, lint e
+cada check são **etapas de gate**: rodam uma vez por execução do verify (em cache
+entre iterações), e uma falha encerra o verify com `ESCALATE` (a falha é
+determinística para o loop do agente), com o trecho em `reason`. Os checks rodam na
+ordem de `verify.checks`; exit 0 passa, qualquer outro valor reprova o check; um
+executável ausente falha na hora com exit 127. `--check name=cmd` adiciona ou
+sobrescreve um check, `--no-check name` pula um e `--no-checks` pula todos. Um scan
+que precisa de rede (ex. `govulncheck`) pertence ao CI, ou é pulado localmente com
+`--no-check`.
+
+Chaves JSON novas, todas `omitempty` (uma execução com a config e as flags de hoje
+imprime as mesmas chaves de antes): `typecheck_ran`, `typecheck_passed`, `checks`
+(`[{name, passed, reason}]`), `config_source` (`none`, só sem arquivo no base), `warnings`,
+`overrides` e `skip_kind`. `overrides` lista, em ordem, toda chave do verify que uma flag ou
+argumento MCP definiu com valor diferente do da config confiável (base/global/`-c`), ex.
+`test_cmd`, e todo toggle de skip que desligou uma etapa configurada (`no_typecheck`,
+`skip_checks:govulncheck`, `no_checks`; um check adicionado ou substituído é `checks:<nome>`).
+O modo texto (também no `tb stack`) imprime os avisos e `Warning: overrides applied: …` no
+stderr.
+
+**Os comandos do verify vêm do ref base.** A seção `verify:` é lida de
+`git show <base>:.toolbelt/config.yaml`, mesclada sobre a config global e os
+defaults (com `-c`, só esse arquivo; veja abaixo), nunca da árvore de trabalho, então a mudança sob teste não
+consegue reescrever o próprio gate (ex. `test_cmd: true`). Flags e argumentos MCP
+continuam sobrescrevendo, já que vêm de quem chama. O guard compara a seção
+`verify:` no base e no head: uma diferença é um achado de erro
+`verify_config_changed` que aborta o verify como um hit em path protegido, listando
+as chaves alteradas; as outras seções do arquivo seguem livres. Uma config que é symlink
+no base ou no head é comparada pelo texto do alvo: qualquer mudança é um achado
+`verify_config_changed` (`verify`; não dá para fazer o parse). Um arquivo malformado no
+base é o achado de aviso `verify_config_unreadable` (o guard e execuções com `-c` seguem
+funcionando; o verify sem `-c` aborta). Quem escolhe o
+`--base` é quem chama, então **o CI precisa fixar o base** (o merge base do PR); o
+verify avisa (`base resolves to head`) quando o SHA do base é igual ao SHA resolvido
+do head.
+
+Camadas de config do verify (R0): com `-c`, só o arquivo do `-c` e os defaults (a
+config do repositório não é lida, como antes). Sem `-c`: defaults < config global <
+`.toolbelt/config.yaml` como commitado no ref base. O arquivo da árvore de trabalho
+nunca é lido, para `verify:` e para `env:` (`allow`/`pass`), então uma mudança não
+consegue passar segredos aos próprios testes. Quando as chaves de `verify:`/`env:` da
+árvore de trabalho diferem das do arquivo do base, o verify avisa, ex. `ignored
+.toolbelt/config.yaml keys that differ from the base ref: verify.test_cmd (verify reads the
+base ref)` (o arquivo na raiz do repositório, também ao rodar de um subdiretório). `config_source` é omitido no caso normal e vale `"none"` quando o ref
+base não tem o arquivo (só config global e defaults) ou o commita como symlink, que não é
+seguido (aviso `symlinked .toolbelt/config.yaml at the base ref is not followed; using the global config`).
+Um arquivo malformado no ref base aborta o verify sem `-c`. Uma config global ou do `-c`
+malformada aborta o verify.
 
 ```bash
 tb verify run --test-cmd "pnpm test" --hidden-test-cmd "pnpm test:hidden"
@@ -1324,6 +1402,9 @@ tb verify run --test-cmd "pnpm test" --hidden-test-cmd "pnpm test:hidden"
 tb verify run --test-cmd "pnpm test" --no-build --no-lint
 tb verify run --build-cmd "pnpm build" --lint-cmd "pnpm lint" --test-cmd "pnpm test"
 tb verify run --dry-run --test-cmd "go test ./..."
+tb verify run --typecheck-cmd "pnpm exec tsc --noEmit" --test-cmd "pnpm test"
+tb verify run --check "vuln=govulncheck ./..." --no-check clippy
+tb verify run --no-typecheck --no-checks
 ```
 
 Ruler `visual` (docs/verificacao-visual.md): captura headless + diff de pixels;
@@ -1352,7 +1433,13 @@ tb verify run --ruler visual --skip-unavailable
 | Ruler | Métrica | Threshold Default | Trapaça Específica |
 |-------|---------|-------------------|-------------------|
 | `visual` | Similaridade pixel | 0.95 | Edição de refs |
-| `tests` | Passagem em testes ocultos | 100% | Modificação de testes |
+| `tests` | Etapas de gate (build → typecheck → lint → checks nomeados) passam, depois testes visíveis e ocultos passam | 100% | Modificação de testes; reescrever comandos `verify.*` (bloqueado: lidos do base, `verify_config_changed`) |
+| `coverage` (planejada, R4) | Cobertura de linhas | `coverage.min_percent` no `.toolbelt/thresholds.yaml` do base | Baixar o threshold (lido do base) |
+
+`--ruler` aceita uma lista separada por vírgulas. Um nome desconhecido falha antes de
+qualquer coisa rodar, com exit **2** (`invalid ruler "x": …`); antes rodava `tests` em
+silêncio. `visual` ainda não pode ser combinada com outra régua. `coverage` não está
+nesta versão.
 
 > Ruler `review`, flag `--discriminator-only` e invocações no estilo `tb verify <task-id>` **não existem** — use `tb verify run` e `tb review` separadamente.
 
@@ -2108,11 +2195,11 @@ Transporte unix/tcp e flags `--socket`/`--port`/`--tls-*` são planejados; hoje 
 | `tb_env` | — | cwd/os/arch |
 | `tb_run` | — | `sh -c` com timeout dentro do sandbox Landlock (ver [sandbox do `tb_run` no MCP](#sandbox-do-tb_run-no-mcp)); env filtrado; args `env`/`pass_env` (arrays); `cwd` precisa estar dentro do repositório |
 | `tb_mem_add` / `tb_mem_list` / `tb_mem_show` / `tb_mem_edit` / `tb_mem_retire` / `tb_mem_search` / `tb_mem_check` / `tb_mem_init` | `tb mem …` | arg opcional `cwd`; `ref`/`all` (boolean; strings legadas ok) onde aplicável |
-| `tb_verify_run` | `tb verify run` | `ruler=tests\|visual`; args espelham flags + `env`/`pass_env` |
+| `tb_verify_run` | `tb verify run` | `ruler` (lista separada por vírgulas: `tests`, `visual`); args espelham flags + `env`/`pass_env`, incluindo `typecheck_cmd`, `no_typecheck` (boolean), `checks` (array de `{name, cmd}`), `skip_checks` (array de nomes), `no_checks` (boolean) |
 | `tb_review` | `tb review` | ticket/base/head/approved_sha/approved_base/require_approved_sha/reviewers/standards |
 | `tb_drift` | `tb drift` | retorna `{drift, has_drift, pinned_approval}` (`checked` explícito); `approved_sha`/`approved_base` |
 | `tb_guard_check` | `tb guard check` | `base`/`head` ou `range=A..B`; `strict_fail` por default em SeverityError; `warn_only=true` opt-out; `strict` deprecated (boolean) |
-| `tb_stack` | `tb stack` | `ops` (array, inclui `egm`, sempre movida para o fim), `base`/`head`, `fail_fast` (boolean), `jobs` (integer), `approved_sha`/`approved_base`/`require_approved_sha`, `env`/`pass_env`, `egm_docs` (array), `strict` (boolean), `egm_mode` (`local`/`ci`), `egm_config` (caminho absoluto, exigido por `ci`), `egm_allow_offline` (boolean); retorna JSON agregado com `warn` |
+| `tb_stack` | `tb stack` | `ops` (array, inclui `egm`, sempre movida para o fim), `base`/`head`, `fail_fast` (boolean), `jobs` (integer), `approved_sha`/`approved_base`/`require_approved_sha`, `env`/`pass_env`, `egm_docs` (array), `strict` (boolean), `egm_mode` (`local`/`ci`), `egm_config` (caminho absoluto, exigido por `ci`), `egm_allow_offline` (boolean); campos do verify `ruler` (`visual` recusada), `typecheck_cmd`, `no_typecheck`, `checks`, `skip_checks`, `no_checks`; retorna JSON agregado com `warn` |
 | `tb_egm_status` / `tb_egm_resolve` / `tb_egm_receipt` | `tb egm status` / `tb egm resolve` / `tb egm receipt` | `cwd` (absoluto) e `doc`; status aceita `at`/`strict`, resolve aceita `fix`/`decline` (arrays), `force_settle`/`reason`, `contest`/`evidence`; retorna `{report, exit_code}` (receipt acrescenta `receipt`, o caminho gravado) |
 | `tb_vault_list` / `tb_vault_show` / `tb_vault_search` / `tb_vault_links` / `tb_vault_backlinks` / `tb_vault_check` / `tb_vault_new` | `tb vault …` | `cwd` (absoluto); `note` em show/links/backlinks, `query`/`limit` em search, `type`/`tag`/`source` em list; new recebe `title`, `confidence` (obrigatório), `type`, `tags`, `dir`, `body` e grava sempre `source: inferred`; o texto das notas volta dentro de `data` |
 | `tb_ticket_list` / `tb_ticket_show` | `tb ticket list` / `tb ticket show` | `status`, `deps` / `id`; arg opcional `cwd` |
@@ -2136,11 +2223,13 @@ tb init [flags]
 Flags:
   --global         Initializes global configuration (~/.config/toolbelt)
   --write-agents   Seeds a minimal AGENTS.md if missing (never overwrites)
+  --write-checks   Writes the suggested verify.checks (govulncheck, clippy) into a new config.yaml
   --json           JSON output (global flag)
 ```
 
 Com `--json`, emite payload com `path`, `test_cmd` / `build_cmd` / `lint_cmd` detectados
-(quando presentes), `warning` opcional e `agents` (`seeded`, `sources`, …).
+(quando presentes), `warning` opcional, `agents` (`seeded`, `sources`, …) e, quando
+houve checks sugeridos mas não gravados, `suggested_checks`.
 
 Detalhes de detecção de toolchain e preenchimento de `verify.*` estão na seção `tb verify`.
 
@@ -2372,7 +2461,8 @@ A CLI atual não usa uma tabela estável de códigos 2–7. Na prática:
 |--------|-------------|
 | 0 | Sucesso (`PASS`/`SKIPPED` no verify; guard sem `SeverityError` ou com `--warn-only`) |
 | ≠0 (tipicamente 1) | Erro de parse/domínio, `FAIL`/`ESCALATE` no verify, `SeverityError` no guard, subcomando desconhecido |
-| 127 | `tb verify run`: `test_cmd` / `build_cmd` / `lint_cmd` / `hidden_test_cmd` não encontrado (ou não executável / `ErrNotFound`); com `--json` emite o envelope `verify.Result` com campo `error` |
+| 2 | `tb verify run`: `--ruler` inválido (nome desconhecido, ou `visual` combinada com outra régua); nada roda |
+| 127 | `tb verify run`: `test_cmd` / `build_cmd` / `typecheck_cmd` / `lint_cmd` / um check nomeado / `hidden_test_cmd` não encontrado (ou não executável / `ErrNotFound`); com `--json` emite o envelope `verify.Result` com campo `error` |
 | exit do filho | `tb sandbox run` propaga o exit code do processo quando ≠ 0 e sem timeout |
 
 Quando o comando configurado no verify não existe/não é executável, o verify falha imediatamente (sem retries) e o processo `tb` sai **127**.

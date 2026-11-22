@@ -223,7 +223,7 @@ func isCommandHint(cmd string) bool {
 	return true
 }
 
-func MinimalAgentsMD(verify VerifyConfig) string {
+func MinimalAgentsMD(verify *VerifyConfig) string {
 	testCmd := strings.TrimSpace(verify.TestCmd)
 
 	var b strings.Builder
@@ -243,6 +243,11 @@ func MinimalAgentsMD(verify VerifyConfig) string {
 		b.WriteString(cmd)
 		b.WriteString("`\n")
 	}
+	if cmd := strings.TrimSpace(verify.TypecheckCmd); cmd != "" {
+		b.WriteString("- typecheck (`verify.typecheck_cmd`): `")
+		b.WriteString(cmd)
+		b.WriteString("`\n")
+	}
 	if cmd := strings.TrimSpace(verify.LintCmd); cmd != "" {
 		b.WriteString("- lint (`verify.lint_cmd`): `")
 		b.WriteString(cmd)
@@ -256,7 +261,7 @@ func MinimalAgentsMD(verify VerifyConfig) string {
 	return b.String()
 }
 
-func SeedAgentsMD(repoRoot string, verify VerifyConfig) (bool, error) {
+func SeedAgentsMD(repoRoot string, verify *VerifyConfig) (bool, error) {
 	path := filepath.Join(repoRoot, AgentsMDName)
 	if _, err := os.Stat(path); err == nil {
 		return false, nil
@@ -277,6 +282,7 @@ func verifyForAgentsSeed(repoRoot, toolbeltDir string) VerifyConfig {
 	}
 	cfg.Verify.TestCmd = DetectTestCmd(repoRoot)
 	cfg.Verify.BuildCmd = DetectBuildCmd(repoRoot)
+	cfg.Verify.TypecheckCmd = DetectTypecheckCmd(repoRoot)
 	cfg.Verify.LintCmd = DetectLintCmd(repoRoot)
 	return cfg.Verify
 }
@@ -285,7 +291,8 @@ func HandleAgentDocs(repoRoot, toolbeltDir string, writeAgents bool) (*AgentDocs
 	result := &AgentDocsResult{}
 
 	if writeAgents {
-		seeded, err := SeedAgentsMD(repoRoot, verifyForAgentsSeed(repoRoot, toolbeltDir))
+		v := verifyForAgentsSeed(repoRoot, toolbeltDir)
+		seeded, err := SeedAgentsMD(repoRoot, &v)
 		if err != nil {
 			return nil, err
 		}

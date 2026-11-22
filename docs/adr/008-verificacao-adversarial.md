@@ -119,6 +119,8 @@ Each ruler defines:
 - Specific cheating rules
 - Report format
 
+**Implementation note (2026-11, [verify-rulers spec](../specs/verify-rulers.md) slice 1).** `tb verify run --ruler` implements `tests` and `visual`; `review` is the separate `tb review` command, not a `tb verify` ruler. Instead of new rulers, the type checker and user-declared named checks became **gate steps** of the `tests` ruler (build → typecheck → lint → checks → visible → hidden tests; each gate runs once and its failure is `ESCALATE`). `--ruler` takes a comma-separated list and an unknown name is a usage error (exit 2). Verify's commands are read from the **base** ref's `.toolbelt/config.yaml` (R0), and guard reports `verify_config_changed` when a change edits the `verify:` section, so the change under test cannot rewrite its own gate. A `coverage` ruler (threshold from the base `.toolbelt/thresholds.yaml`) is planned as the next slice.
+
 ## Consequences
 
 ### Positive
