@@ -142,6 +142,13 @@ func TestVerifyMissingBuildCommandExit127JSON(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(cfg), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	// R0 reads the config committed at the base ref: commit it, then make
+	// the head one commit later.
+	gitCommitAll(t, dir, "config")
+	if err := os.WriteFile(filepath.Join(dir, "head.txt"), []byte("h\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitCommitAll(t, dir, "head")
 
 	out, err := runTBErr(tbBin, dir, "verify", "run", "--json", "--base", "HEAD~1", "--head", "HEAD", "--max-iter", "1")
 	if err == nil {
