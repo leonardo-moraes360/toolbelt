@@ -219,22 +219,35 @@ func detectPythonTypecheckCmd(root string) string {
 		fileExists(filepath.Join(root, "mypy.ini")) ||
 		fileExists(filepath.Join(root, ".mypy.ini")) ||
 		strings.Contains(string(setupCfg), "[mypy]")
-	if mypyConfigured && pythonToolResolves(root, "mypy") {
-		return pythonToolCmd(useUV, "mypy .")
+	if mypyConfigured {
+		if cmd := pythonTypecheckCmd(root, useUV, "mypy", " ."); cmd != "" {
+			return cmd
+		}
 	}
 	pyrightConfigured := hasPythonTool(content, "pyright") ||
 		fileExists(filepath.Join(root, "pyrightconfig.json"))
-	if pyrightConfigured && pythonToolResolves(root, "pyright") {
-		return pythonToolCmd(useUV, "pyright")
+	if pyrightConfigured {
+		return pythonTypecheckCmd(root, useUV, "pyright", "")
 	}
 	return ""
 }
 
-func pythonToolResolves(root, tool string) bool {
-	if _, err := lookPath(tool); err == nil {
-		return true
+// pythonTypecheckCmd is "uv run <tool>" with uv.lock, the bare name when the
+// tool is on PATH, ".venv/bin/<tool>" when it resolves only there, else "".
+func pythonTypecheckCmd(root string, useUV bool, tool, args string) string {
+	_, err := lookPath(tool)
+	onPath := err == nil
+	inVenv := fileExists(filepath.Join(root, ".venv", "bin", tool))
+	switch {
+	case !onPath && !inVenv:
+		return ""
+	case useUV:
+		return "uv run " + tool + args
+	case onPath:
+		return tool + args
+	default:
+		return ".venv/bin/" + tool + args
 	}
-	return fileExists(filepath.Join(root, ".venv", "bin", tool))
 }
 
 // DetectSuggestedChecks returns the named checks tb init offers (R3):

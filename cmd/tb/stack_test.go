@@ -164,7 +164,7 @@ func TestStackCLINoBuildWithTestCmdOverride(t *testing.T) {
 
 	cmd := exec.Command(tbBin, "stack", "verify", "--test-cmd", "true", "--no-build", "--no-lint", "--max-iter", "1", "--base", "HEAD~1", "--head", "HEAD")
 	cmd.Dir = dir
-	out, err := cmd.CombinedOutput()
+	out, err := cmd.Output() // stderr carries the text-mode verify warnings
 	if err != nil {
 		t.Fatalf("stack: %v\n%s", err, out)
 	}

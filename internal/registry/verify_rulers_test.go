@@ -129,3 +129,19 @@ func TestStackToolVerifyRulerAndChecks(t *testing.T) {
 		t.Fatalf("stack visual must be refused: %s", text)
 	}
 }
+
+// MCP arguments that change the trusted config are listed in overrides.
+func TestVerifyRunToolReportsOverrides(t *testing.T) {
+	dir := gitRepo(t)
+	payload, text, isErr := callJSON(t, "tb_verify_run", map[string]any{
+		"cwd": dir, "base": "HEAD", "head": "HEAD", "test_cmd": "true", "typecheck_cmd": "true",
+		"max_iter": 1, "timeout": "30s",
+	})
+	if isErr {
+		t.Fatal(text)
+	}
+	got, _ := payload["overrides"].([]any)
+	if len(got) != 2 || got[0] != "test_cmd" || got[1] != "typecheck_cmd" {
+		t.Fatalf("overrides=%v\n%s", payload["overrides"], text)
+	}
+}

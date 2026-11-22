@@ -1236,7 +1236,7 @@ when it resolves on `PATH` or through the package manager):
 | `go.mod` | `go build ./...` | (none: the build type-checks) | `.golangci.y*ml`/`.toml` → `golangci-lint run` if the binary is on PATH, else `go vet ./...`; no config → `make lint` target |
 | `package.json` | `build` script → `npm run …` / `pnpm run …` / `yarn …` | `typecheck`/`type-check` script → `<pm> run …`; else `tsconfig.json` + local `node_modules/.bin/tsc` → `npm exec -- tsc --noEmit` / `pnpm exec tsc --noEmit` / `yarn tsc --noEmit` / `bunx tsc --noEmit` | `lint` script → analogous |
 | `Cargo.toml` | `cargo build` | (none: the build type-checks) | `cargo clippy` |
-| Python (`pyproject`/`uv.lock`/…) | (empty) | mypy (`[tool.mypy]`, `mypy.ini`, `.mypy.ini`, `setup.cfg [mypy]`) or pyright (`[tool.pyright]`, `pyrightconfig.json`) configured and on PATH or in `.venv/bin` → `mypy .` / `pyright` (or `uv run …`) | `[tool.ruff]`/`ruff.toml` → `ruff check .` (or `uv run …`); mypy is no longer a lint fallback |
+| Python (`pyproject`/`uv.lock`/…) | (empty) | mypy (`[tool.mypy]`, `mypy.ini`, `.mypy.ini`, `setup.cfg [mypy]`) or pyright (`[tool.pyright]`, `pyrightconfig.json`) configured and on PATH or in `.venv/bin` → `mypy .` / `pyright` (`uv run …` with `uv.lock`; `.venv/bin/mypy .` / `.venv/bin/pyright` when only in `.venv/bin`) | `[tool.ruff]`/`ruff.toml` → `ruff check .` (or `uv run …`); mypy is no longer a lint fallback |
 | only `Makefile` | `build` target → `make build` | (none) | `lint` target → `make lint` |
 
 Re-running `tb init` on a new config therefore writes a Node `typecheck` script as
@@ -1332,8 +1332,13 @@ network (e.g. `govulncheck`) belongs in CI, or is skipped locally with `--no-che
 
 New JSON keys, all `omitempty` (a run with today's config and flags prints the same
 keys as before): `typecheck_ran`, `typecheck_passed`, `checks`
-(`[{name, passed, reason}]`), `config_source` (`none`, only without a base file), `warnings` and
-`skip_kind`.
+(`[{name, passed, reason}]`), `config_source` (`none`, only without a base file), `warnings`,
+`overrides` and `skip_kind`. `overrides` lists, sorted, every verify key a flag or MCP
+argument set to a value other than the trusted config's (base/global/`-c`), e.g.
+`test_cmd`, and every skip toggle that disabled a configured step (`no_typecheck`,
+`skip_checks:govulncheck`, `no_checks`; an added or replaced check is `checks:<name>`).
+Text mode (also `tb stack`) prints the warnings and `Warning: overrides applied: …` on
+stderr.
 
 **Verify's commands come from the base ref.** The `verify:` section is read from
 `git show <base>:.toolbelt/config.yaml`, merged over the global config and the
@@ -1342,7 +1347,10 @@ rewrite its own gate (e.g. `test_cmd: true`). Flags and MCP arguments still
 override, since they come from the caller. Guard compares the `verify:` section at
 base and head: a difference is an error finding `verify_config_changed` that aborts
 verify like a protected-path hit, listing the changed keys; other sections of the
-file stay unrestricted. `--base` is chosen by the caller, so **CI must pin the base**
+file stay unrestricted. A symlinked config at base or head is compared by its target
+text: any change is a `verify_config_changed` finding (`verify`; it cannot be parsed).
+A malformed file at base is the warning finding `verify_config_unreadable` (guard and
+`-c` runs keep working; verify without `-c` aborts on it). `--base` is chosen by the caller, so **CI must pin the base**
 (the PR's merge base); verify warns (`base resolves to head`) when the base SHA equals
 the resolved head SHA.
 
@@ -1351,10 +1359,13 @@ repository config is not read, as before). Without `-c`: defaults < global confi
 `.toolbelt/config.yaml` as committed at the base ref. The working-tree file is never
 read, for `verify:` and for `env:` (`allow`/`pass`), so a change cannot pass secrets
 to its own tests. When the working tree's `verify:`/`env:` keys differ from the base
-file's, verify warns, e.g. `ignored .toolbelt/config.yaml keys not in the base ref:
-verify.test_cmd (verify reads the base ref; commit them to the base branch)`. `config_source` is omitted
+file's, verify warns, e.g. `ignored .toolbelt/config.yaml keys that differ from the base ref:
+verify.test_cmd (verify reads the base ref)` (the file at the repository top level, also
+when run from a subdirectory). `config_source` is omitted
 in the normal case and is `"none"` when the base ref has no file (global config and
-defaults only). A malformed global or `-c` config aborts verify.
+defaults only) or commits it as a symlink, which is not followed (warning
+`symlinked .toolbelt/config.yaml at the base ref is not followed; using the global config`).
+A malformed file at the base ref aborts verify without `-c`. A malformed global or `-c` config aborts verify.
 
 ```bash
 tb verify run --test-cmd "pnpm test" --hidden-test-cmd "pnpm test:hidden"

@@ -224,7 +224,7 @@ func TestVerifyCLIConfigEditAbortsAndBaseWins(t *testing.T) {
 	if code != 0 || res.ConfigSource != "" || res.Plan == nil || res.Plan.Commands["test"] != "true" {
 		t.Fatalf("worktree edit must not change the plan: exit=%d %+v", code, res)
 	}
-	if !strings.Contains(strings.Join(res.Warnings, "\n"), "ignored .toolbelt/config.yaml keys not in the base ref: verify.test_cmd") {
+	if !strings.Contains(strings.Join(res.Warnings, "\n"), "ignored .toolbelt/config.yaml keys that differ from the base ref: verify.test_cmd") {
 		t.Fatalf("warnings=%q", res.Warnings)
 	}
 
@@ -354,7 +354,7 @@ func TestVerifyCLIUncommittedTestCmdIgnored(t *testing.T) {
 	if res.ConfigSource != verify.ConfigSourceNone {
 		t.Fatalf("config_source=%q want none", res.ConfigSource)
 	}
-	if !strings.Contains(strings.Join(res.Warnings, "\n"), "ignored .toolbelt/config.yaml keys not in the base ref: verify.test_cmd") {
+	if !strings.Contains(strings.Join(res.Warnings, "\n"), "ignored .toolbelt/config.yaml keys that differ from the base ref: verify.test_cmd") {
 		t.Fatalf("warnings=%q", res.Warnings)
 	}
 }
@@ -428,5 +428,71 @@ func TestStackCLIVerifyRulerAndTypecheck(t *testing.T) {
 	}
 	if _, stderr, code := runTBIsolated(t, tbBin, dir, append(stackArgs, "--check", "Bad_Name=true")...); code != 2 {
 		t.Fatalf("stack --check Bad_Name: exit=%d want 2\n%s", code, stderr)
+	}
+}
+
+// Overrides of the base config are reported in JSON and as a text-mode
+// warning, by tb verify run and by tb stack's verify step; tb stack also
+// prints the R0 warnings on stderr.
+func TestVerifyCLIReportsOverrides(t *testing.T) {
+	if testing.Short() {
+		t.Skip()
+	}
+	tbBin := buildTB(t)
+	dir := rulersRepo(t, "verify:\n  test_cmd: \"false\"\n  typecheck_cmd: \"true\"\n")
+	out, _, code := runTBIsolated(t, tbBin, dir, "verify", "run", "--json", "--dry-run", "--test-cmd", "true", "--no-typecheck")
+	res := decodeResult(t, out)
+	if code != 0 || !slices.Equal(res.Overrides, []string{"no_typecheck", "test_cmd"}) {
+		t.Fatalf("exit=%d overrides=%v", code, res.Overrides)
+	}
+	_, stderr, code := runTBIsolated(t, tbBin, dir, "verify", "run", "--dry-run", "--test-cmd", "true", "--no-typecheck")
+	if code != 0 || !strings.Contains(stderr, "Warning: overrides applied: no_typecheck, test_cmd") {
+		t.Fatalf("exit=%d stderr=%s", code, stderr)
+	}
+
+	writeRepoConfig(t, dir, "verify:\n  test_cmd: \"echo wt\"\n  typecheck_cmd: \"true\"\n")
+	stdout, stderr, code := runTBIsolated(t, tbBin, dir, "stack", "verify", "--dry-run", "--test-cmd", "true", "--base", "HEAD~1", "--head", "HEAD")
+	if code != 0 {
+		t.Fatalf("stack exit=%d\n%s\n%s", code, stdout, stderr)
+	}
+	for _, want := range []string{
+		"Warning: ignored .toolbelt/config.yaml keys that differ from the base ref: verify.test_cmd (verify reads the base ref)",
+		"Warning: overrides applied: test_cmd",
+	} {
+		if !strings.Contains(stderr, want) {
+			t.Fatalf("stack stderr missing %q:\n%s", want, stderr)
+		}
+	}
+	if !strings.Contains(stdout, `"overrides"`) {
+		t.Fatalf("stack json lacks overrides:\n%s", stdout)
+	}
+	_, stderr, _ = runTBIsolated(t, tbBin, dir, "--json", "stack", "verify", "--dry-run", "--test-cmd", "true", "--base", "HEAD~1", "--head", "HEAD")
+	if strings.Contains(stderr, "Warning:") {
+		t.Fatalf("--json stack must not print warnings:\n%s", stderr)
+	}
+}
+
+// A symlinked config at base is not followed: the global config applies.
+func TestVerifyCLISymlinkedBaseConfig(t *testing.T) {
+	if testing.Short() {
+		t.Skip()
+	}
+	tbBin := buildTB(t)
+	dir := rulersRepo(t, "")
+	writeTestFile(t, filepath.Join(dir, "real.yaml"), "verify:\n  test_cmd: \"echo via-link\"\n")
+	if err := os.MkdirAll(filepath.Join(dir, ".toolbelt"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("../real.yaml", filepath.Join(dir, ".toolbelt", "config.yaml")); err != nil {
+		t.Fatal(err)
+	}
+	gitCommitAll(t, dir, "link")
+	out, stderr, code := runTBIsolated(t, tbBin, dir, "verify", "run", "--json", "--dry-run", "--base", "HEAD", "--head", "HEAD")
+	res := decodeResult(t, out)
+	if code != 0 || res.ConfigSource != verify.ConfigSourceNone || res.Plan == nil || res.Plan.Commands["test"] == "echo via-link" {
+		t.Fatalf("exit=%d %+v\n%s", code, res, stderr)
+	}
+	if !slices.Contains(res.Warnings, verify.SymlinkConfigWarning) {
+		t.Fatalf("warnings=%v", res.Warnings)
 	}
 }

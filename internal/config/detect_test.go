@@ -743,6 +743,22 @@ func TestDetectTypecheckCmd(t *testing.T) {
 			want:  "uv run mypy .",
 		},
 		{
+			name:  "mypy only in local venv without uv",
+			files: map[string]string{"pyproject.toml": "[tool.mypy]\n", ".venv/bin/mypy": "#!/bin/sh\n"},
+			want:  ".venv/bin/mypy .",
+		},
+		{
+			name:  "pyright only in local venv without uv",
+			files: map[string]string{"pyproject.toml": "[tool.pyright]\n", ".venv/bin/pyright": "#!/bin/sh\n"},
+			want:  ".venv/bin/pyright",
+		},
+		{
+			name:  "mypy on PATH and in venv prefers bare name",
+			path:  map[string]bool{"mypy": true},
+			files: map[string]string{"pyproject.toml": "[tool.mypy]\n", ".venv/bin/mypy": "#!/bin/sh\n"},
+			want:  "mypy .",
+		},
+		{
 			name:  "mypy.ini",
 			path:  map[string]bool{"mypy": true},
 			files: map[string]string{"mypy.ini": "[mypy]\n"},

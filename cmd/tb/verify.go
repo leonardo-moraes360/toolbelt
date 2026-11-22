@@ -165,9 +165,7 @@ func emitRulersResult(cmd *cobra.Command, multi *verify.MultiResult) error {
 		return err
 	}
 	if !jsonOutput {
-		for _, w := range multi.Warnings {
-			fmt.Fprintf(os.Stderr, "Warning: %s\n", w)
-		}
+		printVerifyNotices(multi.Warnings, multi.Overrides)
 		for _, rr := range multi.Results {
 			printRulerText(rr)
 		}
@@ -176,6 +174,17 @@ func emitRulersResult(cmd *cobra.Command, multi *verify.MultiResult) error {
 		os.Exit(code)
 	}
 	return nil
+}
+
+// printVerifyNotices prints R0 warnings and the applied overrides to stderr,
+// for tb verify run and tb stack in text mode.
+func printVerifyNotices(warnings, overrides []string) {
+	for _, w := range warnings {
+		fmt.Fprintf(os.Stderr, "Warning: %s\n", w)
+	}
+	if len(overrides) > 0 {
+		fmt.Fprintf(os.Stderr, "Warning: overrides applied: %s\n", strings.Join(overrides, ", "))
+	}
 }
 
 func printRulerText(rr *verify.RulerResult) {

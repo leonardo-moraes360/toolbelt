@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/leonardo-moraes360/toolbelt/internal/stack"
+	"github.com/leonardo-moraes360/toolbelt/internal/verify"
 )
 
 var stackCmd = &cobra.Command{
@@ -172,8 +173,27 @@ func emitStackResult(res *stack.Result) error {
 		return err
 	}
 	fmt.Println(string(data))
+	if !jsonOutput {
+		printStackVerifyNotices(res)
+	}
 	if code := stack.ExitCode(res); code != 0 {
 		os.Exit(code)
 	}
 	return nil
+}
+
+// printStackVerifyNotices prints the verify step's warnings (ignored keys,
+// base == head, symlinked config) and applied overrides to stderr.
+func printStackVerifyNotices(res *stack.Result) {
+	for _, step := range res.Steps {
+		if step.Op != string(stack.OpVerify) {
+			continue
+		}
+		switch p := step.Result.(type) {
+		case *verify.Result:
+			printVerifyNotices(p.Warnings, p.Overrides)
+		case *verify.MultiResult:
+			printVerifyNotices(p.Warnings, p.Overrides)
+		}
+	}
 }

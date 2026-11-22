@@ -3,6 +3,7 @@ package verify
 import (
 	"fmt"
 	"slices"
+	"sort"
 	"strings"
 
 	"github.com/leonardo-moraes360/toolbelt/internal/config"
@@ -39,17 +40,66 @@ type FlagOverrides struct {
 
 // MergeFlags is the one merge of file config and caller overrides into cfg:
 // non-empty file commands replace cfg's defaults, then o applies. vc and o
-// may be nil.
+// may be nil. cfg.AppliedOverrides is set to the overrides that changed the
+// file config's effective values.
 func MergeFlags(cfg *Config, vc *config.VerifyConfig, o *FlagOverrides) error {
 	if vc != nil {
 		mergeFileConfig(cfg, vc)
 	}
+	cfg.AppliedOverrides = nil
 	if o != nil {
+		before := *cfg
+		before.Checks = slices.Clone(cfg.Checks)
 		if err := applyOverrides(cfg, o); err != nil {
 			return err
 		}
+		cfg.AppliedOverrides = appliedOverrides(&before, cfg, o)
 	}
 	return ValidateChecks(cfg.Checks)
+}
+
+// appliedOverrides names each key whose value o changed from before, and
+// each skip toggle that disabled a configured step, sorted.
+func appliedOverrides(before, after *Config, o *FlagOverrides) []string {
+	var out []string
+	cmd := func(key string, b, a string) {
+		if b != a {
+			out = append(out, key)
+		}
+	}
+	cmd("test_cmd", before.VisibleTest, after.VisibleTest)
+	cmd("hidden_test_cmd", before.HiddenTest, after.HiddenTest)
+	gate := func(key, toggle string, b, a string, disable bool) {
+		switch {
+		case b == a:
+		case disable:
+			out = append(out, toggle)
+		default:
+			out = append(out, key)
+		}
+	}
+	gate("build_cmd", "no_build", before.BuildCmd, after.BuildCmd, o.NoBuild)
+	gate("lint_cmd", "no_lint", before.LintCmd, after.LintCmd, o.NoLint)
+	gate("typecheck_cmd", "no_typecheck", before.TypecheckCmd, after.TypecheckCmd, o.NoTypecheck)
+	if o.NoChecks {
+		if len(before.Checks) > 0 {
+			out = append(out, "no_checks")
+		}
+	} else {
+		for _, add := range o.Checks {
+			i := slices.IndexFunc(before.Checks, func(c config.VerifyCheck) bool { return c.Name == add.Name })
+			if i < 0 || before.Checks[i].Cmd != add.Cmd {
+				out = append(out, "checks:"+add.Name)
+			}
+		}
+		for _, name := range o.SkipChecks {
+			if slices.ContainsFunc(before.Checks, func(c config.VerifyCheck) bool { return c.Name == name }) {
+				out = append(out, "skip_checks:"+name)
+			}
+		}
+	}
+	sort.Strings(out)
+	return slices.Compact(out)
 }
 
 func mergeFileConfig(cfg *Config, vc *config.VerifyConfig) {

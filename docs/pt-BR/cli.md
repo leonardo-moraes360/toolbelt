@@ -1248,7 +1248,7 @@ Quando há marcadores claros, o init também preenche `verify.build_cmd`,
 | `go.mod` | `go build ./...` | (nenhum: o build já checa tipos) | `.golangci.y*ml`/`.toml` → `golangci-lint run` se o binário estiver no PATH, senão `go vet ./...`; sem config, target `make lint` |
 | `package.json` | script `build` → `npm run …` / `pnpm run …` / `yarn …` | script `typecheck`/`type-check` → `<pm> run …`; senão `tsconfig.json` + `tsc` local em `node_modules/.bin` → `npm exec -- tsc --noEmit` / `pnpm exec tsc --noEmit` / `yarn tsc --noEmit` / `bunx tsc --noEmit` | script `lint` → análogo |
 | `Cargo.toml` | `cargo build` | (nenhum: o build já checa tipos) | `cargo clippy` |
-| Python (`pyproject`/`uv.lock`/…) | (vazio) | mypy (`[tool.mypy]`, `mypy.ini`, `.mypy.ini`, `setup.cfg [mypy]`) ou pyright (`[tool.pyright]`, `pyrightconfig.json`) configurado e no PATH ou em `.venv/bin` → `mypy .` / `pyright` (ou `uv run …`) | `[tool.ruff]`/`ruff.toml` → `ruff check .` (ou `uv run …`); mypy deixou de ser fallback de lint |
+| Python (`pyproject`/`uv.lock`/…) | (vazio) | mypy (`[tool.mypy]`, `mypy.ini`, `.mypy.ini`, `setup.cfg [mypy]`) ou pyright (`[tool.pyright]`, `pyrightconfig.json`) configurado e no PATH ou em `.venv/bin` → `mypy .` / `pyright` (`uv run …` com `uv.lock`; `.venv/bin/mypy .` / `.venv/bin/pyright` quando só em `.venv/bin`) | `[tool.ruff]`/`ruff.toml` → `ruff check .` (ou `uv run …`); mypy deixou de ser fallback de lint |
 | só `Makefile` | target `build` → `make build` | (nenhum) | target `lint` → `make lint` |
 
 Rodar `tb init` de novo numa config nova, portanto, grava um script `typecheck` do
@@ -1353,8 +1353,13 @@ que precisa de rede (ex. `govulncheck`) pertence ao CI, ou é pulado localmente 
 
 Chaves JSON novas, todas `omitempty` (uma execução com a config e as flags de hoje
 imprime as mesmas chaves de antes): `typecheck_ran`, `typecheck_passed`, `checks`
-(`[{name, passed, reason}]`), `config_source` (`none`, só sem arquivo no base), `warnings` e
-`skip_kind`.
+(`[{name, passed, reason}]`), `config_source` (`none`, só sem arquivo no base), `warnings`,
+`overrides` e `skip_kind`. `overrides` lista, em ordem, toda chave do verify que uma flag ou
+argumento MCP definiu com valor diferente do da config confiável (base/global/`-c`), ex.
+`test_cmd`, e todo toggle de skip que desligou uma etapa configurada (`no_typecheck`,
+`skip_checks:govulncheck`, `no_checks`; um check adicionado ou substituído é `checks:<nome>`).
+O modo texto (também no `tb stack`) imprime os avisos e `Warning: overrides applied: …` no
+stderr.
 
 **Os comandos do verify vêm do ref base.** A seção `verify:` é lida de
 `git show <base>:.toolbelt/config.yaml`, mesclada sobre a config global e os
@@ -1363,7 +1368,11 @@ consegue reescrever o próprio gate (ex. `test_cmd: true`). Flags e argumentos M
 continuam sobrescrevendo, já que vêm de quem chama. O guard compara a seção
 `verify:` no base e no head: uma diferença é um achado de erro
 `verify_config_changed` que aborta o verify como um hit em path protegido, listando
-as chaves alteradas; as outras seções do arquivo seguem livres. Quem escolhe o
+as chaves alteradas; as outras seções do arquivo seguem livres. Uma config que é symlink
+no base ou no head é comparada pelo texto do alvo: qualquer mudança é um achado
+`verify_config_changed` (`verify`; não dá para fazer o parse). Um arquivo malformado no
+base é o achado de aviso `verify_config_unreadable` (o guard e execuções com `-c` seguem
+funcionando; o verify sem `-c` aborta). Quem escolhe o
 `--base` é quem chama, então **o CI precisa fixar o base** (o merge base do PR); o
 verify avisa (`base resolves to head`) quando o SHA do base é igual ao SHA resolvido
 do head.
@@ -1374,9 +1383,11 @@ config do repositório não é lida, como antes). Sem `-c`: defaults < config gl
 nunca é lido, para `verify:` e para `env:` (`allow`/`pass`), então uma mudança não
 consegue passar segredos aos próprios testes. Quando as chaves de `verify:`/`env:` da
 árvore de trabalho diferem das do arquivo do base, o verify avisa, ex. `ignored
-.toolbelt/config.yaml keys not in the base ref: verify.test_cmd (verify reads the
-base ref; commit them to the base branch)`. `config_source` é omitido no caso normal e vale `"none"` quando o ref
-base não tem o arquivo (só config global e defaults). Uma config global ou do `-c`
+.toolbelt/config.yaml keys that differ from the base ref: verify.test_cmd (verify reads the
+base ref)` (o arquivo na raiz do repositório, também ao rodar de um subdiretório). `config_source` é omitido no caso normal e vale `"none"` quando o ref
+base não tem o arquivo (só config global e defaults) ou o commita como symlink, que não é
+seguido (aviso `symlinked .toolbelt/config.yaml at the base ref is not followed; using the global config`).
+Um arquivo malformado no ref base aborta o verify sem `-c`. Uma config global ou do `-c`
 malformada aborta o verify.
 
 ```bash

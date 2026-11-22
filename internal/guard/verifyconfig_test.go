@@ -94,15 +94,109 @@ func TestVerifyConfigChanged(t *testing.T) {
 	}
 }
 
-func TestVerifyConfigMalformedBaseErrors(t *testing.T) {
+// A malformed base file is a warning finding, not a guard error, so guard
+// and verify -c keep working.
+func TestVerifyConfigMalformedBaseWarns(t *testing.T) {
 	dir := setupRepo(t)
 	writeRepoConfig(t, dir, "verify: [unclosed\n")
 	base := commitAll(t, dir, "base")
 	writeRepoConfig(t, dir, baseVerifyCfg)
 	head := commitAll(t, dir, "head")
-	_, err := NewChecker(dir).Check(base, head)
-	if err == nil || !strings.Contains(err.Error(), "malformed at base") {
-		t.Fatalf("want malformed-base error, got %v", err)
+	res, err := NewChecker(dir).Check(base, head)
+	if err != nil {
+		t.Fatalf("malformed base must not be a guard error: %v", err)
+	}
+	var found bool
+	for _, v := range res.Violations {
+		if v.Type == ViolationVerifyConfigChanged {
+			t.Fatalf("unexpected verify_config_changed: %+v", v)
+		}
+		if v.Type == ViolationVerifyConfigUnreadable {
+			found = true
+			if v.Severity != SeverityWarning || v.File != ".toolbelt/config.yaml" {
+				t.Fatalf("bad finding: %+v", v)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("want verify_config_unreadable, got %+v", res.Violations)
+	}
+}
+
+// writeRepoConfigLink replaces the config with a symlink to target ("" removes
+// it).
+func writeRepoConfigLink(t *testing.T, dir, target string) {
+	t.Helper()
+	p := filepath.Join(dir, ".toolbelt", "config.yaml")
+	_ = os.Remove(p)
+	if target == "" {
+		return
+	}
+	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, p); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestVerifyConfigSymlink(t *testing.T) {
+	type side struct{ link, file string }
+	cases := []struct {
+		name       string
+		base, head side
+		want       bool
+	}{
+		{"same target", side{link: "../cfg-a.yaml"}, side{link: "../cfg-a.yaml"}, false},
+		{"target changed", side{link: "../cfg-a.yaml"}, side{link: "../cfg-b.yaml"}, true},
+		{"link added", side{file: baseVerifyCfg}, side{link: "../cfg-a.yaml"}, true},
+		{"link removed", side{link: "../cfg-a.yaml"}, side{file: baseVerifyCfg}, true},
+		{"link added over nothing", side{}, side{link: "../cfg-a.yaml"}, true},
+	}
+	apply := func(t *testing.T, dir string, s side) {
+		if s.link != "" {
+			writeRepoConfigLink(t, dir, s.link)
+			return
+		}
+		writeRepoConfigLink(t, dir, "")
+		writeRepoConfig(t, dir, s.file)
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := setupRepo(t)
+			for _, n := range []string{"cfg-a.yaml", "cfg-b.yaml"} {
+				if err := os.WriteFile(filepath.Join(dir, n), []byte(baseVerifyCfg), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			apply(t, dir, tc.base)
+			base := commitAll(t, dir, "base")
+			apply(t, dir, tc.head)
+			if err := os.WriteFile(filepath.Join(dir, "README"), []byte("y\n"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			head := commitAll(t, dir, "head")
+			res, err := NewChecker(dir).Check(base, head)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var got []Violation
+			for _, v := range res.Violations {
+				if v.Type == ViolationVerifyConfigChanged {
+					got = append(got, v)
+				}
+			}
+			if !tc.want {
+				if len(got) != 0 {
+					t.Fatalf("unexpected findings: %+v", got)
+				}
+				return
+			}
+			if len(got) != 1 || got[0].Context != "verify" || got[0].Severity != SeverityError ||
+				!strings.Contains(got[0].Message, "cannot parse") {
+				t.Fatalf("want one verify finding, got %+v", got)
+			}
+		})
 	}
 }
 

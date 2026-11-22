@@ -56,6 +56,9 @@ type Config struct {
 	// then Overrides apply. Nil keeps the commands already in Config.
 	TrustedConfig *config.Config
 	Overrides     *FlagOverrides
+	// AppliedOverrides is set by MergeFlags: the override names that changed
+	// what the file config set (see Result.Overrides).
+	AppliedOverrides []string
 	// Visual configures the visual ruler; nil uses its defaults.
 	Visual *VisualConfig
 }
@@ -90,7 +93,12 @@ type Result struct {
 	// ref; omitted in the normal case.
 	ConfigSource string   `json:"config_source,omitempty"`
 	Warnings     []string `json:"warnings,omitempty"`
-	SkipKind     SkipKind `json:"skip_kind,omitempty"`
+	// Overrides lists, sorted, every verify key a flag or MCP argument set to
+	// a value other than the trusted config's (e.g. "test_cmd"), and every
+	// skip toggle that disabled a configured step ("no_typecheck",
+	// "skip_checks:<name>", "no_checks").
+	Overrides []string `json:"overrides,omitempty"`
+	SkipKind  SkipKind `json:"skip_kind,omitempty"`
 }
 
 type Plan struct {
@@ -151,7 +159,7 @@ func runTests(ctx context.Context, st *RunState) (*Result, error) {
 	cfg := st.Config
 	res := &Result{
 		Verdict: VerdictFail, WorkDir: st.WorkDir, HeadSHA: st.HeadSHA, Guard: st.Guard,
-		ConfigSource: st.ConfigSource, Warnings: st.Warnings,
+		ConfigSource: st.ConfigSource, Warnings: st.Warnings, Overrides: st.Overrides,
 	}
 	if st.GuardAborted {
 		res.Reason = st.GuardReason

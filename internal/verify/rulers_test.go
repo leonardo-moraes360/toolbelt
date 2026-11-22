@@ -302,7 +302,7 @@ func TestLoadVerifyConfigFromBase(t *testing.T) {
 	}
 	// The head commit changed the file; the working tree matches head, so
 	// every changed key is reported as ignored.
-	want := "ignored .toolbelt/config.yaml keys not in the base ref: verify.checks, verify.test_cmd, env.pass"
+	want := "ignored .toolbelt/config.yaml keys that differ from the base ref: verify.checks, verify.test_cmd, env.pass"
 	if len(rc.Warnings) != 1 || !strings.HasPrefix(rc.Warnings[0], want) {
 		t.Fatalf("warnings=%v", rc.Warnings)
 	}
@@ -382,6 +382,121 @@ func TestLoadVerifyConfigErrors(t *testing.T) {
 	}
 	if err := load("0123456789abcdef0123456789abcdef01234567"); err == nil {
 		t.Fatal("unknown base ref must be an error, not a missing file")
+	}
+}
+
+func TestLoadVerifyConfigSymlinkAtBaseIgnored(t *testing.T) {
+	dir := goldenRepo(t)
+	writeFile(t, filepath.Join(dir, "real.yaml"), "verify:\n  test_cmd: from-link\n")
+	if err := os.MkdirAll(filepath.Join(dir, ".toolbelt"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("../real.yaml", filepath.Join(dir, ".toolbelt", "config.yaml")); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, dir, "add", "-A")
+	runGit(t, dir, "commit", "-q", "-m", "link")
+	base := gitRev(t, dir)
+	user := config.DefaultConfig()
+	user.Verify.TestCmd = "global-test"
+	rc, err := LoadVerifyConfig(dir, base, base, user, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rc.Source != ConfigSourceNone || rc.Verify.TestCmd != "global-test" {
+		t.Fatalf("symlink must not be followed: rc=%+v", rc)
+	}
+	if !slices.Contains(rc.Warnings, SymlinkConfigWarning) {
+		t.Fatalf("warnings=%v", rc.Warnings)
+	}
+	// -c does not read the repository config at all.
+	rc, err = LoadVerifyConfig(dir, base, base, user, true)
+	if err != nil || len(rc.Warnings) != 0 {
+		t.Fatalf("-c: rc=%+v err=%v", rc, err)
+	}
+}
+
+func TestLoadVerifyConfigMalformedBaseWithExplicit(t *testing.T) {
+	dir := goldenRepo(t)
+	bad := commitConfig(t, dir, "verify: [unclosed\n")
+	if _, err := LoadVerifyConfig(dir, bad, bad, nil, true); err != nil {
+		t.Fatalf("-c must not read the repository config: %v", err)
+	}
+}
+
+// From a subdirectory, the ignored-keys warning still compares the file at
+// the repository top level.
+func TestLoadVerifyConfigFromSubdir(t *testing.T) {
+	dir := goldenRepo(t)
+	base := commitConfig(t, dir, "verify:\n  test_cmd: base-test\n")
+	writeFile(t, filepath.Join(dir, ".toolbelt", "config.yaml"), "verify:\n  test_cmd: wt\n")
+	sub := filepath.Join(dir, "sub", "dir")
+	if err := os.MkdirAll(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	rc, err := LoadVerifyConfig(sub, base, base, nil, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "ignored .toolbelt/config.yaml keys that differ from the base ref: verify.test_cmd (verify reads the base ref)"
+	if !slices.Contains(rc.Warnings, want) {
+		t.Fatalf("warnings=%v", rc.Warnings)
+	}
+}
+
+func TestMergeFlagsAppliedOverrides(t *testing.T) {
+	vc := &config.VerifyConfig{
+		TestCmd: "t-file", TypecheckCmd: "tc-file", LintCmd: "l-file",
+		Checks: []config.VerifyCheck{{Name: "govulncheck", Cmd: "g"}, {Name: "b", Cmd: "b1"}},
+	}
+	cfg := DefaultConfig("/r")
+	o := &FlagOverrides{
+		TestCmd:     CmdOverride{Cmd: "t-flag", Set: true},
+		LintCmd:     CmdOverride{Cmd: "l-file", Set: true}, // same value: not an override
+		BuildCmd:    CmdOverride{Cmd: "b-flag", Set: true},
+		NoTypecheck: true,
+		Checks:      []config.VerifyCheck{{Name: "b", Cmd: "b1"}, {Name: "c", Cmd: "c1"}},
+		SkipChecks:  []string{"govulncheck"},
+	}
+	if err := MergeFlags(&cfg, vc, o); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"build_cmd", "checks:c", "no_typecheck", "skip_checks:govulncheck", "test_cmd"}
+	if !slices.Equal(cfg.AppliedOverrides, want) {
+		t.Fatalf("overrides=%v, want %v", cfg.AppliedOverrides, want)
+	}
+
+	cfg = DefaultConfig("/r")
+	if err := MergeFlags(&cfg, vc, &FlagOverrides{NoChecks: true, NoBuild: true}); err != nil {
+		t.Fatal(err)
+	}
+	// no_build disabled nothing configured.
+	if !slices.Equal(cfg.AppliedOverrides, []string{"no_checks"}) {
+		t.Fatalf("overrides=%v", cfg.AppliedOverrides)
+	}
+	cfg = DefaultConfig("/r")
+	if err := MergeFlags(&cfg, vc, &FlagOverrides{}); err != nil || cfg.AppliedOverrides != nil {
+		t.Fatalf("no overrides: %v err=%v", cfg.AppliedOverrides, err)
+	}
+}
+
+func TestRunRulersReportsOverrides(t *testing.T) {
+	dir := goldenRepo(t)
+	commitConfig(t, dir, "verify:\n  test_cmd: 'false'\n")
+	cfg := rulerCfg(dir)
+	cfg.TrustedConfig = config.DefaultConfig()
+	cfg.Overrides = &FlagOverrides{TestCmd: CmdOverride{Cmd: "true", Set: true}}
+	multi, err := RunRulers(context.Background(), &cfg, []string{RulerTests})
+	if err != nil {
+		t.Fatal(err)
+	}
+	res := multi.Payload().(*Result)
+	if !slices.Equal(res.Overrides, []string{"test_cmd"}) || !slices.Equal(multi.Overrides, res.Overrides) {
+		t.Fatalf("overrides=%v multi=%v", res.Overrides, multi.Overrides)
+	}
+	raw, _ := json.Marshal(res)
+	if !strings.Contains(string(raw), `"overrides":["test_cmd"]`) {
+		t.Fatalf("json=%s", raw)
 	}
 }
 

@@ -18,12 +18,17 @@ import (
 )
 
 const (
-	// ConfigSourceNone: no .toolbelt/config.yaml at the base ref, so only the
+	// ConfigSourceNone: no .toolbelt/config.yaml at the base ref (or a
+	// symlinked one, which is not followed), so only the
 	// global config and the defaults apply. The normal case (base file used,
 	// or -c) leaves config_source out of the JSON.
 	ConfigSourceNone = "none"
 
 	repoConfigPath = ".toolbelt/config.yaml"
+
+	// SymlinkConfigWarning: the base ref commits the repository config as a
+	// symbolic link, which verify does not follow.
+	SymlinkConfigWarning = "symlinked " + repoConfigPath + " at the base ref is not followed; using the global config"
 )
 
 var checkNameRe = regexp.MustCompile(`^[a-z0-9-]{1,32}$`)
@@ -64,26 +69,34 @@ func LoadVerifyConfig(repoDir, baseSHA, headSHA string, user *config.Config, exp
 	if err := gitref.Validate(baseSHA); err != nil {
 		return rc, err
 	}
-	data, found, err := readBaseRepoConfig(repoDir, baseSHA)
+	data, found, symlink, err := readBaseRepoConfig(repoDir, baseSHA)
 	if err != nil {
 		return rc, err
 	}
 	var base repoSections
-	if found {
+	switch {
+	case symlink:
+		// A link's target is not committed content verify can pin, so the
+		// repository config is ignored rather than followed.
+		rc.Source = ConfigSourceNone
+		rc.Warnings = append(rc.Warnings, SymlinkConfigWarning)
+	case found:
 		if base, err = parseRepoSections(data); err != nil {
 			return rc, fmt.Errorf("%s malformed at base %s: %w", repoConfigPath, shortSHA(baseSHA), err)
 		}
 		if err := base.overlay(&rc); err != nil {
 			return rc, fmt.Errorf("%s malformed at base %s: %w", repoConfigPath, shortSHA(baseSHA), err)
 		}
-	} else {
+	default:
 		rc.Source = ConfigSourceNone
 	}
 	if err := ValidateChecks(rc.Verify.Checks); err != nil {
 		return rc, err
 	}
-	if w := ignoredWorktreeKeys(repoDir, &base); w != "" {
-		rc.Warnings = append(rc.Warnings, w)
+	if !symlink {
+		if w := ignoredWorktreeKeys(repoToplevel(repoDir), &base); w != "" {
+			rc.Warnings = append(rc.Warnings, w)
+		}
 	}
 	if baseSHA == headSHA {
 		rc.Warnings = append(rc.Warnings, "base resolves to head: nothing pins verify's config; CI should pass the merge base as --base")
@@ -138,8 +151,8 @@ func ignoredWorktreeKeys(repoDir string, base *repoSections) string {
 	if len(keys) == 0 {
 		return ""
 	}
-	return "ignored " + repoConfigPath + " keys not in the base ref: " + strings.Join(keys, ", ") +
-		" (verify reads the base ref; commit them to the base branch)"
+	return "ignored " + repoConfigPath + " keys that differ from the base ref: " + strings.Join(keys, ", ") +
+		" (verify reads the base ref)"
 }
 
 // diffSectionKeys lists section.key for every key whose value differs.
@@ -184,20 +197,40 @@ func nodeValue(n *yaml.Node) any {
 	return v
 }
 
-func readBaseRepoConfig(repoDir, baseRef string) (data []byte, found bool, err error) {
+// repoToplevel is the working tree root for repoDir, which may be a
+// subdirectory; repoDir itself when git cannot tell.
+func repoToplevel(repoDir string) string {
+	out, err := git.Output(repoDir, "rev-parse", "--show-toplevel")
+	if err != nil {
+		return repoDir
+	}
+	if top := strings.TrimSpace(string(out)); top != "" {
+		return top
+	}
+	return repoDir
+}
+
+func readBaseRepoConfig(repoDir, baseRef string) (data []byte, found, symlink bool, err error) {
 	// git show reports an unknown commit as a path missing from it, so the
 	// commit is checked first: a bad base stays an error, never "none".
 	if _, err := git.Output(repoDir, "rev-parse", "--verify", "--quiet", baseRef+"^{commit}"); err != nil {
-		return nil, false, fmt.Errorf("base %s is not a commit: %w", baseRef, err)
+		return nil, false, false, fmt.Errorf("base %s is not a commit: %w", baseRef, err)
+	}
+	mode, err := git.TreeMode(repoDir, baseRef, repoConfigPath)
+	if err != nil {
+		return nil, false, false, fmt.Errorf("reading %s from base %s: %w", repoConfigPath, baseRef, err)
+	}
+	if mode == git.ModeSymlink {
+		return nil, false, true, nil
 	}
 	out, err := git.Output(repoDir, "show", "--no-textconv", baseRef+":"+repoConfigPath)
 	if err == nil {
-		return out, true, nil
+		return out, true, false, nil
 	}
 	if isMissingPathAtRef(err) {
-		return nil, false, nil
+		return nil, false, false, nil
 	}
-	return nil, false, fmt.Errorf("reading %s from base %s: %w", repoConfigPath, baseRef, err)
+	return nil, false, false, fmt.Errorf("reading %s from base %s: %w", repoConfigPath, baseRef, err)
 }
 
 // ValidateChecks enforces R3's naming rules: [a-z0-9-]{1,32}, unique, and a

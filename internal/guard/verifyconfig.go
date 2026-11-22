@@ -8,6 +8,8 @@ import (
 	"strings"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/leonardo-moraes360/toolbelt/internal/git"
 )
 
 // ViolationVerifyConfigChanged flags a change to the verify: section of the
@@ -15,21 +17,33 @@ import (
 // here is the change trying to rewrite the gate that judges it.
 const ViolationVerifyConfigChanged ViolationType = "verify_config_changed"
 
+// ViolationVerifyConfigUnreadable is a warning: the base file is malformed,
+// so verify_config_changed cannot be evaluated (verify itself aborts on it).
+const ViolationVerifyConfigUnreadable ViolationType = "verify_config_unreadable"
+
 const repoConfigPath = ".toolbelt/config.yaml"
 
 // checkVerifyConfig compares the verify: section at base and head by reading
 // both blobs directly, so it holds even when the caller supplies its own
 // name-status diff. A malformed head file is a finding (fail-closed: an
-// unparsable section cannot be shown unchanged); a malformed base file is an
-// error, matching how guard.yaml at base is treated.
+// unparsable section cannot be shown unchanged); a malformed base file is a
+// warning finding, so guard and verify -c runs keep working. A symlink at
+// either ref is compared by its target text: any change is a finding.
 func (c *Checker) checkVerifyConfig(base, head string) ([]Violation, error) {
+	if v, handled, err := c.checkVerifyConfigSymlink(base, head); handled || err != nil {
+		return v, err
+	}
 	baseSec, baseOK, err := c.verifySection(base)
 	if err != nil {
 		var pe *verifyParseError
-		if errors.As(err, &pe) {
-			return nil, fmt.Errorf("%s malformed at base %s: %w", repoConfigPath, base, pe.err)
+		if !errors.As(err, &pe) {
+			return nil, err
 		}
-		return nil, err
+		return []Violation{{
+			Type: ViolationVerifyConfigUnreadable, File: repoConfigPath, Severity: SeverityWarning,
+			Message: "verify config unreadable at base (malformed YAML); verify_config_changed not evaluated",
+			Context: "verify",
+		}}, nil
 	}
 	headSec, headOK, err := c.verifySection(head)
 	if err != nil {
@@ -56,6 +70,47 @@ func (c *Checker) checkVerifyConfig(base, head string) ([]Violation, error) {
 		Message: "verify config changed: " + list,
 		Context: list,
 	}}, nil
+}
+
+// checkVerifyConfigSymlink handles a symlinked config at base or head; handled
+// is false when neither ref has one.
+func (c *Checker) checkVerifyConfigSymlink(base, head string) (v []Violation, handled bool, err error) {
+	baseTarget, baseLink, err := c.symlinkTarget(base)
+	if err != nil {
+		return nil, false, err
+	}
+	headTarget, headLink, err := c.symlinkTarget(head)
+	if err != nil {
+		return nil, false, err
+	}
+	if !baseLink && !headLink {
+		return nil, false, nil
+	}
+	if baseLink && headLink && baseTarget == headTarget {
+		return nil, true, nil
+	}
+	return []Violation{{
+		Type: ViolationVerifyConfigChanged, File: repoConfigPath, Severity: SeverityError,
+		Message: "verify config symlink changed (cannot parse): verify",
+		Context: "verify",
+	}}, true, nil
+}
+
+// symlinkTarget returns the link target text when the config is a symlink
+// at ref.
+func (c *Checker) symlinkTarget(ref string) (target string, ok bool, err error) {
+	mode, err := git.TreeMode(c.repoDir, ref, repoConfigPath)
+	if err != nil {
+		return "", false, fmt.Errorf("reading %s mode at %s: %w", repoConfigPath, ref, err)
+	}
+	if mode != git.ModeSymlink {
+		return "", false, nil
+	}
+	target, err = c.gitShow(ref, repoConfigPath)
+	if err != nil {
+		return "", false, fmt.Errorf("reading %s from %s: %w", repoConfigPath, ref, err)
+	}
+	return target, true, nil
 }
 
 type verifyParseError struct{ err error }

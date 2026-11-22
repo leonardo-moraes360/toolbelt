@@ -55,6 +55,7 @@ type RunState struct {
 	GuardReason  string
 	ConfigSource string
 	Warnings     []string
+	Overrides    []string
 }
 
 // RulerResult is one ruler's outcome. Payload is what that ruler prints on
@@ -81,6 +82,7 @@ type MultiResult struct {
 	DryRun       bool           `json:"dry_run,omitempty"`
 	ConfigSource string         `json:"config_source,omitempty"`
 	Warnings     []string       `json:"warnings,omitempty"`
+	Overrides    []string       `json:"overrides,omitempty"`
 	Rulers       map[string]any `json:"rulers"`
 	Results      []*RulerResult `json:"-"`
 }
@@ -191,7 +193,7 @@ func RunRulers(ctx context.Context, cfg *Config, names []string) (*MultiResult, 
 		}
 	}
 	defer cleanup()
-	multi := &MultiResult{Rulers: map[string]any{}, DryRun: cfg.DryRun, ConfigSource: st.ConfigSource, Warnings: st.Warnings}
+	multi := &MultiResult{Rulers: map[string]any{}, DryRun: cfg.DryRun, ConfigSource: st.ConfigSource, Warnings: st.Warnings, Overrides: st.Overrides}
 	for _, name := range names {
 		rr, err := rulerFor(name).Run(ctx, st)
 		if err != nil {
@@ -257,7 +259,9 @@ func applyRunConfig(cfg *Config, st *RunState) error {
 		if cfg.Overrides == nil {
 			return nil
 		}
-		return MergeFlags(cfg, nil, cfg.Overrides)
+		err := MergeFlags(cfg, nil, cfg.Overrides)
+		st.Overrides = cfg.AppliedOverrides
+		return err
 	}
 	rc, err := LoadVerifyConfig(cfg.RepoDir, cfg.BaseRef, cfg.HeadRef, cfg.TrustedConfig, config.File() != "")
 	if err != nil {
@@ -266,7 +270,9 @@ func applyRunConfig(cfg *Config, st *RunState) error {
 	cfg.EnvAllow = append(cfg.EnvAllow, rc.Env.Allow...)
 	cfg.EnvPass = append(cfg.EnvPass, rc.Env.Pass...)
 	st.ConfigSource, st.Warnings = rc.Source, rc.Warnings
-	return MergeFlags(cfg, &rc.Verify, cfg.Overrides)
+	err = MergeFlags(cfg, &rc.Verify, cfg.Overrides)
+	st.Overrides = cfg.AppliedOverrides
+	return err
 }
 
 type testsRuler struct{}
