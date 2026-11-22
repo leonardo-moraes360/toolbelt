@@ -1,6 +1,7 @@
 package lab
 
 import (
+	"errors"
 	"runtime"
 	"testing"
 
@@ -48,7 +49,9 @@ func TestRunSandboxUnknownClass(t *testing.T) {
 
 func TestRunSandboxNonLinuxFailsClosed(t *testing.T) {
 	if runtime.GOOS == "linux" {
-		t.Skip("sandbox tier is available on Linux")
+		prev := landlockProbe
+		landlockProbe = func() (bool, int, error) { return false, 0, errors.New("simulated: no Landlock") }
+		t.Cleanup(func() { landlockProbe = prev })
 	}
 	if _, err := RunSandbox(sqliLab()); err == nil {
 		t.Error("RunSandbox must fail closed where the sandbox tier is unavailable")
