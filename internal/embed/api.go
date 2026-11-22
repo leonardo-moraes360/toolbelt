@@ -42,6 +42,8 @@ var (
 	ErrEmbedCrashed     = errors.New("embed_crashed")
 	ErrEmbedTimeout     = errors.New("embed_timeout")
 	ErrEmbedUnsandboxed = errors.New("embed_unsandboxed")
+	// ErrEmbedCPU: the CPU lacks the kernels' instruction set (ADR-019).
+	ErrEmbedCPU = errors.New("embed_cpu_unsupported")
 	// ErrEmbedRequest is a per-request error the child reported (the child
 	// keeps serving).
 	ErrEmbedRequest     = errors.New("embed_request")

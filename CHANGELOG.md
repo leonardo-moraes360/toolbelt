@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- amd64 embedding kernels at the AVX2 tier (ADR-019, accepted; 3.2× faster indexing on a CI runner, identical recall, +1.2% binary): ggml-cpu is built with AVX, AVX2, FMA, F16C and BMI2 (`TB_X86_KERNELS=v2` keeps the old floor); the rest of `tb` keeps the x86-64-v2 floor. `tb __graph-embed` checks the CPU first and refuses with the new reason `embed_cpu_unsupported`, so native code never runs below the tier. New gate steps: `scripts/avx-audit.py` (VEX/EVEX/BMI2 code only in symbols that libggml-cpu.a alone defines), a test that only the child reaches `native.Open`, and a QEMU Nehalem run of other commands plus the refusal
 - Embedding shim: a request's texts are packed into shared native evaluations (`tbe_embed_batch`, `n_seq_max` 64, unified KV, 512-token budget) instead of one call per text; vectors are unchanged (cosine ≥ 0.999). On the x86-64-v2 build: about 4% faster indexing, about 21% faster on short texts
 
 ### Added

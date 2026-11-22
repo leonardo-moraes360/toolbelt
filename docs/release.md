@@ -38,7 +38,7 @@ Pushing the tag triggers the workflow: the vendored llama.cpp and advisory check
 Every binary is built with cgo and the vendored llama.cpp ([ADR-018](adr/018-cgo-componentes-nativos.md)), tag `embednative`, CPU-only:
 
 - **Toolchain:** the pinned zig (`ZIG_VERSION`/`ZIG_SHA256` in the workflow) is `CC`/`CXX` for all six targets. Each target first builds its static libraries with `scripts/build-native.sh <goos> <goarch>` (goreleaser `hooks.pre`; CMake + Ninja), then links libc++ statically.
-- **Floors:** x86-64-v2 (no AVX/FMA/F16C) and armv8.0-a; glibc 2.28 on Linux; macOS 11; Windows 10.
+- **Floors:** x86-64-v2 (no AVX/FMA/F16C) and armv8.0-a for every command; glibc 2.28 on Linux; macOS 11; Windows 10. On amd64 the embedding engine (`tb graph index --vectors`, `--mode semantic|hybrid`) needs an x86-64-v3 CPU: its ggml-cpu kernels use AVX2/FMA ([ADR-019](adr/019-cpu-v3-embedding.md)), and below that `tb __graph-embed` refuses with `embed_cpu_unsupported`. CI checks it: `scripts/avx-audit.py` keeps AVX-tier code inside ggml-cpu symbols, and `qemu-x86_64 -cpu Nehalem` runs the other commands.
 - **Hardening:** linux and windows binaries are PIE; linux has full RELRO. `scripts/native-gate.sh artifact` checks the linux artifacts (PIE, RELRO, BIND_NOW, NX, canaries in the libraries, fortified calls, no symbol above `GLIBC_2.28`).
 - **Draft, then public:** the release stays a draft until these jobs pass on the draft assets:
   - `smoke`: each target on its own runner (ubuntu-24.04, ubuntu-24.04-arm, macos-15, macos-15-intel, windows-2025, windows-11-arm) runs `tb version` (must name `llama.cpp`) and `tb __graph-embed --smoke` with the pinned CI model (`.github/embed-smoke-model.txt`);

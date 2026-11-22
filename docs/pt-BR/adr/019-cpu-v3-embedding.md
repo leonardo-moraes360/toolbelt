@@ -4,7 +4,7 @@
 
 ## Status
 
-proposto (2026-11-21). Emenda o [ADR-018](018-cgo-componentes-nativos.md) §1 (o piso de CPU no amd64) e a alternativa que ele rejeitou, "builds AVX2/FMA para velocidade". Passa a aceito depois que o spike abaixo passar.
+aceito (2026-11-21), depois que o spike (#165) passou. Emenda o [ADR-018](018-cgo-componentes-nativos.md) §1 (o piso de CPU no amd64) e a alternativa que ele rejeitou, "builds AVX2/FMA para velocidade".
 
 ## Contexto
 
@@ -31,24 +31,36 @@ Ou seja, o código AVX só roda quando o motor é chamado, e isso só acontece n
 2. **Uma guarda em tempo de execução no filho.** No início do `tb __graph-embed` (antes de `Serve` e de `Smoke`, ou seja, antes do primeiro `native.Open`), o filho verifica, em Go (`golang.org/x/sys/cpu`), `X86.HasAVX`, `HasAVX2`, `HasFMA`, `HasF16C` e `HasBMI2`. `HasAVX`/`HasAVX2` já incluem a checagem de OSXSAVE/XCR0 de que o SO salva o estado AVX, e o BMI2 é verificado porque hipervisores podem escondê-lo mesmo expondo AVX2. Se algum faltar, o filho recusa com um motivo novo, **`embed_cpu_unsupported`**, e o código nativo nunca roda. O pai o trata como os outros motivos do filho (ele entra nos códigos conhecidos que o cliente lê do stderr do filho). Nenhum outro comando é afetado.
 3. **O gate mantém o código AVX fora de todos os outros caminhos.** O que protege os outros comandos é a invariante de que só o filho chama código nativo; as checagens abaixo a garantem.
    - **Só o filho chama o nativo:** o `TestOnlyNativeImportsC` já limita `import "C"` ao `internal/embed/native`; um teste novo também exige que o `native.Open` só seja alcançado a partir do comando `__graph-embed` (uma checagem do grafo de chamadas sobre os pacotes).
-   - **Onde o código AVX pode ficar:** um script desmonta o binário inteiro e reprova se alguma instrução VEX ou EVEX estiver fora de símbolos definidos pelos objetos do ggml-cpu. Isso pega o dobramento de COMDAT: uma função inline ou de template (de headers da libc++, por exemplo) instanciada numa unidade de tradução do ggml-cpu compilada com `-mavx2` pode ser a cópia que o linker mantém para todos os chamadores, inclusive os inicializadores estáticos do llama. O build também compila o ggml-cpu com `-fvisibility-inlines-hidden` para tornar esse compartilhamento menos provável.
+   - **Onde o código AVX pode ficar:** um script desmonta o binário inteiro e reprova se alguma instrução VEX ou EVEX estiver fora de símbolos definidos pelos objetos do ggml-cpu. Isso pega o dobramento de COMDAT: uma função inline ou de template (de headers da libc++, por exemplo) instanciada numa unidade de tradução do ggml-cpu compilada com `-mavx2` pode ser a cópia que o linker mantém para todos os chamadores, inclusive os inicializadores estáticos do llama. A visibilidade de símbolos não impede esse dobramento num link estático, então quem verifica é a auditoria, não uma flag de compilador.
    - **Sob QEMU:** um job de CI roda o binário de release sob `qemu-x86_64 -cpu Nehalem` para o `tb version` e alguns comandos somente leitura (`graph stats`, `mem list`, `sandbox check`). A inicialização estática é a mesma para todo comando, então isso é um smoke, não a proteção principal.
    - **Checagem da guarda:** sob a mesma CPU do QEMU, `__graph-embed --smoke` tem de falhar com `embed_cpu_unsupported`, não com SIGILL.
    - **Hardware real:** a matriz de smoke mantém uma execução real de embedding em runners x86-64-v3. O job x86-64-v2 sob QEMU do ADR-018 passa a esperar `embed_cpu_unsupported` do smoke de embedding, e que o `tb version` passe.
 4. **O arm64 não muda** (armv8.0-a com NEON). Kernels com dotprod ou i8mm são medidos antes de qualquer mudança, pelas mesmas regras.
 5. **Docs.** O `docs/release.md` e o README dizem que embeddings exigem uma CPU x86-64-v3 no amd64 (Intel Haswell de 2013, AMD Excavator de 2015, ou mais novas), e que todos os outros comandos mantêm o piso x86-64-v2.
 
-### Spike antes da aceitação
+### Resultado do spike (#165)
 
-- Compilar os seis alvos com os kernels do amd64 em v3, e rodar a matriz de comandos e a auditoria da inicialização no CI.
-- Medir num runner de CI: o tempo de embedding em v2 e em v3, e o tamanho do binário.
-- Rodar a avaliação de recall (`TestSemanticRecall`) em v3 e exigir que o recall bata com o da v2 com margem de 0,01. A aritmética muda (FMA), então os vetores não são idênticos bit a bit.
+O spike pedia três coisas: os seis alvos compilando com os kernels v3 e o gate rodando no CI, medições num runner de CI, e o recall batendo com o da v2 com margem de 0,01 (a aritmética muda com FMA, então os vetores não são idênticos bit a bit). Tudo passou:
+
+- **Builds e smoke:** os seis alvos compilaram. O smoke real de embedding passou nos seis runners, inclusive macos-15-intel e windows-2025 amd64, que têm AVX2.
+- **Gate:**
+  - `scripts/avx-audit.py`: ok, com 31.327 instruções de nível AVX, todas em símbolos que só a libggml-cpu.a define. Um build de controle com `-mavx2 -mfma` em todas as libs nativas reprova (2.736 símbolos, por exemplo `quantize_row_*_ref` na libggml-base).
+  - QEMU Nehalem: os comandos passaram, e o smoke de embedding recusou com `embed_cpu_unsupported`.
+  - O `TestOnlyChildReachesNative` passou.
+- **Runner de CI (ubuntu-24.04, 4 threads):**
+
+  | | v2 | v3 |
+  |---|---|---|
+  | 64 chunks + 64 consultas | 36,3 s | 12,2 s (**3,0×**) |
+  | avaliação de recall, 2.721 chunks | 18m52s | 5m49s (**3,2×**) |
+  | recall@10 lexical / semântico / híbrido | 0,273 / 0,670 / 0,568 | idêntico |
+  | tamanho do binário | 27,23 MB | 27,57 MB (+1,2%) |
 
 ## Consequências
 
 ### Positivas
 
-- Embedding cerca de 2× mais rápido no amd64, onde está a maioria dos usuários. Um índice completo deste repositório cai de cerca de 25 para cerca de 12 minutos com 4 threads.
+- Embedding 2–3× mais rápido no amd64, onde está a maioria dos usuários (3,2× num runner de CI), com recall idêntico e binário 1,2% maior.
 - O piso do ADR-018 vira um fato verificado para todo comando, e não uma suposição sobre os inicializadores estáticos.
 
 ### Negativas
@@ -59,7 +71,7 @@ Ou seja, o código AVX só roda quando o motor é chamado, e isso só acontece n
 
 ## Alternativas consideradas
 
-- **Manter x86-64-v2 (o ADR-018 como está).** É o mais simples e funciona em todo lugar, com metade da velocidade. Rejeitado pelas medições, mas continua sendo o plano B se o spike falhar.
+- **Manter x86-64-v2 (o ADR-018 como está).** É o mais simples e funciona em todo lugar, com metade da velocidade. Rejeitado pelas medições; o `TB_X86_KERNELS=v2` ainda o compila (benchmarks, plano B).
 - **Duas variantes de kernel num binário só.** Compilar o ggml-cpu duas vezes (v2 e v3) com símbolos prefixados e escolher uma por CPUID no filho. CPUs antigas continuam com embedding, mas o build vendorizado ganha uma etapa de renomear símbolos e o dobro de código de kernel. Adiado até que um usuário com CPU anterior à v3 precise de embeddings.
 - **`GGML_BACKEND_DL` com `GGML_CPU_ALL_VARIANTS`.** É o dispatch do próprio upstream, mas ele carrega `libggml-cpu-*.so` em tempo de execução. Isso quebra o arquivo único, e cada caminho de carga precisaria de verificação (o ADR-018 rejeitou carga dinâmica).
 - **Um artefato `tb-embed` separado em v3.** Manteria o binário principal em v2 sem dúvida nenhuma, mas o ADR-018 rejeitou dividir o release e as docs.

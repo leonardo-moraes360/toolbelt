@@ -124,5 +124,5 @@ Duas escolhas foram feitas ao escrever este ADR:
 - **cgo num artefato opt-in separado** (`tb-embed`). Manteria o binário padrão estático, mas dividiria em dois a release e a documentação.
 - **onnxruntime pré-compilado.** É um binário opaco: o gate só conseguiria fixar hashes.
 - **sqlite-vec.** Não é necessário: o índice é o `graph.json`, e cosseno por força bruta em Go dá conta dos tamanhos esperados. Pode ser revisto por um build WASM, sem cgo.
-- **Builds com AVX2/FMA para ganhar velocidade.** Rejeitado: os inicializadores estáticos rodam em todo comando, então uma CPU sem AVX2 perderia o `tb` inteiro, não só o embedding.
+- **Builds com AVX2/FMA para ganhar velocidade.** Rejeitado: os inicializadores estáticos rodam em todo comando, então uma CPU sem AVX2 perderia o `tb` inteiro, não só o embedding. *Revisto pelo [ADR-019](019-cpu-v3-embedding.md): as medições mostraram que os inicializadores estáticos não rodam código AVX, então os kernels do ggml-cpu no amd64 passam a usar AVX2/FMA atrás de uma guarda de CPU e de uma auditoria por desmontagem.*
 - **Componente em Rust.** Continua possível depois, atrás do mesmo protocolo do filho.

@@ -190,7 +190,14 @@ jobs:
           sudo apt-get update && sudo apt-get install -y --no-install-recommends qemu-user
           sha="$(sed -n 's/^sha256: //p' .github/embed-smoke-model.txt)"
           qemu-x86_64 -cpu Nehalem ./x/tb version
-          qemu-x86_64 -cpu Nehalem ./x/tb __graph-embed --smoke "$PWD/model.gguf" --sha256 "$sha"
+          # ADR-019: the amd64 kernels need the AVX2 tier; below it the child
+          # refuses before any native code runs.
+          set +e
+          qemu-x86_64 -cpu Nehalem ./x/tb __graph-embed --smoke "$PWD/model.gguf" --sha256 "$sha" 2>err.txt
+          rc=$?
+          set -e
+          cat err.txt
+          [ "$rc" = 2 ] && grep -q embed_cpu_unsupported err.txt
 
   publish:
     name: Publish

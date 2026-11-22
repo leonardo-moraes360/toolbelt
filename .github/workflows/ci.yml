@@ -197,6 +197,27 @@ jobs:
       - name: Embed tests
         run: go test -tags embednative -count=1 ./internal/embed/... ./internal/version
 
+      - name: AVX-tier code only in ggml-cpu (ADR-019)
+        if: runner.arch == 'X64'
+        run: python3 scripts/avx-audit.py bin/tb-native internal/embed/native/build/linux_amd64/lib
+
+      - name: Pre-AVX CPU under QEMU (ADR-019)
+        if: runner.arch == 'X64'
+        run: |
+          sudo apt-get install -y --no-install-recommends qemu-user
+          q="qemu-x86_64 -cpu Nehalem"
+          for c in "version" "graph --help" "mem list" "sandbox check"; do
+            # shellcheck disable=SC2086
+            $q bin/tb-native $c >/dev/null 2>"$RUNNER_TEMP/err" || { cat "$RUNNER_TEMP/err"; exit 1; }
+          done
+          sha="$(sed -n 's/^sha256: //p' .github/embed-smoke-model.txt)"
+          set +e
+          $q bin/tb-native __graph-embed --smoke "$TB_EMBED_MODEL" --sha256 "$sha" 2>"$RUNNER_TEMP/err"
+          rc=$?
+          set -e
+          cat "$RUNNER_TEMP/err"
+          [ "$rc" = 2 ] && grep -q embed_cpu_unsupported "$RUNNER_TEMP/err"
+
       - name: Static initializers do no I/O
         run: scripts/native-gate.sh strace bin/tb-native bin/tb
 

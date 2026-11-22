@@ -38,7 +38,7 @@ O push da tag dispara o workflow: as verificações do llama.cpp vendorizado e d
 Todo binário é compilado com cgo e o llama.cpp vendorizado ([ADR-018](adr/018-cgo-componentes-nativos.md)), tag `embednative`, só CPU:
 
 - **Toolchain:** o zig fixado (`ZIG_VERSION`/`ZIG_SHA256` no workflow) é o `CC`/`CXX` dos seis alvos. Cada alvo primeiro compila suas bibliotecas estáticas com `scripts/build-native.sh <goos> <goarch>` (`hooks.pre` do goreleaser; CMake + Ninja) e depois linka a libc++ estaticamente.
-- **Pisos:** x86-64-v2 (sem AVX/FMA/F16C) e armv8.0-a; glibc 2.28 no Linux; macOS 11; Windows 10.
+- **Pisos:** x86-64-v2 (sem AVX/FMA/F16C) e armv8.0-a para todos os comandos; glibc 2.28 no Linux; macOS 11; Windows 10. No amd64 o motor de embedding (`tb graph index --vectors`, `--mode semantic|hybrid`) exige uma CPU x86-64-v3: os kernels do ggml-cpu usam AVX2/FMA ([ADR-019](adr/019-cpu-v3-embedding.md)), e abaixo disso o `tb __graph-embed` recusa com `embed_cpu_unsupported`. O CI verifica: o `scripts/avx-audit.py` mantém o código de nível AVX dentro dos símbolos do ggml-cpu, e o `qemu-x86_64 -cpu Nehalem` roda os outros comandos.
 - **Hardening:** os binários linux e windows são PIE; o linux tem RELRO completo. `scripts/native-gate.sh artifact` verifica os artefatos linux (PIE, RELRO, BIND_NOW, NX, canários nas bibliotecas, chamadas fortificadas, nenhum símbolo acima de `GLIBC_2.28`).
 - **Draft, depois público:** o release fica em draft até estes jobs passarem nos assets do draft:
   - `smoke`: cada alvo no seu runner (ubuntu-24.04, ubuntu-24.04-arm, macos-15, macos-15-intel, windows-2025, windows-11-arm) roda `tb version` (precisa citar `llama.cpp`) e `tb __graph-embed --smoke` com o modelo de CI fixado (`.github/embed-smoke-model.txt`);
