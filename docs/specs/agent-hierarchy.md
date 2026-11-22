@@ -2,7 +2,7 @@
 
 # Spec: delegation trees on the bus, Phase A (`task.assign --parent`, `tb bus tree`)
 
-Author: toolbelt · Status: Draft (round 1, not yet reviewed in a fresh context) · Date: 2026-11-22 · Decision: [ADR-020](../adr/020-agent-hierarchy-a2a.md) · Builds on: [bus-protocolo.md](../bus-protocolo.md) (B1), [bus-lease.md](../bus-lease.md) (B2), [bus-router.md](../bus-router.md) (B4) · Related: [ADR-009](../adr/009-router-e-workers.md), [ADR-013](../adr/013-barramento-multi-vendor.md)
+Author: toolbelt · Status: Accepted, Phase A implemented (open questions resolved 2026-11-22) · Date: 2026-11-22 · Decision: [ADR-020](../adr/020-agent-hierarchy-a2a.md) · Builds on: [bus-protocolo.md](../bus-protocolo.md) (B1), [bus-lease.md](../bus-lease.md) (B2), [bus-router.md](../bus-router.md) (B4) · Related: [ADR-009](../adr/009-router-e-workers.md), [ADR-013](../adr/013-barramento-multi-vendor.md)
 
 ## Overview
 
@@ -30,7 +30,7 @@ A supervisor on a bus channel can already claim a thread and send `task.assign` 
 
 - Token, cost or time budget inheritance (ADR-020: `tb` cannot measure it).
 - A planner role, `tb agent spawn`, or any way for an agent to create agents, channels or invites.
-- Refusing `complete` on a parent with open children (reported only; see Q2).
+- Refusing `complete` on a parent with open children (reported only, resolved in Q2).
 - Cascading revoke of a subtree, or a revoke CLI.
 - Router (B4) changes: the router keeps sending parentless assigns, and parented assigns are never router tasks.
 - Wake packet or harness prompt changes.
@@ -62,7 +62,7 @@ Run after the idempotency lookup (a duplicate returns the stored message, as tod
   A later parentless `task.assign` on a linked thread is accepted and keeps the link. Because a link is only created on a thread's first `task.assign`, after the parent's, cycles cannot form.
 - **R6. Depth.** A root (a thread with a `task.assign` and no link) has depth 0. `depth(child) = depth(parent) + 1`, at most **3** (`depth_exceeded`).
 - **R7. Fan-out.** A parent may have at most **8 open children** (`fanout_exceeded`). A child is open unless its claim row is completed or revoked, or it has no claim row and every `task.assign` on it has expired by `ttl`. A released claim is open, since it can be taken over.
-- **R8.** The limits are constants in Phase A, not configuration (Q3).
+- **R8.** The limits are constants in Phase A, not configuration (resolved: constants).
 - **R9.** Errors use the codes above as the error text prefix, like `lease_lost`, so the CLI, MCP and harness can match them.
 
 ### Complete
@@ -107,6 +107,7 @@ Run after the idempotency lookup (a duplicate returns the stored message, as tod
     );
     CREATE INDEX task_links_parent ON task_links(channel, parent);
     ```
+  - a partial index `messages_assign_thread ON messages(channel, thread) WHERE type = 'task.assign'`, so the "has this thread an assign" lookups do not scan the channel log;
   - A fresh store is created directly at v4. Existing threads have no links (all roots). An older `tb` refuses a v4 store, so every `tb` serving a channel is upgraded together.
 
 ## Threat model
@@ -132,9 +133,12 @@ See [ADR-020](../adr/020-agent-hierarchy-a2a.md). In this spec: storing the link
 
 ## Open questions
 
-- **Q1 (USER DECISION).** Build Phase A at all, or declare the hierarchy done by the router and bus roles (ADR-020 fallback)?
-- **Q2 (USER DECISION).** Keep `complete` with open children as a warning (this spec) or refuse it with `open_children` until they are completed or revoked? Refusing needs a supervisor revoke path, which has no CLI today.
-- **Q3 (USER DECISION).** Limits: depth 3 and 8 open children as constants, or per-channel options on `tb bus channel create`?
+All resolved by the user on 2026-11-22.
+
+- **Q1.** Build Phase A at all, or declare the hierarchy done by the router and bus roles? **Resolved: build Phase A.**
+- **Q2.** Keep `complete` with open children as a warning, or refuse it? **Resolved: it only warns** (R10). Refusing would need a supervisor revoke path, which has no CLI.
+- **Q3.** Depth 3 and 8 open children as constants, or per-channel options? **Resolved: constants** (R8).
+- Dropping `tb agent` (ADR-020) is confirmed.
 
 ## Detailed implementation plan (one PR)
 

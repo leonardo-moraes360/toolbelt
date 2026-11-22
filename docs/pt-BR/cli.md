@@ -1841,10 +1841,12 @@ tb bus invite feature-x --role worker
 tb bus invite feature-x --role supervisor --name claude-main
 tb bus join feature-x --invite K7Q2-9XMD --name grok-1 --vendor xai --role worker
 tb bus send --channel feature-x --as claude-main --to role:worker --type task.assign --thread TKT-001 --payload '{"ticket":"TKT-001"}'
+tb bus send --channel feature-x --as claude-main --to role:worker --type task.assign --thread TKT-001/api --parent TKT-001
 tb bus recv --channel feature-x --as grok-1 --wait 20s
 tb bus claim TKT-001 --channel feature-x --as grok-1
 tb bus complete TKT-001 --channel feature-x --as grok-1 --epoch 1 --result '{"verdict":"PASS"}'
 tb bus log feature-x --thread TKT-001
+tb bus tree feature-x
 tb bus channel list
 tb bus channel show feature-x
 tb bus heartbeat --channel feature-x --as grok-1
@@ -1863,13 +1865,14 @@ tb bus discover
 | `channel extend <channel> --ttl D` | humano | redefine a expiração para agora + `D` (`0` = sem expiração); reabre canal expirado mantendo sessões e histórico |
 | `invite <channel> --role R` | humano | convite de uso único com papel fixado (`--ttl`, padrão `10m`); `--name` vincula a um agente e, se ele já estiver no canal, recupera a sessão perdida (token novo) |
 | `join <channel> --invite C` | agente | entra com Agent Card (`--name`, `--vendor`, `--model`, `--tier`, `--wake`, `--session`, `--capability` ou `--card card.json`); `--role` precisa coincidir com o papel do convite; grava a sessão no diretório privado do bus, fora do repositório (`$XDG_STATE_HOME/toolbelt/bus/`, `0600`) |
-| `send` | agente | `--to agent:\|role:\|topic:`, `--type`, `--thread`, `--causation`, `--idempotency-key`, `--ttl`, `--payload` (JSON ou `@arquivo`) |
+| `send` | agente | `--to agent:\|role:\|topic:`, `--type`, `--thread`, `--causation`, `--idempotency-key`, `--ttl`, `--payload` (JSON ou `@arquivo`); `--parent T` (só em `task.assign`) liga a subtarefa à thread `T`, que o remetente precisa deter com claim vivo (o router pode ligar a qualquer pai conhecido): o broker recusa com `parent_unknown`, `parent_not_owned`, `parent_immutable`, `depth_exceeded` (profundidade máx. 3) ou `fanout_exceeded` (máx. 8 filhos abertos), ver [bus-protocolo.md](bus-protocolo.md#árvores-de-delegação) |
 | `recv` | agente | lê e avança o cursor; `--wait` (máx. 25s), `--limit`, `--peek`, `--since` |
 | `claim <thread>` | agente | dono único da thread; imprime o `epoch`; toma um claim liberado ou cujo dono perdeu o lease |
-| `complete <thread>` | dono | `--epoch` (obrigatório, vindo do `claim`), `--result`; publica `task.result` em `topic:board`; `lease_lost` quando o claim trocou de mãos ou foi liberado |
+| `complete <thread>` | dono | `--epoch` (obrigatório, vindo do `claim`), `--result`; publica `task.result` em `topic:board`; `lease_lost` quando o claim trocou de mãos ou foi liberado; completar um pai com filhos abertos funciona e imprime `warning: … completed with N open children (…)` no stderr (`open_children` no `--json`) |
 | `heartbeat` | agente | renova o lease; lista threads seguras (com epochs) e perdidas (com o novo dono) |
 | `watchdog <channel>` | humano | libera claims de agentes não vivos e publica `task.status` `lease_expired` de `system:watchdog` em `topic:board`; `--dry-run` só lista. Não exposto no MCP |
 | `log <channel>` | humano | trilha de auditoria (payload redigido); `--thread`, `--limit` |
+| `tree <channel>` | humano | árvores de delegação montadas por `send --parent`: um nó por linha com estado (`assigned`, `claimed`, `released`, `completed`, `revoked`, `expired`), dono, epoch e filhos abertos; `--thread T` (só essa subárvore), `--all` (também threads sem filhos), `--limit N` (árvores, mais novas primeiro, padrão 50); sem payload, resultado, token nem o `session` do Agent Card; funciona em canal expirado. Só CLI: não exposto via MCP |
 | `run --channel C --as N` | humano | harness B3: espera sem LLM e acorda o agente pelo arquivo de wake (`exec`, `harness` ou `notify`, que avisa o humano para agentes só de GUI); `--once`, `--check`, `--dry-run`, `--invite`, `--role`, `--config`, `--allow-unsandboxed`. Spec: [bus-harness.md](bus-harness.md), [bus-notify-discover.md](bus-notify-discover.md) |
 | `discover` | humano | catálogo só de leitura das CLIs de agente conhecidas no `PATH` e das configs de cliente MCP que rodam `tb mcp` (outros servidores só contados), com próximos passos; não executa nada; `--cwd`, `--json` |
 
@@ -2006,7 +2009,7 @@ Transporte unix/tcp e flags `--socket`/`--port`/`--tls-*` são planejados; hoje 
 | `tb_router_status` | `tb router status` | só leitura de `state.json` |
 | `tb_watchdog_alerts` | `tb watchdog alerts` | `since`, `kind`, `limit` (integer) |
 | `tb_merge` | `tb merge` | `ids` (array), `strategy`, `into`, `force`, `allow_sensitive` (padrão `false`); **dry-run por padrão** — só altera refs com `apply=true` |
-| `tb_bus_join` / `tb_bus_send` / `tb_bus_recv` / `tb_bus_claim` / `tb_bus_complete` / `tb_bus_heartbeat` / `tb_bus_status` | `tb bus …` | identidade presa à conexão após `tb_bus_join` (`channel`, `invite`, `name` + Agent Card); `payload`/`result` como objeto; `tb_bus_complete` exige o `epoch` inteiro; o `tb mcp` manda heartbeat das sessões ligadas em segundo plano; sem tool de watchdog; `wait` string (máx. 25s); criar canal/convite **não** existe via MCP; `tb mcp --bus-as <channel>/<name>` liga a conexão a uma sessão CLI (usado por `tb bus run`) |
+| `tb_bus_join` / `tb_bus_send` / `tb_bus_recv` / `tb_bus_claim` / `tb_bus_complete` / `tb_bus_heartbeat` / `tb_bus_status` | `tb bus …` | identidade presa à conexão após `tb_bus_join` (`channel`, `invite`, `name` + Agent Card); `payload`/`result` como objeto; `tb_bus_complete` exige o `epoch` inteiro e informa `open_children`; `tb_bus_send` aceita um `parent` opcional (só `task.assign`; o broker o checa); sem tool de árvore; o `tb mcp` manda heartbeat das sessões ligadas em segundo plano; sem tool de watchdog; `wait` string (máx. 25s); criar canal/convite **não** existe via MCP; `tb mcp --bus-as <channel>/<name>` liga a conexão a uma sessão CLI (usado por `tb bus run`) |
 | `tb_graph_search` / `tb_graph_callers` / `tb_graph_deps` / `tb_graph_impact` / `tb_graph_explain` / `tb_graph_path` / `tb_graph_index` | `tb graph …` | chamada requer `TB_GRAPH=on`; `depth`/`limit`/`max_depth` integer; `transitive` boolean; `explain` usa `node`, `path` usa `from`/`to`; `mode` no `tb_graph_search` e `vectors` no `tb_graph_index` (veja o [índice vetorial](#índice-vetorial)) |
 
 Schemas tipam `depth`/`limit`/`reviewers`/`max_iter` como integer, `strict`/`warn_only`/`transitive`/`skip_unavailable`/`all` (mem) como boolean, `threshold` como number e `standards` como array de strings; valores string legados ainda são aceitos. Relatórios de verify/review/drift/guard voltam como JSON no `content` (sem código de saída de processo). Listas vazias usam `[]`; `hidden_passed` é `null` se a suíte oculta não se aplica.

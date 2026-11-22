@@ -4,7 +4,9 @@
 
 ## Status
 
-proposto (2026-11-22). Substitui em parte o [ADR-002](002-mcp-a2a-protocolos.md): a seção "A2A para Agentes", o socket Unix do `tb serve` e o transporte HTTP/2. Confirma a rejeição de "A2A sobre HTTP como está" no [ADR-013](013-barramento-multi-vendor.md) e o abandono do `tb md` no [ADR-016](016-vault-fase-a.md) §5. Spec: [`docs/pt-BR/specs/agent-hierarchy.md`](../specs/agent-hierarchy.md).
+aceito (2026-11-22). Substitui em parte o [ADR-002](002-mcp-a2a-protocolos.md): a seção "A2A para Agentes", o socket Unix do `tb serve` e o transporte HTTP/2. Confirma a rejeição de "A2A sobre HTTP como está" no [ADR-013](013-barramento-multi-vendor.md) e o abandono do `tb md` no [ADR-016](016-vault-fase-a.md) §5. Spec: [`docs/pt-BR/specs/agent-hierarchy.md`](../specs/agent-hierarchy.md).
+
+**Nota de implementação.** A Fase A está implementada (`internal/bus/hierarchy.go`, `internal/bus/tree.go`, `tb bus send --parent`, `tb bus tree`, `parent` no `tb_bus_send` do MCP, schema v4 do store). As três questões abertas da spec foram resolvidas pelo usuário: construir a Fase A; `complete` com filhos abertos só avisa; os limites (profundidade 3, 8 filhos abertos) são constantes. O abandono do `tb agent` está confirmado.
 
 ## Contexto
 

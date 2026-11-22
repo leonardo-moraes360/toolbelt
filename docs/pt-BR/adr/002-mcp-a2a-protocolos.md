@@ -4,7 +4,7 @@
 
 ## Status
 
-accepted. A seção "A2A para Agentes", o socket Unix do `tb serve` e o transporte HTTP/2 nunca foram construídos; o [ADR-020](020-agent-hierarchy-a2a.md) (proposto) os substitui: o tráfego agente ↔ agente é o `tb bus` local com envelope no formato A2A, o MCP é servido pelo `tb mcp` via stdio, e o `tb` não abre rede.
+accepted. A seção "A2A para Agentes", o socket Unix do `tb serve` e o transporte HTTP/2 nunca foram construídos; o [ADR-020](020-agent-hierarchy-a2a.md) (aceito) os substitui: o tráfego agente ↔ agente é o `tb bus` local com envelope no formato A2A, o MCP é servido pelo `tb mcp` via stdio, e o `tb` não abre rede.
 
 ## Contexto
 

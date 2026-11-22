@@ -234,7 +234,7 @@ tb bus recv --channel feature-x --as grok-1 --wait 20s
 - [x] MCP com paridade do loop de campo (`mem` / `verify` / `review` / `drift` / `guard`)
 - [x] `tb stack` — empilha verify/review/drift/guard com diff/índice/memória compartilhados (+ MCP `tb_stack`)
 - [x] Landing page em [`site/`](../../site/) + GitHub Pages ([docs/pt-BR/site.md](site.md) · [site ao vivo](https://leonardo-moraes360.github.io/toolbelt/))
-- [x] Hierarquia de agentes / A2A / `tb md`: decidido no [ADR-020](adr/020-agent-hierarchy-a2a.md). O A2A é o envelope `bus/0.1` no formato A2A, no barramento local, sem HTTP nem socket no `tb` (uma ponte é um agente comum do barramento que o humano roda); a hierarquia é o `tb router` + os papéis do barramento; `tb md` e `tb agent` saem. O que falta é o B5 abaixo
+- [x] Hierarquia de agentes / A2A / `tb md`: decidido no [ADR-020](adr/020-agent-hierarchy-a2a.md). O A2A é o envelope `bus/0.1` no formato A2A, no barramento local, sem HTTP nem socket no `tb` (uma ponte é um agente comum do barramento que o humano roda); a hierarquia é o `tb router` + os papéis do barramento; `tb md` e `tb agent` saem. O B5 abaixo (árvores de delegação) está construído
 
 ### Entrada para a próxima fase (estudo de campo)
 - Estudo de campo do `tb` em 20 repositórios públicos (relatórios em [`docs/pt-BR/campo/`](campo/) + síntese de melhorias em [`docs/pt-BR/campo/SINTESE.md`](campo/SINTESE.md)), como input priorizado para os próximos PRs de produto.
@@ -261,7 +261,7 @@ tb bus recv --channel feature-x --as grok-1 --wait 20s
 - [x] B2 — lease, heartbeat e watchdog no barramento ([spec](bus-lease.md))
 - [x] B3 — `tb bus run` com adapters `exec`, `harness` e `notify` e `tb bus discover` ([docs/pt-BR/bus-harness.md](bus-harness.md), [bus-notify-discover.md](bus-notify-discover.md))
 - [x] B4 — router/board da Fase 3 sobre o barramento ([spec](bus-router.md)): operações do barramento, `router_tasks` do harness e slots do barramento `b1..bN` no router
-- [ ] B5 — árvores de delegação ([spec](specs/agent-hierarchy.md), [ADR-020](adr/020-agent-hierarchy-a2a.md)): `task.assign` com `parent` checado pelo broker, limites de profundidade e fan-out, `tb bus tree`
+- [x] B5 — árvores de delegação ([spec](specs/agent-hierarchy.md), [ADR-020](adr/020-agent-hierarchy-a2a.md)): `task.assign` com `parent` checado pelo broker, limites de profundidade e fan-out, `tb bus tree`
 
 ## 🤝 Contribuindo
 

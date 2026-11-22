@@ -2,7 +2,7 @@
 
 # Spec: árvores de delegação no barramento, Fase A (`task.assign --parent`, `tb bus tree`)
 
-Autor: toolbelt · Status: Rascunho (rodada 1, ainda sem revisão em contexto novo) · Data: 2026-11-22 · Decisão: [ADR-020](../adr/020-agent-hierarchy-a2a.md) · Base: [bus-protocolo.md](../bus-protocolo.md) (B1), [bus-lease.md](../bus-lease.md) (B2), [bus-router.md](../bus-router.md) (B4) · Relacionadas: [ADR-009](../adr/009-router-e-workers.md), [ADR-013](../adr/013-barramento-multi-vendor.md)
+Autor: toolbelt · Status: Aceita, Fase A implementada (questões abertas resolvidas em 2026-11-22) · Data: 2026-11-22 · Decisão: [ADR-020](../adr/020-agent-hierarchy-a2a.md) · Base: [bus-protocolo.md](../bus-protocolo.md) (B1), [bus-lease.md](../bus-lease.md) (B2), [bus-router.md](../bus-router.md) (B4) · Relacionadas: [ADR-009](../adr/009-router-e-workers.md), [ADR-013](../adr/013-barramento-multi-vendor.md)
 
 ## Visão geral
 
@@ -30,7 +30,7 @@ Um supervisor num canal do barramento já pode dar claim numa thread e enviar `t
 
 - Herança de orçamento de tokens, custo ou tempo (ADR-020: o `tb` não consegue medir).
 - Papel de planner, `tb agent spawn`, ou qualquer forma de um agente criar agentes, canais ou convites.
-- Recusar `complete` num pai com filhos abertos (só informa; ver Q2).
+- Recusar `complete` num pai com filhos abertos (só informa, resolvido na Q2).
 - Revogação em cascata de uma subárvore, ou uma CLI de revogação.
 - Mudanças no router (B4): o router continua enviando assigns sem pai, e assigns com pai nunca são tarefas de router.
 - Mudanças no wake packet ou no prompt do harness.
@@ -62,7 +62,7 @@ Rodam depois da busca de idempotência (uma duplicata devolve a mensagem guardad
   Um `task.assign` posterior sem pai numa thread vinculada é aceito e mantém o vínculo. Como um vínculo só é criado no primeiro `task.assign` de uma thread, depois do do pai, não se formam ciclos.
 - **R6. Profundidade.** Uma raiz (thread com `task.assign` e sem vínculo) tem profundidade 0. `profundidade(filho) = profundidade(pai) + 1`, no máximo **3** (`depth_exceeded`).
 - **R7. Fan-out.** Um pai pode ter no máximo **8 filhos abertos** (`fanout_exceeded`). Um filho está aberto a menos que sua linha de claim esteja completada ou revogada, ou que ele não tenha linha de claim e todo `task.assign` nele tenha expirado pelo `ttl`. Um claim liberado está aberto, porque pode sofrer takeover.
-- **R8.** Os limites são constantes na Fase A, não configuração (Q3).
+- **R8.** Os limites são constantes na Fase A, não configuração (resolvida: constantes).
 - **R9.** Os erros usam os códigos acima como prefixo do texto, como `lease_lost`, para que CLI, MCP e harness possam reconhecê-los.
 
 ### Complete
@@ -107,6 +107,7 @@ Rodam depois da busca de idempotência (uma duplicata devolve a mensagem guardad
     );
     CREATE INDEX task_links_parent ON task_links(channel, parent);
     ```
+  - um índice parcial `messages_assign_thread ON messages(channel, thread) WHERE type = 'task.assign'`, para que as buscas "esta thread tem assign" não varram o log do canal;
   - Um store novo já nasce em v4. Threads existentes não têm vínculos (todas raízes). Um `tb` mais antigo recusa um store v4, então todo `tb` que serve um canal é atualizado junto.
 
 ## Modelo de ameaças
@@ -132,9 +133,12 @@ Ver o [ADR-020](../adr/020-agent-hierarchy-a2a.md). Nesta spec: guardar o víncu
 
 ## Questões abertas
 
-- **Q1 (DECISÃO DO USUÁRIO).** Construir a Fase A, ou declarar a hierarquia pronta com o router e os papéis do barramento (a saída do ADR-020)?
-- **Q2 (DECISÃO DO USUÁRIO).** Manter `complete` com filhos abertos como aviso (esta spec) ou recusá-lo com `open_children` até que sejam completados ou revogados? Recusar exige um caminho de revogação para o supervisor, que hoje não tem CLI.
-- **Q3 (DECISÃO DO USUÁRIO).** Limites: profundidade 3 e 8 filhos abertos como constantes, ou opções por canal no `tb bus channel create`?
+Todas resolvidas pelo usuário em 2026-11-22.
+
+- **Q1.** Construir a Fase A, ou declarar a hierarquia pronta com o router e os papéis do barramento? **Resolvida: construir a Fase A.**
+- **Q2.** Manter `complete` com filhos abertos como aviso, ou recusá-lo? **Resolvida: só avisa** (R10). Recusar exigiria um caminho de revogação para o supervisor, que não tem CLI.
+- **Q3.** Profundidade 3 e 8 filhos abertos como constantes, ou opções por canal? **Resolvida: constantes** (R8).
+- O abandono do `tb agent` (ADR-020) está confirmado.
 
 ## Plano detalhado de implementação (um PR)
 

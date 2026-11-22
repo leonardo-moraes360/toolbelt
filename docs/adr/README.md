@@ -20,7 +20,7 @@ Each ADR follows this format:
 | ADR | Title | Status |
 |-----|-------|--------|
 | [001](001-go-vs-rust.md) | Go as the primary language | accepted |
-| [002](002-mcp-a2a-protocolos.md) | MCP + A2A as communication protocols | accepted (A2A part superseded by [ADR-020](020-agent-hierarchy-a2a.md), if accepted) |
+| [002](002-mcp-a2a-protocolos.md) | MCP + A2A as communication protocols | accepted (A2A part superseded by [ADR-020](020-agent-hierarchy-a2a.md)) |
 | [003](003-sqlite-fts5-grafo.md) | SQLite + FTS5 as graph and memory index | accepted |
 | [004](004-sandbox-isolamento.md) | Sandbox with bubblewrap + Landlock + seccomp | accepted |
 | [005](005-anti-trapaca.md) | Anti-cheat strategy | accepted |
@@ -38,7 +38,7 @@ Each ADR follows this format:
 | [017](017-appsec-red-blue-labs.md) | Native AppSec red/blue capabilities and isolated labs (`tb red` / `tb blue` / `tb lab`) | proposed |
 | [018](018-cgo-componentes-nativos.md) | cgo for native components, starting with vendored llama.cpp, under a C/C++ quality gate | proposed |
 | [019](019-cpu-v3-embedding.md) | AVX2/FMA kernels for the embedding child, guarded at run time | accepted |
-| [020](020-agent-hierarchy-a2a.md) | Agent hierarchy as delegation trees on the local bus; A2A stays an envelope shape, with no network in `tb` | proposed |
+| [020](020-agent-hierarchy-a2a.md) | Agent hierarchy as delegation trees on the local bus; A2A stays an envelope shape, with no network in `tb` | accepted |
 
 ## How to Propose an ADR
 

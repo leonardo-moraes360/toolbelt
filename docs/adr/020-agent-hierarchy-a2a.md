@@ -4,7 +4,9 @@
 
 ## Status
 
-proposed (2026-11-22). Partially supersedes [ADR-002](002-mcp-a2a-protocolos.md): the "A2A for Agents" section, the `tb serve` Unix socket and the HTTP/2 transport. Confirms the rejection of "A2A over HTTP as-is" in [ADR-013](013-barramento-multi-vendor.md) and the drop of `tb md` in [ADR-016](016-vault-fase-a.md) §5. Spec: [`docs/specs/agent-hierarchy.md`](../specs/agent-hierarchy.md).
+accepted (2026-11-22). Partially supersedes [ADR-002](002-mcp-a2a-protocolos.md): the "A2A for Agents" section, the `tb serve` Unix socket and the HTTP/2 transport. Confirms the rejection of "A2A over HTTP as-is" in [ADR-013](013-barramento-multi-vendor.md) and the drop of `tb md` in [ADR-016](016-vault-fase-a.md) §5. Spec: [`docs/specs/agent-hierarchy.md`](../specs/agent-hierarchy.md).
+
+**Implementation note.** Phase A is implemented (`internal/bus/hierarchy.go`, `internal/bus/tree.go`, `tb bus send --parent`, `tb bus tree`, MCP `tb_bus_send` `parent`, store schema v4). The three open questions of the spec were resolved by the user: build Phase A; `complete` with open children only warns; the limits (depth 3, 8 open children) are constants. Dropping `tb agent` is confirmed.
 
 ## Context
 

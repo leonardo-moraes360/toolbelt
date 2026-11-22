@@ -4,7 +4,7 @@
 
 Especificação da etapa **B0** do [ADR-013](adr/013-barramento-multi-vendor.md): envelope de mensagem, Agent Card, convite e regras do broker. A etapa **B1** implementa esta spec em `tb bus` (CLI) e nas ferramentas MCP `tb_bus_*`.
 
-> O ADR cita as ferramentas como `bus_*`. No `tb mcp` elas seguem o prefixo do projeto: `tb_bus_join`, `tb_bus_send`, `tb_bus_recv`, `tb_bus_claim`, `tb_bus_complete`, `tb_bus_heartbeat`, `tb_bus_status`.
+> O ADR cita as ferramentas como `bus_*`. No `tb mcp` elas seguem o prefixo do projeto: `tb_bus_join`, `tb_bus_send`, `tb_bus_recv`, `tb_bus_claim`, `tb_bus_complete`, `tb_bus_heartbeat`, `tb_bus_status`. O `tb_bus_send` aceita um `parent` opcional; a árvore não tem tool MCP.
 
 ## Store
 
@@ -27,6 +27,7 @@ Toda mensagem é um objeto JSON-RPC 2.0 com `method: "bus/message"`. Campos de `
 | `from` | broker | `agent:<nome>` da sessão autenticada; nunca vem do remetente. `system:*` (hoje só `system:watchdog`) é exclusivo do broker: nenhuma sessão manda com ele |
 | `to` | remetente | `agent:<nome>` (precisa existir no canal), `role:<papel>` ou `topic:<nome>` |
 | `thread` | remetente | opcional; `[A-Za-z0-9._:/-]{1,128}` (ex.: `TKT-001`) |
+| `parent` | remetente | opcional; mesma sintaxe de `thread`; só em `task.assign` com `thread` diferente de `parent`; liga a subtarefa a uma thread que o remetente detém (ver [Árvores de delegação](#árvores-de-delegação)) |
 | `type` | remetente | `task.assign`, `task.status`, `query`, `reply`, `ack`, `urgent`; `task.result` só via `complete` |
 | `causation_id` | remetente | opcional; ID da mensagem que causou esta |
 | `idempotency_key` | remetente | opcional; `[A-Za-z0-9._:/-]{1,128}` |
@@ -102,13 +103,34 @@ Declarado no `join`. É informativo: **capacidade não é permissão**; o papel 
 
 ## Regras do broker (B1)
 
-- `task.assign` só de `router` ou `supervisor`.
+- `task.assign` só de `router` ou `supervisor`; com `parent`, também as checagens de [Árvores de delegação](#árvores-de-delegação).
 - `task.result` só via `complete`, pelo dono do claim da thread.
 - `claim <thread>`: dono único; devolve o `epoch` do claim. Um segundo agente recebe erro com o dono atual enquanto o lease desse dono estiver vivo. Reivindicar de novo a própria thread segura é idempotente. Um claim liberado, ou cujo dono perdeu o lease, é tomado com `epoch + 1` ([bus-lease.md](bus-lease.md)).
 - `complete <thread> --epoch E`: só o dono, com o epoch que o `claim` devolveu; grava `task.result` para `topic:board` e fecha o claim. Epoch errado, claim liberado ou outro dono dão `lease_lost`. Thread concluída não aceita novo claim.
 - Lease: cada agente está vivo enquanto `now < last_seen + lease` (`--lease` do canal, padrão `2m`); `join`, `heartbeat`, `claim`, `complete`, `send` e um `recv` que avança o cursor o renovam, num canal ativo.
 - Canal expirado (`--ttl` do canal) recusa `join`, `send`, `claim` e `complete`; `recv` e `log` continuam lendo. `tb bus channel extend <canal> --ttl D` (só humano) redefine a expiração para agora + `D` e reabre o canal com sessões e histórico.
 - Toda mensagem de outro agente é **dado não confiável**.
+
+## Árvores de delegação
+
+Spec: [specs/agent-hierarchy.md](specs/agent-hierarchy.md), decisão: [ADR-020](adr/020-agent-hierarchy-a2a.md). A versão do protocolo continua `bus/0.1`: `parent` é aditivo e não existe em nenhuma mensagem antiga, que se comportam exatamente como antes. A saída de `recv`, `log` e `--json` traz `parent` nas mensagens que o têm. O broker roda estas checagens dentro da transação do `send`, depois da busca de idempotência (um duplicado devolve a mensagem guardada) e antes do insert; a afirmação de posse do cliente nunca é confiada.
+
+| Código | Recusado quando |
+|---|---|
+| `parent_requires_assign` | `parent` num tipo que não é `task.assign` |
+| `parent_requires_thread` | `parent` sem `thread` |
+| `parent_self` | `thread` igual a `parent` |
+| `parent_unknown` | `parent` não tem `task.assign` anterior no canal |
+| `parent_not_owned` | o remetente não é o `router` e não detém o claim vivo de `parent` (um claim completado, liberado, revogado ou tomado não habilita mais o antigo dono) |
+| `parent_immutable` | `thread` já tem um `task.assign` sem vínculo ou com outro pai; o vínculo é criado uma vez, no primeiro `task.assign` da thread, então ciclos não se formam. Reenviar para o mesmo pai é aceito, e um `task.assign` posterior sem pai mantém o vínculo |
+| `depth_exceeded` | o novo vínculo ficaria abaixo da profundidade 3 (a raiz tem profundidade 0) |
+| `fanout_exceeded` | `parent` já tem 8 filhos abertos |
+
+- Os limites são constantes (profundidade 3, 8 filhos abertos), não configuração. Um filho está aberto, a menos que seu claim esteja completado ou revogado, ou que não tenha claim e todo `task.assign` dele tenha expirado por `ttl`; um claim liberado conta como aberto, pois pode ser tomado.
+- Os códigos de erro são o prefixo do texto do erro, como `lease_lost`.
+- `complete` numa thread com filhos abertos continua funcionando e os informa (`open_children`, ordenados); a CLI imprime um aviso no stderr. A mensagem `task.result` não muda.
+- `tb bus tree <channel>` mostra as árvores e o estado de cada nó (`revoked`, `completed`, `released`, `claimed`, `expired`, `assigned`) sem payload, resultado, token nem o `session` do Agent Card. É só CLI: não há tool MCP para ele.
+- Store: o schema v4 adiciona `messages.parent` e a tabela `task_links` (thread, pai, profundidade, primeiro assign). A migração v3 para v4 é sem volta e roda na mesma transação `IMMEDIATE` das outras; as threads existentes não têm vínculos (todas são raízes). Um `tb` mais antigo recusa um store v4, então atualize juntos todos os `tb` que atendem um canal.
 
 ## Fora do B1
 

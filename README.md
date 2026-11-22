@@ -234,7 +234,7 @@ tb bus recv --channel feature-x --as grok-1 --wait 20s
 - [x] MCP with field-loop parity (`mem` / `verify` / `review` / `drift` / `guard`)
 - [x] `tb stack` — stacks verify/review/drift/guard with shared diff/index/memory (+ MCP `tb_stack`)
 - [x] Landing page in [`site/`](site/) + GitHub Pages ([docs/site.md](docs/site.md) · [live site](https://leonardo-moraes360.github.io/toolbelt/))
-- [x] Agent hierarchy / A2A / `tb md`: decided in [ADR-020](docs/adr/020-agent-hierarchy-a2a.md). A2A is the A2A-shaped `bus/0.1` envelope on the local bus, with no HTTP or socket in `tb` (a bridge is an ordinary bus agent the human runs); the hierarchy is `tb router` + the bus roles; `tb md` and `tb agent` are dropped. What remains is B5 below
+- [x] Agent hierarchy / A2A / `tb md`: decided in [ADR-020](docs/adr/020-agent-hierarchy-a2a.md). A2A is the A2A-shaped `bus/0.1` envelope on the local bus, with no HTTP or socket in `tb` (a bridge is an ordinary bus agent the human runs); the hierarchy is `tb router` + the bus roles; `tb md` and `tb agent` are dropped. B5 below (delegation trees) is built
 
 ### Input for the next phase (field study)
 - Field study of `tb` across 20 public repositories (reports in [`docs/campo/`](docs/campo/) + improvement synthesis in [`docs/campo/SINTESE.md`](docs/campo/SINTESE.md)), as prioritized input for upcoming product PRs.
@@ -261,7 +261,7 @@ tb bus recv --channel feature-x --as grok-1 --wait 20s
 - [x] B2 — lease, heartbeat and watchdog on the bus ([spec](docs/bus-lease.md))
 - [x] B3 — `tb bus run` with `exec`, `harness` and `notify` adapters and `tb bus discover` ([docs/bus-harness.md](docs/bus-harness.md), [docs/bus-notify-discover.md](docs/bus-notify-discover.md))
 - [x] B4 — Phase 3 router/board on top of the bus ([spec](docs/bus-router.md)): bus operations, harness `router_tasks` and router bus slots `b1..bN`
-- [ ] B5 — delegation trees ([spec](docs/specs/agent-hierarchy.md), [ADR-020](docs/adr/020-agent-hierarchy-a2a.md)): `task.assign` with a broker-checked `parent`, depth and fan-out limits, `tb bus tree`
+- [x] B5 — delegation trees ([spec](docs/specs/agent-hierarchy.md), [ADR-020](docs/adr/020-agent-hierarchy-a2a.md)): `task.assign` with a broker-checked `parent`, depth and fan-out limits, `tb bus tree`
 
 ## 🤝 Contributing
 
