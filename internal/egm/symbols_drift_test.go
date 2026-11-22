@@ -69,7 +69,7 @@ func TestReceiptV3(t *testing.T) {
 		writeFile(t, filepath.Join(f.root, filepath.FromSlash(ReceiptPath(f.doc))), string(bad.Encode()))
 		gitT(t, f.root, "add", "-f", ".toolbelt")
 		gitT(t, f.root, "commit", "-qm", name)
-		if d := driftOfDoc(f.drift(ctx, ""), f.doc); d.Status != DriftUnreadable && d.Status != DriftNoBaseline {
+		if d := driftOfDoc(f.drift(ctx, ""), f.doc); d.Status != DriftUnreadable {
 			t.Errorf("%s: %+v", name, d)
 		}
 	}

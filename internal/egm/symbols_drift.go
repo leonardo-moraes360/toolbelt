@@ -28,26 +28,37 @@ func splitSymbolKey(k string) (p, name string, ok bool) {
 
 // symScopes maps a symbol-scoped source path to its baseline symbols (name →
 // sha256). A path is symbol-scoped when the document cites it only through
-// symbol citations and the baseline holds at least one of its symbols;
-// anything else (a plain citation, a v1/v2 receipt, a round with no symbol
-// baseline) is file-scoped, as before C5.
+// symbol citations and the baseline holds every one of them; anything else
+// (a plain citation, a v1/v2 receipt, a round with no symbol baseline) is
+// file-scoped, as before C5.
 type symScopes map[string]map[string]string
 
-func symbolScopes(docRel, text string, syms map[string]string) symScopes {
+func symbolScopes(docRel, text string, set *Settings, syms map[string]string) symScopes {
 	out := symScopes{}
 	if len(syms) == 0 {
 		return out
 	}
-	_, plain := DocCites(docRel, text)
-	for _, k := range symbolKeys(syms) {
-		p, name, ok := splitSymbolKey(k)
-		if !ok || plain[p] {
+	cites, plain := docCitesWith(docRel, text, set)
+	byPath := map[string][]SymbolCite{}
+	for _, c := range cites {
+		byPath[c.Path] = append(byPath[c.Path], c)
+	}
+	for p, cs := range byPath {
+		if plain[p] {
 			continue
 		}
-		if out[p] == nil {
-			out[p] = map[string]string{}
+		m := map[string]string{}
+		for _, c := range cs {
+			h, ok := syms[c.Key()]
+			if !ok {
+				m = nil // a cited symbol without a baseline: file-scoped
+				break
+			}
+			m[c.Name] = h
 		}
-		out[p][name] = syms[k]
+		if m != nil {
+			out[p] = m
+		}
 	}
 	return out
 }

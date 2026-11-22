@@ -133,16 +133,35 @@ func isHex64(s string) bool {
 	return true
 }
 
-// symbolsFit reports whether a v3 receipt's symbol keys are all citations of
-// the document it certifies; a key the document never cites is forged.
-// Keys the head no longer resolves are staleness, checked by fresh.
-func (r *Receipt) symbolsFit(text string) bool {
+// symbolsFit reports whether a v3 receipt's symbol keys are exactly the
+// document's citations: a key the document never cites is forged, and a
+// citation of a receipt source that has some, but not all, of its keys is a
+// hand-stripped baseline. A source with no key at all is file-scoped (its
+// symbols could not be hashed), which is the stricter reading. Keys the head
+// no longer resolves are staleness, checked by fresh.
+func (r *Receipt) symbolsFit(text string, set *Settings) bool {
 	if len(r.Symbols) == 0 {
 		return true
 	}
-	cited := citedSymbolKeys(r.Doc, text)
+	cites, _ := docCitesWith(r.Doc, text, set)
+	cited := map[string]bool{}
+	want, have := map[string]int{}, map[string]int{}
+	for _, c := range cites {
+		cited[c.Key()] = true
+		if _, ok := r.Sources[c.Path]; ok {
+			want[c.Path]++
+			if _, ok := r.Symbols[c.Key()]; ok {
+				have[c.Path]++
+			}
+		}
+	}
 	for k := range r.Symbols {
 		if !cited[k] {
+			return false
+		}
+	}
+	for p, n := range have {
+		if n != want[p] {
 			return false
 		}
 	}
@@ -186,7 +205,7 @@ func receiptCheck(ctx context.Context, root, rel, head, cfg string) (*Receipt, *
 	if err != nil || code != "" {
 		return nil, s, code, err
 	}
-	if rc.DocSHA256 == s.docSHA && !rc.symbolsFit(s.text) {
+	if rc.DocSHA256 == s.docSHA && !rc.symbolsFit(s.text, &s.set) {
 		return nil, s, "receipt_invalid", nil
 	}
 	if !rc.fresh(s) {

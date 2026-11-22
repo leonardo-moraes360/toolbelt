@@ -44,12 +44,26 @@ func (c SymbolCite) Key() string { return c.Path + "#" + c.Name }
 // document, spans relative to the root), first line of each, and the .go
 // paths it cites plainly (with no symbol fragment): those are file-scoped.
 func DocCites(docRel, text string) (cites []SymbolCite, plain map[string]bool) {
+	return docCitesWith(docRel, text, nil)
+}
+
+// docCitesWith is DocCites without the citations the refs checker exempts
+// (the example marker on the line, egm.refs_ignore): they are not verified,
+// hashed or scoped. A nil set applies only the marker.
+func docCitesWith(docRel, text string, set *Settings) (cites []SymbolCite, plain map[string]bool) {
+	if set == nil {
+		set = &Settings{}
+	}
 	plain = map[string]bool{}
 	seen := map[string]bool{}
+	lines := strings.Split(text, "\n")
 	visit := func(base, raw string, line int) {
 		raw, frag, _ := strings.Cut(raw, "#")
 		rel, why := cleanRel(base, raw)
 		if why != "" || rel == docRel || !strings.HasSuffix(rel, ".go") {
+			return
+		}
+		if refExemption(lines[line-1], rel, set, nil) != "" {
 			return
 		}
 		if !symbolFrag(frag) {
@@ -62,7 +76,7 @@ func DocCites(docRel, text string) (cites []SymbolCite, plain map[string]bool) {
 			cites = append(cites, c)
 		}
 	}
-	for i, l := range strings.Split(text, "\n") {
+	for i, l := range lines {
 		for _, h := range graph.CollectMDLinks(l) {
 			visit(path.Dir(docRel), h, i+1)
 		}
@@ -73,16 +87,6 @@ func DocCites(docRel, text string) (cites []SymbolCite, plain map[string]bool) {
 		}
 	}
 	return cites, plain
-}
-
-// citedSymbolKeys is the set of "path#Name" the document cites, valid or not.
-func citedSymbolKeys(docRel, text string) map[string]bool {
-	cites, _ := DocCites(docRel, text)
-	out := map[string]bool{}
-	for _, c := range cites {
-		out[c.Key()] = true
-	}
-	return out
 }
 
 // symbolLookup is the outcome of resolving a name in a file's symbols.
@@ -115,20 +119,28 @@ func findSymbol(syms []graph.Symbol, name string) (graph.Symbol, symbolLookup) {
 // file is an included source must name one declaration of that file. It adds
 // its findings to res (so the refs checker's lineages cover them) and
 // returns the hashes of the resolved, unambiguous citations (R17).
-func checkSymbols(d *Doc, docRel, text string, sources []Source, res *CheckResult) map[string]string {
+func checkSymbols(d *Doc, docRel, text string, set *Settings, ss *SourceSet, res *CheckResult) map[string]string {
 	out := map[string]string{}
-	cites, _ := DocCites(docRel, text)
+	cites, _ := docCitesWith(docRel, text, set)
 	raw := map[string][]byte{}
-	for _, s := range sources {
+	dropped := droppedGoSources(ss)
+	for _, s := range ss.Included {
 		if s.Raw != nil {
 			raw[s.Path] = s.Raw
 		}
 	}
 	parsed := map[string][]graph.Symbol{}
 	broken := map[string]bool{}
+	reported := map[string]bool{}
 	for _, c := range cites {
 		b, ok := raw[c.Path]
 		if !ok {
+			if why := dropped[c.Path]; why != "" && !reported[c.Path] {
+				reported[c.Path] = true
+				res.Findings = append(res.Findings, symbolFinding(d, docRel, c, SevNit, "symbol_unverified:"+c.Path,
+					fmt.Sprintf("symbol citations in %#q not verified (%s)", c.Path, why)))
+				res.inputs = append(res.inputs, "symbol\t"+c.Path+"\tunverified:"+why)
+			}
 			continue
 		}
 		syms, done := parsed[c.Path]
@@ -173,4 +185,16 @@ func symbolFinding(d *Doc, docRel string, c SymbolCite, sev, key, msg string) Fi
 		Evidence: []Evidence{{Path: docRel, Line: c.Line}},
 		Key:      key,
 	}
+}
+
+// droppedGoSources maps the sources left out of the packet for its budget or
+// a secret-like value to that reason: their symbol citations stay unverified.
+func droppedGoSources(ss *SourceSet) map[string]string {
+	out := map[string]string{}
+	for _, sk := range ss.Skipped {
+		if sk.Reason == "max_packet_bytes" || sk.Reason == "secret_like" {
+			out[sk.Path] = sk.Reason
+		}
+	}
+	return out
 }

@@ -247,7 +247,7 @@ func driftOf(ctx context.Context, repo *Repo, set *Settings, oid, rel string, wi
 		dd.Status, dd.Reason = DriftUnreadable, "document unreadable"
 		return dd, err
 	}
-	base, code, err := baselineOf(ctx, repo, oid, rel, text, docSHA, withState)
+	base, code, err := baselineOf(ctx, repo, set, oid, rel, text, docSHA, withState)
 	switch {
 	case err != nil:
 		return dd, err
@@ -282,7 +282,7 @@ func docAt(ctx context.Context, repo *Repo, set *Settings, oid, rel string) (tex
 
 // baselineOf: the committed receipt at oid when it certifies these
 // document bytes, else a converged state round for them.
-func baselineOf(ctx context.Context, repo *Repo, oid, rel, text, docSHA string, withState bool) (*baseline, string, error) {
+func baselineOf(ctx context.Context, repo *Repo, set *Settings, oid, rel, text, docSHA string, withState bool) (*baseline, string, error) {
 	rc, code, err := readReceiptAt(ctx, repo, oid, rel, docLines(text))
 	if err != nil {
 		return nil, "", err
@@ -291,7 +291,7 @@ func baselineOf(ctx context.Context, repo *Repo, oid, rel, text, docSHA string, 
 		return nil, code, nil
 	}
 	if rc != nil && rc.DocSHA256 == docSHA {
-		if !rc.symbolsFit(text) {
+		if !rc.symbolsFit(text, set) {
 			return nil, "receipt_invalid", nil
 		}
 		return &baseline{kind: BaselineReceipt, sources: rc.Sources, symbols: rc.Symbols}, "", nil
@@ -340,7 +340,7 @@ func compareSources(ctx context.Context, repo *Repo, set *Settings, oid, rel, te
 		paths = append(paths, p)
 	}
 	sort.Strings(paths)
-	sc := symbolScopes(rel, text, syms)
+	sc := symbolScopes(rel, text, set, syms)
 	if err := hashBaseline(ctx, repo, set, oid, rel, paths, base, sc, dd); err != nil {
 		return err
 	}

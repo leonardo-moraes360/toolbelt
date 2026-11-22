@@ -193,7 +193,7 @@ func (s *snapshot) phase1(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	s.symbols = checkSymbols(s.doc, s.rel, s.text, s.sources.Included, s.checks)
+	s.symbols = checkSymbols(s.doc, s.rel, s.text, &s.set, s.sources, s.checks)
 	pairs := []string{s.rel + "\t" + s.docSHA}
 	for _, src := range s.sources.Included {
 		pairs = append(pairs, src.Path+"\t"+src.SHA256)
