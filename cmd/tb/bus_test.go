@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -395,4 +396,64 @@ func TestBusCLIDelegationTree(t *testing.T) {
 	if !strings.Contains(stderr.String(), "warning: TKT-001 completed with 1 open children (TKT-001/api)") {
 		t.Fatalf("stderr: %q", stderr.String())
 	}
+}
+
+// One live client per bus identity: a second `tb mcp --bus-as`, a `tb bus run`
+// and a re-join with a bound invite are all refused while the first is up.
+func TestBusIdentityHeldByOneClient(t *testing.T) {
+	tbBin := buildTB(t)
+	dir := t.TempDir()
+	busCLISetup(t, tbBin, dir)
+	first := exec.Command(tbBin, "mcp", "--bus-as", "fx/claude-main", "--bus-root", dir)
+	first.Dir = dir
+	in, err := first.StdinPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	outPipe, err := first.StdoutPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := first.Start(); err != nil {
+		t.Fatal(err)
+	}
+	c := &mcpClient{t: t, in: in, out: bufio.NewReader(outPipe)}
+	c.must("tb_bus_recv", map[string]any{})
+	pid := fmt.Sprintf("pid %d", first.Process.Pid)
+
+	refused := func(name string, cmd *exec.Cmd) {
+		t.Helper()
+		cmd.Dir = dir
+		var stderr strings.Builder
+		cmd.Stderr = &stderr
+		err := cmd.Run()
+		var ee *exec.ExitError
+		if !errors.As(err, &ee) {
+			t.Fatalf("%s: want an exit error, got %v", name, err)
+		}
+		if ee.ExitCode() != 2 {
+			t.Fatalf("%s: exit %d, want 2\n%s", name, ee.ExitCode(), stderr.String())
+		}
+		if !strings.Contains(stderr.String(), "session_in_use") || (name != "dead harness pid" && !strings.Contains(stderr.String(), pid)) {
+			t.Fatalf("%s: stderr must name session_in_use and %q:\n%s", name, pid, stderr.String())
+		}
+	}
+	refused("second mcp", exec.Command(tbBin, "mcp", "--bus-as", "fx/claude-main", "--bus-root", dir))
+	wake := filepath.Join(t.TempDir(), "wake.yaml")
+	if err := os.WriteFile(wake, []byte("adapter: notify\nnotify:\n  backend: terminal\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	refused("bus run", exec.Command(tbBin, "bus", "run", "--channel", "fx", "--as", "claude-main", "--config", wake, "--check"))
+	var inv struct{ Code string }
+	unmarshalOut(t, runBus(t, tbBin, dir, "invite", "fx", "--role", "supervisor", "--name", "claude-main"), &inv)
+	refused("re-join", exec.Command(tbBin, "bus", "join", "fx", "--invite", inv.Code, "--name", "claude-main"))
+
+	// A harness pid that is gone no longer vouches for the identity.
+	refused("dead harness pid", exec.Command(tbBin, "mcp", "--bus-as", "fx/claude-main", "--bus-root", dir, "--bus-holder-pid", "2147483646"))
+
+	// A crashed holder leaves the identity free.
+	_ = first.Process.Kill()
+	_ = first.Wait()
+	second := startMCP(t, tbBin, dir, "--bus-as", "fx/claude-main", "--bus-root", dir)
+	second.must("tb_bus_recv", map[string]any{})
 }

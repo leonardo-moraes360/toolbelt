@@ -79,11 +79,31 @@ func bindBusAs(cmd *cobra.Command) error {
 		}
 		root = ticket.FindRoot(cwd)
 	}
+	// The harness that spawned this server holds the identity lock for its
+	// whole run, and the sandbox it runs us in cannot open the lock file:
+	// its pid, passed in the 0600 mcp.json it wrote, stands for the lock.
+	if holder, _ := cmd.Flags().GetInt("bus-holder-pid"); holder > 0 {
+		if !bus.ProcessAlive(holder) {
+			return fmt.Errorf("%w: the tb bus run (pid %d) that owned %s/%s is gone; start the client again through tb bus run", bus.ErrSessionInUse, holder, channel, name)
+		}
+	} else {
+		release, err := bus.LockIdentity(root, channel, name, "tb mcp --bus-as")
+		if err != nil {
+			return err
+		}
+		busLockRelease = release
+	}
 	return registry.BindBusSession(root, channel, name)
 }
 
+// busLockRelease keeps the identity lock for the life of the process; the
+// kernel drops the flock on exit or crash.
+var busLockRelease func()
+
 func init() {
 	mcpCmd.Flags().String("bus-as", "", "binds the connection to the bus session <channel>/<name> (used by tb bus run)")
+	mcpCmd.Flags().Int("bus-holder-pid", 0, "pid of the tb bus run that holds this identity and spawned this server")
+	_ = mcpCmd.Flags().MarkHidden("bus-holder-pid")
 	mcpCmd.Flags().String("bus-root", "", "bus repository root (default: searches for .toolbelt from the cwd)")
 	mcpCmd.Flags().String("bus-state", "", "base of the bus private directory (default $XDG_STATE_HOME/toolbelt/bus)")
 }

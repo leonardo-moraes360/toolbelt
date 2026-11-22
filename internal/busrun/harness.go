@@ -14,8 +14,6 @@ import (
 	"github.com/leonardo-moraes360/toolbelt/internal/log"
 )
 
-var errLocked = errors.New("another tb bus run is already running for this agent")
-
 type Options struct {
 	Root             string
 	Channel          string
@@ -123,7 +121,7 @@ func (h *Harness) init() error {
 	if h.agentDir, err = bus.AgentDir(h.root, m.Channel, m.Name); err != nil {
 		return err
 	}
-	unlock, err := acquireLock(h.base + ".lock")
+	unlock, err := bus.LockIdentity(h.root, m.Channel, m.Name, "tb bus run")
 	if err != nil {
 		return err
 	}
@@ -241,7 +239,7 @@ func (h *Harness) session() string {
 
 // Errors that stop the harness; all others are transient (log and continue).
 func fatal(err error) bool {
-	return errors.Is(err, bus.ErrUnauthorized) || errors.Is(err, errLocked)
+	return errors.Is(err, bus.ErrUnauthorized) || errors.Is(err, bus.ErrSessionInUse)
 }
 
 // Run: once allows at most one wake. Heartbeats run in their own goroutine

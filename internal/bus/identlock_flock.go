@@ -1,0 +1,42 @@
+//go:build linux || darwin || freebsd || netbsd || openbsd
+
+package bus
+
+import (
+	"os"
+	"syscall"
+)
+
+func lockFile(path, kind string) (func(), error) {
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		return nil, err
+	}
+	for {
+		err = syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
+		if err != syscall.EINTR {
+			break
+		}
+	}
+	if err != nil {
+		_ = f.Close()
+		if err == syscall.EWOULDBLOCK {
+			return nil, errLockHeld
+		}
+		return nil, err
+	}
+	// Holder info is advisory (for the contender's message); the flock is the lock.
+	if err := f.Truncate(0); err == nil {
+		_, _ = f.WriteAt([]byte(holderRecord(kind)), 0)
+	}
+	return func() {
+		_ = syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
+		_ = f.Close()
+	}, nil
+}
+
+// ProcessAlive reports whether pid exists (EPERM means it does, owned by someone else).
+func ProcessAlive(pid int) bool {
+	err := syscall.Kill(pid, 0)
+	return err == nil || err == syscall.EPERM
+}

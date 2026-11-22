@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/leonardo-moraes360/toolbelt/internal/bus"
 	"github.com/leonardo-moraes360/toolbelt/internal/config"
 	"github.com/leonardo-moraes360/toolbelt/internal/log"
 	_ "github.com/leonardo-moraes360/toolbelt/internal/registry"
@@ -37,7 +39,7 @@ func main() {
 // exitCodeFor maps a typed usage error (bad --ruler, unknown --no-check) to
 // 2; every other error keeps 1.
 func exitCodeFor(err error) int {
-	if verify.IsUsageError(err) {
+	if verify.IsUsageError(err) || errors.Is(err, bus.ErrSessionInUse) {
 		return 2
 	}
 	return 1

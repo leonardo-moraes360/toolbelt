@@ -306,6 +306,7 @@ func (h *Harness) writeMCPConfig() (path, tbBin string, err error) {
 		"toolbelt": {Command: tbBin, Args: []string{"mcp",
 			"--bus-as", h.member.Channel + "/" + h.member.Name,
 			"--bus-root", h.root,
+			"--bus-holder-pid", strconv.Itoa(os.Getpid()),
 			"--bus-state", filepath.Dir(priv)}},
 	}}
 	b, err := json.MarshalIndent(cfg, "", "  ")
