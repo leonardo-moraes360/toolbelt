@@ -22,7 +22,7 @@ foreach(opt GGML_BACKEND_DL GGML_CPU_ALL_VARIANTS GGML_NATIVE GGML_OPENMP GGML_M
 endforeach()
 
 # The CPU floor (ADR-018) is x86-64-v2 on amd64 and armv8.0-a on arm64.
-# ADR-019 (spike) moves only the ggml-cpu kernels on amd64 to the AVX2 tier;
+# ADR-019 moves only the ggml-cpu kernels on amd64 to the AVX2 tier;
 # tb __graph-embed refuses with embed_cpu_unsupported on CPUs without it.
 # TB_X86_KERNELS=v2 builds the ADR-018 floor (for benchmarks and fallback).
 set(TB_X86_KERNELS "v3" CACHE STRING "amd64 ggml-cpu kernels: v2 or v3")

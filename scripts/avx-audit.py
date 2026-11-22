@@ -28,7 +28,7 @@ INSN = re.compile(r"^\s+[0-9a-f]+:\s+(\S+)(.*)$")
 
 
 def defined_symbols(lib: Path) -> set:
-    out = subprocess.run(["nm", "--defined-only", "-P", str(lib)], capture_output=True, text=True, check=True).stdout
+    out = subprocess.run(["nm", "--defined-only", "-P", "--", str(lib)], capture_output=True, text=True, check=True).stdout
     syms = set()
     for line in out.splitlines():
         parts = line.split()
@@ -48,7 +48,15 @@ def is_avx_tier(mnemonic: str, operands: str) -> bool:
 
 
 def main() -> int:
-    binary, libdir = Path(sys.argv[1]), Path(sys.argv[2])
+    if len(sys.argv) != 3:
+        print("usage: avx-audit.py <tb-binary> <native-lib-dir>", file=sys.stderr)
+        return 2
+    # Absolute paths never start with "-", so neither tool reads them as an
+    # option; "--" ends option parsing as well.
+    binary, libdir = Path(sys.argv[1]).resolve(), Path(sys.argv[2]).resolve()
+    if not binary.is_file() or not libdir.is_dir():
+        print(f"avx-audit: {binary} must be a file and {libdir} a directory", file=sys.stderr)
+        return 2
     libs = sorted(libdir.glob("lib*.a"))
     if not libs:
         print(f"avx-audit: no static libraries in {libdir}", file=sys.stderr)
@@ -62,7 +70,7 @@ def main() -> int:
         print(f"avx-audit: {cpu_lib} not found in {libdir}", file=sys.stderr)
         return 2
 
-    proc = subprocess.Popen(["objdump", "-d", "--no-show-raw-insn", str(binary)], stdout=subprocess.PIPE, text=True)
+    proc = subprocess.Popen(["objdump", "-d", "--no-show-raw-insn", "--", str(binary)], stdout=subprocess.PIPE, text=True)
     bad = collections.Counter()
     allowed = 0
     sym = None
