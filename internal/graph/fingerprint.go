@@ -129,6 +129,14 @@ func (s *Store) CheckStale(root string, opts *BuildOptions) (bool, error) {
 	return cur != fp, nil
 }
 
+// FormatOutdated reports a loaded, non-empty index written under an older
+// node ID scheme, as opposed to one whose files merely changed.
+func (s *Store) FormatOutdated() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.index != nil && s.index.Fingerprint != "" && s.index.Version != IndexVersion
+}
+
 func (s *Store) Stale() bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

@@ -50,9 +50,9 @@ func uniqueMatchesMulti(res []*regexp.Regexp, src string) []string {
 	return out
 }
 
-// maxIndexReadBytes caps what the walk reads from one file. The walk already
-// skips files over graph.max_file_bytes; this bounds a file that grew, or a
-// direct IndexFile call, between the stat and the read.
+// maxIndexReadBytes caps what is read from one file and is the ceiling of
+// graph.max_file_bytes (normalizeBuildOptions clamps to it), so the walk, the
+// fingerprint and the reader agree on what is indexable.
 const maxIndexReadBytes = 16 << 20
 
 var (
@@ -67,6 +67,7 @@ var (
 // replaces the file after the Lstat cannot hang the walk.
 func readRegularFile(root *os.Root, rel string, maxBytes int64) ([]byte, error) {
 	parts := strings.Split(filepath.ToSlash(rel), "/")
+	var last os.FileInfo
 	for i := range parts {
 		fi, err := root.Lstat(filepath.FromSlash(strings.Join(parts[:i+1], "/")))
 		if err != nil {
@@ -75,6 +76,7 @@ func readRegularFile(root *os.Root, rel string, maxBytes int64) ([]byte, error) 
 		if fi.Mode()&os.ModeSymlink != 0 || (i == len(parts)-1 && !fi.Mode().IsRegular()) {
 			return nil, errNotRegular
 		}
+		last = fi
 	}
 	f, err := root.OpenFile(filepath.FromSlash(rel), os.O_RDONLY|syscall.O_NONBLOCK, 0)
 	if err != nil {
@@ -85,7 +87,7 @@ func readRegularFile(root *os.Root, rel string, maxBytes int64) ([]byte, error) 
 	if err != nil {
 		return nil, err
 	}
-	if !fi.Mode().IsRegular() {
+	if !fi.Mode().IsRegular() || !os.SameFile(last, fi) {
 		return nil, errNotRegular
 	}
 	if fi.Size() > maxBytes {

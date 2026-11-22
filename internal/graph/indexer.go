@@ -56,6 +56,11 @@ func normalizeBuildOptions(opts *BuildOptions) {
 	if opts.MaxFileBytes <= 0 {
 		opts.MaxFileBytes = DefaultMaxFileBytes
 	}
+	// The walk, the fingerprint and the reader share one limit: a file the
+	// reader would refuse is never counted as indexable.
+	if opts.MaxFileBytes > maxIndexReadBytes {
+		opts.MaxFileBytes = maxIndexReadBytes
+	}
 	if len(opts.SkipDirs) == 0 {
 		opts.SkipDirs = DefaultBuildOptions().SkipDirs
 	}

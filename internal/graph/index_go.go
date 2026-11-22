@@ -121,53 +121,57 @@ func (GoIndexer) IndexFile(root, rel string) ([]Node, []Edge, error) {
 // goCallTarget names the callee of call: a bare name is a function of the
 // same package, pkg.F resolves through the file's imports, and recv.m inside a
 // method resolves to the same receiver's method. Anything else (a call on a
-// local variable) keeps the unresolved selector, as before.
+// local variable) is emitted under goUnresolvedPrefix.
 func goCallTarget(call *ast.CallExpr, recv, self, pkgID string, imports map[string]string) string {
-	switch fun := call.Fun.(type) {
+	fn := call.Fun
+	for {
+		switch x := fn.(type) {
+		case *ast.IndexExpr:
+			fn = x.X
+			continue
+		case *ast.IndexListExpr:
+			fn = x.X
+			continue
+		case *ast.ParenExpr:
+			fn = x.X
+			continue
+		}
+		break
+	}
+	switch fun := fn.(type) {
 	case *ast.Ident:
 		return "func:" + pkgID + "." + fun.Name
 	case *ast.SelectorExpr:
 		x, isIdent := fun.X.(*ast.Ident)
 		switch {
 		case !isIdent:
-			return "func:" + fun.Sel.Name
+			return goUnresolvedPrefix + fun.Sel.Name
 		case imports[x.Name] != "":
 			return "func:" + imports[x.Name] + "." + fun.Sel.Name
 		case recv != "" && x.Name == self:
 			return "func:" + pkgID + "." + recv + "." + fun.Sel.Name
 		}
-		return "func:" + x.Name + "." + fun.Sel.Name
+		return goUnresolvedPrefix + x.Name + "." + fun.Sel.Name
 	}
 	return ""
 }
 
-// goReceiver returns the receiver's type name, without pointer or type
-// parameters, and the receiver variable name; both empty for a plain function.
+// goUnresolvedPrefix marks a call on a value whose type is unknown. The "?"
+// cannot occur in an import path or Go identifier, so the target never lands
+// on a real node (a one-segment package ID such as `app` would otherwise make
+// `app.Run()` on a local variable resolve to the function app.Run).
+const goUnresolvedPrefix = "func:?"
+
+// goReceiver returns the receiver's type name and the receiver variable name;
+// both empty for a plain function.
 func goReceiver(fn *ast.FuncDecl) (typeName, varName string) {
 	if fn.Recv == nil || len(fn.Recv.List) == 0 {
 		return "", ""
 	}
-	field := fn.Recv.List[0]
-	if len(field.Names) > 0 {
-		varName = field.Names[0].Name
+	if names := fn.Recv.List[0].Names; len(names) > 0 {
+		varName = names[0].Name
 	}
-	t := field.Type
-	for {
-		switch x := t.(type) {
-		case *ast.StarExpr:
-			t = x.X
-		case *ast.ParenExpr:
-			t = x.X
-		case *ast.IndexExpr:
-			t = x.X
-		case *ast.IndexListExpr:
-			t = x.X
-		case *ast.Ident:
-			return x.Name, varName
-		default:
-			return "", varName
-		}
-	}
+	return recvName(fn.Recv), varName
 }
 
 func goImportName(imp *ast.ImportSpec, importPath string) string {
@@ -179,7 +183,10 @@ func goImportName(imp *ast.ImportSpec, importPath string) string {
 	if len(parts) > 1 && goMajorSuffix.MatchString(name) {
 		name = parts[len(parts)-2]
 	}
-	return name
+	if i := strings.LastIndex(name, ".v"); i > 0 && goMajorSuffix.MatchString(name[i+1:]) {
+		name = name[:i]
+	}
+	return strings.TrimPrefix(name, "go-")
 }
 
 var goMajorSuffix = regexp.MustCompile(`^v\d+$`)
@@ -201,7 +208,7 @@ var goModCache sync.Map
 func goPackageID(root, rel, pkgName string) string {
 	dir := filepath.ToSlash(filepath.Dir(rel))
 	for d := dir; ; d = gopath.Dir(d) {
-		if mod := goModulePath(filepath.Join(root, filepath.FromSlash(d), "go.mod")); mod != "" {
+		if mod := goModulePath(root, gopath.Join(d, "go.mod")); mod != "" {
 			sub := strings.TrimPrefix(strings.TrimPrefix(dir, d), "/")
 			if d == "." {
 				sub = dir
@@ -221,8 +228,9 @@ func goPackageID(root, rel, pkgName string) string {
 	return dir
 }
 
-func goModulePath(gomod string) string {
-	fi, err := os.Stat(gomod)
+func goModulePath(root, rel string) string {
+	gomod := filepath.Join(root, filepath.FromSlash(rel))
+	fi, err := os.Lstat(gomod)
 	if err != nil || !fi.Mode().IsRegular() {
 		return ""
 	}
@@ -233,7 +241,7 @@ func goModulePath(gomod string) string {
 		}
 	}
 	mod := ""
-	if data, err := os.ReadFile(gomod); err == nil {
+	if data, err := readSourceBytes(root, rel); err == nil {
 		if m := goModuleLine.FindSubmatch(data); m != nil {
 			mod = strings.Trim(string(m[1]), `"`)
 		}

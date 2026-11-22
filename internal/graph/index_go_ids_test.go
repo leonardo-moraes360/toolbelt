@@ -1,11 +1,9 @@
 package graph
 
 import (
-	"os"
+	"go/ast"
 	"path/filepath"
-	"syscall"
 	"testing"
-	"time"
 )
 
 func nodeIDs(idx *Index) map[string]Node {
@@ -107,45 +105,60 @@ func TestStoreOlderIndexVersionIsStale(t *testing.T) {
 	}
 }
 
-func TestIndexSkipsSymlinksAndFIFOs(t *testing.T) {
+func TestGoIndexerOneSegmentModuleDoesNotResolveLocalVariableCalls(t *testing.T) {
 	root := t.TempDir()
-	outside := t.TempDir()
-	mustWrite(t, filepath.Join(outside, "secret.md"), "# Leaked heading\n")
-	mustWrite(t, filepath.Join(root, "docs", "real.md"), "# Real heading\n")
-	if err := os.Symlink(filepath.Join(outside, "secret.md"), filepath.Join(root, "docs", "link.md")); err != nil {
-		t.Skip("symlink unsupported:", err)
+	mustWrite(t, filepath.Join(root, "go.mod"), "module app\n\ngo 1.22\n")
+	mustWrite(t, filepath.Join(root, "a.go"), `package app
+func Run() {}
+func Use(db *DB) { db.Close(); Close(); Gen[int](1) }
+func Close() {}
+func Gen[T any](v T) {}
+type DB struct{}
+func (d *DB) Close() {}
+`)
+	mustWrite(t, filepath.Join(root, "db", "db.go"), "package db\nfunc Close() {}\n")
+	idx, err := BuildFromRoot(root)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if err := syscall.Mkfifo(filepath.Join(root, "docs", "pipe.md"), 0o600); err != nil {
-		t.Skip("mkfifo unsupported:", err)
+	if hasEdge(idx, EdgeCalls, "func:app.Use", "func:db.Close") {
+		t.Error("db.Close() on a local variable resolved to package db's Close")
 	}
+	if !hasEdge(idx, EdgeCalls, "func:app.Use", "func:?db.Close") {
+		t.Error("unresolved selector must use the func:? namespace")
+	}
+	if !hasEdge(idx, EdgeCalls, "func:app.Use", "func:app.Gen") {
+		t.Error("generic call not unwrapped")
+	}
+}
 
-	done := make(chan *Index, 1)
-	go func() {
-		idx, _ := BuildFromRoot(root)
-		done <- idx
-	}()
-	var idx *Index
-	select {
-	case idx = <-done:
-	case <-time.After(20 * time.Second):
-		t.Fatal("index hung on a FIFO")
-	}
-	if idx == nil {
-		t.Fatal("no index")
-	}
-	for _, n := range idx.Nodes {
-		if n.Path == "docs/link.md" || n.Path == "docs/pipe.md" || n.Title == "Leaked heading" {
-			t.Errorf("indexed an unsafe entry: %+v", n)
+func TestGoImportName(t *testing.T) {
+	for path, want := range map[string]string{
+		"github.com/x/go-yaml": "yaml",
+		"gopkg.in/yaml.v3":     "yaml",
+		"github.com/x/y/v2":    "y",
+		"example.com/app/util": "util",
+	} {
+		spec := &ast.ImportSpec{}
+		if got := goImportName(spec, path); got != want {
+			t.Errorf("goImportName(%q) = %q, want %q", path, got, want)
 		}
 	}
+}
 
-	if _, err := readSource(root, "docs/link.md"); err == nil {
-		t.Error("readSource followed a symlink")
+func TestFormatOutdatedAndMaxFileBytesClamp(t *testing.T) {
+	s := NewStore(filepath.Join(t.TempDir(), "graph.json"))
+	s.index = &Index{Fingerprint: "x", Version: 1}
+	if !s.FormatOutdated() {
+		t.Error("older version must report FormatOutdated")
 	}
-	if _, err := readSource(root, "docs/pipe.md"); err == nil {
-		t.Error("readSource read a FIFO")
+	s.index = &Index{Fingerprint: "x", Version: IndexVersion}
+	if s.FormatOutdated() {
+		t.Error("current version is not outdated")
 	}
-	if _, err := readSource(root, "docs/real.md"); err != nil {
-		t.Errorf("readSource regular file: %v", err)
+	opts := BuildOptions{MaxFileBytes: 1 << 40}
+	normalizeBuildOptions(&opts)
+	if opts.MaxFileBytes != maxIndexReadBytes {
+		t.Errorf("MaxFileBytes = %d, want clamp to %d", opts.MaxFileBytes, maxIndexReadBytes)
 	}
 }

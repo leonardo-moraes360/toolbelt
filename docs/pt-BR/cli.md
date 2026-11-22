@@ -254,7 +254,7 @@ graph:
   languages: [go, javascript, python, java, kotlin, csharp, cpp, rust, php, ruby, swift, shell]
   docs: [markdown, html, txt]
   frameworks: [react, vue, svelte, astro, angular, routes, mdx]
-  max_file_bytes: 524288   # ignora arquivos maiores
+  max_file_bytes: 524288   # ignora arquivos maiores (teto de 16 MiB)
   index_on_change: true    # reindexa em search/callers/deps/impact/explain/path/stats se o fingerprint mudou
 ```
 
