@@ -123,6 +123,7 @@ Spec: [specs/agent-hierarchy.md](specs/agent-hierarchy.md), decision: [ADR-020](
 | `parent_unknown` | `parent` has no earlier `task.assign` in the channel |
 | `parent_not_owned` | the sender is not the `router` and does not hold the live claim on `parent` (a claim that is completed, released, revoked or taken over no longer entitles its old owner) |
 | `parent_immutable` | `thread` already has a `task.assign` with no link or with another parent; the link is set once, on the thread's first `task.assign`, so cycles cannot form. A re-send to the same parent is accepted, and a later parentless `task.assign` keeps the link |
+| `child_claimed` | `thread` has no `task.assign` yet but already has a claim row (claimed or completed without an assign); linking it afterwards is refused |
 | `depth_exceeded` | the new link would sit below depth 3 (a root has depth 0) |
 | `fanout_exceeded` | `parent` already has 8 open children |
 

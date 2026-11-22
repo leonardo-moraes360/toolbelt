@@ -483,3 +483,29 @@ func TestFreshAndMigratedSchemasMatch(t *testing.T) {
 		}
 	}
 }
+
+func TestChildClaimedRefusedAndTreeNeedsNoWriteLock(t *testing.T) {
+	s, _, owner, _ := setup(t)
+	mustAssign(t, s, owner, "P", "")
+	claim(t, s, owner, "P")
+	claim(t, s, owner, "X") // a claim row with no task.assign
+	_, err := assign(s, owner, "X", "P")
+	if !errors.Is(err, ErrChildClaimed) || !strings.HasPrefix(err.Error(), "child_claimed") {
+		t.Fatalf("claimed child: %v", err)
+	}
+	mustAssign(t, s, owner, "C", "P")
+
+	// Another connection holds the write lock; Tree must still read.
+	raw, err := sql.Open("sqlite", "file:"+filepath.Join(s.dir, "bus.db")+"?_pragma=busy_timeout(100)")
+	must(t, err)
+	defer raw.Close()
+	raw.SetMaxOpenConns(1)
+	_, err = raw.Exec("BEGIN IMMEDIATE")
+	must(t, err)
+	defer func() { _, _ = raw.Exec("ROLLBACK") }()
+	tr, err := s.Tree("feature-x", "P", false, 0)
+	must(t, err)
+	if len(tr.Nodes) != 2 {
+		t.Fatalf("tree: %+v", tr.Nodes)
+	}
+}

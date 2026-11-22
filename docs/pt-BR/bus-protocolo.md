@@ -123,6 +123,7 @@ Spec: [specs/agent-hierarchy.md](specs/agent-hierarchy.md), decisão: [ADR-020](
 | `parent_unknown` | `parent` não tem `task.assign` anterior no canal |
 | `parent_not_owned` | o remetente não é o `router` e não detém o claim vivo de `parent` (um claim completado, liberado, revogado ou tomado não habilita mais o antigo dono) |
 | `parent_immutable` | `thread` já tem um `task.assign` sem vínculo ou com outro pai; o vínculo é criado uma vez, no primeiro `task.assign` da thread, então ciclos não se formam. Reenviar para o mesmo pai é aceito, e um `task.assign` posterior sem pai mantém o vínculo |
+| `child_claimed` | `thread` ainda não tem `task.assign` mas já tem uma linha de claim (reivindicada ou completada sem assign); ligá-la depois é recusado |
 | `depth_exceeded` | o novo vínculo ficaria abaixo da profundidade 3 (a raiz tem profundidade 0) |
 | `fanout_exceeded` | `parent` já tem 8 filhos abertos |
 

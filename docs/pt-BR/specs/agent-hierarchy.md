@@ -60,6 +60,7 @@ Rodam depois da busca de idempotência (uma duplicata devolve a mensagem guardad
   - com vínculo para o mesmo `parent`: aceito (reenvio da mesma subtarefa);
   - sem vínculo ou com outro: recusado (`parent_immutable`).
   Um `task.assign` posterior sem pai numa thread vinculada é aceito e mantém o vínculo. Como um vínculo só é criado no primeiro `task.assign` de uma thread, depois do do pai, não se formam ciclos.
+- **R5b. Filho sem claim.** Uma thread sem `task.assign` mas que já tem linha de claim (reivindicada ou completada sem assign) não pode ser vinculada (`child_claimed`).
 - **R6. Profundidade.** Uma raiz (thread com `task.assign` e sem vínculo) tem profundidade 0. `profundidade(filho) = profundidade(pai) + 1`, no máximo **3** (`depth_exceeded`).
 - **R7. Fan-out.** Um pai pode ter no máximo **8 filhos abertos** (`fanout_exceeded`). Um filho está aberto a menos que sua linha de claim esteja completada ou revogada, ou que ele não tenha linha de claim e todo `task.assign` nele tenha expirado pelo `ttl`. Um claim liberado está aberto, porque pode sofrer takeover.
 - **R8.** Os limites são constantes na Fase A, não configuração (resolvida: constantes).

@@ -1,6 +1,7 @@
 package bus
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -41,6 +42,23 @@ type TreeResult struct {
 	Nodes   []TreeNode `json:"nodes"`
 }
 
+// treeReader is what the tree loaders need from a read transaction.
+type treeReader interface {
+	Query(query string, args ...any) (*sql.Rows, error)
+	QueryRow(query string, args ...any) *sql.Row
+}
+
+// connReader runs the loaders on one connection inside a manual transaction.
+type connReader struct {
+	ctx context.Context
+	c   *sql.Conn
+}
+
+func (r connReader) Query(q string, a ...any) (*sql.Rows, error) {
+	return r.c.QueryContext(r.ctx, q, a...)
+}
+func (r connReader) QueryRow(q string, a ...any) *sql.Row { return r.c.QueryRowContext(r.ctx, q, a...) }
+
 type assignInfo struct {
 	seq    int64
 	by, id string
@@ -55,11 +73,20 @@ func (s *Store) Tree(channel, root string, all bool, limit int) (TreeResult, err
 	if limit <= 0 {
 		limit = DefaultTreeLimit
 	}
-	tx, err := s.db.Begin()
+	// The store opens with _txlock=immediate, which would take the write lock
+	// and fail on a read-only bus.db. A deferred transaction on a dedicated
+	// connection is a plain WAL read snapshot.
+	ctx := context.Background()
+	conn, err := s.db.Conn(ctx)
 	if err != nil {
 		return TreeResult{}, err
 	}
-	defer tx.Rollback() //nolint:errcheck // read-only
+	defer conn.Close() //nolint:errcheck // read-only
+	if _, err := conn.ExecContext(ctx, "BEGIN DEFERRED"); err != nil {
+		return TreeResult{}, err
+	}
+	defer conn.ExecContext(ctx, "ROLLBACK") //nolint:errcheck // read-only
+	tx := connReader{ctx: ctx, c: conn}
 	var one int
 	if err := tx.QueryRow(`SELECT 1 FROM channels WHERE name = ?`, channel).Scan(&one); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -96,7 +123,7 @@ type treeGraph struct {
 	nodes    map[string]*TreeNode
 }
 
-func loadGraph(tx *sql.Tx, channel string, now int64) (*treeGraph, error) {
+func loadGraph(tx treeReader, channel string, now int64) (*treeGraph, error) {
 	assigns, err := loadAssigns(tx, channel, now)
 	if err != nil {
 		return nil, err
@@ -174,7 +201,7 @@ func nodeState(c *Claim, live bool) (state, owner string, epoch int64) {
 
 // loadAssigns keeps the first task.assign of each thread (who assigned it and
 // its ID) and whether any assign is still within its ttl.
-func loadAssigns(tx *sql.Tx, channel string, now int64) (map[string]*assignInfo, error) {
+func loadAssigns(tx treeReader, channel string, now int64) (map[string]*assignInfo, error) {
 	rows, err := tx.Query(`SELECT seq, id, sender, thread, expires_at FROM messages
 		WHERE channel = ? AND type = 'task.assign' AND thread IS NOT NULL ORDER BY seq`, channel)
 	if err != nil {
@@ -208,7 +235,7 @@ type linkInfo struct {
 
 // loadLinks returns each linked thread's link and the children by parent in
 // assignment order.
-func loadLinks(tx *sql.Tx, channel string, assigns map[string]*assignInfo) (links map[string]linkInfo, children map[string][]string, err error) {
+func loadLinks(tx treeReader, channel string, assigns map[string]*assignInfo) (links map[string]linkInfo, children map[string][]string, err error) {
 	rows, err := tx.Query(`SELECT thread, parent, depth FROM task_links WHERE channel = ?`, channel)
 	if err != nil {
 		return nil, nil, err
@@ -236,7 +263,7 @@ func loadLinks(tx *sql.Tx, channel string, assigns map[string]*assignInfo) (link
 	return links, children, nil
 }
 
-func loadClaims(tx *sql.Tx, channel string) (map[string]*Claim, error) {
+func loadClaims(tx treeReader, channel string) (map[string]*Claim, error) {
 	rows, err := tx.Query(`SELECT `+claimColumns+` FROM claims WHERE channel = ?`, channel)
 	if err != nil {
 		return nil, err

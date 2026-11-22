@@ -60,6 +60,7 @@ Run after the idempotency lookup (a duplicate returns the stored message, as tod
   - with a link to the same `parent`: accepted (a re-send of the same subtask);
   - with no link or a different one: refused (`parent_immutable`).
   A later parentless `task.assign` on a linked thread is accepted and keeps the link. Because a link is only created on a thread's first `task.assign`, after the parent's, cycles cannot form.
+- **R5b. Unclaimed child.** A thread with no `task.assign` but already a claim row (claimed or completed without an assign) cannot be linked (`child_claimed`).
 - **R6. Depth.** A root (a thread with a `task.assign` and no link) has depth 0. `depth(child) = depth(parent) + 1`, at most **3** (`depth_exceeded`).
 - **R7. Fan-out.** A parent may have at most **8 open children** (`fanout_exceeded`). A child is open unless its claim row is completed or revoked, or it has no claim row and every `task.assign` on it has expired by `ttl`. A released claim is open, since it can be taken over.
 - **R8.** The limits are constants in Phase A, not configuration (resolved: constants).

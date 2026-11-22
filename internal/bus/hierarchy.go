@@ -26,6 +26,7 @@ var (
 	ErrParentUnknown        = errors.New("parent_unknown")
 	ErrParentNotOwned       = errors.New("parent_not_owned")
 	ErrParentImmutable      = errors.New("parent_immutable")
+	ErrChildClaimed         = errors.New("child_claimed")
 	ErrDepthExceeded        = errors.New("depth_exceeded")
 	ErrFanoutExceeded       = errors.New("fanout_exceeded")
 )
@@ -108,8 +109,11 @@ func checkParent(tx *sql.Tx, m Member, in *SendInput, now int64) (*newLink, erro
 		}
 		return nil, nil // same subtask sent again: already counted
 	}
-	depth := 0
-	if err := tx.QueryRow(`SELECT depth FROM task_links WHERE channel = ? AND thread = ?`, m.Channel, in.Parent).Scan(&depth); err != nil && !errors.Is(err, sql.ErrNoRows) {
+	if err := requireUnclaimed(tx, m.Channel, in.Thread); err != nil {
+		return nil, err
+	}
+	depth, err := depthOf(tx, m.Channel, in.Parent)
+	if err != nil {
 		return nil, err
 	}
 	if depth+1 > MaxDepth {
@@ -123,6 +127,29 @@ func checkParent(tx *sql.Tx, m Member, in *SendInput, now int64) (*newLink, erro
 		return nil, fmt.Errorf("%w: %q already has %d open children", ErrFanoutExceeded, in.Parent, len(open))
 	}
 	return &newLink{depth: depth + 1}, nil
+}
+
+// depthOf is the stored depth of a thread; a root has none, so 0.
+func depthOf(tx *sql.Tx, channel, thread string) (int, error) {
+	depth := 0
+	err := tx.QueryRow(`SELECT depth FROM task_links WHERE channel = ? AND thread = ?`, channel, thread).Scan(&depth)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return 0, err
+	}
+	return depth, nil
+}
+
+// requireUnclaimed refuses linking a thread that already has a claim row.
+func requireUnclaimed(tx *sql.Tx, channel, thread string) error {
+	var one int
+	err := tx.QueryRow(`SELECT 1 FROM claims WHERE channel = ? AND thread = ?`, channel, thread).Scan(&one)
+	switch {
+	case err == nil:
+		return fmt.Errorf("%w: thread %q already has a claim and cannot be linked", ErrChildClaimed, thread)
+	case errors.Is(err, sql.ErrNoRows):
+		return nil
+	}
+	return err
 }
 
 // requireParentOwner is R4: the router, or the live owner of the parent claim.
