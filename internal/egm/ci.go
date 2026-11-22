@@ -58,14 +58,7 @@ func readReceiptAt(ctx context.Context, repo *Repo, oid, rel string, docLines in
 }
 
 func (r *Receipt) valid(rel string, docLines int) bool {
-	switch {
-	case r.Doc != rel || r.DocSHA256 == "" || r.Sources == nil:
-		return false
-	case r.Version == receiptVersion && r.Commit != "":
-		return false
-	case r.Version == receiptVersionCommit && !isHexCommit(r.Commit):
-		return false
-	case r.Version != receiptVersion && r.Version != receiptVersionCommit:
+	if r.Doc != rel || r.DocSHA256 == "" || r.Sources == nil || !r.versionValid() {
 		return false
 	}
 	for p := range r.Sources {
@@ -79,6 +72,28 @@ func (r *Receipt) valid(rel string, docLines int) bool {
 			return false
 		}
 		seen[r.Claims[i].ID] = true
+	}
+	return true
+}
+
+// versionValid checks the fields each version defines: the commit from v2,
+// symbols only in v3 (present, possibly empty, with well-formed entries).
+func (r *Receipt) versionValid() bool {
+	switch {
+	case r.Version == receiptVersion && r.Commit != "":
+		return false
+	case r.Version >= receiptVersionCommit && !isHexCommit(r.Commit):
+		return false
+	case r.Version < receiptVersion || r.Version > receiptVersionSymbols:
+		return false
+	case (r.Version == receiptVersionSymbols) != (r.Symbols != nil):
+		return false
+	}
+	for k, h := range r.Symbols {
+		p, _, ok := splitSymbolKey(k)
+		if !ok || validRelPath(p) != nil || !isHex64(h) {
+			return false
+		}
 	}
 	return true
 }
@@ -106,13 +121,53 @@ func (c *Claim) valid(docLines int) bool {
 		len(c.Lines) == 2 && c.Lines[0] >= 1 && c.Lines[0] <= c.Lines[1] && c.Lines[1] <= docLines
 }
 
-// fresh reports whether the receipt's hashes are the snapshot's (R7a at head).
+func isHex64(s string) bool {
+	if len(s) != 64 {
+		return false
+	}
+	for _, c := range s {
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
+			return false
+		}
+	}
+	return true
+}
+
+// symbolsFit reports whether a v3 receipt's symbol keys are all citations of
+// the document it certifies; a key the document never cites is forged.
+// Keys the head no longer resolves are staleness, checked by fresh.
+func (r *Receipt) symbolsFit(text string) bool {
+	if len(r.Symbols) == 0 {
+		return true
+	}
+	cited := citedSymbolKeys(r.Doc, text)
+	for k := range r.Symbols {
+		if !cited[k] {
+			return false
+		}
+	}
+	return true
+}
+
+// fresh reports whether the receipt's hashes are the snapshot's (R7a at
+// head): the document, every source and, in v3, every cited symbol.
 func (r *Receipt) fresh(s *snapshot) bool {
 	if r.DocSHA256 != s.docSHA || len(r.Sources) != len(s.sources.Included) {
 		return false
 	}
 	for _, src := range s.sources.Included {
 		if r.Sources[src.Path] != src.SHA256 {
+			return false
+		}
+	}
+	if r.Version != receiptVersionSymbols {
+		return true
+	}
+	if len(r.Symbols) != len(s.symbols) {
+		return false
+	}
+	for k, h := range s.symbols {
+		if r.Symbols[k] != h {
 			return false
 		}
 	}
@@ -130,6 +185,9 @@ func receiptCheck(ctx context.Context, root, rel, head, cfg string) (*Receipt, *
 	rc, code, err := readReceiptAt(ctx, s.repo, s.at, s.rel, len(s.doc.Lines))
 	if err != nil || code != "" {
 		return nil, s, code, err
+	}
+	if rc.DocSHA256 == s.docSHA && !rc.symbolsFit(s.text) {
+		return nil, s, "receipt_invalid", nil
 	}
 	if !rc.fresh(s) {
 		return rc, s, "receipt_stale", nil
