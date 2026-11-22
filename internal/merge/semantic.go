@@ -84,6 +84,10 @@ type region struct {
 	Base, Ours, Theirs []string
 	OursRange          [2]int
 	TheirsRange        [2]int
+	// OursExact and TheirsExact say the ranges are certain: the region text
+	// occurs once in the stage file, or an empty side sits between a unique
+	// pair of surrounding clean lines.
+	OursExact, TheirsExact bool
 }
 
 type segment struct {
@@ -166,7 +170,7 @@ func (rv *resolver) resolvePick(ctx *pickCtx, files []string, conflicts []Confli
 	var states []*fileState
 	idx := map[*fileState]int{}
 	for i, f := range files {
-		st, reason, err := rv.prepareFile(f, stages[f])
+		st, reason, err := rv.prepareFile(ctx, f, stages[f])
 		if err != nil {
 			return false, err
 		}
@@ -185,29 +189,36 @@ func (rv *resolver) resolvePick(ctx *pickCtx, files []string, conflicts []Confli
 			return false, err
 		}
 	}
+	var pending []Resolution
 	for _, st := range states {
-		if err := rv.settle(ctx, st, &conflicts[idx[st]]); err != nil {
+		rss, err := rv.settle(ctx, st, &conflicts[idx[st]])
+		if err != nil {
 			return false, err
 		}
+		pending = append(pending, rss...)
 	}
 	for i := range conflicts {
 		if conflicts[i].Resolution == "" {
 			return false, nil
 		}
 	}
+	// Only a pick that resolved whole is applied, so only its regions count.
+	rv.out = append(rv.out, pending...)
 	return true, nil
 }
 
-// settle runs the final checks of one file and, when it passes, stages it.
-func (rv *resolver) settle(ctx *pickCtx, st *fileState, c *Conflict) error {
+// settle runs the final checks of one file and, when it passes, stages it. It
+// returns the file's resolutions; the caller records them once the whole pick
+// resolved.
+func (rv *resolver) settle(ctx *pickCtx, st *fileState, c *Conflict) ([]Resolution, error) {
 	content, reason := st.finish()
 	c.Hunks = st.hunks()
 	if reason != "" {
 		c.Reason = reason
-		return nil
+		return nil, nil
 	}
 	if err := rv.stage(st, content); err != nil {
-		return err
+		return nil, err
 	}
 	c.Resolution = string(StrategySemantic)
 	rss := st.resolutions(ctx)
@@ -216,8 +227,7 @@ func (rv *resolver) settle(ctx *pickCtx, st *fileState, c *Conflict) error {
 			c.Resolution = string(StrategyPrompt)
 		}
 	}
-	rv.out = append(rv.out, rss...)
-	return nil
+	return rss, nil
 }
 
 // readStages maps each unmerged path to its index stages (1=base, 2=ours, 3=theirs).
@@ -250,7 +260,7 @@ func (rv *resolver) readStages() (map[string]*[3]stage, error) {
 
 // prepareFile classifies f and, for a text file, runs git merge-file and
 // parses its regions. A non-empty reason is a file-level refusal.
-func (rv *resolver) prepareFile(path string, stages *[3]stage) (*fileState, string, error) {
+func (rv *resolver) prepareFile(ctx *pickCtx, path string, stages *[3]stage) (*fileState, string, error) {
 	if stages == nil {
 		return nil, reasonDeleteModify, nil
 	}
@@ -259,6 +269,9 @@ func (rv *resolver) prepareFile(path string, stages *[3]stage) (*fileState, stri
 	}
 	if reason := classifyStages(stages); reason != "" {
 		return nil, reason, nil
+	}
+	if refused, err := rv.attrRefuses(ctx, path); err != nil || refused {
+		return nil, reasonBinary, err
 	}
 	for i := range stages {
 		size, err := rv.r.out(rv.wt, "cat-file", "-s", stages[i].blob)
@@ -290,6 +303,25 @@ func (rv *resolver) prepareFile(path string, stages *[3]stage) (*fileState, stri
 		return nil, reasonMergeFile, nil //nolint:nilerr // unparsable output leaves the file in conflict
 	}
 	return st, "", nil
+}
+
+// attrRefuses reports whether .gitattributes at the picked commit marks path
+// as not text-mergeable: `-merge`, `merge=binary` or `binary`.
+func (rv *resolver) attrRefuses(ctx *pickCtx, path string) (bool, error) {
+	out, err := rv.r.git(rv.wt, "check-attr", "-z", "--source="+ctx.commit, "merge", "binary", "--", path)
+	if err != nil {
+		return false, err
+	}
+	f := strings.Split(out, "\x00")
+	for i := 0; i+2 < len(f); i += 3 {
+		switch name, val := f[i+1], f[i+2]; {
+		case name == "merge" && (val == "unset" || val == "binary"):
+			return true, nil
+		case name == "binary" && val == "set":
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // classifyStages returns the file-level refusal for the three index stages.
@@ -361,7 +393,7 @@ func (rv *resolver) mergeFile(st *fileState) (string, error) {
 }
 
 func isMarker(line string, c byte, n int) bool {
-	l := strings.TrimSuffix(line, "\n")
+	l := strings.TrimRight(line, "\r\n")
 	if len(l) < n {
 		return false
 	}
@@ -424,15 +456,83 @@ func (st *fileState) parse(out string) error {
 }
 
 // locate finds each region's ours/theirs lines in the stage files by a
-// forward search (regions come in file order).
+// forward search (regions come in file order) and marks whether the answer is
+// exact: a non-empty region text must occur once in the file; an empty side is
+// placed between the clean lines around it, which must occur once as a pair.
 func (st *fileState) locate() {
 	oursLines := splitLines(string(st.stages[1].data))
 	theirsLines := splitLines(string(st.stages[2].data))
 	oc, tc := 0, 0
-	for _, rg := range st.regions {
-		rg.OursRange, oc = findBlock(oursLines, rg.Ours, oc)
-		rg.TheirsRange, tc = findBlock(theirsLines, rg.Theirs, tc)
+	for i, sg := range st.segs {
+		rg := sg.reg
+		if rg == nil {
+			continue
+		}
+		prev, next, hasPrev, hasNext := st.neighbors(i)
+		rg.OursRange, oc, rg.OursExact = locateSide(oursLines, rg.Ours, oc, prev, next, hasPrev, hasNext)
+		rg.TheirsRange, tc, rg.TheirsExact = locateSide(theirsLines, rg.Theirs, tc, prev, next, hasPrev, hasNext)
 	}
+}
+
+// neighbors returns the clean line right before and right after segment i.
+func (st *fileState) neighbors(i int) (prev, next string, hasPrev, hasNext bool) {
+	if i > 0 && st.segs[i-1].reg == nil {
+		if l := splitLines(st.segs[i-1].clean); len(l) > 0 {
+			prev, hasPrev = l[len(l)-1], true
+		}
+	}
+	if i+1 < len(st.segs) && st.segs[i+1].reg == nil {
+		if l := splitLines(st.segs[i+1].clean); len(l) > 0 {
+			next, hasNext = l[0], true
+		}
+	}
+	return prev, next, hasPrev, hasNext
+}
+
+func locateSide(lines, block []string, from int, prev, next string, hasPrev, hasNext bool) (rng [2]int, cursor int, exact bool) {
+	rng, cursor = findBlock(lines, block, from)
+	if len(block) > 0 {
+		return rng, cursor, countBlock(lines, block) == 1
+	}
+	if !hasPrev && !hasNext {
+		return rng, cursor, false
+	}
+	// The gap sits after line index at (0-based, -1 = file start).
+	var gaps []int
+	for at := -1; at < len(lines); at++ {
+		if hasPrev && (at < 0 || lines[at] != prev) {
+			continue
+		}
+		if !hasPrev && at != -1 {
+			continue
+		}
+		if hasNext && (at+1 >= len(lines) || lines[at+1] != next) {
+			continue
+		}
+		gaps = append(gaps, at)
+	}
+	if len(gaps) != 1 {
+		return rng, cursor, false
+	}
+	return [2]int{gaps[0] + 2, gaps[0] + 1}, gaps[0] + 1, true
+}
+
+// countBlock is the number of places block occurs in lines.
+func countBlock(lines, block []string) int {
+	n := 0
+	for i := 0; i+len(block) <= len(lines); i++ {
+		match := true
+		for j := range block {
+			if lines[i+j] != block[j] {
+				match = false
+				break
+			}
+		}
+		if match {
+			n++
+		}
+	}
+	return n
 }
 
 // findBlock returns the 1-based [start,end] of block in lines at or after
@@ -666,6 +766,9 @@ func (st *fileState) goImports(rg *region) ([]string, bool) {
 			}
 		}
 	}
+	if !rg.OursExact || !rg.TheirsExact {
+		return nil, false
+	}
 	od, td := st.oursGo.importDecl(rg.OursRange), st.thrGo.importDecl(rg.TheirsRange)
 	if od < 0 || od != td {
 		return nil, false
@@ -734,7 +837,14 @@ func (st *fileState) assemble() []byte {
 		}
 		b.WriteString(joinLines(st.texts[sg.reg.ID]))
 	}
-	return b.Bytes()
+	out := b.Bytes()
+	// git adds a newline after a conflict region at the end of a file that
+	// had none; do not keep one that neither side had.
+	if n := len(st.segs); n > 0 && st.segs[n-1].reg != nil &&
+		!bytes.HasSuffix(st.stages[1].data, []byte("\n")) && !bytes.HasSuffix(st.stages[2].data, []byte("\n")) {
+		out = bytes.TrimSuffix(out, []byte("\n"))
+	}
+	return out
 }
 
 // markerLine reports whether l is a conflict marker of size 7 or n.
@@ -823,6 +933,9 @@ func (st *fileState) hunks() []Hunk {
 func (st *fileState) resolutions(ctx *pickCtx) []Resolution {
 	out := make([]Resolution, 0, len(st.regions))
 	for _, rg := range st.regions {
+		if _, ok := st.texts[rg.ID]; !ok {
+			continue
+		}
 		text := joinLines(st.texts[rg.ID])
 		out = append(out, Resolution{
 			File: st.path, Ticket: ctx.ticket, Commit: ctx.commit, Region: rg.ID, Rule: st.rules[rg.ID],

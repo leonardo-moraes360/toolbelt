@@ -341,3 +341,139 @@ func TestFailAndLastWinsIgnoreMergeConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// .gitattributes at the picked commit: -merge, merge=binary and binary all
+// refuse the file with reason binary, even when the text would merge.
+func TestSemanticGitattributesRefuse(t *testing.T) {
+	dir := newRepo(t)
+	base := "l1\nl2\nl3\nl4\nl5\n"
+	files := map[string]string{".gitattributes": "a.txt -merge\nb.txt merge=binary\nc.txt binary\n"}
+	for _, f := range []string{"a.txt", "b.txt", "c.txt"} {
+		files[f] = base
+	}
+	commitFiles(t, dir, files)
+	one, two := map[string]string{}, map[string]string{}
+	for _, f := range []string{"a.txt", "b.txt", "c.txt"} {
+		one[f] = "l1\nA2\nl3\nl4\nl5\n"
+		two[f] = "l1\nl2\nB3\nl4\nl5\n"
+	}
+	addTicket(t, dir, nil, one)
+	addTicket(t, dir, nil, two)
+	res, err := semanticRun(t, dir, StrategySemantic, true, "TKT-001", "TKT-002")
+	if !errors.Is(err, ErrConflict) {
+		t.Fatalf("err %v", err)
+	}
+	if len(res.Conflicts) != 3 {
+		t.Fatalf("conflicts %+v", res.Conflicts)
+	}
+	for _, c := range res.Conflicts {
+		if c.Reason != "binary" {
+			t.Errorf("%s: reason %q", c.File, c.Reason)
+		}
+	}
+}
+
+// A region whose text is not unique in its stage file is not merged by go_imports.
+func TestGoImportsNeedsUniqueRegions(t *testing.T) {
+	const ours = `package p
+
+import (
+	"a"
+	"b"
+)
+
+import (
+	"a"
+	"b"
+)
+`
+	const theirs = `package p
+
+import (
+	"a"
+	"b"
+)
+
+import (
+	"a"
+	"b"
+)
+`
+	merged := "package p\n\nimport (\n<<<<<<< ours\n\t\"a\"\n\t\"b\"\n||||||| base\n\t\"a\"\n=======\n\t\"a\"\n\t\"b\"\n>>>>>>> theirs\n)\n\nimport (\n\t\"a\"\n\t\"b\"\n)\n"
+	st := &fileState{path: "p.go", markerSize: 7, texts: map[int][]string{}, rules: map[int]string{}, reasons: map[int]string{}, novel: map[int]int{}, maxRegionLines: 100}
+	st.stages[1].data, st.stages[2].data = []byte(ours), []byte(theirs)
+	if err := st.parse(merged); err != nil {
+		t.Fatal(err)
+	}
+	rg := st.regions[0]
+	if rg.OursExact || rg.TheirsExact {
+		t.Fatalf("duplicated text must not be exact: %+v", rg)
+	}
+	if _, ok := st.goImports(rg); ok {
+		t.Fatal("go_imports applied to an ambiguous region")
+	}
+	// The same file with a unique block is accepted.
+	u := strings.Replace(ours, "\t\"a\"\n\t\"b\"\n)\n\nimport (\n\t\"a\"\n\t\"b\"\n", "\t\"a\"\n\t\"b\"\n)\n\nimport (\n\t\"c\"\n", 1)
+	st2 := &fileState{path: "p.go", markerSize: 7, texts: map[int][]string{}, rules: map[int]string{}, reasons: map[int]string{}, novel: map[int]int{}, maxRegionLines: 100}
+	st2.stages[1].data, st2.stages[2].data = []byte(u), []byte(u)
+	m2 := strings.Replace(merged, "import (\n\t\"a\"\n\t\"b\"\n)\n", "import (\n\t\"c\"\n)\n", 1)
+	if err := st2.parse(m2); err != nil {
+		t.Fatal(err)
+	}
+	if !st2.regions[0].OursExact || !st2.regions[0].TheirsExact {
+		t.Fatalf("unique region must be exact: %+v", st2.regions[0])
+	}
+	if _, ok := st2.goImports(st2.regions[0]); !ok {
+		t.Fatal("go_imports must apply to a unique region")
+	}
+}
+
+// CRLF files: marker lines end in \r\n and must still parse.
+func TestSemanticCRLFDisjoint(t *testing.T) {
+	dir := newRepo(t)
+	crlf := func(s string) string { return strings.ReplaceAll(s, "\n", "\r\n") }
+	commitFiles(t, dir, map[string]string{"w.txt": crlf("l1\nl2\nl3\nl4\nl5\nl6\n")})
+	addTicket(t, dir, nil, map[string]string{"w.txt": crlf("l1\nl2\nl3\nA4\nl5\nl6\n")})
+	addTicket(t, dir, nil, map[string]string{"w.txt": crlf("l1\nl2\nl3\nl4\nB5\nl6\n")})
+	if _, err := semanticRun(t, dir, StrategySemantic, false, "TKT-001", "TKT-002"); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := readFile(t, dir, "w.txt"), crlf("l1\nl2\nl3\nA4\nB5\nl6\n"); got != want {
+		t.Fatalf("got %q want %q", got, want)
+	}
+	for _, l := range []string{"<<<<<<< ours\r\n", "=======\r", "||||||| base\r\n", ">>>>>>> theirs\r\n"} {
+		c := l[0]
+		if !isMarker(l, c, 7) {
+			t.Errorf("%q not a marker", l)
+		}
+	}
+}
+
+// A conflict at the end of a file without a final newline stays without one.
+func TestSemanticNoAddedFinalNewline(t *testing.T) {
+	dir := newRepo(t)
+	commitFiles(t, dir, map[string]string{"n.txt": "l1\nl2\nl3\nl4"})
+	addTicket(t, dir, nil, map[string]string{"n.txt": "l1\nl2\nA3\nl4"})
+	addTicket(t, dir, nil, map[string]string{"n.txt": "l1\nl2\nl3\nB4"})
+	if _, err := semanticRun(t, dir, StrategySemantic, false, "TKT-001", "TKT-002"); err != nil {
+		t.Fatal(err)
+	}
+	if got := readFile(t, dir, "n.txt"); got != "l1\nl2\nA3\nB4" {
+		t.Fatalf("got %q", got)
+	}
+}
+
+// A pick that does not resolve whole contributes no resolutions.
+func TestSemanticUnappliedPickListsNoResolutions(t *testing.T) {
+	dir := newRepo(t)
+	commitFiles(t, dir, map[string]string{"ok.txt": "l1\nl2\nl3\nl4\nl5\n", "bad.txt": "x\n"})
+	addTicket(t, dir, nil, map[string]string{"ok.txt": "l1\nl2\nA3\nl4\nl5\n", "bad.txt": "one\n"})
+	addTicket(t, dir, nil, map[string]string{"ok.txt": "l1\nl2\nl3\nB4\nl5\n", "bad.txt": "two\n"})
+	res, err := semanticRun(t, dir, StrategySemantic, true, "TKT-001", "TKT-002")
+	if !errors.Is(err, ErrConflict) {
+		t.Fatalf("err %v", err)
+	}
+	if len(res.Resolutions) != 0 {
+		t.Fatalf("resolutions of an unapplied pick: %+v", res.Resolutions)
+	}
+}
