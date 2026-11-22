@@ -2,7 +2,7 @@
 
 # Spec: réguas adicionais para o `tb verify`
 
-Autor: toolbelt · Status: Rascunho (rodada 2) — fatia 1 (R0–R3, R5, R6) implementada; R4 coverage em seguida · Data: 2026-11-22 · Registro de decisão: [ADR-008](../adr/008-verificacao-adversarial.md) (réguas plugáveis) · Relacionados: [ADR-005](../adr/005-anti-trapaca.md) (anti-trapaça), [verificacao-visual.md](../verificacao-visual.md) (a régua visual)
+Autor: toolbelt · Status: Rascunho (rodada 2) — implementada (fatia 1: R0–R3, R5, R6; fatia 2: R4) · Data: 2026-11-22 · Registro de decisão: [ADR-008](../adr/008-verificacao-adversarial.md) (réguas plugáveis) · Relacionados: [ADR-005](../adr/005-anti-trapaca.md) (anti-trapaça), [verificacao-visual.md](../verificacao-visual.md) (a régua visual)
 
 ## Visão geral
 

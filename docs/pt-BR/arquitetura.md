@@ -10,13 +10,12 @@ O `toolbelt` é um conjunto de ferramentas para agentes de código com IA, unifi
 graph TB
     subgraph "Interface Humana"
         CLI[tb CLI]
-        TUI[tb md - TUI Markdown]
         OBS[Obsidian]
     end
 
     subgraph "Camada de Protocolos"
         MCP[MCP Server]
-        A2A[A2A - Agent to Agent]
+        BUS[tb bus - bus/0.1, formato A2A]
         RPC[JSON-RPC 2.0]
     end
 
@@ -41,10 +40,9 @@ graph TB
     end
 
     CLI --> ORCH
-    TUI --> VAULT
     OBS --> VAULT
     MCP --> ORCH
-    A2A --> ORCH
+    BUS --> ORCH
 
     ORCH --> MEM
     ORCH --> CTX
@@ -541,51 +539,17 @@ persona: |
 
 ---
 
-## 7. TUI Markdown (`tb md`)
+## 7. TUI Markdown (`tb md`) — fora do plano
 
-### 7.1 Funcionalidades
-
-Interface TUI (Terminal User Interface) usando Bubble Tea para:
-
-- **Navegar** o vault de memória
-- **Visualizar** grafo de relacionamentos
-- **Editar** arquivos Markdown in-place
-- **Revisar** planos e logs de agentes
-- **Aprovar** ações pendentes
-
-### 7.2 Tema Visual
-
-A TUI segue o tema **Synthwave** definido em [docs/pt-BR/identidade-visual.md](identidade-visual.md). Os tokens de design em `assets/theme/theme.css` devem ser usados para manter consistência visual:
-
-- Fundo: violeta (`--tb-bg`) ou superfície escura (`--tb-surface`)
-- Headers: roxo primário (`--tb-primary`)
-- Links e interativos: ciano (`--tb-accent`)
-- Código: fonte mono sobre superfície com cor accent
-- Status: success/error/warning conforme tokens semânticos
-
-### 7.3 Interoperabilidade com Obsidian
-
-O vault em `.tb/vault/` é um vault Obsidian válido:
-
-```bash
-# Abrir no Obsidian
-obsidian .tb/vault
-
-# Ou via tb
-tb md --obsidian  # abre Obsidian se instalado
-```
-
-A sincronização é bidirecional para edições humanas:
-1. Humano edita no Obsidian
-2. Watcher detecta mudança
-3. Índice SQLite atualizado
-4. Agentes veem dados atualizados
+Não há TUI. `tb md` e `tb md --obsidian` saíram da Fase A do vault ([ADR-016](adr/016-vault-fase-a.md)) e não estão planejados ([ADR-020](adr/020-agent-hierarchy-a2a.md)). Qualquer editor, inclusive o Obsidian, edita o vault (`.toolbelt/vault/`, lido do disco pelo `tb vault`, sem watcher nem sync); ver [specs/vault.md](specs/vault.md). O tema visual vale para a saída de terminal e o site ([identidade-visual.md](identidade-visual.md)).
 
 ---
 
 ## 8. Rede de Agentes
 
 ### 8.1 Hierarquia
+
+> **O que existe ([ADR-020](adr/020-agent-hierarchy-a2a.md)):** o diagrama abaixo é a visão original, não a implementação. Hoje a delegação é o `tb router run` (§8.6) entregando tickets a workers locais ou a agentes num canal do `tb bus`, com papéis do barramento fixados pelos convites do humano (`router`, `supervisor`, `worker`, `reviewer`). Não há processo planner nem `tb agent spawn`. Um segundo nível (um supervisor delegando subthreads com `parent` checado pelo broker, profundidade e fan-out limitados, `tb bus tree`) está especificado em [specs/agent-hierarchy.md](specs/agent-hierarchy.md).
 
 ```mermaid
 graph TB
@@ -649,6 +613,8 @@ stateDiagram-v2
 ```
 
 ### 8.4 Orçamentos
+
+> **Não implementado, e orçamentos de tokens não estão planejados ([ADR-020](adr/020-agent-hierarchy-a2a.md)):** o `tb` não mede os tokens de um agente de fornecedor. O que existe são os timeouts e o `retry.max_attempts` do router, o orçamento de despertares do harness (`budget.max_wakes`) e, na spec de árvores de delegação, limites de profundidade e fan-out.
 
 Cada agente tem limites:
 
@@ -940,15 +906,15 @@ graph LR
 
     subgraph "toolbelt"
         MCP_S[MCP Server]
-        A2A_S[A2A Handler]
+        BUS_S[tb bus store]
         RPC[JSON-RPC Router]
         CORE[Core]
     end
 
     IDE -->|MCP/stdio| MCP_S
-    OTHER -->|A2A/HTTP| A2A_S
+    OTHER -->|CLI tb bus / MCP tb_bus_*| BUS_S
     MCP_S --> RPC
-    A2A_S --> RPC
+    BUS_S --> RPC
     RPC --> CORE
 ```
 
@@ -1001,6 +967,8 @@ O `tb` funciona como **servidor MCP**, expondo ferramentas. O JSON abaixo é ilu
 
 Para comunicação entre agentes na hierarquia:
 
+> **Decisão ([ADR-020](adr/020-agent-hierarchy-a2a.md)):** o A2A não é um transporte no `tb`. O envelope local `bus/0.1` tem o formato A2A, e o `tb` não tem servidor, cliente, socket nem HTTP A2A. Um agente A2A remoto só participa por uma ponte que o humano escreve e roda fora do `tb`, admitida como agente comum do barramento, com convite e papel próprios.
+
 > **Implementado (v0.0.5):** o transporte local agente ↔ agente é o barramento `tb bus` ([ADR-013](adr/013-barramento-multi-vendor.md)), com envelope JSON-RPC `bus/0.1` especificado em [bus-protocolo.md](bus-protocolo.md) sobre um store SQLite (`.toolbelt/bus/bus.db`), não Unix socket. O exemplo abaixo é ilustrativo.
 
 ```json
@@ -1034,8 +1002,8 @@ Para comunicação entre agentes na hierarquia:
 |---------|------------|
 | IDE ↔ tb | stdio (MCP padrão) |
 | tb ↔ processo filho | stdio + JSON-RPC |
-| agente ↔ agente (local) | Unix socket |
-| agente ↔ agente (remoto) | HTTP/2 + mTLS |
+| agente ↔ agente (local) | `tb bus`: store SQLite (`.toolbelt/bus/bus.db`), CLI ou ferramentas MCP `tb_bus_*`; sem socket |
+| agente ↔ agente (remoto) | nenhum no `tb`; uma ponte que o humano roda é um agente comum do barramento ([ADR-020](adr/020-agent-hierarchy-a2a.md)) |
 
 ---
 

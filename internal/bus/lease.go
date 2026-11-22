@@ -178,13 +178,16 @@ func publishExpired(tx *sql.Tx, cur *Claim, lastSeen, now int64) error {
 	if err != nil {
 		return err
 	}
-	_, err = insertMessage(tx, cur.Channel, WatchdogSender, "topic:board", cur.Thread, TypeTaskStatus, "", "", "", 0, payload, now)
+	_, err = insertMessage(tx, cur.Channel, WatchdogSender, "topic:board", cur.Thread, "", TypeTaskStatus, "", "", "", 0, payload, now)
 	return err
 }
 
 type CompleteResult struct {
 	Claim   Claim   `json:"claim"`
 	Message Message `json:"message"`
+	// OpenChildren lists delegated sub-threads still open when the parent
+	// completed. It is a warning only: completing is never refused for it.
+	OpenChildren []string `json:"open_children,omitempty"`
 }
 
 // Complete closes a thread with a result (R3): only the current owner, at
@@ -214,22 +217,13 @@ func (s *Store) Complete(m Member, thread string, epoch int64, result json.RawMe
 		if err != nil {
 			return err
 		}
-		switch {
-		case cur.RevokedAt != nil:
-			return fmt.Errorf("%w: thread %q was revoked by %s (%s)", ErrLeaseLost, thread, cur.RevokedBy, cur.RevokeReason)
-		case cur.CompletedAt != nil:
-			return fmt.Errorf("thread %q already completed", thread)
-		case cur.Owner != m.ID():
-			return fmt.Errorf("%w: thread %q is now owned by %s (epoch %d)", ErrLeaseLost, thread, cur.Owner, cur.Epoch)
-		case cur.ReleasedAt != nil:
-			return fmt.Errorf("%w: thread %q was released after the lease expired; claim it again", ErrLeaseLost, thread)
-		case cur.Epoch != epoch:
-			return fmt.Errorf("%w: thread %q is at epoch %d, not %d", ErrLeaseLost, thread, cur.Epoch, epoch)
+		if err := checkCompletable(&cur, m, thread, epoch); err != nil {
+			return err
 		}
 		if err := touch(tx, m, now); err != nil {
 			return err
 		}
-		msg, err := insertMessage(tx, m.Channel, m.ID(), "topic:board", thread, TypeTaskResult, "",
+		msg, err := insertMessage(tx, m.Channel, m.ID(), "topic:board", thread, "", TypeTaskResult, "",
 			"", "", 0, payload, now)
 		if err != nil {
 			return err
@@ -241,10 +235,32 @@ func (s *Store) Complete(m Member, thread string, epoch int64, result json.RawMe
 		t := fromNS(now)
 		cur.CompletedAt = &t
 		cur.ResultID = msg.ID
-		res = CompleteResult{Claim: cur, Message: msg}
+		open, err := openChildren(tx, m.Channel, thread, now)
+		if err != nil {
+			return err
+		}
+		res = CompleteResult{Claim: cur, Message: msg, OpenChildren: open}
 		return nil
 	})
 	return res, err
+}
+
+// checkCompletable is Complete's fencing: only the live owner at the epoch it
+// claimed may close the thread.
+func checkCompletable(cur *Claim, m Member, thread string, epoch int64) error {
+	switch {
+	case cur.RevokedAt != nil:
+		return fmt.Errorf("%w: thread %q was revoked by %s (%s)", ErrLeaseLost, thread, cur.RevokedBy, cur.RevokeReason)
+	case cur.CompletedAt != nil:
+		return fmt.Errorf("thread %q already completed", thread)
+	case cur.Owner != m.ID():
+		return fmt.Errorf("%w: thread %q is now owned by %s (epoch %d)", ErrLeaseLost, thread, cur.Owner, cur.Epoch)
+	case cur.ReleasedAt != nil:
+		return fmt.Errorf("%w: thread %q was released after the lease expired; claim it again", ErrLeaseLost, thread)
+	case cur.Epoch != epoch:
+		return fmt.Errorf("%w: thread %q is at epoch %d, not %d", ErrLeaseLost, thread, cur.Epoch, epoch)
+	}
+	return nil
 }
 
 // HeldThread is a thread the agent holds.

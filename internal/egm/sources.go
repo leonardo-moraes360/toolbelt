@@ -22,6 +22,9 @@ type Source struct {
 	Path   string `json:"path"`
 	SHA256 string `json:"sha256"`
 	Text   string `json:"-"` // redacted snapshot
+	// Raw is a Go source's exact bytes: symbol hashes cover raw ranges, not
+	// the redacted text.
+	Raw []byte `json:"-"`
 }
 
 // SkippedSource is an entry of report.json skipped_sources (R33b).
@@ -56,7 +59,7 @@ func SpanCandidates(text string) []string {
 		if strings.ContainsAny(s, " <>$~(*{…:") || seen[s] {
 			continue
 		}
-		if !reSpanExt.MatchString(s) && !strings.HasSuffix(s, "/") {
+		if !reSpanExt.MatchString(s) && !strings.HasSuffix(s, "/") && !isGoSymbolSpan(s) {
 			continue
 		}
 		seen[s] = true
@@ -290,7 +293,11 @@ func (c *sourceCtx) addBytes(f string, b []byte) {
 		return
 	}
 	c.used += int64(len(b))
-	c.out.Included = append(c.out.Included, Source{Path: f, SHA256: sha256Hex(b), Text: red})
+	src := Source{Path: f, SHA256: sha256Hex(b), Text: red}
+	if strings.HasSuffix(f, ".go") {
+		src.Raw = b
+	}
+	c.out.Included = append(c.out.Included, src)
 }
 
 func (c *sourceCtx) finish() *SourceSet {

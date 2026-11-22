@@ -26,3 +26,23 @@ func TestVerifyOverridesFromOptions(t *testing.T) {
 		t.Fatalf("overrides=%+v", o)
 	}
 }
+
+func TestCoverageOptions(t *testing.T) {
+	v := 90.0
+	o := verifyOverrides(&Options{CoverageCmd: "cov", CoverageCmdSet: true, CoveragePattern: `(\d+)`, CoveragePatternSet: true, MinCoverage: &v})
+	if o.CoverageCmd != (verify.CmdOverride{Cmd: "cov", Set: true}) || !o.CoveragePattern.Set || o.MinCoverage == nil || *o.MinCoverage != 90 {
+		t.Fatalf("overrides=%+v", o)
+	}
+	if err := validateOptions(&Options{Ops: []Op{OpVerify}, Ruler: "tests,coverage"}); err != nil {
+		t.Fatal(err)
+	}
+	bad := 101.0
+	for _, opts := range []*Options{
+		{Ops: []Op{OpVerify}, CoveragePattern: "nogroup", CoveragePatternSet: true},
+		{Ops: []Op{OpVerify}, MinCoverage: &bad},
+	} {
+		if err := validateOptions(opts); !verify.IsUsageError(err) {
+			t.Fatalf("opts=%+v: err=%v, want usage error", opts, err)
+		}
+	}
+}

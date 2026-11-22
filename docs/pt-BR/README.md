@@ -26,7 +26,7 @@
 |----------|----------------------|
 | **Economizar tokens** | Grafo de conhecimento queryável evita grep em arquivos; contexto montado sob orçamento de tokens; memória compacta com sumários e fatos extraídos |
 | **Melhorar a acurácia** | Sandbox isolado com bubblewrap+Landlock; permissões por capacidade; proteções contra trapaça; separador entre implementador e avaliador |
-| **Aumentar a velocidade** | Execução paralela com goroutines; hierarquia de agentes (planner→supervisor→worker); busca rápida em grafo com FTS5 |
+| **Aumentar a velocidade** | Execução paralela com goroutines; delegação pelo `tb router` e pelos papéis do `tb bus` (router, supervisor, worker, reviewer); busca rápida em grafo com FTS5 |
 
 ## 🏗️ Arquitetura
 
@@ -34,7 +34,7 @@
 ┌─────────────────────────────────────────────────────────────────┐
 │                        Interface Humana                         │
 │  ┌─────────┐    ┌─────────────┐    ┌─────────────────────────┐  │
-│  │ tb CLI  │    │ tb md (TUI) │    │ Obsidian (vault externo)│  │
+│  │ tb CLI  │    │ editor livre│    │ Obsidian (vault externo)│  │
 │  └────┬────┘    └──────┬──────┘    └────────────┬────────────┘  │
 └───────┼────────────────┼───────────────────────┼────────────────┘
         │                │                       │
@@ -42,7 +42,7 @@
 ┌─────────────────────────────────────────────────────────────────┐
 │                         Protocolos                              │
 │  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────────┐  │
-│  │ MCP Server  │  │ A2A Protocol│  │ JSON-RPC 2.0 (stdio/UDS)│  │
+│  │ MCP Server  │  │ tb bus/0.1  │  │ JSON-RPC 2.0, só local  │  │
 │  └─────────────┘  └─────────────┘  └─────────────────────────┘  │
 └─────────────────────────────────────────────────────────────────┘
         │
@@ -234,7 +234,7 @@ tb bus recv --channel feature-x --as grok-1 --wait 20s
 - [x] MCP com paridade do loop de campo (`mem` / `verify` / `review` / `drift` / `guard`)
 - [x] `tb stack` — empilha verify/review/drift/guard com diff/índice/memória compartilhados (+ MCP `tb_stack`)
 - [x] Landing page em [`site/`](../../site/) + GitHub Pages ([docs/pt-BR/site.md](site.md) · [site ao vivo](https://leonardo-moraes360.github.io/toolbelt/))
-- [ ] Hierarquia de agentes / A2A / `tb md` (posterior)
+- [x] Hierarquia de agentes / A2A / `tb md`: decidido no [ADR-020](adr/020-agent-hierarchy-a2a.md). O A2A é o envelope `bus/0.1` no formato A2A, no barramento local, sem HTTP nem socket no `tb` (uma ponte é um agente comum do barramento que o humano roda); a hierarquia é o `tb router` + os papéis do barramento; `tb md` e `tb agent` saem. O B5 abaixo (árvores de delegação) está construído
 
 ### Entrada para a próxima fase (estudo de campo)
 - Estudo de campo do `tb` em 20 repositórios públicos (relatórios em [`docs/pt-BR/campo/`](campo/) + síntese de melhorias em [`docs/pt-BR/campo/SINTESE.md`](campo/SINTESE.md)), como input priorizado para os próximos PRs de produto.
@@ -250,9 +250,9 @@ tb bus recv --channel feature-x --as grok-1 --wait 20s
 - [x] `tb graph search` com ranking BM25 (título/path/pacote, quebra de camelCase/`snake_case`, multi-termo)
 - [x] Vault Markdown compatível com Obsidian, Fase A (`tb vault`, [ADR-016](adr/016-vault-fase-a.md), [spec](specs/vault.md)): notas com frontmatter e wikilinks, `new`/`list`/`show`/`search`/`links`/`backlinks`/`check`, tools MCP, `tb stack vault`, nós no grafo; Q4 (fixture dourada conferida no Obsidian real) aberta
 - [x] Reimplementação do Elephant-Goldfish Model, Fase A (`tb egm`, [ADR-015](adr/015-egm-nativo.md) aceito): spike R0; engines determinística e `llm`, árbitro, gate no `tb stack` (`status --at`) e tools MCP
-- [ ] Próximas fases do `tb egm`: Fase C (`draft`, `brainstorm`, drift por símbolo); a Fase B (`drift-report` e `bootstrap`, [spec](specs/egm-drift-bootstrap.md)) está implementada, partes com LLM incluídas; a Fase A.2 (CI como fronteira de confiança, [spec](specs/egm-trust.md)) está implementada; item 8 do R0 em aberto
+- [x] Próximas fases do `tb egm`: as fatias C1–C5 da Fase C ([spec](specs/egm-phase-c.md)) estão implementadas (`brainstorm`, `draft`, `draft --update`, citação de símbolos e drift por símbolo); a C6 (ranges de linha e IDs de método no grafo) e os outros itens da Fase C do ADR-015 ficam para depois do 1.0; a Fase B (`drift-report` e `bootstrap`, [spec](specs/egm-drift-bootstrap.md)) está implementada, partes com LLM incluídas; a Fase A.2 (CI como fronteira de confiança, [spec](specs/egm-trust.md)) está implementada; item 8 do R0 em aberto
 - [x] Inferência local: coberta pelo llama.cpp vendorizado num filho em sandbox ([ADR-018](../adr/018-cgo-componentes-nativos.md), [ADR-019](../adr/019-cpu-v3-embedding.md)); um componente em Rust continua possível atrás do mesmo protocolo do filho, se um dia for preciso
-- [ ] Rulers adicionais para `tb verify` ([spec](specs/verify-rulers.md)): fatia 1 (typecheck, checks nomeados, config do ref base) feita; régua de coverage em seguida
+- [x] Rulers adicionais para `tb verify` ([spec](specs/verify-rulers.md)): typecheck, checks nomeados, config do ref base, régua de coverage
 - [ ] `tb merge` estratégias `prompt` / `semantic`
 
 ### Barramento multi-vendor (`tb bus`, [ADR-013](adr/013-barramento-multi-vendor.md))
@@ -261,6 +261,7 @@ tb bus recv --channel feature-x --as grok-1 --wait 20s
 - [x] B2 — lease, heartbeat e watchdog no barramento ([spec](bus-lease.md))
 - [x] B3 — `tb bus run` com adapters `exec`, `harness` e `notify` e `tb bus discover` ([docs/pt-BR/bus-harness.md](bus-harness.md), [bus-notify-discover.md](bus-notify-discover.md))
 - [x] B4 — router/board da Fase 3 sobre o barramento ([spec](bus-router.md)): operações do barramento, `router_tasks` do harness e slots do barramento `b1..bN` no router
+- [x] B5 — árvores de delegação ([spec](specs/agent-hierarchy.md), [ADR-020](adr/020-agent-hierarchy-a2a.md)): `task.assign` com `parent` checado pelo broker, limites de profundidade e fan-out, `tb bus tree`
 
 ## 🤝 Contribuindo
 
@@ -303,7 +304,7 @@ Este projeto está na **Fase 3 (em andamento)**: além de verify/guard/mem/graph
 | `tb bench compare` | ✅ | Compara dois benchmarks |
 | `tb sandbox` | ✅ | Worktrees + Landlock (Linux) (`check`/`run`) |
 | `tb guard` | ✅ | Check anti-trapaça em diff (default estrito / exit ≠ 0 em `SeverityError`; `--warn-only` opt-out; `--strict` deprecated) |
-| `tb verify` | ✅ | Rulers `tests` + `visual` (`tb verify run`; lista em `--ruler`, desconhecida → exit 2; `--build-cmd`/`--lint-cmd`/`--no-build`/`--no-lint`/`--dry-run`; etapas de gate build → typecheck (`--typecheck-cmd`/`--no-typecheck`) → lint → checks nomeados (`verify.checks`, `--check name=cmd`/`--no-check`/`--no-checks`); `verify.*` lido do ref base, guard `verify_config_changed`; suíte oculta via `--hidden-test-cmd` ou detecção de toolchain em `tests/hidden/` — N/A se inaplicável; cache de build/lint na execução; `reason`/`error` no JSON; `--base`/`--head` rodam no worktree do head; fail-fast se o comando não existe/não é executável; `protected_paths` custom do `guard.yaml` não abortam o loop — exceção de Scope via `--ticket`) |
+| `tb verify` | ✅ | Rulers `tests` + `coverage` + `visual` (`tb verify run`; lista em `--ruler`, desconhecida → exit 2; régua `coverage`: `--coverage-cmd`/`--coverage-pattern`/`--min-coverage`, piso do `.toolbelt/thresholds.yaml` do ref base; `--build-cmd`/`--lint-cmd`/`--no-build`/`--no-lint`/`--dry-run`; etapas de gate build → typecheck (`--typecheck-cmd`/`--no-typecheck`) → lint → checks nomeados (`verify.checks`, `--check name=cmd`/`--no-check`/`--no-checks`); `verify.*` lido do ref base, guard `verify_config_changed`; suíte oculta via `--hidden-test-cmd` ou detecção de toolchain em `tests/hidden/` — N/A se inaplicável; cache de build/lint na execução; `reason`/`error` no JSON; `--base`/`--head` rodam no worktree do head; fail-fast se o comando não existe/não é executável; `protected_paths` custom do `guard.yaml` não abortam o loop — exceção de Scope via `--ticket`) |
 | `tb mem` | ✅ | Invariantes (`add`/`list`/`show`/`edit`/`retire`/`search`/`check`/`init`; `--ref` ADR; soft-retire + `--all`) |
 | `tb graph` | ✅ | Grafo sob demanda multi-linguagem + frameworks + docs (ADR-011); `javascript` cobre TypeScript (`ts`/`tsx`); `search` com ranking BM25, `callers`/`deps`/`impact`, `explain`/`path` (ADR-014); índice vetorial opt-in via `index --vectors` e `search --mode semantic|hybrid` (também no MCP) |
 | `tb review` | ✅ | Revisão fresh-context contra ticket/`rd.md` local (sem GitHub); `--approved-sha` |

@@ -2,7 +2,7 @@
 
 # `tb` Command Tree
 
-This document describes the toolbelt CLI: **implemented** commands (mirrored from `tb --help`) and **planned** sections (`tb run`/`proc`/`md`/`agent`, marked explicitly). On divergence, the Cobra CLI is the source of truth.
+This document describes the toolbelt CLI: **implemented** commands (mirrored from `tb --help`) and **planned** sections (`tb run`/`proc`, marked explicitly; `tb md` and `tb agent` are dropped). On divergence, the Cobra CLI is the source of truth.
 
 ## Local-first: no GitHub
 
@@ -85,7 +85,7 @@ tb  (implemented today)
 ├── sandbox      Execution with Landlock isolation (check|run)
 ├── stack        Stacks verification operations (verify/review/drift/guard/vault/egm/seccheck), not branches
 ├── vault        Markdown vault of notes (new|list|show|search|links|backlinks|check)
-├── verify       Adversarial verification (run; rulers tests|visual)
+├── verify       Adversarial verification (run; rulers tests|coverage|visual)
 ├── workspace    Isolated workspaces via git worktree (create|list|remove; alias: ws)
 ├── version      Shows the toolbelt version (also: tb --version)
 ├── ticket       Work tickets (create|list|show|cancel|retry)       ✓ Phase 3
@@ -609,118 +609,9 @@ tb lab verify
 
 ---
 
-### `tb md` — TUI Markdown (planned — Phase 3+)
+### `tb md` and `tb agent` — dropped
 
-> **Not implemented, and dropped from the vault's Phase A** ([ADR-016](adr/016-vault-fase-a.md)): any editor, Obsidian included, edits the vault; see [`tb vault`](#tb-vault--markdown-vault-phase-a).
-
-TUI interface to navigate and edit the vault.
-
-```bash
-tb md [flags] [path]
-
-Flags:
-  --obsidian          Opens in Obsidian instead of the TUI
-  --read-only         Read-only mode
-  --graph             Starts in graph view
-```
-
-**Examples:**
-
-```bash
-# Open the TUI at the vault root
-tb md
-
-# Open a specific file
-tb md vault/facts/auth-design.md
-
-# Open in Obsidian
-tb md --obsidian
-
-# Read-only mode for agents
-tb md --read-only
-```
-
-**TUI shortcuts:**
-
-| Key | Action |
-|-----|--------|
-| `j/k` | Navigate list |
-| `Enter` | Open file |
-| `e` | Edit file |
-| `g` | Graph view |
-| `s` | Search |
-| `/` | Filter |
-| `b` | View backlinks |
-| `l` | View links |
-| `q` | Quit |
-| `?` | Help |
-
----
-
-### `tb agent` — Agent Management (planned — Phase 3+)
-
-> **Not implemented.** The current CLI does not expose `tb agent`.
-
-Manages agents in the hierarchy.
-
-```bash
-tb agent <subcommand>
-
-Subcommands:
-  spawn     Creates a new agent
-  list      Lists active agents
-  status    Status of a specific agent
-  logs      Agent logs
-  stop      Stops an agent
-  budget    Shows/changes the budget
-  approve   Approves a pending action
-  reject    Rejects a pending action
-```
-
-**`tb agent spawn`:**
-
-```bash
-tb agent spawn [flags]
-
-Flags:
-  --role <role>       Agent role/persona (required)
-  --parent <id>       Parent agent ID
-  --task <task>       Initial task
-  --budget <tokens>   Token budget
-  --timeout <dur>     Maximum timeout
-```
-
-**Examples:**
-
-```bash
-# Create a worker agent
-tb agent spawn --role worker-backend --parent supervisor-001 \
-  --task "Implement the /api/users endpoint" \
-  --budget 5000 --timeout 5m
-
-# List agents
-tb agent list
-# ID              ROLE              STATUS     PARENT          TOKENS   UPTIME
-# planner-001     planner           working    -               45000    10m
-# supervisor-001  supervisor        idle       planner-001     18000    8m
-# worker-001      worker-backend    working    supervisor-001  3200     3m
-# worker-002      worker-backend    blocked    supervisor-001  1500     2m
-
-# View detailed status
-tb agent status worker-001
-
-# List pending actions
-tb agent list --pending
-# ID          ACTION              RESOURCE            REQUESTED_BY    WAITING
-# action-123  file:delete         tests/old.go        worker-001      2m30s
-# action-124  network:external    api.example.com     worker-002      1m15s
-
-# Approve action
-tb agent approve action-123 --reason "Obsolete file"
-
-# Reject action
-tb agent reject action-124 --reason "Not authorized for external network"
-```
+> **Dropped, not planned.** `tb md` (Markdown TUI) left with the vault's Phase A ([ADR-016](adr/016-vault-fase-a.md)): any editor, Obsidian included, edits the vault; see [`tb vault`](#tb-vault--markdown-vault-phase-a). `tb agent` (`spawn --parent`, `list`, `approve`, `reject`, `budget`) was dropped by [ADR-020](adr/020-agent-hierarchy-a2a.md): an agent is admitted with `tb bus invite` + `tb bus join`, run with `tb bus run` or `tb router run`, and watched with `tb watchdog` / `tb bus watchdog`; there is no pending-action queue to approve. Delegation trees on the bus are specified in [specs/agent-hierarchy.md](specs/agent-hierarchy.md).
 
 ---
 
@@ -759,7 +650,10 @@ Flags:
   --lint-cmd <cmd>       verify: lint command (empty + explicit flag or --no-lint to skip)
   --no-build             verify: skips build_cmd
   --no-lint              verify: skips lint_cmd
-  --ruler <list>         verify: comma-separated rulers (slice 1: tests; visual is refused here)
+  --ruler <list>         verify: comma-separated rulers (tests, coverage; visual is refused here)
+  --coverage-cmd <cmd>   verify: coverage command
+  --coverage-pattern <re> verify: regexp with one capture group for the coverage percentage
+  --min-coverage <n>     verify: coverage floor in [0, 100] (only raises the base threshold)
   --typecheck-cmd <cmd>  verify: typecheck command (gate step after build)
   --no-typecheck         verify: skips typecheck_cmd
   --check <name=cmd>     verify: adds or overrides a named check (repeatable)
@@ -1116,15 +1010,25 @@ tb egm status docs/specs/x.md [--strict]  # 0 PASS, 1 FAIL, 3 IN_PROGRESS/STALE/
 tb egm status docs/specs/x.md --at HEAD   # gate mode: document, sources and config from the commit
 tb egm receipt docs/specs/x.md            # writes .toolbelt/egm/receipts/<slug>.json (needs PASS or PASS_PARTIAL)
 tb egm drift-report [doc...] [--at REV]   # source drift against the receipt: 0 fresh/no_baseline, 1 drift, 2 error
+tb egm drift-report --json                # v egm-source-drift/0.2: adds symbols_changed, symbols_missing, outside_symbols
 tb egm drift-report --engine llm          # plus one drift goldfish per drifted doc (egm.drift.max_docs); findings reported, exit unchanged
 tb egm bootstrap docs/specs/new.md --from internal/x/   # new skeleton wired to the code (never overwrites, never commits); refusals exit 2: usage, bootstrap_exists, bootstrap_path, bootstrap_sources
 tb egm bootstrap docs/specs/new.md --from internal/x/ --engine llm   # a goldfish drafts the body; also bootstrap_injection, bootstrap_invalid, bootstrap_not_run, tools_unverifiable, agent_unavailable
+tb egm brainstorm --brief rd.md [--from internal/x/] [--out notes/ideas.md]   # concept brief via one goldfish; not gated, written outside the tree by default (0600); exit 2: usage, brief_path, brief_secret, brief_injection, brainstorm_gated, brainstorm_exists, brainstorm_invalid, brainstorm_injection, agent_unavailable, tools_unverifiable
+tb egm draft docs/specs/new.md --brief rd.md --from internal/x/ --body body.md   # new spec or ADR from an elephant-written body (no agent); never overwrites, never commits, no review state; exit 2: usage, draft_exists, draft_path, draft_sources, draft_injection, draft_invalid, brief_*
+tb egm draft docs/specs/new.md --brief rd.md --from internal/x/ --engine llm      # a goldfish writes the body; also draft_not_run, tools_unverifiable, agent_unavailable
+tb egm draft docs/specs/x.md --update --brief rd.md --engine llm   # proposal for an existing document under the state directory plus a diff; the document is never edited
 tb egm review docs/specs/x.md --restart   # new cycle after a cap (needs an edit)
 ```
+
+- **`brainstorm` and `draft` ([Phase C spec](specs/egm-phase-c.md), C1–C3):** both run only in the sandboxed goldfish runner (`egm.agent_cmd`, tools verifiably off) or, for `draft --body`, not at all; the generated text is cleaned (HTML comments, level-1 headings, early `Status:` lines), injection-scanned and written only if it passes. A brief (`--brief`, a regular file without symlinks, at most `egm.max_source_bytes`) with a secret-like value or injection-like text is refused before any agent runs. A concept brief lands in `$XDG_STATE_HOME/tb/egm/<repo-id>/briefs/` unless `--out` names a new file that is not an `egm.doc_globs` path; a draft may use one as `--brief` but never cites it. `draft` gives exactly one of `--body` and `--engine llm`, assembles the required sections (a missing one keeps `TODO`) and `## Sources` of the accepted `--from` files, and refuses a body that cites anything else or holds a secret-like value (`draft_secret`; `--update --engine llm` refuses a document with one too). The target must match `egm.doc_globs` or the repository's extra gated globs, for a new draft and for `--update` alike. It writes no state, round or receipt: the draft reaches `PASS` only through `tb egm review`. `--update` takes no `--from`, keeps the document's title, status and `## Sources`, and the proposal must resolve to the same R7 sources. Limits: `egm.brainstorm.max_bytes` (16 KiB) and `egm.draft.max_bytes` (32 KiB), lowered only by the repository config.
 
 - **Flags:** `review` and `loop next` take `--engine auto|llm|deterministic`, `--reviewers a,b` and `--dry-run`; `review` takes `--restart`; `status` takes `--strict` and `--at <rev>`. Every command accepts `--json`.
 - **Gate mode (`--at`):** the document, the sources (mode from `ls-tree`, bytes from `cat-file blob`; a source behind a versioned symlink is excluded) and the repository config come from the commit, never from the worktree. The repository is found from the current directory, and the document path is resolved lexically against it, so a missing or symlinked directory in the worktree changes nothing. A tracked source counts even when it matches `.gitignore`, in both modes. The `content` of a committed, unchanged worktree is the same in both modes. A source with a `.gitattributes` filter is not detected (`filtered_source` is a declared limitation).
 - **Receipt (`receipt`):** writes `.toolbelt/egm/receipts/<slug>.json`, to commit with the document: the document and source hashes plus the claims, which are the lineages at `major` or above that the arbiter withdrew (and nothing reopened since), that were declined, or that were force-settled. Each claim carries `lines` in the current document; a scope without lines falls back to its heading's section. The bytes are deterministic (sorted keys, trailing newline). It is refused (exit 3, nothing written) unless the verdict is `PASS` or `PASS_PARTIAL`, refused with exit 2 `receipt_uncommitted` when the document or an included source differs from `HEAD` (commit them first; CI recomputes the hashes from the commit), and refused with exit 2 `receipt_path_untrusted` when a component of the path is a symlink or not a directory. The CI mode that checks receipts comes in a later slice ([egm trust](specs/egm-trust.md)).
+- **Symbol citations (`path.go#Name`, `path.go#Recv.Name`):** a Go source may be cited with a symbol fragment, as a link or a backtick span; `L10`-style anchors stay file-level. Review checks each cited symbol on the snapshot's bytes with a pure parser (no graph, no LLM, also under `--engine deterministic`): a missing name is a `major` `refs` finding, an ambiguous one (`init`, `_`, or declared twice) a `major` `symbol_ambiguous`, and a file that does not parse one nit. The symbol's range starts at its declaration, doc comment excluded, and is hashed as raw bytes. Rounds record the hashes as `symbols`.
+- **Receipt v3 (`egm.receipt.write_v3: true`, user-only):** v2 plus `symbols` (`"path#Name"` to sha256, possibly empty); readers accept 1, 2 and 3, and CI recomputes each symbol hash at head (a mismatch is `receipt_stale`; a key the document never cites is `receipt_invalid`).
+- **Symbol drift (`drift-report`, `egm-source-drift/0.2`):** a source cited **only** through symbols is compared by those symbols: `symbol_changed` or `symbol_missing` (reason `deleted`, `ambiguous`, `unparsed`, `too_large`) exit 1, while a change elsewhere in the file is listed in `outside_symbols` and the document stays `fresh`. A path also cited plainly, and any v1/v2 receipt or round without `symbols`, stays file-scoped. Severity: `unreadable` > `source_missing` > `symbol_missing` > `drifted` > `symbol_changed` > `sources_differ` > `fresh` > `no_baseline`. `ci_source_drift` and the local `sources_changed` warning follow the same rule.
 - **MCP:** `tb_egm_status` (`cwd`, `doc`, `at`, `strict`), `tb_egm_receipt` (`cwd`, `doc`) and `tb_egm_resolve` (`cwd`, `doc` and the resolve flags as `fix`, `decline`, `force_settle`, `reason`, `contest`, `evidence`). `cwd` must be absolute. `review` and `loop next` take minutes and stay CLI-only.
 - **Auth (claude):** with `ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN` listed in `egm.env.pass` and set, the key reaches the goldfish through the env and no credential file is checked or copied (the CI setup); note that a developer who lists `ANTHROPIC_API_KEY` in `egm.env.pass` and exports it locally is billed on that key instead of their claude login; otherwise the `claudeAiOauth` entry of `~/.claude/.credentials.json` is copied after the `expiresAt` precheck.
 - **Config:** read from the user config (`~/.config/toolbelt/config.yaml`, `egm:` section) or from `-c`, never from the merged config. The repository's `.toolbelt/config.yaml` can only harden it: execution keys (`agent_cmd`, `env`, …) are ignored with `config_untrusted`, limits only go down, policy only goes up.
@@ -1169,7 +1073,10 @@ Runs the generator→discriminator loop with pluggable rulers.
 tb verify run [flags]
 
 Flags:
-  --ruler <list>           Comma-separated rulers (default: tests). Slice 1: tests, visual; visual cannot be combined; unknown name → exit 2 (coverage is planned)
+  --ruler <list>           Comma-separated rulers (default: tests): tests, coverage, visual; visual cannot be combined; unknown name → exit 2
+  --coverage-cmd <cmd>     Coverage command (verify.coverage_cmd; default with go.mod: go test -coverprofile)
+  --coverage-pattern <re>  Regexp with one capture group; its last match in the coverage command's output is the percentage (verify.coverage_pattern; required with a non-Go coverage_cmd)
+  --min-coverage <n>       Coverage floor in [0, 100]; only raises the base ref's .toolbelt/thresholds.yaml
   --test-cmd <cmd>         Visible tests command (default: verify.test_cmd; `tb init` detects go/npm/pnpm/yarn/pytest/cargo/make and also build_cmd/lint_cmd)
   --hidden-test-cmd <cmd>  Hidden tests command (verify.hidden_test_cmd; runs even without tests/hidden/; if the dir exists and the cmd is empty: detects the toolchain or marks N/A)
   --build-cmd <cmd>        Build command (default: verify.build_cmd; empty + explicit flag or --no-build to skip)
@@ -1314,6 +1221,8 @@ verify:
   typecheck_cmd: "pnpm exec tsc --noEmit"
   lint_cmd: "pnpm --filter @pkg lint"
   test_cmd: "pnpm --filter @pkg test"
+  coverage_cmd: "pnpm exec vitest run --coverage"
+  coverage_pattern: 'All files\s*\|\s*[\d.]+\s*\|\s*[\d.]+\s*\|\s*[\d.]+\s*\|\s*([\d.]+)'
   hidden_test_cmd: "pnpm --filter @pkg test:hidden"
   checks:
     - name: audit              # [a-z0-9-]{1,32}, unique
@@ -1390,6 +1299,11 @@ tb verify run --test-cmd "go test ./..." --hidden-test-cmd "go test ./tests/hidd
 tb verify run --test-cmd "true" --no-build --no-lint --max-iter 1
 tb verify run --dry-run --build-cmd "go build ./..." --test-cmd "go test ./..."
 
+# Coverage ruler (threshold from the base ref's .toolbelt/thresholds.yaml)
+tb verify run --ruler coverage
+tb verify run --ruler tests,coverage --min-coverage 80
+tb verify run --ruler coverage --coverage-cmd "pytest --cov" --coverage-pattern 'TOTAL.*\s(\d+(?:\.\d+)?)%'
+
 # Visual verification (threshold is a 0–1 fraction, not an integer percentage)
 tb verify run --ruler visual --threshold 0.95
 tb verify run --ruler visual --manifest .toolbelt/screens.yaml --json -o verify-result.json
@@ -1405,11 +1319,45 @@ tb verify run --ruler visual --skip-unavailable
 |-------|--------|-------------------|-------------------|
 | `visual` | Pixel similarity | 0.95 | Reference edits |
 | `tests` | Gate steps (build → typecheck → lint → named checks) pass, then visible and hidden tests pass | 100% | Test modification; rewriting `verify.*` commands (blocked: read from base, `verify_config_changed`) |
-| `coverage` (planned, R4) | Line coverage | `coverage.min_percent` in base `.toolbelt/thresholds.yaml` | Lowering the threshold (read from base) |
+| `coverage` | Coverage percentage (statements for Go, whatever the tool reports otherwise) | `coverage.min_percent` in base `.toolbelt/thresholds.yaml` | Lowering the threshold (read from base) |
 
 `--ruler` takes a comma-separated list. An unknown name fails before anything runs
 with exit **2** (`invalid ruler "x": …`); it used to run `tests` silently. `visual`
-cannot be combined with another ruler yet. `coverage` is not in this release.
+cannot be combined with another ruler yet. `--ruler tests,coverage` runs both with
+one guard, one ref resolution and one head worktree; the verdict is the worst of the two.
+
+**The `coverage` ruler.** It runs the coverage command in the head worktree and reads
+one total percentage:
+
+- **Go** (default when `go.mod` exists and `coverage_cmd` is empty): `go test -coverprofile=<tmp> ./...`;
+  the total is statement-weighted, with blocks deduplicated (a block repeated by
+  `-coverpkg` counts as covered if any copy ran), like `go tool cover -func`.
+- **Generic:** `verify.coverage_cmd` plus `verify.coverage_pattern`, a regexp with exactly
+  one capture group; the **last** match in the output is the percentage and must be a
+  number in [0, 100]. A `coverage_cmd` without `coverage_pattern` fails with its own
+  reason (`coverage: coverage_cmd set but no coverage_pattern to read its output`); an
+  output with no match fails with `coverage: pattern did not match`.
+- **Threshold:** `coverage.min_percent` in `.toolbelt/thresholds.yaml` read **from the
+  base ref only** (never the working tree), so a change cannot lower its own floor.
+  Schema: `version: 1`, `coverage: {min_percent: <0–100>}`; unknown keys, a bad value, a
+  malformed file or a symlink abort verify instead of meaning "no threshold".
+  `--min-coverage` (MCP `min_coverage`) can only **raise** it: the effective floor is
+  `max(base, flag)`, reported as `threshold_source: "base"` or `"flag"`.
+- **Trust:** the coverage command runs as the same user as the code under test, so a
+  test can tamper with its own coverage output; the threshold is a floor, not proof. Prefer
+  an anchored, generic pattern (e.g. `(?m)^TOTAL\s.*\s(\d+)%$`) over a loose one. For Go,
+  the profile is accepted only for files of the module's packages (`go list ./...`) that
+  exist in the head worktree (`coverage: profile names unknown file <key>`); negative
+  counts and inconsistent statement counts fail. The Go default is decided by `go.mod`
+  at the **base** commit.
+- **Verdicts:** no threshold anywhere → `SKIPPED` / `not_applicable` (it does not demote
+  a combined `PASS`); a threshold but no coverage command for the repository → `FAIL`
+  (`coverage: threshold set but no coverage_cmd for this repository`); below the
+  threshold → `FAIL` (not `ESCALATE`: the agent can add tests); otherwise `PASS`.
+- **JSON:** `coverage: {percent, threshold, threshold_source, cmd, metric}` and
+  `metrics.coverage_percent`. With several rulers the output is
+  `{verdict, rulers: {tests: …, coverage: …}}`. Flag or MCP overrides of
+  `coverage_cmd`, `coverage_pattern` or `min_coverage` appear in `overrides`.
 
 > Ruler `review`, flag `--discriminator-only`, and invocations like `tb verify <task-id>` **do not exist** — use `tb verify run` and `tb review` separately.
 
@@ -2012,10 +1960,12 @@ tb bus invite feature-x --role worker
 tb bus invite feature-x --role supervisor --name claude-main
 tb bus join feature-x --invite K7Q2-9XMD --name grok-1 --vendor xai --role worker
 tb bus send --channel feature-x --as claude-main --to role:worker --type task.assign --thread TKT-001 --payload '{"ticket":"TKT-001"}'
+tb bus send --channel feature-x --as claude-main --to role:worker --type task.assign --thread TKT-001/api --parent TKT-001
 tb bus recv --channel feature-x --as grok-1 --wait 20s
 tb bus claim TKT-001 --channel feature-x --as grok-1
 tb bus complete TKT-001 --channel feature-x --as grok-1 --epoch 1 --result '{"verdict":"PASS"}'
 tb bus log feature-x --thread TKT-001
+tb bus tree feature-x
 tb bus channel list
 tb bus channel show feature-x
 tb bus heartbeat --channel feature-x --as grok-1
@@ -2034,13 +1984,14 @@ tb bus discover
 | `channel extend <channel> --ttl D` | human | resets the expiry to now + `D` (`0` = no expiry); reopens an expired channel keeping sessions and history |
 | `invite <channel> --role R` | human | single-use invite with a pinned role (`--ttl`, default `10m`); `--name` binds it to an agent and, if that agent is already in the channel, recovers its lost session (new token) |
 | `join <channel> --invite C` | agent | joins with an Agent Card (`--name`, `--vendor`, `--model`, `--tier`, `--wake`, `--session`, `--capability` or `--card card.json`); `--role` must match the invite's role; stores the session in the bus private directory, outside the repository (`$XDG_STATE_HOME/toolbelt/bus/`, `0600`) |
-| `send` | agent | `--to agent:\|role:\|topic:`, `--type`, `--thread`, `--causation`, `--idempotency-key`, `--ttl`, `--payload` (JSON or `@file`) |
+| `send` | agent | `--to agent:\|role:\|topic:`, `--type`, `--thread`, `--causation`, `--idempotency-key`, `--ttl`, `--payload` (JSON or `@file`); `--parent T` (only on `task.assign`) links the sub-task to thread `T`, which the sender must hold with a live claim (the router may link any known parent): the broker refuses with `parent_unknown`, `parent_not_owned`, `parent_immutable`, `depth_exceeded` (max depth 3) or `fanout_exceeded` (max 8 open children), see [bus-protocolo.md](bus-protocolo.md#delegation-trees) |
 | `recv` | agent | reads and advances the cursor; `--wait` (max 25s), `--limit`, `--peek`, `--since` |
 | `claim <thread>` | agent | single owner of the thread; prints the `epoch`; takes over a released claim or one whose owner lost its lease |
-| `complete <thread>` | owner | `--epoch` (required, from `claim`), `--result`; publishes `task.result` to `topic:board`; `lease_lost` when the claim changed hands or was released |
+| `complete <thread>` | owner | `--epoch` (required, from `claim`), `--result`; publishes `task.result` to `topic:board`; `lease_lost` when the claim changed hands or was released; completing a parent with open children succeeds and prints `warning: … completed with N open children (…)` on stderr (`open_children` in `--json`) |
 | `heartbeat` | agent | renews the lease; lists held threads (with epochs) and lost ones (with the new owner) |
 | `watchdog <channel>` | human | releases claims of agents that are not alive and publishes `task.status` `lease_expired` from `system:watchdog` to `topic:board`; `--dry-run` lists only. Not exposed over MCP |
 | `log <channel>` | human | audit trail (redacted payload); `--thread`, `--limit` |
+| `tree <channel>` | human | delegation trees built by `send --parent`: one node per line with state (`assigned`, `claimed`, `released`, `completed`, `revoked`, `expired`), owner, epoch and open children; `--thread T` (only that subtree), `--all` (also threads without children), `--limit N` (trees, newest first, default 50); no payload, result, token or Agent Card `session`; works on an expired channel. CLI only: not exposed over MCP |
 | `run --channel C --as N` | human | B3 harness: waits without an LLM and wakes the agent through the wake file (`exec`, `harness` or `notify`, which pings the human for GUI-only agents); `--once`, `--check`, `--dry-run`, `--invite`, `--role`, `--config`, `--allow-unsandboxed`. Spec: [bus-harness.md](bus-harness.md), [bus-notify-discover.md](bus-notify-discover.md) |
 | `discover` | human | read-only catalog of known agent CLIs on `PATH` and MCP client configs that run `tb mcp` (other servers only counted), with next steps; executes nothing; `--cwd`, `--json` |
 
@@ -2164,11 +2115,11 @@ Unix/tcp transport and `--socket`/`--port`/`--tls-*` flags are planned; today on
 | `tb_env` | — | cwd/os/arch |
 | `tb_run` | — | `sh -c` with timeout inside the Landlock sandbox (see [MCP `tb_run` sandbox](#mcp-tb_run-sandbox)); filtered env; `env`/`pass_env` args (arrays); `cwd` must be inside the repository |
 | `tb_mem_add` / `tb_mem_list` / `tb_mem_show` / `tb_mem_edit` / `tb_mem_retire` / `tb_mem_search` / `tb_mem_check` / `tb_mem_init` | `tb mem …` | optional `cwd` arg; `ref`/`all` (boolean; legacy strings ok) where applicable |
-| `tb_verify_run` | `tb verify run` | `ruler` (comma list: `tests`, `visual`); args mirror flags + `env`/`pass_env`, including `typecheck_cmd`, `no_typecheck` (boolean), `checks` (array of `{name, cmd}`), `skip_checks` (array of names), `no_checks` (boolean) |
+| `tb_verify_run` | `tb verify run` | `ruler` (comma list: `tests`, `coverage`, `visual`); args mirror flags + `env`/`pass_env`, including `coverage_cmd`, `coverage_pattern`, `min_coverage` (number), `typecheck_cmd`, `no_typecheck` (boolean), `checks` (array of `{name, cmd}`), `skip_checks` (array of names), `no_checks` (boolean) |
 | `tb_review` | `tb review` | ticket/base/head/approved_sha/require_approved_sha/reviewers/standards |
 | `tb_drift` | `tb drift` | returns `{drift, has_drift, pinned_approval}` (`checked` explicit) |
 | `tb_guard_check` | `tb guard check` | `base`/`head` or `range=A..B`; `strict_fail` by default on SeverityError; `warn_only=true` opt-out; `strict` deprecated (boolean) |
-| `tb_stack` | `tb stack` | `ops` (array, includes `egm`, always moved to the end), `base`/`head`, `fail_fast` (boolean), `jobs` (integer), `approved_sha`/`approved_base`/`require_approved_sha`, `env`/`pass_env`, `egm_docs` (array), `strict` (boolean), `egm_mode` (`local`/`ci`), `egm_config` (absolute path, required by `ci`), `egm_allow_offline` (boolean); verify fields `ruler` (`visual` refused), `typecheck_cmd`, `no_typecheck`, `checks`, `skip_checks`, `no_checks`; returns aggregated JSON with `warn` |
+| `tb_stack` | `tb stack` | `ops` (array, includes `egm`, always moved to the end), `base`/`head`, `fail_fast` (boolean), `jobs` (integer), `approved_sha`/`approved_base`/`require_approved_sha`, `env`/`pass_env`, `egm_docs` (array), `strict` (boolean), `egm_mode` (`local`/`ci`), `egm_config` (absolute path, required by `ci`), `egm_allow_offline` (boolean); verify fields `ruler` (`visual` refused), `coverage_cmd`, `coverage_pattern`, `min_coverage`, `typecheck_cmd`, `no_typecheck`, `checks`, `skip_checks`, `no_checks`; returns aggregated JSON with `warn` |
 | `tb_egm_status` / `tb_egm_resolve` / `tb_egm_receipt` | `tb egm status` / `tb egm resolve` / `tb egm receipt` | `cwd` (absolute) and `doc`; status takes `at`/`strict`, resolve takes `fix`/`decline` (arrays), `force_settle`/`reason`, `contest`/`evidence`; returns `{report, exit_code}` (receipt adds `receipt`, the written path) |
 | `tb_vault_list` / `tb_vault_show` / `tb_vault_search` / `tb_vault_links` / `tb_vault_backlinks` / `tb_vault_check` / `tb_vault_new` | `tb vault …` | `cwd` (absolute); `note` for show/links/backlinks, `query`/`limit` for search, `type`/`tag`/`source` for list; new takes `title`, `confidence` (required), `type`, `tags`, `dir`, `body` and always writes `source: inferred`; note text comes back inside `data` |
 | `tb_ticket_list` / `tb_ticket_show` | `tb ticket list` / `tb ticket show` | `status`, `deps` / `id`; optional arg `cwd` |
@@ -2177,7 +2128,7 @@ Unix/tcp transport and `--socket`/`--port`/`--tls-*` flags are planned; today on
 | `tb_router_status` | `tb router status` | read-only view of `state.json` |
 | `tb_watchdog_alerts` | `tb watchdog alerts` | `since`, `kind`, `limit` (integer) |
 | `tb_merge` | `tb merge` | `ids` (array), `strategy`, `into`, `force`, `allow_sensitive` (default `false`); **dry-run by default**; only changes refs with `apply=true` |
-| `tb_bus_join` / `tb_bus_send` / `tb_bus_recv` / `tb_bus_claim` / `tb_bus_complete` / `tb_bus_heartbeat` / `tb_bus_status` | `tb bus …` | identity bound to the connection after `tb_bus_join` (`channel`, `invite`, `name` + Agent Card); `payload`/`result` as objects; `tb_bus_complete` requires the integer `epoch`; `tb mcp` heartbeats bound sessions in the background; no watchdog tool; `wait` string (max 25s); creating channels/invites does **not** exist through MCP; `tb mcp --bus-as <channel>/<name>` binds the connection to a CLI session (used by `tb bus run`) |
+| `tb_bus_join` / `tb_bus_send` / `tb_bus_recv` / `tb_bus_claim` / `tb_bus_complete` / `tb_bus_heartbeat` / `tb_bus_status` | `tb bus …` | identity bound to the connection after `tb_bus_join` (`channel`, `invite`, `name` + Agent Card); `payload`/`result` as objects; `tb_bus_complete` requires the integer `epoch` and reports `open_children`; `tb_bus_send` takes an optional `parent` (`task.assign` only; the broker checks it); no tree tool; `tb mcp` heartbeats bound sessions in the background; no watchdog tool; `wait` string (max 25s); creating channels/invites does **not** exist through MCP; `tb mcp --bus-as <channel>/<name>` binds the connection to a CLI session (used by `tb bus run`) |
 | `tb_graph_search` / `tb_graph_callers` / `tb_graph_deps` / `tb_graph_impact` / `tb_graph_explain` / `tb_graph_path` / `tb_graph_index` | `tb graph …` | call requires `TB_GRAPH=on`; `depth`/`limit`/`max_depth` integer; `transitive` boolean; `explain` takes `node`, `path` takes `from`/`to`; `tb_graph_search` `mode` and `tb_graph_index` `vectors` (see [vector index](#vector-index)) |
 
 Schemas type `depth`/`limit`/`reviewers`/`max_iter` as integer, `strict`/`warn_only`/`transitive`/`skip_unavailable`/`all` (mem) as boolean, `threshold` as number, and `standards` as a string array; legacy string values are still accepted. verify/review/drift/guard reports come back as JSON in `content` (without a process exit code). Empty lists use `[]`; `hidden_passed` is `null` if the hidden suite does not apply.

@@ -4,7 +4,7 @@
 
 ## Status
 
-accepted
+accepted. The "A2A for Agents" section, the `tb serve` Unix socket and the HTTP/2 transport were never built; [ADR-020](020-agent-hierarchy-a2a.md) (accepted) supersedes them: agent ↔ agent traffic is the local `tb bus` with an A2A-shaped envelope, MCP is served by `tb mcp` over stdio, and `tb` opens no network.
 
 ## Context
 

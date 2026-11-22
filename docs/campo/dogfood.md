@@ -108,6 +108,15 @@ pointing to it. Goldfish flags: `-p --output-format json --tools "" --strict-mcp
 | 41 | `tb egm review docs/specs/vault.md --engine deterministic` | only real problems | 2 real `required-sections` findings (`## Non-goals` and `## Technical plan` do not match the standard's casing) and 6 real `plan-files-listed` ones (test files written without their directory). But 6 `refs-exist` majors point at paths the spec plans to create or that belong to Obsidian (`.obsidian`, `.trash`, `internal/vault/testdata/obsidian`), and a pre-implementation spec cannot converge without declining them one by one. Also, `plan-files-listed` only reads the first table after the plan heading: splitting the plan into one table per slice turned 16 `Create` files into `refs-exist` findings | minor |
 | 42 | `tb bus discover` (2026-11-20, local build) | this repository's `.mcp.json` points at a known `tb` | the `toolbelt` entry runs a bare `tb`, so `same_tb` is `null`: the client resolves it on its own `PATH`, which here is the `~/go/bin` release (v0.0.8), not the local build under test. Intended (CLAUDE.md says to test with `./bin/tb`), but discover makes the ambiguity visible | info |
 
+## 2026-11-22 — stability backlog (note, not a fix)
+
+Found while specifying symbol-level drift ([egm Phase C](../specs/egm-phase-c.md)); no `tb graph` command was run. Both come from the Go indexer in `internal/graph/index_go.go` and are tracked for the graph slice (C6), not fixed:
+
+- Methods drop the receiver in their ID (`func:<pkg>.<name>`, line 52) and `funcIDs` is keyed by the bare name (line 54), so `(A) Name` and `(B) Name` in one package become one node and the call edges of the second are attributed to the first.
+- Package IDs are `pkg:<name>` (line 34), so several packages named `main` (every `cmd/*`) collapse into one node.
+
+`tb egm` does not depend on either: its symbols are file-scoped.
+
 ## 2026-11-21 — vector index V1 (`tb graph index --vectors`, local `embednative` build, all-MiniLM-L6-v2 Q8_0)
 
 | # | Command | Expected | Actual | Sev. |

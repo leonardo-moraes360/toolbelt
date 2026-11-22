@@ -154,6 +154,7 @@ func registerBusTools() {
 				"to":              {Type: "string", Description: "agent:<name> | role:<role> | topic:<name>"},
 				"type":            {Type: "string", Description: "task.assign|task.status|query|reply|ack|urgent"},
 				"thread":          {Type: "string", Description: "Thread (e.g. TKT-001)"},
+				"parent":          {Type: "string", Description: "task.assign only: the parent thread you hold (claim it first), so this sub-task joins its delegation tree; the broker checks ownership, depth (max 3) and open children (max 8)"},
 				"causation_id":    {Type: "string", Description: "ID of the message that caused this one"},
 				"idempotency_key": {Type: "string", Description: "Per-sender dedupe key"},
 				"ttl":             {Type: "string", Description: "Duration (e.g. 30m)"},
@@ -371,6 +372,7 @@ func handleBusSend(_ context.Context, args map[string]any) (any, error) {
 		To:             StringArg(args, "to"),
 		Type:           bus.Type(StringArg(args, "type")),
 		Thread:         StringArg(args, "thread"),
+		Parent:         StringArg(args, "parent"),
 		CausationID:    StringArg(args, "causation_id"),
 		IdempotencyKey: StringArg(args, "idempotency_key"),
 		TTL:            StringArg(args, "ttl"),
@@ -435,7 +437,11 @@ func handleBusComplete(_ context.Context, args map[string]any) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	return busText(map[string]any{"claim": res.Claim, "envelope": bus.Wrap(&res.Message)})
+	out := map[string]any{"claim": res.Claim, "envelope": bus.Wrap(&res.Message)}
+	if len(res.OpenChildren) > 0 {
+		out["open_children"] = res.OpenChildren
+	}
+	return busText(out)
 }
 
 // BindBusSession binds this MCP connection to the CLI session <channel>/<name>

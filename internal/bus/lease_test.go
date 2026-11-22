@@ -240,12 +240,12 @@ func TestMigrateV1(t *testing.T) {
 
 	db, err = sql.Open("sqlite", filepath.Join(dir, ".toolbelt", "bus", "bus.db"))
 	must(t, err)
-	_, err = db.Exec(`PRAGMA user_version = 4`)
+	_, err = db.Exec(`PRAGMA user_version = 5`)
 	must(t, err)
 	must(t, db.Close())
 	if s3, err := Open(dir); err == nil {
 		s3.Close()
-		t.Fatal("a v4 store was accepted")
+		t.Fatal("a v5 store was accepted")
 	}
 }
 

@@ -102,15 +102,22 @@ type Options struct {
 	Checks     []config.VerifyCheck
 	SkipChecks []string
 	NoChecks   bool
-	DryRun     bool
-	MaxIter    int
-	Timeout    time.Duration
-	Reviewers  int
-	Standards  []string
-	LoadGraph  bool
-	Loaders    *Loaders
-	EnvAllow   []string
-	EnvPass    []string
+	// Coverage ruler (R4): the *Set flags tell an explicit empty value from
+	// an absent one; MinCoverage only raises the base threshold.
+	CoverageCmd        string
+	CoverageCmdSet     bool
+	CoveragePattern    string
+	CoveragePatternSet bool
+	MinCoverage        *float64
+	DryRun             bool
+	MaxIter            int
+	Timeout            time.Duration
+	Reviewers          int
+	Standards          []string
+	LoadGraph          bool
+	Loaders            *Loaders
+	EnvAllow           []string
+	EnvPass            []string
 	// EgmDocs are added to the egm op's selection (R33).
 	EgmDocs []string
 	// Strict makes PASS_PARTIAL and an empty egm selection fail (R33).
@@ -226,7 +233,13 @@ func validateOptions(opts *Options) error {
 	if err := verify.ValidateChecks(opts.Checks); err != nil {
 		return &verify.UsageError{Msg: "--check: " + strings.TrimPrefix(err.Error(), "verify.checks: ")}
 	}
-	return nil
+	// The coverage overrides fail the same way inside the verify step; checking
+	// here turns a bad pattern or floor into exit 2 before any stage runs.
+	cfg := verify.DefaultConfig(opts.RepoDir)
+	return verify.MergeFlags(&cfg, nil, &verify.FlagOverrides{
+		CoveragePattern: verify.CmdOverride{Cmd: opts.CoveragePattern, Set: opts.CoveragePatternSet},
+		MinCoverage:     opts.MinCoverage,
+	})
 }
 
 // verifyRulers parses the verify op's ruler list; visual needs a browser and
@@ -670,26 +683,38 @@ func buildVerifyConfig(opts *Options, shared *Shared) (verify.Config, error) {
 // when non-empty, as tb stack always did.
 func verifyOverrides(opts *Options) *verify.FlagOverrides {
 	return &verify.FlagOverrides{
-		TestCmd:       verify.CmdOverride{Cmd: opts.TestCmd, Set: opts.TestCmd != ""},
-		HiddenTestCmd: verify.CmdOverride{Cmd: opts.HiddenTestCmd, Set: opts.HiddenTestCmd != ""},
-		BuildCmd:      verify.CmdOverride{Cmd: opts.BuildCmd, Set: opts.BuildCmdSet},
-		LintCmd:       verify.CmdOverride{Cmd: opts.LintCmd, Set: opts.LintCmdSet},
-		TypecheckCmd:  verify.CmdOverride{Cmd: opts.TypecheckCmd, Set: opts.TypecheckCmdSet},
-		NoBuild:       opts.NoBuild,
-		NoLint:        opts.NoLint,
-		NoTypecheck:   opts.NoTypecheck,
-		Checks:        opts.Checks,
-		SkipChecks:    opts.SkipChecks,
-		NoChecks:      opts.NoChecks,
+		TestCmd:         verify.CmdOverride{Cmd: opts.TestCmd, Set: opts.TestCmd != ""},
+		HiddenTestCmd:   verify.CmdOverride{Cmd: opts.HiddenTestCmd, Set: opts.HiddenTestCmd != ""},
+		BuildCmd:        verify.CmdOverride{Cmd: opts.BuildCmd, Set: opts.BuildCmdSet},
+		LintCmd:         verify.CmdOverride{Cmd: opts.LintCmd, Set: opts.LintCmdSet},
+		TypecheckCmd:    verify.CmdOverride{Cmd: opts.TypecheckCmd, Set: opts.TypecheckCmdSet},
+		NoBuild:         opts.NoBuild,
+		NoLint:          opts.NoLint,
+		NoTypecheck:     opts.NoTypecheck,
+		Checks:          opts.Checks,
+		SkipChecks:      opts.SkipChecks,
+		NoChecks:        opts.NoChecks,
+		CoverageCmd:     verify.CmdOverride{Cmd: opts.CoverageCmd, Set: opts.CoverageCmdSet},
+		CoveragePattern: verify.CmdOverride{Cmd: opts.CoveragePattern, Set: opts.CoveragePatternSet},
+		MinCoverage:     opts.MinCoverage,
 	}
 }
 
 func verifyStepResult(multi *verify.MultiResult) StepResult {
 	exit := multi.ExitCode()
 	step := StepResult{Op: string(OpVerify), OK: exit == 0, ExitCode: exit, Result: multi.Payload()}
-	if res, ok := step.Result.(*verify.Result); ok && res.Reason != "" {
-		step.Reason = res.Reason
-		step.Error = res.Error
+	switch p := step.Result.(type) {
+	case *verify.Result:
+		step.Reason, step.Error = p.Reason, p.Error
+	case *verify.CoverageReport:
+		if p.Verdict != verify.VerdictPass {
+			step.Reason, step.Error = p.Reason, p.Reason
+		}
+	default:
+		if !step.OK {
+			step.Reason = multi.FirstReason()
+			step.Error = step.Reason
+		}
 	}
 	return step
 }
