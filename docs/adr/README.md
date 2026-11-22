@@ -37,6 +37,7 @@ Each ADR follows this format:
 | [016](016-vault-fase-a.md) | Markdown vault, Phase A: the vault is the only store | proposed |
 | [017](017-appsec-red-blue-labs.md) | Native AppSec red/blue capabilities and isolated labs (`tb red` / `tb blue` / `tb lab`) | proposed |
 | [018](018-cgo-componentes-nativos.md) | cgo for native components, starting with vendored llama.cpp, under a C/C++ quality gate | proposed |
+| [019](019-cpu-v3-embedding.md) | AVX2/FMA kernels for the embedding child, guarded at run time | proposed |
 
 ## How to Propose an ADR
 
