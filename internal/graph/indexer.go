@@ -164,7 +164,7 @@ func BuildFromRootOpts(root string, opts *BuildOptions) (*Index, error) {
 	if err != nil {
 		return nil, err
 	}
-	idx := &Index{Root: abs}
+	idx := &Index{Root: abs, Version: IndexVersion}
 	nodes := map[string]Node{}
 	var edges []Edge
 	skip := map[string]bool{}
@@ -240,7 +240,7 @@ func walkSourceFile(
 		}
 		return nil
 	}
-	if info.Size() > opts.MaxFileBytes {
+	if !info.Mode().IsRegular() || info.Size() > opts.MaxFileBytes {
 		return nil
 	}
 	rel, _ := filepath.Rel(root, path)

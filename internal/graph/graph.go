@@ -64,7 +64,13 @@ type Edge struct {
 	Confidence float64  `json:"confidence"`
 }
 
+// IndexVersion is bumped when stored node IDs change shape. An index with an
+// older (or missing) version reads as stale, so the next index rebuilds it.
+// v2: Go package IDs are import paths; method IDs carry the receiver.
+const IndexVersion = 2
+
 type Index struct {
+	Version     int    `json:"version"`
 	Root        string `json:"root"`
 	Nodes       []Node `json:"nodes"`
 	Edges       []Edge `json:"edges"`

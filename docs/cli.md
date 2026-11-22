@@ -266,6 +266,24 @@ a symlink (e.g. `/tmp/target` → real dir), it is resolved with
 `filepath.Walk` does not descend into symlinks. The graph remains on demand (ADR-011):
 `TB_GRAPH=on` or `--enable`.
 
+The walk reads only regular files and never follows a symlink: a link inside
+the repository (`docs/notes.md` → `../.env`) is not indexed, and a FIFO or
+other special file is skipped instead of blocking `tb graph index`. Files are
+read through the same reader as the vector index (no symlink on any path
+component, regular file, size cap).
+
+Go node IDs: a package is `pkg:<import path>` (the module path from the
+nearest `go.mod` plus the directory; the root-relative directory when there is
+no `go.mod`), so every `cmd/*` `package main` is its own node. A function is
+`func:<import path>.<Name>` and a method `func:<import path>.<Recv>.<Name>`
+(pointer and type parameters stripped from the receiver). Calls through an
+import resolve to the imported package's ID, and `recv.m()` inside a method
+resolves to the same receiver's method. `callers --function Name` still
+matches a method by its bare name. Stored indexes carry `"version": 2`; an
+index without it (or older) reads as stale and is rebuilt on the next
+`tb graph index`. **Breaking for stored IDs:** `func:main.Run` and
+`pkg:main` from earlier builds no longer exist.
+
 Index freshness: each `graph.json` stores a `fingerprint` (mtime+size of
 indexable files). On `search`/`callers`/`deps`/`impact`/`explain`/`path`/`stats`, if the
 fingerprint diverges and `graph.index_on_change` is `true` (default), the graph is
@@ -329,7 +347,7 @@ Flags:
 There is no `--file` on `callers` (use `--function`). For impact by file, use `tb graph impact --file`.
 
 In Python/JS/TS, `--function` resolves by title or qualified id suffix
-(`func:pkg.mod.nome`; React components/hooks too). `calls` edges with
+(`func:pkg.mod.nome`; React components/hooks too; Go: see node IDs above). `calls` edges with
 confidence &lt; 0.6 (ambiguous targets / no import) are left out of the default
 `callers` and `impact` result. In TS/JS, relative imports
 (`../components/Layout`, `./utils.js` → `utils.ts`, `./index`) and

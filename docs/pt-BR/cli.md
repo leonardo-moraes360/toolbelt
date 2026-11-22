@@ -266,6 +266,24 @@ um symlink (ex.: `/tmp/target` → dir real), ela é resolvida com
 `filepath.Walk` não desce symlinks. O grafo continua sob demanda (ADR-011):
 `TB_GRAPH=on` ou `--enable`.
 
+A varredura lê só arquivos regulares e nunca segue symlink: um link dentro do
+repositório (`docs/notes.md` → `../.env`) não é indexado, e uma FIFO ou outro
+arquivo especial é ignorado em vez de travar o `tb graph index`. Os arquivos
+passam pelo mesmo leitor do índice vetorial (sem symlink em nenhum componente
+do caminho, arquivo regular, teto de tamanho).
+
+IDs de nó em Go: um pacote é `pkg:<import path>` (o path do módulo no `go.mod`
+mais próximo mais o diretório; o diretório relativo à raiz quando não há
+`go.mod`), então cada `package main` de `cmd/*` é um nó próprio. Uma função é
+`func:<import path>.<Nome>` e um método `func:<import path>.<Recv>.<Nome>`
+(ponteiro e parâmetros de tipo removidos do receptor). Chamadas por import
+resolvem para o ID do pacote importado, e `recv.m()` dentro de um método
+resolve para o método do mesmo receptor. `callers --function Nome` ainda casa
+um método pelo nome simples. Os índices gravados levam `"version": 2`; um
+índice sem ele (ou mais antigo) é lido como desatualizado e reconstruído no
+próximo `tb graph index`. **Quebra de IDs gravados:** `func:main.Run` e
+`pkg:main` de builds anteriores deixam de existir.
+
 Frescor do índice: cada `graph.json` guarda um `fingerprint` (mtime+tamanho dos
 arquivos indexáveis). Em `search`/`callers`/`deps`/`impact`/`explain`/`path`/`stats`, se o
 fingerprint divergir e `graph.index_on_change` for `true` (default), o grafo é
@@ -329,7 +347,7 @@ Flags:
 Não há `--file` em `callers` (use `--function`). Para impacto por arquivo, use `tb graph impact --file`.
 
 Em Python/JS/TS, `--function` resolve por título ou sufixo do id qualificado
-(`func:pkg.mod.nome`; componentes/hooks React também). Arestas `calls` com
+(`func:pkg.mod.nome`; componentes/hooks React também; Go: veja os IDs de nó acima). Arestas `calls` com
 confiança &lt; 0.6 (alvos ambíguos / sem import) ficam de fora do resultado
 default de `callers` e `impact`. Em TS/JS, imports relativos
 (`../components/Layout`, `./utils.js` → `utils.ts`, `./index`) e aliases de
