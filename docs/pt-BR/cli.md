@@ -2,7 +2,7 @@
 
 # Árvore de Comandos do `tb`
 
-Este documento descreve a CLI do toolbelt: comandos **implementados** (espelham `tb --help`) e seções **planejadas** (`tb run`/`proc`/`md`/`agent`, marcadas explicitamente). Em caso de divergência, a CLI Cobra é a fonte da verdade.
+Este documento descreve a CLI do toolbelt: comandos **implementados** (espelham `tb --help`) e seções **planejadas** (`tb run`/`proc`, marcadas explicitamente; `tb md` e `tb agent` saíram). Em caso de divergência, a CLI Cobra é a fonte da verdade.
 
 ## Local-first: sem GitHub
 
@@ -609,118 +609,9 @@ tb lab verify
 
 ---
 
-### `tb md` — TUI Markdown (planejado — Fase 3+)
+### `tb md` e `tb agent` — fora do plano
 
-> **Não implementado, e fora da Fase A do vault** ([ADR-016](adr/016-vault-fase-a.md)): qualquer editor, inclusive o Obsidian, edita o vault; ver [`tb vault`](#tb-vault--vault-markdown-fase-a).
-
-Interface TUI para navegar e editar o vault.
-
-```bash
-tb md [flags] [path]
-
-Flags:
-  --obsidian          Opens in Obsidian instead of the TUI
-  --read-only         Read-only mode
-  --graph             Starts in graph view
-```
-
-**Exemplos:**
-
-```bash
-# Abrir TUI na raiz do vault
-tb md
-
-# Abrir arquivo específico
-tb md vault/facts/auth-design.md
-
-# Abrir no Obsidian
-tb md --obsidian
-
-# Modo somente leitura para agentes
-tb md --read-only
-```
-
-**Atalhos da TUI:**
-
-| Tecla | Ação |
-|-------|------|
-| `j/k` | Navegar lista |
-| `Enter` | Abrir arquivo |
-| `e` | Editar arquivo |
-| `g` | Visualização de grafo |
-| `s` | Buscar |
-| `/` | Filtrar |
-| `b` | Ver backlinks |
-| `l` | Ver links |
-| `q` | Sair |
-| `?` | Ajuda |
-
----
-
-### `tb agent` — Gerenciamento de Agentes (planejado — Fase 3+)
-
-> **Não implementado.** A CLI atual não expõe `tb agent`.
-
-Gerencia agentes na hierarquia.
-
-```bash
-tb agent <subcommand>
-
-Subcommands:
-  spawn     Creates a new agent
-  list      Lists active agents
-  status    Status of a specific agent
-  logs      Agent logs
-  stop      Stops an agent
-  budget    Shows/changes the budget
-  approve   Approves a pending action
-  reject    Rejects a pending action
-```
-
-**`tb agent spawn`:**
-
-```bash
-tb agent spawn [flags]
-
-Flags:
-  --role <role>       Agent role/persona (required)
-  --parent <id>       Parent agent ID
-  --task <task>       Initial task
-  --budget <tokens>   Token budget
-  --timeout <dur>     Maximum timeout
-```
-
-**Exemplos:**
-
-```bash
-# Criar agente worker
-tb agent spawn --role worker-backend --parent supervisor-001 \
-  --task "Implementar endpoint /api/users" \
-  --budget 5000 --timeout 5m
-
-# Listar agentes
-tb agent list
-# ID              ROLE              STATUS     PARENT          TOKENS   UPTIME
-# planner-001     planner           working    -               45000    10m
-# supervisor-001  supervisor        idle       planner-001     18000    8m
-# worker-001      worker-backend    working    supervisor-001  3200     3m
-# worker-002      worker-backend    blocked    supervisor-001  1500     2m
-
-# Ver status detalhado
-tb agent status worker-001
-
-# Ver ações pendentes
-tb agent list --pending
-# ID          ACTION              RESOURCE            REQUESTED_BY    WAITING
-# action-123  file:delete         tests/old.go        worker-001      2m30s
-# action-124  network:external    api.example.com     worker-002      1m15s
-
-# Aprovar ação
-tb agent approve action-123 --reason "Arquivo obsoleto"
-
-# Rejeitar ação
-tb agent reject action-124 --reason "Não autorizado para rede externa"
-```
+> **Saíram, não estão planejados.** O `tb md` (TUI de Markdown) saiu com a Fase A do vault ([ADR-016](adr/016-vault-fase-a.md)): qualquer editor, inclusive o Obsidian, edita o vault; ver [`tb vault`](#tb-vault--vault-markdown-fase-a). O `tb agent` (`spawn --parent`, `list`, `approve`, `reject`, `budget`) saiu pelo [ADR-020](adr/020-agent-hierarchy-a2a.md): um agente é admitido com `tb bus invite` + `tb bus join`, roda com `tb bus run` ou `tb router run` e é acompanhado com `tb watchdog` / `tb bus watchdog`; não há fila de ações pendentes para aprovar. As árvores de delegação no barramento estão especificadas em [specs/agent-hierarchy.md](specs/agent-hierarchy.md).
 
 ---
 

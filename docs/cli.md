@@ -2,7 +2,7 @@
 
 # `tb` Command Tree
 
-This document describes the toolbelt CLI: **implemented** commands (mirrored from `tb --help`) and **planned** sections (`tb run`/`proc`/`md`/`agent`, marked explicitly). On divergence, the Cobra CLI is the source of truth.
+This document describes the toolbelt CLI: **implemented** commands (mirrored from `tb --help`) and **planned** sections (`tb run`/`proc`, marked explicitly; `tb md` and `tb agent` are dropped). On divergence, the Cobra CLI is the source of truth.
 
 ## Local-first: no GitHub
 
@@ -609,118 +609,9 @@ tb lab verify
 
 ---
 
-### `tb md` — TUI Markdown (planned — Phase 3+)
+### `tb md` and `tb agent` — dropped
 
-> **Not implemented, and dropped from the vault's Phase A** ([ADR-016](adr/016-vault-fase-a.md)): any editor, Obsidian included, edits the vault; see [`tb vault`](#tb-vault--markdown-vault-phase-a).
-
-TUI interface to navigate and edit the vault.
-
-```bash
-tb md [flags] [path]
-
-Flags:
-  --obsidian          Opens in Obsidian instead of the TUI
-  --read-only         Read-only mode
-  --graph             Starts in graph view
-```
-
-**Examples:**
-
-```bash
-# Open the TUI at the vault root
-tb md
-
-# Open a specific file
-tb md vault/facts/auth-design.md
-
-# Open in Obsidian
-tb md --obsidian
-
-# Read-only mode for agents
-tb md --read-only
-```
-
-**TUI shortcuts:**
-
-| Key | Action |
-|-----|--------|
-| `j/k` | Navigate list |
-| `Enter` | Open file |
-| `e` | Edit file |
-| `g` | Graph view |
-| `s` | Search |
-| `/` | Filter |
-| `b` | View backlinks |
-| `l` | View links |
-| `q` | Quit |
-| `?` | Help |
-
----
-
-### `tb agent` — Agent Management (planned — Phase 3+)
-
-> **Not implemented.** The current CLI does not expose `tb agent`.
-
-Manages agents in the hierarchy.
-
-```bash
-tb agent <subcommand>
-
-Subcommands:
-  spawn     Creates a new agent
-  list      Lists active agents
-  status    Status of a specific agent
-  logs      Agent logs
-  stop      Stops an agent
-  budget    Shows/changes the budget
-  approve   Approves a pending action
-  reject    Rejects a pending action
-```
-
-**`tb agent spawn`:**
-
-```bash
-tb agent spawn [flags]
-
-Flags:
-  --role <role>       Agent role/persona (required)
-  --parent <id>       Parent agent ID
-  --task <task>       Initial task
-  --budget <tokens>   Token budget
-  --timeout <dur>     Maximum timeout
-```
-
-**Examples:**
-
-```bash
-# Create a worker agent
-tb agent spawn --role worker-backend --parent supervisor-001 \
-  --task "Implement the /api/users endpoint" \
-  --budget 5000 --timeout 5m
-
-# List agents
-tb agent list
-# ID              ROLE              STATUS     PARENT          TOKENS   UPTIME
-# planner-001     planner           working    -               45000    10m
-# supervisor-001  supervisor        idle       planner-001     18000    8m
-# worker-001      worker-backend    working    supervisor-001  3200     3m
-# worker-002      worker-backend    blocked    supervisor-001  1500     2m
-
-# View detailed status
-tb agent status worker-001
-
-# List pending actions
-tb agent list --pending
-# ID          ACTION              RESOURCE            REQUESTED_BY    WAITING
-# action-123  file:delete         tests/old.go        worker-001      2m30s
-# action-124  network:external    api.example.com     worker-002      1m15s
-
-# Approve action
-tb agent approve action-123 --reason "Obsolete file"
-
-# Reject action
-tb agent reject action-124 --reason "Not authorized for external network"
-```
+> **Dropped, not planned.** `tb md` (Markdown TUI) left with the vault's Phase A ([ADR-016](adr/016-vault-fase-a.md)): any editor, Obsidian included, edits the vault; see [`tb vault`](#tb-vault--markdown-vault-phase-a). `tb agent` (`spawn --parent`, `list`, `approve`, `reject`, `budget`) was dropped by [ADR-020](adr/020-agent-hierarchy-a2a.md): an agent is admitted with `tb bus invite` + `tb bus join`, run with `tb bus run` or `tb router run`, and watched with `tb watchdog` / `tb bus watchdog`; there is no pending-action queue to approve. Delegation trees on the bus are specified in [specs/agent-hierarchy.md](specs/agent-hierarchy.md).
 
 ---
 

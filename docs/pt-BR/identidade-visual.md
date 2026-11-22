@@ -263,17 +263,9 @@ tb run --timeout 30s "go test ./..."
 
 ## Aplicação em UIs
 
-### `tb md` (TUI Markdown)
+### Saída de terminal
 
-Planejado, ainda não implementado. O leitor/editor Markdown TUI deve usar os tokens para:
-
-- Fundo da aplicação: `--tb-bg`
-- Texto de corpo: `--tb-text`
-- Headers: `--tb-primary` ou degradê
-- Links: `--tb-accent`
-- Código inline: `--tb-surface` + `--tb-accent`
-- Blocos de código: `--tb-surface` com borda `--tb-border`
-- Seleção/cursor: `--tb-accent` com opacidade
+Não há TUI: o `tb md` saiu ([ADR-016](adr/016-vault-fase-a.md), [ADR-020](adr/020-agent-hierarchy-a2a.md)). Os tokens valem para a saída de terminal (acima), o site e qualquer tema de editor.
 
 ### Obsidian (Vault)
 
