@@ -10,6 +10,7 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 ## [Não Lançado]
 
 ### Alterado
+- `tb egm draft`: um rascunho novo e o `--update` agora usam os mesmos globs para o alvo (`egm.doc_globs` mais os globs extras do repositório; o `bootstrap` divide o helper), e `--body` com valor parecido com segredo é recusado (`draft_secret`) antes de escrever qualquer coisa. A R10 da spec agora exclui o diretório `drafts/` de propostas do `--update`
 - Kernels de embedding do amd64 no nível AVX2 (ADR-019, aceito; indexação 3,2× mais rápida num runner de CI, recall idêntico, binário +1,2%): o ggml-cpu é compilado com AVX, AVX2, FMA, F16C e BMI2 (`TB_X86_KERNELS=v2` mantém o piso antigo); o resto do `tb` mantém o piso x86-64-v2. O `tb __graph-embed` verifica a CPU primeiro e recusa com o motivo novo `embed_cpu_unsupported`, então o código nativo nunca roda abaixo desse nível. Novas etapas do gate: `scripts/avx-audit.py` (código VEX/EVEX/BMI2 só em símbolos que só a libggml-cpu.a define), um teste de que só o filho alcança `native.Open`, e uma execução sob QEMU Nehalem de outros comandos e da recusa
 - Shim de embedding: os textos de uma requisição são agrupados em avaliações nativas compartilhadas (`tbe_embed_batch`, `n_seq_max` 64, KV unificado, orçamento de 512 tokens) em vez de uma chamada por texto; os vetores não mudam (cosseno ≥ 0,999). No build x86-64-v2: indexação cerca de 4% mais rápida, textos curtos cerca de 21% mais rápidos
 
@@ -45,6 +46,7 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 - Varredura de escapes (Registry de `internal/sandbox`): um processo multithread escapado cuja thread líder chamou `exit(2)` enquanto as outras threads seguiam rodando aparece com estado `Z` e era tomado por zumbi: nunca classificado, nunca sinalizado, e o `wait4` não colhe um líder com threads vivas, então cada varredura girava até o prazo de 2 s com o mutex do Registry preso e o escape vivo nunca era morto nem reportado. Um líder `Z` com thread viva agora é classificado por essa thread (`/proc/<tid>`), morto e reportado; filhos zumbis também recebem `SIGKILL` (sem efeito num zumbi de verdade)
 
 ### Alterado
+- `tb egm draft`: um rascunho novo e o `--update` agora usam os mesmos globs para o alvo (`egm.doc_globs` mais os globs extras do repositório; o `bootstrap` divide o helper), e `--body` com valor parecido com segredo é recusado (`draft_secret`) antes de escrever qualquer coisa. A R10 da spec agora exclui o diretório `drafts/` de propostas do `--update`
 - Spec em rascunho da Fase B do `tb egm` (`docs/specs/egm-drift-bootstrap.md`): B1 `drift-report` determinístico (drift das fontes contra o recibo commitado, por hash dos caminhos) e checagens de CI contra o recibo do merge-base (`ci_source_drift`, edições de recibo selecionando o documento, `receipt_removed`); B2 `bootstrap` determinístico (um esqueleto com fontes em links, sem nunca sobrescrever); B3 os goldfish de drift e de bootstrap com LLM e um `commit` auxiliar no recibo
 
 ## [0.0.9] - 2026-11-20
@@ -55,6 +57,7 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 - **Quebra:** o store do barramento migra para o schema v3 ao abrir (de mão única, como a v2: binários `tb` mais antigos passam a recusá-lo)
 
 ### Alterado
+- `tb egm draft`: um rascunho novo e o `--update` agora usam os mesmos globs para o alvo (`egm.doc_globs` mais os globs extras do repositório; o `bootstrap` divide o helper), e `--body` com valor parecido com segredo é recusado (`draft_secret`) antes de escrever qualquer coisa. A R10 da spec agora exclui o diretório `drafts/` de propostas do `--update`
 - O assunto do commit dos tickets do router tira caracteres de controle do título, para workers locais e do barramento
 - Spec em rascunho do B4 do barramento (`docs/bus-router.md`), em duas partes. B4a: operações do barramento `Claim`, `Message`, `Revoke` (devolve o estado final) e `ClaimConfined` (schema v3), e um modo `router_tasks` do harness em que o harness faz claim e complete fora do sandbox enquanto o filho confinado só edita o worktree do ticket e escreve um arquivo de veredito. B4b: slots do barramento `b1..bN` no router, configurados só pela config confiável, com threads únicas por tentativa, validação do claim contra o assign e o marker de confinamento, e o router fazendo o commit do worktree depois de checar HEAD, branch e pai
 
@@ -73,6 +76,7 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 - `internal/mdparse` (fatia 1 da Fase A do vault): parser Markdown folha com `Slugify`, `Headings` ATX cientes de cerca e de frontmatter, `SplitFrontmatter`, `Wikilinks` do Obsidian (rótulos, `\|` em tabela, fragmentos, embeds, fora de código inline) e `NormalizeForSearch`; ainda sem comando para o usuário
 
 ### Alterado
+- `tb egm draft`: um rascunho novo e o `--update` agora usam os mesmos globs para o alvo (`egm.doc_globs` mais os globs extras do repositório; o `bootstrap` divide o helper), e `--body` com valor parecido com segredo é recusado (`draft_secret`) antes de escrever qualquer coisa. A R10 da spec agora exclui o diretório `drafts/` de propostas do `--update`
 - **Quebra:** `tb bus complete` exige `--epoch` e `tb_bus_complete` exige `epoch` (o valor que o `claim` devolveu); o prompt do harness o passa. O store do barramento migra do schema v1 para o v2 ao abrir (de mão única: binários `tb` mais antigos passam a recusá-lo; atualize juntos todos os `tb` que servem um canal)
 - Spec do B2 do barramento (`docs/bus-lease.md`): lease por agente com heartbeats, fencing por epoch nos claims (o `complete` recebe o epoch), watchdog sob demanda que manda `lease_expired` do remetente exclusivo do broker `system:watchdog`, heartbeats do harness e do `tb mcp`, e uma migração do store v1 → v2
 - O vault passa a ser versionado: `.toolbelt/vault/` saiu de `LocalCacheExcludePatterns`; o `tb init` exclui só `<vault.path>/.obsidian/`, cria um `vault.path` customizado, avisa `vault_gitignored` quando uma regra do `.gitignore` ignora o vault e repara uma seção de exclude cujo marcador de fim se perdeu, sem descartar as linhas do usuário. O `.gitignore` deste repositório passa a ignorar só `.toolbelt/vault/.obsidian/`
@@ -93,6 +97,7 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 - `bench/egm-spike`: spike R0 do `tb egm` (isolamento do goldfish com `claude -p` real), com os modos `collect`/`calibrate` e o corpus de matching `internal/egm/testdata/paraphrases.json`
 
 ### Alterado
+- `tb egm draft`: um rascunho novo e o `--update` agora usam os mesmos globs para o alvo (`egm.doc_globs` mais os globs extras do repositório; o `bootstrap` divide o helper), e `--body` com valor parecido com segredo é recusado (`draft_secret`) antes de escrever qualquer coisa. A R10 da spec agora exclui o diretório `drafts/` de propostas do `--update`
 - Spec de trust do EGM (Fase A.2, `docs/specs/egm-trust.md`) reescrita com o CI como fronteira de confiança: um recibo commitado com as alegações do autor, conferido num passo `tb stack --egm-mode ci` que roda uma rodada nova e independente com a config e a credencial do próprio CI; os nove mecanismos locais antifraude do primeiro rascunho saem
 - ADR-015 aceito: status, autenticação, o teto `PASS_PARTIAL` offline, o limite `max_rounds` e os dados de convergência alinhados com os resultados da Fase A
 - A saída da CLI e do servidor MCP passa a ser em inglês: help do cobra (`Short`/`Long`/`Example`), uso das flags, mensagens de erro, relatórios (ex.: `guard: ok (3 rules, 0 violations)`, drift `Out of scope` / `Forbidden touched`) e descrições das tools/schemas MCP; o parsing de entrada continua aceitando os títulos em português do `rd.md` (`Escopo`, `Proibido`, `Aceite`)
@@ -105,6 +110,7 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 ## [0.0.6] - 2026-11-18
 
 ### Alterado
+- `tb egm draft`: um rascunho novo e o `--update` agora usam os mesmos globs para o alvo (`egm.doc_globs` mais os globs extras do repositório; o `bootstrap` divide o helper), e `--body` com valor parecido com segredo é recusado (`draft_secret`) antes de escrever qualquer coisa. A R10 da spec agora exclui o diretório `drafts/` de propostas do `--update`
 - Inglês passa a ser a língua padrão do repositório: docs da raiz (`README.md`, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md`, `CHANGELOG.md`), `docs/`, `AGENTS.md`, `CLAUDE.md`, templates do `.github/`, invariantes e comentários de código; a tradução em português vai para `docs/pt-BR/` (substitui `docs/en/` e os `*.en.md` da raiz); `TestDocsTranslationMirrorComplete` substitui `TestDocsEnglishMirrorComplete`
 - Landing page abre em inglês por padrão (toggle PT mantido)
 - Comentários de código que só repetiam o que o código faz foram removidos; os restantes explicam como/por quê

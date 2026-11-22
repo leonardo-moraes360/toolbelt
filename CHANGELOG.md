@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- `tb egm draft`: a new draft and `--update` now gate the target by the same globs (`egm.doc_globs` plus the repository's extra gated globs; `bootstrap` shares the helper), and `--body` with a secret-like value is refused (`draft_secret`) before anything is written. Spec R10 now exempts the `drafts/` proposal directory of `--update`
 - amd64 embedding kernels at the AVX2 tier (ADR-019, accepted; 3.2× faster indexing on a CI runner, identical recall, +1.2% binary): ggml-cpu is built with AVX, AVX2, FMA, F16C and BMI2 (`TB_X86_KERNELS=v2` keeps the old floor); the rest of `tb` keeps the x86-64-v2 floor. `tb __graph-embed` checks the CPU first and refuses with the new reason `embed_cpu_unsupported`, so native code never runs below the tier. New gate steps: `scripts/avx-audit.py` (VEX/EVEX/BMI2 code only in symbols that libggml-cpu.a alone defines), a test that only the child reaches `native.Open`, and a QEMU Nehalem run of other commands plus the refusal
 - Embedding shim: a request's texts are packed into shared native evaluations (`tbe_embed_batch`, `n_seq_max` 64, unified KV, 512-token budget) instead of one call per text; vectors are unchanged (cosine ≥ 0.999). On the x86-64-v2 build: about 4% faster indexing, about 21% faster on short texts
 
@@ -45,6 +46,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Escape sweep (`internal/sandbox` Registry): an escaped multithreaded process whose leader thread called `exit(2)` while its other threads kept running shows state `Z`, so it was taken for a zombie: never classified, never signaled, and `wait4` cannot reap a leader with live threads, so every sweep spun for its 2 s deadline with the Registry mutex held and the live escape was never killed or reported. A `Z` leader with a live thread is now classified through that thread (`/proc/<tid>`), killed and reported; `SIGKILL` is also sent to zombie children (a no-op for a real zombie)
 
 ### Changed
+- `tb egm draft`: a new draft and `--update` now gate the target by the same globs (`egm.doc_globs` plus the repository's extra gated globs; `bootstrap` shares the helper), and `--body` with a secret-like value is refused (`draft_secret`) before anything is written. Spec R10 now exempts the `drafts/` proposal directory of `--update`
 - `tb egm` Phase B draft spec (`docs/specs/egm-drift-bootstrap.md`): B1 deterministic `drift-report` (source drift against the committed receipt, by path hashes) and CI checks against the merge-base receipt (`ci_source_drift`, receipt edits selecting their document, `receipt_removed`); B2 deterministic `bootstrap` (a skeleton with linked sources, never overwriting); B3 the LLM drift and bootstrap goldfish and an advisory receipt `commit`
 
 ## [0.0.9] - 2026-11-20
@@ -55,6 +57,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Breaking:** the bus store migrates to schema v3 on open (one-way, like v2: older `tb` binaries then refuse it)
 
 ### Changed
+- `tb egm draft`: a new draft and `--update` now gate the target by the same globs (`egm.doc_globs` plus the repository's extra gated globs; `bootstrap` shares the helper), and `--body` with a secret-like value is refused (`draft_secret`) before anything is written. Spec R10 now exempts the `drafts/` proposal directory of `--update`
 - Commit subjects of router tickets drop control characters from the title, for local and bus workers
 - Bus B4 draft spec (`docs/bus-router.md`), in two parts. B4a: bus operations `Claim`, `Message`, `Revoke` (returns the final state) and `ClaimConfined` (schema v3), and a harness `router_tasks` mode where the harness claims and completes outside the sandbox while the confined child only edits the ticket worktree and writes a verdict file. B4b: router bus slots `b1..bN`, configured only from trusted config, with unique per-attempt threads, claim validation against the assign and the confinement marker, and the router committing the worktree after HEAD/branch/parent checks
 
@@ -73,6 +76,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `internal/mdparse` (vault Phase A slice 1): leaf Markdown parser with `Slugify`, fence- and frontmatter-aware ATX `Headings`, `SplitFrontmatter`, Obsidian `Wikilinks` (labels, `\|` in tables, fragments, embeds, outside inline code) and `NormalizeForSearch`; no user-facing command yet
 
 ### Changed
+- `tb egm draft`: a new draft and `--update` now gate the target by the same globs (`egm.doc_globs` plus the repository's extra gated globs; `bootstrap` shares the helper), and `--body` with a secret-like value is refused (`draft_secret`) before anything is written. Spec R10 now exempts the `drafts/` proposal directory of `--update`
 - **Breaking:** `tb bus complete` requires `--epoch` and `tb_bus_complete` requires `epoch` (the value `claim` returned); the harness prompt passes it. The bus store migrates from schema v1 to v2 on open (one-way: older `tb` binaries then refuse it; upgrade every `tb` serving a channel together)
 - Bus B2 spec (`docs/bus-lease.md`): per-agent lease with heartbeats, epoch fencing on claims (`complete` takes the epoch), on-demand watchdog sending `lease_expired` from the broker-only `system:watchdog`, heartbeats from the harness and from `tb mcp`, and a v1 → v2 store migration
 - The vault is versioned: `.toolbelt/vault/` left `LocalCacheExcludePatterns`; `tb init` excludes only `<vault.path>/.obsidian/`, creates a custom `vault.path`, warns `vault_gitignored` when a `.gitignore` rule ignores the vault, and repairs an exclude section whose end marker was lost without dropping the user's lines. This repository's `.gitignore` now ignores only `.toolbelt/vault/.obsidian/`
@@ -93,6 +97,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `bench/egm-spike`: R0 spike for `tb egm` (goldfish isolation with a real `claude -p`), with `collect`/`calibrate` modes and the matching corpus `internal/egm/testdata/paraphrases.json`
 
 ### Changed
+- `tb egm draft`: a new draft and `--update` now gate the target by the same globs (`egm.doc_globs` plus the repository's extra gated globs; `bootstrap` shares the helper), and `--body` with a secret-like value is refused (`draft_secret`) before anything is written. Spec R10 now exempts the `drafts/` proposal directory of `--update`
 - EGM trust spec (Phase A.2, `docs/specs/egm-trust.md`) rewritten around CI as the trust boundary: a committed receipt of the author's claims, checked in a `tb stack --egm-mode ci` step that runs one independent fresh round with CI's own config and credential; the nine local anti-fraud mechanisms of the first draft are dropped
 - ADR-015 accepted: status, authentication, the offline `PASS_PARTIAL` ceiling, the `max_rounds` cap and the convergence data aligned with the Phase A results
 - CLI and MCP server output is now in English: cobra help (`Short`/`Long`/`Example`), flag usage, error messages, reports (e.g. `guard: ok (3 rules, 0 violations)`, drift `Out of scope` / `Forbidden touched`) and MCP tool/schema descriptions; input parsing still accepts the Portuguese `rd.md` headings (`Escopo`, `Proibido`, `Aceite`)
@@ -105,6 +110,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.0.6] - 2026-11-18
 
 ### Changed
+- `tb egm draft`: a new draft and `--update` now gate the target by the same globs (`egm.doc_globs` plus the repository's extra gated globs; `bootstrap` shares the helper), and `--body` with a secret-like value is refused (`draft_secret`) before anything is written. Spec R10 now exempts the `drafts/` proposal directory of `--update`
 - English is now the repository's default language: root docs (`README.md`, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md`, `CHANGELOG.md`), `docs/`, `AGENTS.md`, `CLAUDE.md`, `.github/` templates, invariants and code comments; the Brazilian Portuguese translation moves to `docs/pt-BR/` (replaces `docs/en/` and root `*.en.md`); `TestDocsTranslationMirrorComplete` replaces `TestDocsEnglishMirrorComplete`
 - Landing page opens in English by default (PT toggle kept)
 - Code comments that only restated what the code does were removed; the rest explain how/why
@@ -214,6 +220,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `created`/`count`/`invariants`
 
 ### Changed
+- `tb egm draft`: a new draft and `--update` now gate the target by the same globs (`egm.doc_globs` plus the repository's extra gated globs; `bootstrap` shares the helper), and `--body` with a secret-like value is refused (`draft_secret`) before anything is written. Spec R10 now exempts the `drafts/` proposal directory of `--update`
 - Dependencies: `cobra` v1.10.2, `pflag` v1.0.9, `golang.org/x/text` v0.44.0, `golang.org/x/sync` v0.25.0; CI/Release/Pages Actions updated
 - `tb stack`: `guard`/`drift`/`review` steps run in parallel (errgroup); `verify` stays
   isolated; JSON preserves the requested order; `--fail-fast` cancels the others via context;
@@ -338,6 +345,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - MCP: `tb_mem_show`, `tb_mem_edit`, `tb_mem_retire`, `tb_mem_search` (+ `ref`/`all` in add/list/check)
 
 ### Changed
+- `tb egm draft`: a new draft and `--update` now gate the target by the same globs (`egm.doc_globs` plus the repository's extra gated globs; `bootstrap` shares the helper), and `--body` with a secret-like value is refused (`draft_secret`) before anything is written. Spec R10 now exempts the `drafts/` proposal directory of `--update`
 - MCP schemas type `depth`/`limit`/`reviewers`/`max_iter` as integer, `strict`/`warn_only`/`transitive`/`skip_unavailable` as boolean, `threshold` as number and `standards` as array; handlers still accept legacy strings
 - **Breaking:** CLI JSON outputs (`--json`) and MCP domain payloads use
   `snake_case` keys exclusively. Untagged structs (`sandbox.Result`,
@@ -433,6 +441,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   only mentions the rule)
 
 ### Changed
+- `tb egm draft`: a new draft and `--update` now gate the target by the same globs (`egm.doc_globs` plus the repository's extra gated globs; `bootstrap` shares the helper), and `--body` with a secret-like value is refused (`draft_secret`) before anything is written. Spec R10 now exempts the `drafts/` proposal directory of `--update`
 - README updated with installation, quick usage and implemented commands
 - docs/cli.md marking implemented commands
 - docs/benchmark.md with a section on running in Phase 0

@@ -113,7 +113,7 @@ Nada é escrito numa recusa.
 
 **R10. Sem autoaprovação.**
 
-- O `draft` não escreve diretório de estado, rodada, linhagem, convergência nem recibo, e não lê nenhum.
+- O `draft` não escreve estado, rodada, linhagem, convergência nem recibo, e não lê nenhum. A única exceção é o `draft --update`, que cria `<state>/egm/<repo-id>/<slug>/drafts/` para a proposta (sem `state.json`, rodada nem recibo).
 - As personas `draft` e `brainstorm` são recusadas por `--reviewers` e nunca carregadas pelo árbitro (como `drift` e `bootstrap`).
 - `tb egm receipt` num documento rascunhado falha exatamente como em qualquer documento não revisado (sem convergência); o CI exige a checagem completa da A.2 para um documento novo com gate de qualquer forma.
 - A linha de status de gerado é um fato sobre o arquivo, não uma entrada do gate. **Resolvida, D2:** nenhum achado. Nenhum checker aponta uma linha de status de gerado que sobrou; os revisores e o autor a veem no documento.

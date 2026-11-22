@@ -113,7 +113,7 @@ Nothing is written on a refusal.
 
 **R10. No self-approval.**
 
-- `draft` writes no state directory, round, lineage, convergence or receipt, and reads none.
+- `draft` writes no state, round, lineage, convergence or receipt, and reads none. The one exception is `draft --update`, which creates `<state>/egm/<repo-id>/<slug>/drafts/` for its proposal (no `state.json`, round or receipt).
 - `draft` and `brainstorm` personas are refused by `--reviewers` and never loaded by the arbiter (as `drift` and `bootstrap`).
 - `tb egm receipt` on a drafted document fails exactly as on any unreviewed one (no convergence); CI requires the full A.2 check for a new gated document anyway.
 - The generated status line is a fact about the file, not a gate input. **Resolved, D2:** no finding. A leftover generated status line is not reported by any checker; the reviewers and the author see it in the document.

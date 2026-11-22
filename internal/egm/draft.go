@@ -147,7 +147,7 @@ func (d *draftRun) loadExisting() (string, error) {
 		return "", err
 	}
 	if !IsGated(d.set.GateDocGlobs, rel) {
-		return "", errorf(ExitError, "usage", "%s is not a gated document path (egm.doc_globs)", rel)
+		return "", errorf(ExitError, "usage", "%s is not a gated document path (egm.doc_globs plus the repository's extra gated globs)", rel)
 	}
 	if inDenied(rel) {
 		return "", errorf(ExitError, "draft_path", "%s is under .git or a path R7 denies", rel)
@@ -293,6 +293,9 @@ func (d *draftRun) fileBody() (string, error) {
 	b, err := readRegular(p, d.set.Draft.MaxBytes)
 	if err != nil {
 		return "", errorf(ExitError, "draft_invalid", "--body %s: %v (at most egm.draft.max_bytes, a regular file)", d.o.BodyFile, err)
+	}
+	if _, secret := Redact(string(b)); secret {
+		return "", errorf(ExitError, "draft_secret", "--body %s has a secret-like value; nothing was written", d.o.BodyFile)
 	}
 	body, ok := cleanPayload(b, d.set.Draft.MaxBytes)
 	if !ok {

@@ -139,8 +139,8 @@ func newGatedTarget(root, cwd, target string, set *Settings, prefix string) (str
 	if err != nil {
 		return "", err
 	}
-	if !IsGated(set.DocGlobs, rel) {
-		return "", errorf(ExitError, "usage", "%s is not a gated document path (egm.doc_globs)", rel)
+	if !IsGated(set.GateDocGlobs, rel) {
+		return "", errorf(ExitError, "usage", "%s is not a gated document path (egm.doc_globs plus the repository's extra gated globs)", rel)
 	}
 	if err := checkNewPath(root, rel, prefix); err != nil {
 		return "", err
