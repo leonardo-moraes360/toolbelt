@@ -14,6 +14,23 @@ Medir quantitativamente se o toolbelt atinge seus três objetivos:
 
 ---
 
+## O que o `tb bench` mede hoje
+
+| KPI | Fonte no `tb bench` |
+|-----|---------------------|
+| pass@1, pass@k | por tarefa e repetição (`passed`), `pass_at_1` / `pass_at_k` no relatório |
+| wall_time | `duration_seconds` e `verification_duration_seconds` por execução; `avg_duration_seconds` |
+| tokens_per_task | `tokens` conforme o parser de saída do agente; `avg_tokens`, `total_tokens` |
+| tool_calls | `tool_calls` quando o agente reporta; `avg_tool_calls` |
+| cost_per_task | `cost_usd` quando o agente reporta; `total_cost_usd` |
+| retries | `retries` por execução; `avg_retries` |
+
+O `tb bench compare` imprime a diferença antes/depois em sucesso, tempo e tokens. É descritivo: **nenhum teste de significância é calculado**, e nem a mediana, nem o desvio padrão, nem um intervalo de confiança são reportados. Trate uma diferença pequena como ruído até que a suíte e as repetições sejam grandes o bastante para argumentar o contrário.
+
+Os KPIs 5, 6, 8, 9, 10, 11, 12 e 14 estão em [Não implementado (roadmap)](#não-implementado-roadmap); o 13 e do 15 ao 28, além das métricas router/monolítico (`wall_time_total`, `wall_time_critical_path`, ...), estão marcados onde aparecem.
+
+---
+
 ## Metodologia
 
 ### Desenho Experimental
@@ -60,8 +77,8 @@ Medir quantitativamente se o toolbelt atinge seus três objetivos:
 ### Repetições e Variância
 
 - **Mínimo de repetições**: 5 por tarefa por condição
-- **Recomendado**: 10 repetições para significância estatística
-- **Medidas**: média, mediana, desvio padrão, intervalo de confiança 95%
+- **Recomendado**: 10 repetições, para reduzir a variância
+- **Reportado hoje**: a média de duração, tokens, chamadas de ferramentas e retries, e pass@1 / pass@k; mediana, desvio padrão e intervalos de confiança não são calculados
 
 ---
 
@@ -120,6 +137,34 @@ wall_time = timestamp_fim - timestamp_inicio
 
 **Relevância**: Menos chamadas geralmente indica uso mais eficiente do contexto.
 
+### 7. cost_per_task (Custo por Tarefa)
+
+**Definição**: Custo monetário (USD) por tarefa completada.
+
+```
+cost_per_task = (tokens_input * price_input) + (tokens_output * price_output)
+```
+
+---
+
+## KPIs de Revisão (Elephant-Goldfish)
+
+O padrão Elephant-Goldfish introduz métricas específicas para avaliar a qualidade das revisões com contexto fresco.
+
+### 13. review_coverage (Cobertura de Revisão) — não implementado
+
+**Definição**: Proporção do documento efetivamente analisada pelos revisores.
+
+```
+review_coverage = (seções com findings ou OK explícito) / (total de seções)
+```
+
+---
+
+## Não implementado (roadmap)
+
+Estes KPIs estão definidos, mas nenhum comando os calcula ainda: o `tb bench` não registra leituras de arquivo, retrabalho, violações do guard nem achados de revisão, e `tb review` / `tb guard` não reportam esses agregados. Ficam aqui como roadmap; a numeração é mantida para que as referências continuem valendo.
+
 ### 5. file_reads (Leituras de Arquivos)
 
 **Definição**: Número de arquivos lidos durante a tarefa.
@@ -134,14 +179,6 @@ wall_time = timestamp_fim - timestamp_inicio
 rework_rate = (tarefas com retrabalho) / (total de tarefas)
 ```
 
-### 7. cost_per_task (Custo por Tarefa)
-
-**Definição**: Custo monetário (USD) por tarefa completada.
-
-```
-cost_per_task = (tokens_input * price_input) + (tokens_output * price_output)
-```
-
 ### 8. guard_violations_blocked (Violações Bloqueadas)
 
 **Definição**: Número de tentativas de violação de segurança detectadas e bloqueadas.
@@ -153,12 +190,6 @@ cost_per_task = (tokens_input * price_input) + (tokens_output * price_output)
 **Definição**: Número de violações que escaparam às proteções.
 
 **Meta**: Zero
-
----
-
-## KPIs de Revisão (Elephant-Goldfish)
-
-O padrão Elephant-Goldfish introduz métricas específicas para avaliar a qualidade das revisões com contexto fresco.
 
 ### 10. defects_found_pre_impl (Defeitos Encontrados Pré-Implementação)
 
@@ -194,14 +225,6 @@ tokens_per_review = sum(tokens de cada revisor goldfish)
 
 **Relevância**: Revisores goldfish devem ser eficientes por receberem contexto mínimo.
 
-### 13. review_coverage (Cobertura de Revisão)
-
-**Definição**: Proporção do documento efetivamente analisada pelos revisores.
-
-```
-review_coverage = (seções com findings ou OK explícito) / (total de seções)
-```
-
 ### 14. reviewer_agreement (Concordância entre Revisores)
 
 **Definição**: Proporção de findings onde múltiplos revisores concordam.
@@ -215,6 +238,8 @@ reviewer_agreement = (findings com 2+ revisores) / (total de findings únicos)
 ---
 
 ## Comparação: Graph-First vs Grep-First
+
+> **Não implementado:** proposta de experimento; o `tb bench compare` reporta só sucesso, tempo e tokens.
 
 Uma variante específica do benchmark compara abordagens de busca:
 
@@ -247,6 +272,8 @@ Uma variante específica do benchmark compara abordagens de busca:
 ---
 
 ## Comparação: Fresh-Context vs Same-Context Review
+
+> **Não implementado:** proposta de experimento; nenhum comando mede essas métricas de revisão.
 
 Uma variante específica do benchmark compara abordagens de revisão:
 
@@ -483,12 +510,14 @@ O relatório deve incluir:
 
 1. **Resumo executivo**: melhorias percentuais em cada KPI
 2. **Tabela comparativa**: baseline vs toolbelt por categoria
-3. **Análise estatística**: significância das diferenças
+3. **Análise estatística**: significância das diferenças (não implementado)
 4. **Gráficos**: distribuições, boxplots, tendências
 5. **Casos notáveis**: tarefas onde toolbelt teve maior/menor impacto
 6. **Violações**: detalhes de qualquer violação detectada
 
 ### Exemplo de Resumo
+
+Números ilustrativos, não medidos: mostram o formato de um relatório.
 
 ```markdown
 ## Resumo Executivo
@@ -499,11 +528,9 @@ O relatório deve incluir:
 | tokens/task | 12,340 | 8,542 | -31% |
 | wall_time | 203s | 145s | -29% |
 | tool_calls | 18.2 | 12.4 | -32% |
-| file_reads | 8.7 | 5.2 | -40% |
-| rework_rate | 0.32 | 0.18 | -44% |
 | cost/task | $0.062 | $0.043 | -31% |
 
-Diferenças estatisticamente significativas (p < 0.05) em todos os KPIs.
+Nenhum teste de significância é calculado pelo `tb bench report`; leia as diferenças como descritivas.
 ```
 
 ---
@@ -555,7 +582,7 @@ Diferenças estatisticamente significativas (p < 0.05) em todos os KPIs.
 
 O sistema `tb verify` introduz métricas específicas para avaliar a eficácia do loop gerador→discriminador.
 
-### 15. mean_similarity (Similaridade Média)
+### 15. mean_similarity (Similaridade Média) — não implementado
 
 **Definição**: Média de similaridade por tela no ruler visual.
 
@@ -568,7 +595,7 @@ mean_similarity = sum(similarity_per_screen) / count(screens)
 - Separada por modo (light/dark)
 - Exclui áreas mascaradas
 
-### 16. iterations_to_pass (Iterações até PASS)
+### 16. iterations_to_pass (Iterações até PASS) — não implementado
 
 **Definição**: Número de ciclos gerador→discriminador até atingir PASS.
 
@@ -580,7 +607,7 @@ iterations_to_pass = count(iterations até verdict == PASS)
 
 **Meta**: ≤ 2 iterações em média
 
-### 17. cheating_attempts_detected (Tentativas de Trapaça Detectadas)
+### 17. cheating_attempts_detected (Tentativas de Trapaça Detectadas) — não implementado
 
 **Definição**: Número de tentativas de trapaça identificadas pelo discriminador.
 
@@ -597,7 +624,7 @@ cheating_attempts = count(violations onde tipo ∈ cheating_rules)
 
 **Meta**: 0 tentativas não detectadas
 
-### 18. human_escalations (Escalações para Humano)
+### 18. human_escalations (Escalações para Humano) — não implementado
 
 **Definição**: Proporção de tarefas que requerem intervenção humana após 3 falhas.
 
@@ -609,7 +636,7 @@ human_escalations = (tasks com 3 FAILs) / (total de tasks)
 
 **Meta**: < 10%
 
-### 19. discriminator_false_fail_rate (Taxa de Falso-FAIL do Discriminador)
+### 19. discriminator_false_fail_rate (Taxa de Falso-FAIL do Discriminador) — não implementado
 
 **Definição**: Proporção de FAILs que eram falsos positivos (trabalho estava correto).
 
@@ -624,7 +651,7 @@ false_fail_rate = (FAILs revertidos por humano) / (total de FAILs)
 
 **Meta**: < 5%
 
-### 20. verification_overhead (Overhead de Verificação)
+### 20. verification_overhead (Overhead de Verificação) — não implementado
 
 **Definição**: Tempo adicional gasto em verificação vs implementação.
 
@@ -729,7 +756,7 @@ benchmark:
 
 O padrão Router/Workers introduz métricas específicas para avaliar a eficácia da delegação e paralelização.
 
-### 21. cache_read_tokens_pct (Porcentagem de Tokens Cache-Read)
+### 21. cache_read_tokens_pct (Porcentagem de Tokens Cache-Read) — não implementado
 
 **Definição**: Proporção de tokens de input que vieram de cache (contexto reutilizado).
 
@@ -745,7 +772,7 @@ cache_read_tokens_pct = (cache_read_tokens) / (total_input_tokens) × 100
 
 **Meta**: ≥ 70% de cache-read em workloads típicos
 
-### 22. router_latency_p50 / router_latency_p95 (Latência do Router)
+### 22. router_latency_p50 / router_latency_p95 (Latência do Router) — não implementado
 
 **Definição**: Tempo que o router leva para decompor tarefa e criar tickets.
 
@@ -761,7 +788,7 @@ router_latency = timestamp_tickets_criados - timestamp_tarefa_recebida
 - p50 < 500ms
 - p95 < 2s
 
-### 23. tickets_parallel_max (Paralelismo Máximo de Tickets)
+### 23. tickets_parallel_max (Paralelismo Máximo de Tickets) — não implementado
 
 **Definição**: Maior número de tickets executando simultaneamente.
 
@@ -773,7 +800,7 @@ tickets_parallel_max = max(workers_ativos em qualquer instante)
 
 **Meta**: ≥ 3 tickets em paralelo para tarefas complexas
 
-### 24. merge_conflict_rate (Taxa de Conflitos no Merge)
+### 24. merge_conflict_rate (Taxa de Conflitos no Merge) — não implementado
 
 **Definição**: Proporção de arquivos com conflitos entre workers.
 
@@ -785,7 +812,7 @@ merge_conflict_rate = (arquivos com conflito) / (arquivos modificados) × 100
 
 **Meta**: < 5%
 
-### 25. delegation_rate (Taxa de Delegação)
+### 25. delegation_rate (Taxa de Delegação) — não implementado
 
 **Definição**: Proporção de tarefas delegadas vs executadas pelo próprio router.
 
@@ -797,7 +824,7 @@ delegation_rate = (tarefas delegadas para workers) / (total de tarefas)
 
 **Meta**: ≥ 90%
 
-### 26. worker_utilization (Utilização de Workers)
+### 26. worker_utilization (Utilização de Workers) — não implementado
 
 **Definição**: Tempo que workers passam trabalhando vs ociosos.
 
@@ -809,7 +836,7 @@ worker_utilization = (tempo_trabalhando) / (tempo_total) × 100
 
 **Meta**: ≥ 80% durante processamento de filas
 
-### 27. ticket_retry_rate (Taxa de Retry de Tickets)
+### 27. ticket_retry_rate (Taxa de Retry de Tickets) — não implementado
 
 **Definição**: Proporção de tickets que precisaram de retry após falha.
 
@@ -821,7 +848,7 @@ ticket_retry_rate = (tickets com retry) / (total de tickets)
 
 **Meta**: < 10%
 
-### 28. direct_delivery_rate (Taxa de Entrega Direta)
+### 28. direct_delivery_rate (Taxa de Entrega Direta) — não implementado
 
 **Definição**: Proporção de tickets entregues diretamente a workers subscritos vs via board.
 
@@ -836,6 +863,8 @@ direct_delivery_rate = (tickets entregues diretamente) / (total de tickets) × 1
 ---
 
 ## Comparação: Router/Workers vs Monolítico
+
+> **Não implementado:** o `tb bench` não calcula nenhuma das métricas desta comparação (`wall_time_total`, `wall_time_critical_path`, ...); o experimento é uma proposta.
 
 Uma variante do benchmark compara a arquitetura Router/Workers com execução monolítica.
 

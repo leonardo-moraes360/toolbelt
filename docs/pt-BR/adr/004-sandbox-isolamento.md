@@ -6,7 +6,7 @@
 
 accepted
 
-Implementação (v0.0.5): só a camada Landlock existe (`internal/sandbox`, fail-closed; fora do Linux retorna `ErrUnsupported`). bubblewrap e seccomp ainda não foram implementados.
+Implementação: Landlock (`internal/sandbox`, fail-closed; fora do Linux retorna `ErrUnsupported`) e o filtro seccomp de rede (Linux amd64/arm64, instalado pelo trampolim do Landlock; o filho de embedding liga `DenyNetwork`) estão implementados. bubblewrap, cgroups e network namespaces não foram construídos e não estão planejados para a 1.0.
 
 ## Contexto
 

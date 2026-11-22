@@ -2,7 +2,7 @@
 
 # `tb` Command Tree
 
-This document describes the toolbelt CLI: **implemented** commands (mirrored from `tb --help`) and **planned** sections (`tb run`/`proc`, marked explicitly; `tb md` and `tb agent` are dropped). On divergence, the Cobra CLI is the source of truth.
+This document describes the toolbelt CLI: **implemented** commands (mirrored from `tb --help`); planned items are marked inline, planned commands (`tb run`, `tb proc`, `tb serve`) are listed in the [README roadmap](../README.md), and `tb md` and `tb agent` are dropped. On divergence, the Cobra CLI is the source of truth.
 
 ## Local-first: no GitHub
 
@@ -72,136 +72,38 @@ you still write the `rd.md` yourself.
 ## Overview
 
 ```
-tb  (implemented today)
-├── init         Initializes local toolbelt configuration
-├── bench        Benchmark harness (run|list|report|compare)
-├── drift        Detects scope and base commit drift
-├── egm          Design-document review loop (review|loop next|resolve|status)  ✓ Phase A
-├── graph        On-demand code graph (TB_GRAPH=on or --enable)
-├── guard        Anti-cheat protections (check)
-├── mcp          Starts an MCP server over stdio
-├── mem          Invariants (add|list|show|edit|retire|search|check|init)
-├── review       Fresh-context review (Elephant-Goldfish)
-├── sandbox      Execution with Landlock isolation (check|run)
-├── stack        Stacks verification operations (verify/review/drift/guard/vault/egm/seccheck), not branches
-├── vault        Markdown vault of notes (new|list|show|search|links|backlinks|check)
-├── verify       Adversarial verification (run; rulers tests|coverage|visual)
-├── workspace    Isolated workspaces via git worktree (create|list|remove; alias: ws)
-├── version      Shows the toolbelt version (also: tb --version)
-├── ticket       Work tickets (create|list|show|cancel|retry)       ✓ Phase 3
-├── board        Ticket board (list|watch|pause|resume|drain)          ✓ Phase 3
-├── router       Foreground scheduler (run|status|config)           ✓ Phase 3
-├── watchdog     Worker alerts and control (status|alerts|kill)       ✓ Phase 3
-├── merge        Merges done tickets (fail|last_wins|semantic|prompt)     ✓ Phase 3
-└── bus          Agent bus (channel|invite|join|send|recv|claim|complete|heartbeat|watchdog|log|run|discover)  ✓ B1–B3
+tb  (every top-level command; tier = stability under the 1.0 freeze)
+├── init         Initializes local toolbelt configuration                                      [stable]
+├── version      Shows the toolbelt version (also: tb --version)                               [stable]
+├── mem          Invariants (add|list|show|edit|retire|search|check|init)                      [stable]
+├── verify       Adversarial verification (run; rulers tests|coverage|visual)                  [stable]
+├── guard        Anti-cheat protections (check)                                                [stable]
+├── review       Fresh-context review (Elephant-Goldfish)                                      [stable]
+├── drift        Detects scope and base commit drift                                           [stable]
+├── stack        Stacks verification operations (verify|review|drift|guard stable; vault|egm|seccheck experimental)  [stable]
+├── sandbox      Execution with Landlock isolation (check|run)                                 [stable]
+├── graph        On-demand code graph (index|rebuild|search|callers|deps|impact|explain|path|stats; TB_GRAPH=on or --enable)  [stable]
+├── ticket       Work tickets (create|list|show|cancel|retry)                                  [stable]
+├── workspace    Isolated workspaces via git worktree (create|list|remove; alias: ws)          [stable]
+├── merge        Merges done tickets (fail|last_wins|semantic stable; prompt experimental)     [stable]
+├── mcp          Starts an MCP server over stdio                                               [stable]
+├── board        Ticket board (list|watch|pause|resume|drain)                                  [experimental]
+├── router       Foreground scheduler (run|status|config)                                      [experimental]
+├── watchdog     Worker alerts and control (status|alerts|kill)                                [experimental]
+├── bus          Agent bus (channel|invite|join|send|recv|claim|complete|heartbeat|watchdog|log|tree|run|discover)  [experimental]
+├── egm          Design-document review loop (review|loop|resolve|status|receipt|drift-report|bootstrap|brainstorm|draft)  [experimental]
+├── vault        Markdown vault of notes (new|list|show|search|links|backlinks|check)          [experimental]
+├── red          Offensive AppSec playbooks (list|search|load|explain|pair)                    [experimental]
+├── blue         Defensive AppSec playbooks and checks (list|search|load|pair|apply|check)     [experimental]
+├── lab          Isolated red+blue exercise environments (new|list|status|up|run|logs|down|verify)  [experimental]
+└── bench        Benchmark harness (run|list|report|compare)                                   [experimental]
 
-tb  (planned)
-├── run / proc / md / agent
-└── serve        (today use: tb mcp)
+Dropped (ADR-020, ADR-016): tb agent, tb md. Planned, not implemented: tb run, tb proc, tb serve.
 ```
 
 ---
 
 ## Detailed Commands
-
-### `tb run` — Command Execution (planned — Phase 3+)
-
-> **Not implemented as `tb run`.** Today use `tb sandbox run` for Landlock isolation.
-
-Runs commands with optional isolation.
-
-```bash
-tb run [flags] <command>
-
-Flags:
-  --timeout <duration>    Maximum execution time (default: 30s)
-  --sandbox               Runs in an isolated sandbox (default: false)
-  --allow-net <hosts>     Hosts allowed on the network (requires --sandbox)
-  --allow-read <paths>    Additional read paths (requires --sandbox)
-  --allow-write <paths>   Additional write paths (requires --sandbox)
-  --cgroup-cpu <percent>  CPU limit in % (default: 100)
-  --cgroup-mem <bytes>    Memory limit (default: 1G)
-  --json                  JSON output
-```
-
-**Examples:**
-
-```bash
-# Simple run
-tb run "go test ./..."
-
-# With timeout
-tb run --timeout 2m "npm run build"
-
-# In a full sandbox
-tb run --sandbox --timeout 30s "python script.py"
-
-# Sandbox with limited network
-tb run --sandbox --allow-net "api.example.com:443" "curl https://api.example.com/data"
-
-# With resource limits
-tb run --cgroup-cpu 50 --cgroup-mem 512M "heavy-process"
-```
-
----
-
-### `tb proc` — Process Management (planned — Phase 3+)
-
-> **Not implemented.** The current CLI does not expose `tb proc`.
-
-Manages long-running processes (servers, watchers).
-
-```bash
-tb proc <subcommand>
-
-Subcommands:
-  start     Starts a process
-  stop      Stops a process
-  restart   Restarts a process
-  list      Lists active processes
-  logs      Shows a process's logs
-  status    Status of a specific process
-```
-
-**`tb proc start`:**
-
-```bash
-tb proc start [flags] <command>
-
-Flags:
-  --name <name>           Process name (required)
-  --log <path>            Log file (default: .tb/logs/<name>.log)
-  --restart <policy>      Restart policy: never|on-failure|always
-  --max-restarts <n>      Maximum automatic restarts
-  --sandbox               Runs in a sandbox
-```
-
-**Examples:**
-
-```bash
-# Start a development server
-tb proc start --name "dev-server" "npm run dev"
-
-# With automatic restart
-tb proc start --name "worker" --restart on-failure --max-restarts 3 "./worker"
-
-# List processes
-tb proc list
-# NAME         PID     STATUS    UPTIME      CPU    MEM
-# dev-server   12345   running   10m30s      2.1%   128M
-# worker       12346   running   5m15s       0.5%   64M
-
-# View logs
-tb proc logs dev-server --follow --tail 100
-
-# Stop a process
-tb proc stop dev-server
-
-# Stop all
-tb proc stop --all
-```
-
----
 
 ### `tb graph` — On-Demand Graph (✓ Phase 2, ADR-011)
 
@@ -2427,6 +2329,13 @@ When the configured verify command does not exist/is not executable, verify fail
 
 Local configuration file at `.toolbelt/config.yaml` (global:
 `~/.config/toolbelt/config.yaml`). The `-c/--config` flag points to an alternate YAML.
+
+A key `tb` does not know (a typo, or a key removed before 1.0) is ignored: each file prints
+one stderr line per such key, once per run, with the full key path
+(`warning: .toolbelt/config.yaml: unknown config key graph.auto_index (ignored)`). It is never an
+error, so old files keep loading. Removed keys: `defaults.*`, `sandbox.allow_net`, `sandbox.cpu_limit`,
+`sandbox.mem_limit`, `sandbox.time_limit`, `graph.auto_index`, `graph.infer_relations`,
+`vault.sync_on_change` and `logging.*`; they were parsed but no command read them, so they enforced nothing.
 
 ```yaml
 # .toolbelt/config.yaml (exemplo)

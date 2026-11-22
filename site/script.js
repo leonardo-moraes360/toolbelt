@@ -14,7 +14,7 @@
         "Um único binário tb que une verificação adversarial, revisão fresh-context, detecção de drift, anti-trapaça, memória de invariantes, grafo sob demanda e servidor MCP — rodando localmente, sob o mesmo comando e protocolo.",
       "hero.ctaInstall": "Instalar",
       "hero.ctaGithub": "Ver no GitHub",
-      "hero.meta": "Apache-2.0 · Go 1.22+ · Linux / macOS / Windows · Fase 3",
+      "hero.meta": "Apache-2.0 · Go 1.27+ · Linux / macOS / Windows",
       "hero.exampleNote": "Exemplo ilustrativo baseado na CLI real.",
       "problem.title": "O problema que resolve",
       "problem.body":
@@ -26,7 +26,7 @@
         "verify, review, drift e guard com saída JSON e exit codes de CI.",
       "cmds.title": "Comandos e recursos",
       "cmds.lede":
-        "Implementados até a v0.0.5 (Fases 1–3). Saídas marcadas como exemplo; formato alinhado à CLI Cobra.",
+        "Comandos implementados (Fases 1–3). Saídas marcadas como exemplo; formato alinhado à CLI Cobra.",
       "cmds.verify":
         "Loop de verificação adversarial com rulers tests e visual (screenshot headless com skip gracioso).",
       "cmds.review":
@@ -38,17 +38,17 @@
       "cmds.stack":
         "Empilha verify/review/drift/guard com diff, índice e memória compartilhados; um JSON agregado.",
       "cmds.phase3":
-        "Fase 3: tickets locais, router em primeiro plano com workers em worktrees e sandbox fail-closed, watchdog de saúde e merge atômico (fail | last_wins).",
+        "Fase 3: tickets locais, router em primeiro plano com workers em worktrees e sandbox fail-closed, watchdog de saúde e merge atômico (fail | last_wins | semantic | prompt).",
       "cmds.bus":
         "Barramento local entre agentes de vendors diferentes (SQLite, protocolo bus/0.1): só o humano cria canal e convite; tb bus run acorda o agente sem gastar tokens (adapters exec/harness).",
       "cmds.bench":
         "Harness de benchmark (run/list/report/compare, inclusive A/B); init detecta toolchain; version reporta build.",
       "cmds.note":
-        "tb run como comando de topo ainda é planejado (Fase 3+); hoje use tb sandbox run para isolamento Landlock no Linux. Também há tb workspace (worktrees) e tb mcp.",
+        "tb run como comando de topo é planejado, não implementado; hoje use tb sandbox run para isolamento Landlock no Linux. Também há tb workspace (worktrees) e tb mcp.",
       "mcp.title": "Servidor MCP",
       "mcp.lede":
         "tb mcp sobe um servidor MCP stateless sobre stdio (JSON-RPC 2.0). Roda localmente na sua máquina — sem hospedagem remota obrigatória.",
-      "mcp.toolsTitle": "Tools (paridade CLI · 36 na v0.0.5)",
+      "mcp.toolsTitle": "Tools (paridade CLI)",
       "mcp.graphNote":
         "Tools de grafo exigem TB_GRAPH=on no processo do servidor.",
       "install.title": "Instalação",
@@ -90,7 +90,7 @@
         "One local tb binary that unifies adversarial verification, fresh-context review, drift detection, anti-cheat guards, invariant memory, on-demand graph search, and an MCP server — under one command and protocol.",
       "hero.ctaInstall": "Install",
       "hero.ctaGithub": "View on GitHub",
-      "hero.meta": "Apache-2.0 · Go 1.22+ · Linux / macOS / Windows · Phase 3",
+      "hero.meta": "Apache-2.0 · Go 1.27+ · Linux / macOS / Windows",
       "hero.exampleNote": "Illustrative example based on the real CLI.",
       "problem.title": "The problem it solves",
       "problem.body":
@@ -102,7 +102,7 @@
         "verify, review, drift, and guard with JSON output and CI exit codes.",
       "cmds.title": "Commands and features",
       "cmds.lede":
-        "Shipped through v0.0.5 (Phases 1–3). Sample outputs are labeled as examples; format matches the Cobra CLI.",
+        "Implemented commands (Phases 1–3). Sample outputs are labeled as examples; format matches the Cobra CLI.",
       "cmds.verify":
         "Adversarial verification loop with tests and visual rulers (headless screenshot with graceful skip).",
       "cmds.review":
@@ -114,17 +114,17 @@
       "cmds.stack":
         "Stacks verify/review/drift/guard with shared diff, index, and memory; one aggregated JSON.",
       "cmds.phase3":
-        "Phase 3: local tickets, a foreground router with workers in worktrees and a fail-closed sandbox, a health watchdog, and atomic merge (fail | last_wins).",
+        "Phase 3: local tickets, a foreground router with workers in worktrees and a fail-closed sandbox, a health watchdog, and atomic merge (fail | last_wins | semantic | prompt).",
       "cmds.bus":
         "Local bus between agents from different vendors (SQLite, bus/0.1 protocol): only the human creates channels and invites; tb bus run wakes the agent without spending tokens (exec/harness adapters).",
       "cmds.bench":
         "Benchmark harness (run/list/report/compare, including A/B); init detects toolchain; version reports the build.",
       "cmds.note":
-        "Top-level tb run is still planned (Phase 3+); today use tb sandbox run for Landlock isolation on Linux. Also available: tb workspace (worktrees) and tb mcp.",
+        "Top-level tb run is planned, not implemented; today use tb sandbox run for Landlock isolation on Linux. Also available: tb workspace (worktrees) and tb mcp.",
       "mcp.title": "MCP server",
       "mcp.lede":
         "tb mcp starts a stateless MCP server over stdio (JSON-RPC 2.0). It runs locally on your machine — no hosted service required.",
-      "mcp.toolsTitle": "Tools (CLI parity · 36 in v0.0.5)",
+      "mcp.toolsTitle": "Tools (CLI parity)",
       "mcp.graphNote":
         "Graph tools require TB_GRAPH=on in the server process.",
       "install.title": "Install",

@@ -269,7 +269,7 @@ Não há TUI: o `tb md` saiu ([ADR-016](adr/016-vault-fase-a.md), [ADR-020](adr/
 
 ### Obsidian (Vault)
 
-Para quem usar o vault `.tb/vault/` no Obsidian, um snippet CSS personalizado pode ser criado baseado nos tokens para manter consistência visual.
+Para quem usar o vault `.toolbelt/vault/` no Obsidian, um snippet CSS personalizado pode ser criado baseado nos tokens para manter consistência visual.
 
 ---
 

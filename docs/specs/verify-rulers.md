@@ -2,7 +2,7 @@
 
 # Spec: additional rulers for `tb verify`
 
-Author: toolbelt · Status: Draft (round 2) — implemented (slice 1: R0–R3, R5, R6; slice 2: R4) · Date: 2026-11-22 · Decision record: [ADR-008](../adr/008-verificacao-adversarial.md) (pluggable rulers) · Related: [ADR-005](../adr/005-anti-trapaca.md) (anti-cheat), [verificacao-visual.md](../verificacao-visual.md) (the visual ruler)
+Author: toolbelt · Status: Implemented (round 2) (slice 1: R0–R3, R5, R6; slice 2: R4) · Date: 2026-11-22 · Decision record: [ADR-008](../adr/008-verificacao-adversarial.md) (pluggable rulers) · Related: [ADR-005](../adr/005-anti-trapaca.md) (anti-cheat), [verificacao-visual.md](../verificacao-visual.md) (the visual ruler)
 
 ## Overview
 

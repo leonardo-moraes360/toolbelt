@@ -57,7 +57,7 @@ Bootstrap from scratch in a worktree (`config.yaml`/`agent_docs.yaml`/`invariant
 
 | # | Command | Expected | Got | Sev. |
 |---|---------|----------|-----|------|
-| 1 | `tb init` | `lint_cmd` only if the binary is on PATH | **still open** in v0.0.5: writes `golangci-lint run` without `golangci-lint` on PATH; reverted to `go vet ./...` by hand | medium — **fixed in `b73010e`** |
+| 1 | `tb init` | `lint_cmd` only if the binary is on PATH | **still open** in v0.0.5: writes `golangci-lint run` without `golangci-lint` on PATH; reverted to `go vet ./...` by hand. **Fixed in b73010e** (`detectGoLintCmd` checks PATH, falls back to `go vet ./...`; `TestDetectLintCmd_GolangciMissingFromPath` covers it) | medium |
 | 3 | `tb verify run` | — | **fixed**: 1 iteration (~15s), `PASS` | — |
 | 7 | `tb init` / `tb mem init` | versionable files with default mode | **still open**: `config.yaml`, `agent_docs.yaml`, `invariants.yaml` created `0600` | low — **fixed in `b73010e`** |
 | 17 | `tb init` inside a `git worktree` | local state patterns ignored by git | writes to `.git/worktrees/<wt>/info/exclude`, which git does not read (only `$GIT_COMMON_DIR/info/exclude`); here `.gitignore` masks it, but in a repo without `.gitignore` local state shows up in `git status` | medium — **fixed in `b73010e`** (re-checked 2026-11-22: from a worktree, the patterns go to `$GIT_COMMON_DIR/info/exclude`) |
@@ -133,3 +133,21 @@ Same commit: the graph walk no longer follows symlinks or blocks on a FIFO (read
 | 45 | `TestSemanticRecall` (`internal/graph/eval/semantic.yaml`, 44 intent queries) | hybrid recall@10 ≥ lexical + 0.10 | ok: all-MiniLM-L6-v2 Q8_0 (sha256 `263215c3cadd6e16740741a7624ab4cbb6c8e777688bd5331ecfbf5681c2f8ed`), llama.cpp b12600 (`29b52d398b29`), 384 dims, local x86-64 build, 8 threads: 417 files and 2701 chunks embedded in 3m03s (`third_party/` and `docs/pt-BR/` skipped). recall@10 lexical 0.273, semantic 0.670, hybrid 0.568 (+0.295), so the feature leaves experimental status. Semantic scored highest on this suite; hybrid keeps exact-name matches. Caveat: the suite was written by the implementing session's tooling after reading the code (intent-phrased, name tokens excluded by a test); independently written queries would be stronger evidence | info |
 | 46 | 3 `tb_graph_search` `mode: hybrid` calls over `tb mcp` with the real model | the warm child is reused | ok: about 10 ms per query on the warm child, one child process for the three | info |
 | 47 | `tb __graph-embed` with the multi-sequence shim (`tbe_embed_batch`), all-MiniLM-L6-v2 Q8_0, x86-64-v2 build, 4 threads; then `TestSemanticRecall` (8 threads, empty cache) | batching the 64 texts of a request cuts indexing time clearly | small gain. 64 chunks of 1.5 KB: 8.70 s one call per text, 9.22 s with a 2048-token budget (+6%: a non-causal model's attention grows with the square of the packed tokens), 8.80 s with a 512-token budget (same as before: long chunks still go one per evaluation). 64 short queries: 0.31 s → 0.24 s (−21%). Eval indexing (2713 chunks): 3m03s → 2m55s (−4%), recall unchanged (0.273 / 0.670 / 0.568). Vectors agree with single calls to cosine ≥ 0.9999. The cost is the CPU floor (x86-64-v2, no AVX/FMA under ADR-018), not the number of calls | info |
+
+## 2026-11-22 — `tb bus` field session (owner, release v0.0.10)
+
+Recorded for the [1.0 readiness plan](../specs/release-1.0.md) (track B); each row was checked against the code there.
+
+| # | Command | Expected | Actual | Sev. |
+|---|---------|----------|--------|------|
+| 48 | two clients with `tb mcp --bus-as <channel>/iq3` | the second live client for an identity is refused (or at least warned) | both ran as `iq3` and wrote to the same worktree: `bindBusAs` loads the stored session with no lock; only `tb bus run` takes one (B1) | high |
+| 49 | `tb bus send` of `task.assign` with `deps` in the payload, then `tb bus claim` | a worker cannot claim a ticket before its dependency finishes | claimed early: the bus treats `payload` as opaque and has no dependency rule; ticket `dependencies` are honored only by `tb router` (B2, O8) | medium |
+| 50 | finding the next task ID in a channel | a list of the channel's tasks with their state | none; needed `tb bus log \| grep` (O10) | medium |
+| 51 | reserving paths without assigning a task; releasing a claim; reading how claims ended | an operation for each, and the outcome per claim | no reserve or manual release; `tb_bus_status` shows `released` but not whether it completed, expired or was revoked (B6, O11) | medium |
+| 52 | SessionStart hook comparing the installed `tb` | no alarm when only the module hash differs | reported a version mismatch: a build without ldflags reports `dev`/`unknown`, so the hook had only a hash to compare (B5) | medium |
+| 53 | `tb bus send` of tickets whose paths overlap | a warning about overlapping paths across tickets | no check (O12) | low |
+| 54 | `tb bus invite <channel>` | expiry with date | prints only the time (`15:04:05Z07:00`) (B3) | low |
+| 55 | `tb bus run --check` | `wake_mismatch` says how to fix it | states the mismatch only (B4) | low |
+| 56 | `tb bus send` of 17 tickets with idempotency keys, sent again | no duplicates | ok: 17 messages, repeats returned `duplicate: true` (regression test in B7) | info |
+| 57 | `tb bus send` to an agent not in the channel | clear error | ok: names the agent and the channel (B7) | info |
+| 58 | `tb mem list` at session start | invariants right away | ok (B7) | info |

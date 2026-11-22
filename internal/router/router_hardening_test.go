@@ -7,9 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
-	"syscall"
 	"testing"
 	"time"
 
@@ -113,19 +111,12 @@ func TestSetsidGrandchildIsKilledAndTicketFailsWithoutCommit(t *testing.T) {
 	cfg := testCfg()
 	cfg.Retry.MaxAttempts = 3
 	// pidfile inside the worktree (Landlock only allows writing there)
-	script := `setsid sh -c 'echo $$ > pidfile; exec sleep 37' &
+	script := `setsid sh -c 'echo $$ > pidfile; exec sleep 300' &
 i=0; while [ ! -s pidfile ] && [ $i -lt 500 ]; do sleep 0.01; i=$((i+1)); done
 echo x > f.txt`
 	r := newRouter(t, root, func(o *Options) { o.Config = cfg; o.AgentCmd = sh(script) })
 	runWithTimeout(context.Background(), t, r)
-	data, err := os.ReadFile(filepath.Join(root, ".toolbelt", "workspaces", tk.ID, "pidfile"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	pid, _ := strconv.Atoi(strings.TrimSpace(string(data)))
-	if pid <= 0 || syscall.Kill(pid, 0) == nil {
-		t.Fatalf("processo escapado %d ainda vivo", pid)
-	}
+	pidGone(t, readPid(t, filepath.Join(root, ".toolbelt", "workspaces", tk.ID, "pidfile")), "escaped process")
 	got := get(t, st, tk.ID)
 	if got.Status != ticket.StatusFailed || got.Attempts != 1 {
 		t.Fatalf("esperava failed sem retry: %+v", got)

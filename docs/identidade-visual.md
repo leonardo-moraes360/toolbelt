@@ -269,7 +269,7 @@ There is no TUI: `tb md` was dropped ([ADR-016](adr/016-vault-fase-a.md), [ADR-0
 
 ### Obsidian (Vault)
 
-For those who use the `.tb/vault/` vault in Obsidian, a custom CSS snippet can be created based on the tokens to keep visual consistency.
+For those who use the `.toolbelt/vault/` vault in Obsidian, a custom CSS snippet can be created based on the tokens to keep visual consistency.
 
 ---
 
