@@ -1,6 +1,6 @@
 // Package lab provisions ephemeral, isolated red+blue exercise environments
-// (`tb lab`). Phase 1 implements the single-step sandbox tier (bubblewrap +
-// Landlock, ADR-004) driving an in-process, pure-Go target; the multi-service
+// (`tb lab`). Phase 1 implements the single-step sandbox tier (Landlock +
+// seccomp, ADR-004) driving an in-process, pure-Go target; the multi-service
 // Podman tier is probed and fail-closed (it never silently downgrades
 // isolation). See docs/specs/red-blue-labs.md and ADR-017.
 package lab
@@ -19,7 +19,7 @@ type Tier string
 const (
 	// TierAuto lets ResolveTier pick based on the lab's shape.
 	TierAuto Tier = "auto"
-	// TierSandbox is the single-node, single-step sandbox (Landlock + bwrap).
+	// TierSandbox is the single-node, single-step sandbox (Landlock + seccomp).
 	TierSandbox Tier = "sandbox"
 	// TierPodman is the multi-service rootless-Podman topology (Phase 2).
 	TierPodman Tier = "podman"
