@@ -59,7 +59,7 @@ func TestRunOnHeadWorktreeWhenHeadDiffers(t *testing.T) {
 	runGit(t, dir, "commit", "-m", "base")
 	base := gitRev(t, dir)
 
-	_ = os.WriteFile(filepath.Join(dir, "marker_test.go"), []byte("package demo\nimport \"testing\"\nfunc TestMarkerOnlyOnHead(t *testing.T) {\n\tt.Fatal(\"marker: only on head\")\n}\n"), 0o644)
+	_ = os.WriteFile(filepath.Join(dir, "marker_test.go"), []byte("package demo\nimport \"testing\"\nfunc TestMarkerOnlyOnHead(t *testing.T) {\n\tt.Fatal(\"expected fixture failure: only on head\")\n}\n"), 0o644)
 	runGit(t, dir, "add", "-A")
 	runGit(t, dir, "commit", "-m", "head-with-failing-marker")
 	head := gitRev(t, dir)
