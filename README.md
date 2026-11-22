@@ -250,8 +250,8 @@ tb bus recv --channel feature-x --as grok-1 --wait 20s
 - [x] `tb graph search` with BM25 ranking (title/path/package, camelCase/`snake_case` splitting, multi-term)
 - [x] Obsidian-compatible Markdown vault, Phase A (`tb vault`, [ADR-016](docs/adr/016-vault-fase-a.md), [spec](docs/specs/vault.md)): notes with frontmatter and wikilinks, `new`/`list`/`show`/`search`/`links`/`backlinks`/`check`, MCP tools, `tb stack vault`, graph nodes; Q4 (golden fixture checked in real Obsidian) open
 - [x] Elephant-Goldfish Model reimplementation, Phase A (`tb egm`, [ADR-015](docs/adr/015-egm-nativo.md) accepted): R0 spike; deterministic and `llm` engines, arbiter, gate in `tb stack` (`status --at`) and MCP tools
-- [ ] `tb egm` next phases: Phase C ([spec](docs/specs/egm-phase-c.md)) is partial: `brainstorm`, `draft` and `draft --update` are implemented, symbol-level drift (C4–C5) and graph line ranges (C6) are not; Phase B (`drift-report` and `bootstrap`, [spec](docs/specs/egm-drift-bootstrap.md)) is implemented, LLM parts included; Phase A.2 (CI as the trust boundary, [spec](docs/specs/egm-trust.md)) is implemented; R0 item 8 open
-- [ ] Optional Rust components for local inference
+- [x] `tb egm` next phases: Phase C ([spec](docs/specs/egm-phase-c.md)) slices C1–C5 are implemented (`brainstorm`, `draft`, `draft --update`, symbol citations and symbol-level drift); C6 (graph line ranges and method IDs) and the other ADR-015 Phase C items are deferred after 1.0; Phase B (`drift-report` and `bootstrap`, [spec](docs/specs/egm-drift-bootstrap.md)) is implemented, LLM parts included; Phase A.2 (CI as the trust boundary, [spec](docs/specs/egm-trust.md)) is implemented; R0 item 8 open
+- [x] Local inference: covered by vendored llama.cpp in a sandboxed child ([ADR-018](docs/adr/018-cgo-componentes-nativos.md), [ADR-019](docs/adr/019-cpu-v3-embedding.md)); a Rust component stays possible behind the same child protocol if ever needed
 - [x] Additional rulers for `tb verify` ([spec](docs/specs/verify-rulers.md)): typecheck, named checks, base-ref config, coverage ruler
 - [ ] `tb merge` `prompt` / `semantic` strategies
 
