@@ -1,8 +1,10 @@
 //go:build embednative && cgo
 
 /*
- * tbembed.c: the shim over llama.cpp's C API (ADR-018). It embeds one text
- * at a time as sequence 0, clearing the context memory between texts.
+ * tbembed.c: the shim over llama.cpp's C API (ADR-018). A batch call packs
+ * up to TBE_MAX_SEQ texts, one sequence each, into as few evaluations as
+ * the token budget (n_ubatch) allows, clearing the context memory between
+ * evaluations.
  */
 #include "tbembed.h"
 
@@ -15,6 +17,12 @@
 
 /* Upper bound on the context, whatever the model was trained with. */
 #define TBE_MAX_CTX 8192
+/* Packing cap of one evaluation. A non-causal model reads the whole batch
+ * in one ubatch and its attention is computed densely over every packed
+ * token (other sequences are only masked), so packing past this costs more
+ * attention than it saves in calls. A single longer text still runs alone,
+ * up to n_ctx. */
+#define TBE_BATCH_TOKENS 512
 
 struct tbe_model {
 	struct llama_model *model;
@@ -23,7 +31,9 @@ struct tbe_model {
 	int32_t dims;
 	int32_t n_ctx;
 	int encoder_only;
-	llama_token *tokens; /* n_ctx tokens */
+	int32_t budget;	     /* packing cap: min(n_ubatch, TBE_BATCH_TOKENS) */
+	llama_token *tokens; /* TBE_MAX_SEQ rows of n_ctx tokens */
+	int32_t *n_tokens;   /* per row */
 };
 
 static void tbe_quiet_log(enum ggml_log_level level, const char *text, void *user_data)
@@ -45,6 +55,7 @@ static void tbe_free(tbe_model *m)
 		llama_model_free(m->model);
 	}
 	free(m->tokens);
+	free(m->n_tokens);
 	free(m);
 }
 
@@ -57,9 +68,14 @@ static int tbe_context(tbe_model *m, int32_t threads)
 
 	cp.embeddings = true;
 	cp.n_ctx = n_ctx;
-	cp.n_batch = n_ctx;
-	cp.n_ubatch = n_ctx; /* non-causal models need the whole text in one ubatch */
-	cp.n_seq_max = 1;
+	/* Non-causal models need every packed text in one ubatch; llama.cpp
+	 * caps both at n_ctx for causal ones. */
+	cp.n_batch = n_ctx > TBE_BATCH_TOKENS ? n_ctx : TBE_BATCH_TOKENS;
+	cp.n_ubatch = cp.n_batch;
+	cp.n_seq_max = TBE_MAX_SEQ;
+	/* One shared buffer: each sequence keeps the full n_ctx instead of
+	 * n_ctx / n_seq_max. */
+	cp.kv_unified = true;
 	cp.n_threads = threads;
 	cp.n_threads_batch = threads;
 	m->ctx = llama_init_from_model(m->model, cp);
@@ -71,6 +87,18 @@ static int tbe_context(tbe_model *m, int32_t threads)
 		return TBE_UNSUPPORTED;
 	}
 	m->n_ctx = (int32_t)llama_n_ctx(m->ctx);
+	if (m->n_ctx > (int32_t)n_ctx) {
+		/* The context is padded; the per-text limit stays the requested one. */
+		m->n_ctx = (int32_t)n_ctx;
+	}
+	{
+		int32_t ubatch = (int32_t)llama_n_ubatch(m->ctx);
+
+		if (ubatch < m->n_ctx) {
+			m->n_ctx = ubatch;
+		}
+		m->budget = ubatch < TBE_BATCH_TOKENS ? ubatch : TBE_BATCH_TOKENS;
+	}
 	return TBE_OK;
 }
 
@@ -111,8 +139,9 @@ int tbe_open(const char *path, int32_t threads, tbe_model **out)
 		rc = TBE_UNSUPPORTED;
 	}
 	if (rc == TBE_OK) {
-		m->tokens = calloc((size_t)m->n_ctx, sizeof(*m->tokens));
-		if (m->tokens == NULL) {
+		m->tokens = calloc((size_t)TBE_MAX_SEQ * (size_t)m->n_ctx, sizeof(*m->tokens));
+		m->n_tokens = calloc(TBE_MAX_SEQ, sizeof(*m->n_tokens));
+		if (m->tokens == NULL || m->n_tokens == NULL) {
 			rc = TBE_NOMEM;
 		}
 	}
@@ -134,10 +163,11 @@ int32_t tbe_n_ctx(const tbe_model *m)
 	return m == NULL ? 0 : m->n_ctx;
 }
 
-/* tbe_tokenize fills m->tokens; it returns the count, or -1 on failure. */
-static int32_t tbe_tokenize(tbe_model *m, const char *text, int32_t len, int *truncated)
+/* tbe_tokenize fills row (n_ctx tokens); it returns the count, or -1 on
+ * failure. */
+static int32_t tbe_tokenize(tbe_model *m, llama_token *row, const char *text, int32_t len, int *truncated)
 {
-	int32_t n = llama_tokenize(m->vocab, text, len, m->tokens, m->n_ctx, true, false);
+	int32_t n = llama_tokenize(m->vocab, text, len, row, m->n_ctx, true, false);
 
 	*truncated = 0;
 	if (n == INT32_MIN) {
@@ -156,8 +186,8 @@ static int32_t tbe_tokenize(tbe_model *m, const char *text, int32_t len, int *tr
 			free(all);
 			return -1;
 		}
-		memcpy(m->tokens, all, (size_t)(m->n_ctx - 1) * sizeof(*all));
-		m->tokens[m->n_ctx - 1] = all[n - 1];
+		memcpy(row, all, (size_t)(m->n_ctx - 1) * sizeof(*all));
+		row[m->n_ctx - 1] = all[n - 1];
 		free(all);
 		n = m->n_ctx;
 		*truncated = 1;
@@ -165,7 +195,8 @@ static int32_t tbe_tokenize(tbe_model *m, const char *text, int32_t len, int *tr
 	return n;
 }
 
-static int tbe_eval(tbe_model *m, int32_t n)
+/* tbe_eval evaluates rows [first, first+count) as sequences 0..count-1. */
+static int tbe_eval(tbe_model *m, int32_t first, int32_t count)
 {
 	struct llama_batch_ext *batch = llama_batch_ext_init(m->ctx);
 	int rc = TBE_OK;
@@ -173,13 +204,17 @@ static int tbe_eval(tbe_model *m, int32_t n)
 	if (batch == NULL) {
 		return TBE_NOMEM;
 	}
-	for (int32_t i = 0; i < n && rc == TBE_OK; i++) {
-		llama_pos pos = i;
-		int32_t idx = llama_batch_ext_add_token(batch, 0, m->tokens[i]);
+	for (int32_t s = 0; s < count && rc == TBE_OK; s++) {
+		const llama_token *row = m->tokens + (size_t)(first + s) * (size_t)m->n_ctx;
 
-		if (idx < 0 || !llama_batch_ext_set_pos(batch, idx, &pos) ||
-		    !llama_batch_ext_set_output_embd(batch, idx, true)) {
-			rc = TBE_EVAL;
+		for (int32_t i = 0; i < m->n_tokens[first + s] && rc == TBE_OK; i++) {
+			llama_pos pos = i;
+			int32_t idx = llama_batch_ext_add_token(batch, s, row[i]);
+
+			if (idx < 0 || !llama_batch_ext_set_pos(batch, idx, &pos) ||
+			    !llama_batch_ext_set_output_embd(batch, idx, true)) {
+				rc = TBE_EVAL;
+			}
 		}
 	}
 	if (rc == TBE_OK) {
@@ -194,29 +229,12 @@ static int tbe_eval(tbe_model *m, int32_t n)
 	return rc;
 }
 
-int tbe_embed(tbe_model *m, const char *text, size_t len, float *out, size_t out_len, int *truncated)
+/* tbe_pooled copies sequence seq's vector, L2-normalized, to out. */
+static int tbe_pooled(tbe_model *m, int32_t seq, float *out)
 {
-	const float *v;
+	const float *v = llama_get_embeddings_seq(m->ctx, seq);
 	double norm = 0.0;
-	int32_t n;
-	int rc;
 
-	if (m == NULL || text == NULL || out == NULL || truncated == NULL || len > (size_t)INT32_MAX ||
-	    out_len < (size_t)m->dims) {
-		return TBE_ARGS;
-	}
-	n = tbe_tokenize(m, text, (int32_t)len, truncated);
-	if (n < 0) {
-		return TBE_TOKENIZE;
-	}
-	if (n == 0) {
-		return TBE_TOKENIZE;
-	}
-	rc = tbe_eval(m, n);
-	if (rc != TBE_OK) {
-		return rc;
-	}
-	v = llama_get_embeddings_seq(m->ctx, 0);
 	if (v == NULL) {
 		return TBE_EVAL;
 	}
@@ -228,6 +246,55 @@ int tbe_embed(tbe_model *m, const char *text, size_t len, float *out, size_t out
 		out[i] = norm > 0.0 ? (float)((double)v[i] / norm) : 0.0f;
 	}
 	return TBE_OK;
+}
+
+int tbe_embed_batch(tbe_model *m, const char *const *texts, const size_t *lens, int32_t n, float *out,
+		    size_t out_len, int *truncated)
+{
+	int32_t first = 0;
+
+	if (m == NULL || texts == NULL || lens == NULL || out == NULL || truncated == NULL || n < 1 ||
+	    n > TBE_MAX_SEQ || out_len / (size_t)m->dims < (size_t)n) {
+		return TBE_ARGS;
+	}
+	for (int32_t i = 0; i < n; i++) {
+		llama_token *row = m->tokens + (size_t)i * (size_t)m->n_ctx;
+
+		if (texts[i] == NULL || lens[i] > (size_t)INT32_MAX) {
+			return TBE_ARGS;
+		}
+		m->n_tokens[i] = tbe_tokenize(m, row, texts[i], (int32_t)lens[i], &truncated[i]);
+		if (m->n_tokens[i] <= 0) {
+			return TBE_TOKENIZE;
+		}
+	}
+	/* Greedy packing in order. The first row of a group is always taken,
+	 * even past the cap (it fits n_ubatch, since n_ctx <= n_ubatch), so every
+	 * pass makes progress. */
+	while (first < n) {
+		int32_t count = 1;
+		int32_t used = m->n_tokens[first];
+		int rc;
+
+		while (first + count < n && used + m->n_tokens[first + count] <= m->budget) {
+			used += m->n_tokens[first + count];
+			count++;
+		}
+		rc = tbe_eval(m, first, count);
+		for (int32_t s = 0; s < count && rc == TBE_OK; s++) {
+			rc = tbe_pooled(m, s, out + (size_t)(first + s) * (size_t)m->dims);
+		}
+		if (rc != TBE_OK) {
+			return rc;
+		}
+		first += count;
+	}
+	return TBE_OK;
+}
+
+int tbe_embed(tbe_model *m, const char *text, size_t len, float *out, size_t out_len, int *truncated)
+{
+	return tbe_embed_batch(m, &text, &len, 1, out, out_len, truncated);
 }
 
 void tbe_close(tbe_model *m)

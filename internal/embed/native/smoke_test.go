@@ -61,3 +61,47 @@ func TestEmbedSmoke(t *testing.T) {
 	m.Close()
 	m.Close()
 }
+
+// TestEmbedBatchMatchesSingle checks that packing texts into shared
+// evaluations gives the vectors (and truncation flags) of one call per
+// text: sequences must not attend to each other.
+func TestEmbedBatchMatchesSingle(t *testing.T) {
+	path := os.Getenv("TB_EMBED_MODEL")
+	if path == "" {
+		t.Skip("TB_EMBED_MODEL not set")
+	}
+	m, err := Open(path, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.Close()
+	texts := make([]string, MaxBatch)
+	for i := range texts {
+		switch {
+		case i%9 == 0:
+			texts[i] = strings.Repeat("long context word ", 2*m.NCtx()) // truncated
+		case i%3 == 0:
+			texts[i] = strings.Repeat("a medium sized sentence about graphs and vectors. ", 20)
+		default:
+			texts[i] = "short query number " + strings.Repeat("x", i)
+		}
+	}
+	vecs, trs, err := m.EmbedBatch(texts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, s := range texts {
+		v, tr, err := m.Embed(s)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if c := cosine(v, vecs[i]); c < 0.999 || tr != trs[i] {
+			t.Fatalf("text %d: cosine %.5f, truncated single=%v batch=%v", i, c, tr, trs[i])
+		}
+	}
+	for _, bad := range [][]string{nil, make([]string, MaxBatch+1), {"ok", ""}} {
+		if _, _, err := m.EmbedBatch(bad); err == nil {
+			t.Fatalf("EmbedBatch(%d texts) accepted", len(bad))
+		}
+	}
+}
