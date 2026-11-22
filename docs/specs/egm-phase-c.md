@@ -152,7 +152,7 @@ The fragment must match `^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)?$` an
 
 ### Review
 
-**R16. Verification (`refs` checker).** For each symbol citation whose file resolves, tb runs `GoSymbols` on the snapshot content: a missing name gives a `refs` finding at `major` ("symbol `X` not found in `path`"), an ambiguous one `symbol_ambiguous` at `major`, an unparsed file one `minor` finding per file. Deterministic; it runs with `--engine deterministic` too. This is ADR-015's "symbol verification in the graph", done on the snapshot instead of the graph index, so it works with the graph off and cannot read a stale index.
+**R16. Verification (`refs` checker).** For each symbol citation whose file resolves, tb runs `GoSymbols` on the snapshot content: a missing name gives a `refs` finding at `major` ("symbol `X` not found in `path`"), an ambiguous one `symbol_ambiguous` at `major`, an unparsed file one `nit` finding per file. Deterministic; it runs with `--engine deterministic` too. This is ADR-015's "symbol verification in the graph", done on the snapshot instead of the graph index, so it works with the graph off and cannot read a stale index.
 
 **R17. Round state.** Each round records `symbols` (`"path#Name"` → sha256) beside `sources` ([state.go:68](../../internal/egm/state.go)) for every resolved, unambiguous cited symbol. Rounds without the field are read as "no symbol baseline".
 

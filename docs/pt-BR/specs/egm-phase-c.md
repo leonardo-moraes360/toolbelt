@@ -152,7 +152,7 @@ O fragmento precisa casar com `^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)
 
 ### Revisão
 
-**R16. Verificação (checker `refs`).** Para cada citação de símbolo cujo arquivo resolve, o tb roda `GoSymbols` no conteúdo do snapshot: um nome ausente dá um achado `refs` em `major` ("symbol `X` not found in `path`"), um ambíguo dá `symbol_ambiguous` em `major`, um arquivo sem parse dá um achado `minor` por arquivo. Determinístico; roda também com `--engine deterministic`. É a "verificação de símbolos no grafo" do ADR-015, feita no snapshot em vez do índice do grafo, então funciona com o grafo desligado e não lê um índice desatualizado.
+**R16. Verificação (checker `refs`).** Para cada citação de símbolo cujo arquivo resolve, o tb roda `GoSymbols` no conteúdo do snapshot: um nome ausente dá um achado `refs` em `major` ("symbol `X` not found in `path`"), um ambíguo dá `symbol_ambiguous` em `major`, um arquivo sem parse dá um achado `nit` por arquivo. Determinístico; roda também com `--engine deterministic`. É a "verificação de símbolos no grafo" do ADR-015, feita no snapshot em vez do índice do grafo, então funciona com o grafo desligado e não lê um índice desatualizado.
 
 **R17. Estado da rodada.** Cada rodada registra `symbols` (`"path#Name"` → sha256) ao lado de `sources` ([state.go:68](../../../internal/egm/state.go)) para cada símbolo citado, resolvido e não ambíguo. Rodadas sem o campo são lidas como "sem base de símbolos".
 
