@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/leonardo-moraes360/toolbelt/internal/config"
 	"github.com/leonardo-moraes360/toolbelt/internal/merge"
 	"github.com/leonardo-moraes360/toolbelt/internal/ticket"
 )
@@ -17,7 +18,7 @@ func init() {
 			Type: "object",
 			Properties: map[string]Property{
 				"ids":             {Type: "array", Items: &Property{Type: "string"}, Description: "Ticket IDs (TKT-001)"},
-				"strategy":        {Type: "string", Description: "fail (default)|last_wins", Default: "fail"},
+				"strategy":        {Type: "string", Description: "fail (default)|last_wins|semantic (prompt is CLI-only)", Default: "fail"},
 				"into":            {Type: "string", Description: "Target branch (default: current branch)"},
 				"force":           {Type: "boolean", Description: "Re-merges tickets that were already merged", Default: false},
 				"allow_sensitive": {Type: "boolean", Description: "Allows applying tickets that change hooks/.toolbelt/workflows/.gitmodules/gitlinks/.gitattributes", Default: false},
@@ -43,6 +44,11 @@ func handleMerge(_ context.Context, args map[string]any) (any, error) {
 	if err != nil {
 		return nil, err
 	}
+	if strategy == merge.StrategyPrompt {
+		// An MCP caller is usually the agent that wrote the tickets: it must not
+		// start a second agent nor apply a receipt.
+		return nil, fmt.Errorf("prompt_cli_only: strategy prompt runs an agent and needs a human review step; use tb merge --strategy prompt from the CLI")
+	}
 	res, err := merge.Run(&merge.Options{
 		Repo:           cwd,
 		Store:          ticket.Open(ticket.FindRoot(cwd)),
@@ -52,6 +58,7 @@ func handleMerge(_ context.Context, args map[string]any) (any, error) {
 		Into:           StringArg(args, "into"),
 		Force:          BoolArg(args, "force", false),
 		AllowSensitive: BoolArg(args, "allow_sensitive", false),
+		Config:         config.File(),
 	})
 	if err != nil {
 		if (errors.Is(err, merge.ErrConflict) || errors.Is(err, merge.ErrSensitive)) && res != nil {

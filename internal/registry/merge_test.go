@@ -69,7 +69,7 @@ func TestTbMergeDryRunUnlessApply(t *testing.T) {
 		t.Fatal("apply não avançou main")
 	}
 	res, text = callTool(t, "tb_merge", map[string]any{"cwd": dir, "ids": []any{"TKT-001"}, "strategy": "prompt"})
-	if !res.IsError || !strings.Contains(text, "not implemented") {
+	if !res.IsError || !strings.Contains(text, "prompt_cli_only") {
 		t.Fatalf("prompt: %v %s", res.IsError, text)
 	}
 }
@@ -165,5 +165,58 @@ func TestTbMergeSensitiveRefusedUnlessAllowed(t *testing.T) {
 	res, text := callTool(t, "tb_merge", map[string]any{"cwd": dir, "ids": []any{"TKT-001"}, "apply": true, "allow_sensitive": true})
 	if res.IsError || mergeToolGit(t, dir, "rev-parse", "main") == base {
 		t.Fatalf("allow_sensitive: %v %s", res.IsError, text)
+	}
+}
+
+// AC10: semantic over MCP is dry-run unless apply:true and returns the CLI's JSON shape.
+func TestTbMergeSemanticDryRunUnlessApply(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	dir, _ := filepath.EvalSymlinks(t.TempDir())
+	mergeToolGit(t, dir, "init", "-q", "-b", "main")
+	mergeToolGit(t, dir, "config", "user.name", "t")
+	mergeToolGit(t, dir, "config", "user.email", "t@t")
+	os.WriteFile(filepath.Join(dir, ".gitignore"), []byte(".toolbelt/\n"), 0o644)
+	os.WriteFile(filepath.Join(dir, "s.txt"), []byte("l1\nl2\nl3\nl4\nl5\nl6\n"), 0o644)
+	mergeToolGit(t, dir, "add", "-A")
+	mergeToolGit(t, dir, "commit", "-q", "-m", "base")
+	base := mergeToolGit(t, dir, "rev-parse", "main")
+	s := ticket.Open(dir)
+	for _, content := range []string{"l1\nl2\nA3\nl4\nl5\nl6\n", "l1\nl2\nl3\nB4\nl5\nl6\n"} {
+		tk, err := s.Create(&ticket.Ticket{Title: "t"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		mergeToolGit(t, dir, "checkout", "-q", "-b", "w/"+tk.ID, base)
+		os.WriteFile(filepath.Join(dir, "s.txt"), []byte(content), 0o644)
+		mergeToolGit(t, dir, "add", "-A")
+		mergeToolGit(t, dir, "commit", "-q", "-m", "c")
+		head := mergeToolGit(t, dir, "rev-parse", "HEAD")
+		mergeToolGit(t, dir, "checkout", "-q", "main")
+		s.Transition(tk.ID, ticket.StatusRunning)
+		if _, err := s.Update(tk.ID, func(x *ticket.Ticket) error {
+			x.Status = ticket.StatusDone
+			x.Result = &ticket.Result{BaseCommit: base, HeadCommit: head}
+			return nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	args := map[string]any{"cwd": dir, "ids": []any{"TKT-001", "TKT-002"}, "strategy": "semantic"}
+	res, text := callTool(t, "tb_merge", args)
+	var payload struct {
+		DryRun      bool `json:"dry_run"`
+		Resolutions []struct {
+			Rule string `json:"rule"`
+		} `json:"resolutions"`
+	}
+	if err := json.Unmarshal([]byte(text), &payload); err != nil || res.IsError || !payload.DryRun || len(payload.Resolutions) != 1 || payload.Resolutions[0].Rule != "disjoint" {
+		t.Fatalf("dry-run: %v %s", res.IsError, text)
+	}
+	if mergeToolGit(t, dir, "rev-parse", "main") != base {
+		t.Fatal("dry-run moved the ref")
+	}
+	args["apply"] = true
+	if res, text = callTool(t, "tb_merge", args); res.IsError || mergeToolGit(t, dir, "rev-parse", "main") == base {
+		t.Fatalf("apply: %v %s", res.IsError, text)
 	}
 }

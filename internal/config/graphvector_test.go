@@ -126,7 +126,9 @@ func TestLoadUserMissingDefault(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(cfg, DefaultConfig()) {
+	want := DefaultConfig()
+	want.Merge = DefaultMergeConfig() // LoadUser fills the user-only merge section
+	if !reflect.DeepEqual(cfg, want) {
 		t.Fatalf("want defaults, got %+v", cfg.Graph)
 	}
 }
@@ -255,5 +257,34 @@ func TestRepoGraphVectorKeys(t *testing.T) {
 	}
 	if _, err := RepoGraphVectorKeys(repo); err == nil {
 		t.Fatal("symlinked config must fail")
+	}
+}
+
+func TestLoadUserMergeDefaultsAndValidation(t *testing.T) {
+	global, _ := isolate(t)
+	cfg, err := LoadUser("")
+	if err != nil || cfg.Merge.Semantic.MaxRegionLines != 2000 || cfg.Merge.Prompt.MaxNovelLines != nil {
+		t.Fatalf("defaults: %+v %v", cfg.Merge, err)
+	}
+	writeFile(t, global, "merge:\n  prompt:\n    max_novel_lines: 0\n    attempts: 3\n")
+	cfg, err = LoadUser("")
+	if err != nil || cfg.Merge.Prompt.MaxNovelLines == nil || *cfg.Merge.Prompt.MaxNovelLines != 0 || cfg.Merge.Prompt.Attempts != 3 || cfg.Merge.Prompt.MaxFiles != 10 {
+		t.Fatalf("overlay: %+v %v", cfg.Merge, err)
+	}
+	writeFile(t, global, "merge:\n  prompt:\n    attempts: 0\n")
+	if _, err := LoadUser(""); err == nil {
+		t.Fatal("attempts 0 must be refused")
+	}
+}
+
+func TestRepoMergeKeys(t *testing.T) {
+	_, repo := isolate(t)
+	if keys, err := RepoMergeKeys(repo); err != nil || keys != nil {
+		t.Fatalf("absent: %v %v", keys, err)
+	}
+	writeFile(t, filepath.Join(repo, ".toolbelt", "config.yaml"), "merge:\n  semantic:\n    max_file_bytes: 9\n  prompt:\n    attempts: 9\n")
+	keys, err := RepoMergeKeys(repo)
+	if err != nil || !reflect.DeepEqual(keys, []string{"merge.prompt.attempts", "merge.semantic.max_file_bytes"}) {
+		t.Fatalf("keys: %v %v", keys, err)
 	}
 }

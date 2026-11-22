@@ -83,8 +83,15 @@ func TestMergeCLI(t *testing.T) {
 // An invalid strategy and a conflict under fail must not move refs.
 func mergeCLIRejections(t *testing.T, bin, dir, start string) {
 	t.Helper()
-	if out, err := runTB(t, bin, dir, "merge", "--strategy", "semantic", "1"); err == nil || !strings.Contains(out, "not implemented") {
-		t.Fatalf("semantic: %v %s", err, out)
+	if out, err := runTB(t, bin, dir, "merge", "--strategy", "xyz", "1"); err == nil || !strings.Contains(out, "semantic") {
+		t.Fatalf("invalid strategy: %v %s", err, out)
+	}
+	if out, err := runTB(t, bin, dir, "merge", "--strategy", "semantic", "--resolutions", "abc", "1"); err == nil || !strings.Contains(out, "--resolutions") {
+		t.Fatalf("resolutions without prompt: %v %s", err, out)
+	}
+	// Both tickets add x.txt: semantic refuses (add_add) and moves nothing.
+	if out, err := runTB(t, bin, dir, "merge", "--strategy", "semantic", "1", "2"); err == nil || !strings.Contains(out, "unresolved (add_add)") {
+		t.Fatalf("semantic overlap: %v %s", err, out)
 	}
 	out, err := runTB(t, bin, dir, "merge", "--json", "1", "2")
 	if err == nil || !strings.Contains(out, "conflict") {
@@ -133,5 +140,22 @@ func TestMergeTableGolden(t *testing.T) {
 		"result: ccccccccdddddddd (start aaaaaaaa)\n"
 	if got != want {
 		t.Fatalf("table drifted:\n%q\nwant:\n%q", got, want)
+	}
+}
+
+func TestMergeConflictStatus(t *testing.T) {
+	for _, tc := range []struct {
+		c    merge.Conflict
+		want string
+	}{
+		{merge.Conflict{}, "unresolved"},
+		{merge.Conflict{Reason: "binary"}, "unresolved (binary)"},
+		{merge.Conflict{Resolution: "last_wins"}, "resolved by last_wins"},
+		{merge.Conflict{Resolution: "semantic", Hunks: []merge.Hunk{{Rule: "disjoint"}, {Rule: "go_imports"}, {Rule: "disjoint"}}}, "resolved by semantic (disjoint, go_imports)"},
+		{merge.Conflict{Resolution: "prompt", Hunks: []merge.Hunk{{Rule: "agent", NovelLines: 2}}}, "resolved by prompt (agent; 2 novel line(s))"},
+	} {
+		if got := conflictStatus(&tc.c); got != tc.want {
+			t.Errorf("%q want %q", got, tc.want)
+		}
 	}
 }

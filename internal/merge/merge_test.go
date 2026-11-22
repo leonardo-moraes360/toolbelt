@@ -321,13 +321,13 @@ func TestDependencyOrder(t *testing.T) {
 }
 
 func TestParseStrategyAndRefs(t *testing.T) {
-	for _, s := range []string{"prompt", "semantic"} {
-		if _, err := ParseStrategy(s); err == nil || !strings.Contains(err.Error(), "not implemented") {
-			t.Errorf("%s: %v", s, err)
+	for in, want := range map[string]Strategy{"": StrategyFail, "prompt": StrategyPrompt, " Semantic ": StrategySemantic, "last-wins": StrategyLastWins} {
+		if got, err := ParseStrategy(in); err != nil || got != want {
+			t.Errorf("%q: %v %v", in, got, err)
 		}
 	}
-	if _, err := ParseStrategy("xyz"); err == nil {
-		t.Error("xyz deveria falhar")
+	if _, err := ParseStrategy("xyz"); err == nil || !strings.Contains(err.Error(), "semantic") {
+		t.Errorf("xyz deveria falhar listando as estratégias: %v", err)
 	}
 	dir := newRepo(t)
 	addTicket(t, dir, nil, map[string]string{"x.txt": "x\n"})
