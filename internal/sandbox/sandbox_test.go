@@ -53,12 +53,12 @@ func TestCheckLandlockSupportABI(t *testing.T) {
 }
 
 func TestNewRequiresAllowUnsandboxedWithoutLandlock(t *testing.T) {
-	if runtime.GOOS == "linux" && kernelLandlockPresent() {
-		t.Skip("kernel com Landlock; fail-closed sem suporte não exercitável aqui")
-	}
+	// Simulate a host without Landlock so the refusal runs on kernels that
+	// have it.
+	t.Cleanup(OverrideLandlockProbe(func() (bool, int, error) { return false, 0, errors.New("simulated: no Landlock") }))
 	_, err := New(Config{WorkDir: t.TempDir()})
-	if err == nil {
-		t.Fatal("New deveria falhar sem Landlock e sem AllowUnsandboxed")
+	if err == nil || !strings.Contains(err.Error(), "--allow-unsandboxed") {
+		t.Fatalf("New must refuse without Landlock and AllowUnsandboxed, naming the opt-in: %v", err)
 	}
 	sb, err := New(Config{WorkDir: t.TempDir(), AllowUnsandboxed: true})
 	if err != nil {

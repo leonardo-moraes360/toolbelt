@@ -376,7 +376,7 @@ func TestStackVerifyRunsOnHeadWorktree(t *testing.T) {
 	}
 	base := strings.TrimSpace(string(baseOut))
 
-	writeFile(t, filepath.Join(dir, "marker_test.go"), "package demo\nimport \"testing\"\nfunc TestMarkerOnlyOnHead(t *testing.T) {\n\tt.Fatal(\"marker: only on head\")\n}\n")
+	writeFile(t, filepath.Join(dir, "marker_test.go"), "package demo\nimport \"testing\"\nfunc TestMarkerOnlyOnHead(t *testing.T) {\n\tt.Fatal(\"expected fixture failure: only on head\")\n}\n")
 	runGit(t, dir, "add", "-A")
 	runGit(t, dir, "commit", "-m", "head-with-failing-marker")
 	headOut, err := exec.Command("git", "-C", dir, "rev-parse", "HEAD").Output()

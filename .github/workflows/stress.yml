@@ -1,0 +1,44 @@
+name: Stress
+
+# Repeats the concurrency-heavy packages under the race detector so flakes
+# surface here, not in a PR. Release criterion E4 is measured on this run.
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: stress-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  stress:
+    name: Race x10 (${{ matrix.pkg }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        pkg: [router, mdparse, embed, bus, busrun]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Setup Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Run the package ten times under -race
+        env:
+          PKG: ${{ matrix.pkg }}
+        run: go test -race -count=10 -timeout=45m "./internal/${PKG}/..."
