@@ -59,6 +59,14 @@ A verificação vale o quanto vale a proteção do workflow. No modo ci os globs
 | `ci_budget` | Mais documentos que `egm.ci.max_docs`, ou o passo passou de `egm.max_agent_runs` | Dividir o PR, ou subir os limites na config do CI |
 | `gated_doc_removed` | Um documento sob gate foi apagado ou movido para fora do gate | Um humano revisa a remoção |
 
+## 5. Citações de símbolo e recibos v3
+
+Um documento pode citar um símbolo Go, `internal/x/x.go#Name` ou `#Recv.Name` ([spec da Fase C](specs/egm-phase-c.md)). A revisão confere que o símbolo existe no snapshot (um nome ausente ou ambíguo é um finding `major`), e com `egm.receipt.write_v3: true` na config do usuário o recibo é da versão 3: acrescenta `symbols`, o sha256 dos bytes crus de cada símbolo citado. Atualize o `tb` do CI antes de alguém ligar a chave: um tb mais antigo rejeita um recibo v3 como `receipt_invalid`.
+
+- **Frescor:** o CI também recalcula cada hash de símbolo no head, sem confiar no recibo: divergência é `receipt_stale`, e uma chave de símbolo que o documento não cita é `receipt_invalid`.
+- **Drift:** para uma fonte citada só por símbolos, o `ci_source_drift` (e o `tb egm drift-report`) informa `symbol_changed` ou `symbol_missing` quando os bytes de um símbolo citado mudam ou somem. Uma edição em outro ponto do mesmo arquivo **não** é drift: vai para `outside_symbols` e o documento continua fresh. Para ter o drift no nível do arquivo de volta, cite também o arquivo sem fragmento (`internal/x/x.go`). Uma mudança num helper que o símbolo citado chama está fora do símbolo; cite o helper também se isso importar.
+- **Recibos das versões 1 e 2** continuam funcionando e são comparados por arquivo, como antes.
+
 ## Limites
 
 - A rodada nova é **uma amostra só**: um `major` que o loop local e uma rodada do CI deixam passar entra no merge.

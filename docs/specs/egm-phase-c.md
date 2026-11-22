@@ -137,7 +137,7 @@ Nothing is written on a refusal.
 
 Each `Symbol` has `Name`, `Kind`, `StartLine`, `EndLine` (1-based, inclusive) and `SHA256` of the **raw bytes** of the range. The doc comment is outside the range (editing a comment is not drift). `_`, `init`, and any name declared twice in the file (a non-compiling file) are **ambiguous**. A parse error makes every symbol of that file unavailable (`unparsed`). Files over `max_source_bytes` are not parsed.
 
-> **USER DECISION D3.** Hash raw bytes (recommended: stable across tb builds; a pure `gofmt` reflow counts as a change) or `go/printer` output (ignores layout, but its output can change between Go versions, so two tb builds could disagree).
+> **RESOLVED D3 (user, 2026-11-22): hash the raw bytes.** Hash raw bytes (recommended: stable across tb builds; a pure `gofmt` reflow counts as a change) or `go/printer` output (ignores layout, but its output can change between Go versions, so two tb builds could disagree).
 
 ### Citing a symbol
 
@@ -177,7 +177,7 @@ The fragment must match `^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)?$` an
 
 A file-level `source_missing` of a symbol-scoped path stays `source_missing`. Severity order: `unreadable` > `source_missing` > `symbol_missing` > `drifted` > `symbol_changed` > `sources_differ` > `fresh` > `no_baseline`. JSON adds `symbols_changed`, `symbols_missing`, `outside_symbols` (always present, possibly empty) and bumps `v` to `egm-source-drift/0.2`.
 
-> **USER DECISION D4.** R20 makes drift *less* conservative for symbol-scoped sources: a change in a helper the cited symbol calls is not reported. Recommended: accept (citing the file plainly restores file-level drift, and `outside_symbols` keeps the change visible). Alternative: report symbol statuses only as extra detail and keep `drifted` for any file change.
+> **RESOLVED D4 (user, 2026-11-22): a change outside the cited symbols is informational (`outside_symbols`), not drift.** R20 makes drift *less* conservative for symbol-scoped sources: a change in a helper the cited symbol calls is not reported. Recommended: accept (citing the file plainly restores file-level drift, and `outside_symbols` keeps the change visible). Alternative: report symbol statuses only as extra detail and keep `drifted` for any file change.
 
 **R22. CI and local gate.** `ci_source_drift` (B1) and the local `sources_changed` warning use R20, so they raise on `symbol_changed` / `symbol_missing` and not on `outside_symbols`. The `drift` goldfish (`--engine llm`) receives, for symbol-scoped sources, the changed symbols' ranges marked in the packet; it is otherwise unchanged.
 
@@ -187,7 +187,7 @@ A file-level `source_missing` of a symbol-scoped path stays `source_missing`. Se
 
 **R24. Receiver-qualified method IDs.** Methods become `func:<pkg>.<Recv>.<Name>`; `funcIDs` and `findFunc` key on the qualified name, fixing the edge misattribution in [index_go.go:54-76](../../internal/graph/index_go.go). Package IDs keep `pkg:<name>` in this slice (import-path IDs are a larger change).
 
-> **USER DECISION D5.** R24 changes existing graph node IDs (saved queries, `tb graph path` arguments, golden tests). Ship it in C6 with a CHANGELOG "changed" entry (recommended), or keep the old IDs and add the receiver only to `title`.
+> **RESOLVED D5 (user, 2026-11-22): the method-ID change is deferred to C6, post-1.0; C4 and C5 do not touch graph IDs.** R24 changes existing graph node IDs (saved queries, `tb graph path` arguments, golden tests). Ship it in C6 with a CHANGELOG "changed" entry (recommended), or keep the old IDs and add the receiver only to `title`.
 
 ## Scope of ADR-015 Phase C items
 
@@ -285,7 +285,7 @@ ADR-015 status (§8 Phase C), [egm-nativo.md](egm-nativo.md) Non-Goals, [egm-dri
 
 ## Open questions
 
-1. **ADR-015 status vs R0 item 8.** [ADR-015](../adr/015-egm-nativo.md) line 7 is `accepted` and also says R0 item 8 is still open; [egm-nativo.md](egm-nativo.md) line 124 says item 8 "still blocks ADR-015 from `accepted`". **USER DECISION D7:** amend egm-nativo R0 to say item 8 is a known open gap that no longer blocks acceptance (recommended), or move ADR-015 back to `proposed`. Phase C does not depend on item 8.
+1. **ADR-015 status vs R0 item 8.** [ADR-015](../adr/015-egm-nativo.md) line 7 is `accepted` and also says R0 item 8 is still open; [egm-nativo.md](egm-nativo.md) line 124 says item 8 "still blocks ADR-015 from `accepted`". **RESOLVED D7 (2026-11-22, the recommended option):** amend egm-nativo R0 to say item 8 is a known open gap that no longer blocks acceptance (recommended), or move ADR-015 back to `proposed`. Phase C does not depend on item 8.
 2. **egm-trust status.** [egm-trust.md](egm-trust.md) says "Draft, round 2 … slices 1–3 done; the flakiness measurement is pending", ADR-015 says the trust spec "stays a draft", and the README says Phase A.2 "is implemented". Proposal: status "implemented (slices 1–3); flakiness measurement pending", and the same in ADR-015 and README.
 3. **`--ticket`.** Should `brainstorm`/`draft` read a `.toolbelt/tickets/TKT-NNN.yaml` directly, or is `--brief rd.md` enough? Not in C1.
 4. **Several briefs or ideation rounds.** One goldfish per brainstorm keeps the budget bounded; a multi-persona brainstorm (diverge, then consolidate) can come later if one run proves too narrow.
