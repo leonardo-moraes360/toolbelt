@@ -129,6 +129,12 @@ func inDenied(rel string) bool {
 // bootstrapTarget: inside the repository, gated, absent, in an existing
 // real directory reached through no symlink.
 func bootstrapTarget(root, cwd, target string, set *Settings) (string, error) {
+	return newGatedTarget(root, cwd, target, set, "bootstrap")
+}
+
+// newGatedTarget is bootstrapTarget with the refusal codes of another
+// command (prefix_path, prefix_exists).
+func newGatedTarget(root, cwd, target string, set *Settings, prefix string) (string, error) {
 	rel, err := gateRel(root, cwd, target)
 	if err != nil {
 		return "", err
@@ -136,24 +142,33 @@ func bootstrapTarget(root, cwd, target string, set *Settings) (string, error) {
 	if !IsGated(set.DocGlobs, rel) {
 		return "", errorf(ExitError, "usage", "%s is not a gated document path (egm.doc_globs)", rel)
 	}
+	if err := checkNewPath(root, rel, prefix); err != nil {
+		return "", err
+	}
+	return rel, nil
+}
+
+// checkNewPath: rel is not under .git or an R7-denied path, its directory is
+// a real existing one and the file does not exist.
+func checkNewPath(root, rel, prefix string) error {
 	if inDenied(rel) {
-		return "", errorf(ExitError, "bootstrap_path", "%s is under .git or a path R7 denies", rel)
+		return errorf(ExitError, prefix+"_path", "%s is under .git or a path R7 denies", rel)
 	}
 	if dir := path.Dir(rel); dir != "." {
 		fi, reason, missing := lstatChain(root, dir)
 		switch {
 		case missing:
-			return "", errorf(ExitError, "usage", "directory %s does not exist", dir)
+			return errorf(ExitError, "usage", "directory %s does not exist", dir)
 		case reason != "":
-			return "", errorf(ExitError, "bootstrap_path", "%s: a path component is a %s", dir, reason)
+			return errorf(ExitError, prefix+"_path", "%s: a path component is a %s", dir, reason)
 		case !fi.IsDir():
-			return "", errorf(ExitError, "bootstrap_path", "%s is not a directory", dir)
+			return errorf(ExitError, prefix+"_path", "%s is not a directory", dir)
 		}
 	}
 	if _, err := os.Lstat(filepath.Join(root, filepath.FromSlash(rel))); !errors.Is(err, os.ErrNotExist) {
-		return "", errorf(ExitError, "bootstrap_exists", "%s already exists; bootstrap never overwrites", rel)
+		return errorf(ExitError, prefix+"_exists", "%s already exists; tb never overwrites", rel)
 	}
-	return rel, nil
+	return nil
 }
 
 // bootstrapFiles expands --from (directories to their tracked files) and
@@ -259,8 +274,11 @@ func skeleton(rel, docType string, files []string) string {
 }
 
 // draftHead is the title and the generated status line.
-func draftHead(rel string) string {
-	return fmt.Sprintf("# %s\n\n%s\n\n", titleFrom(rel), BootstrapStatus)
+func draftHead(rel string) string { return headWith(rel, BootstrapStatus) }
+
+// headWith is the title and the given status line.
+func headWith(rel, status string) string {
+	return fmt.Sprintf("# %s\n\n%s\n\n", titleFrom(rel), status)
 }
 
 // sourcesSection lists the files as Markdown links relative to the document.
@@ -296,10 +314,24 @@ func titleFrom(rel string) string {
 // exactly the accepted files (one dropped as secret-like or by a limit):
 // its first review would start with an excluded source.
 func checkBootstrapSources(ctx context.Context, repo *Repo, set *Settings, rel, text string, files []string) (*SourceSet, error) {
+	return checkSourcesAs(ctx, repo, set, rel, text, files, "bootstrap_sources")
+}
+
+// checkSourcesAs is checkBootstrapSources with the caller's refusal code.
+func checkSourcesAs(ctx context.Context, repo *Repo, set *Settings, rel, text string, files []string, code string) (*SourceSet, error) {
 	got, err := CollectSources(ctx, repo, set, rel, text)
 	if err != nil {
 		return nil, err
 	}
+	if dropped := sourceMismatch(got, files); len(dropped) > 0 {
+		return nil, errorf(ExitError, code, "the review would not include exactly the --from files as sources: %s", strings.Join(dropped, ", "))
+	}
+	return got, nil
+}
+
+// sourceMismatch lists the files that are not included and the included
+// files that are not wanted.
+func sourceMismatch(got *SourceSet, files []string) []string {
 	included := map[string]bool{}
 	for _, s := range got.Included {
 		included[s.Path] = true
@@ -326,15 +358,15 @@ func checkBootstrapSources(ctx context.Context, repo *Repo, set *Settings, rel, 
 			dropped = append(dropped, s.Path+" (extra)")
 		}
 	}
-	if len(dropped) > 0 {
-		return nil, errorf(ExitError, "bootstrap_sources", "the review would not include exactly the --from files as sources: %s", strings.Join(dropped, ", "))
-	}
-	return got, nil
+	return dropped
 }
 
 // createNew writes rel under root with O_EXCL and no final symlink; the
 // parent was checked component by component.
-func createNew(root, rel, text string) error {
+func createNew(root, rel, text string) error { return createNewAs(root, rel, text, "bootstrap") }
+
+// createNewAs is createNew with the refusal codes of another command.
+func createNewAs(root, rel, text, prefix string) error {
 	r, err := os.OpenRoot(root)
 	if err != nil {
 		return err
@@ -343,7 +375,7 @@ func createNew(root, rel, text string) error {
 	name := filepath.FromSlash(rel)
 	f, err := r.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_EXCL|oNoFollow, 0o644)
 	if errors.Is(err, os.ErrExist) {
-		return errorf(ExitError, "bootstrap_exists", "%s already exists; bootstrap never overwrites", rel)
+		return errorf(ExitError, prefix+"_exists", "%s already exists; tb never overwrites", rel)
 	}
 	if err != nil {
 		return err
@@ -360,7 +392,7 @@ func createNew(root, rel, text string) error {
 	fi, reason, missing := lstatChain(root, rel)
 	if missing || reason != "" || !os.SameFile(fi, opened) {
 		_ = r.Remove(name)
-		return errorf(ExitError, "bootstrap_path", "%s changed while it was being created", rel)
+		return errorf(ExitError, prefix+"_path", "%s changed while it was being created", rel)
 	}
 	return nil
 }
