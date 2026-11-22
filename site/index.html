@@ -82,7 +82,7 @@
             <a class="btn btn-secondary" href="https://github.com/leonardo-moraes360/toolbelt" rel="noopener noreferrer" data-i18n="hero.ctaGithub">View on GitHub</a>
           </div>
           <p class="hero-meta">
-            <span data-i18n="hero.meta">Apache-2.0 · Go 1.22+ · Linux / macOS / Windows · Phase 3</span>
+            <span data-i18n="hero.meta">Apache-2.0 · Go 1.27+ · Linux / macOS / Windows</span>
           </p>
         </div>
         <div class="hero-visual" aria-hidden="false">
@@ -92,8 +92,8 @@
               <span class="terminal-title">tb — local</span>
             </div>
             <pre class="terminal-body"><code><span class="prompt">$</span> <span class="cmd">tb version</span>
-<span class="out">toolbelt v0.0.5</span>
-<span class="out muted">  commit: 000b955</span>
+<span class="out">toolbelt vX.Y.Z</span>
+<span class="out muted">  commit: &lt;sha&gt;</span>
 <span class="out muted">  os:     linux/amd64</span>
 
 <span class="prompt">$</span> <span class="cmd">tb guard check HEAD~1..HEAD</span>
@@ -126,7 +126,7 @@
       <div class="wrap">
         <div class="section-head">
           <h2 data-i18n="cmds.title">Commands and features</h2>
-          <p data-i18n="cmds.lede">Shipped through v0.0.5 (Phases 1–3). Sample outputs are labeled as examples; format matches the Cobra CLI.</p>
+          <p data-i18n="cmds.lede">Implemented commands (Phases 1–3). Sample outputs are labeled as examples; format matches the Cobra CLI.</p>
         </div>
         <div class="cmd-list">
           <article class="cmd-item">
@@ -191,7 +191,7 @@ tb mem add "nunca editar fixtures de teste"</code></pre>
           </article>
           <article class="cmd-item">
             <h3><code>tb ticket</code> · <code>tb router</code> · <code>tb merge</code></h3>
-            <p data-i18n="cmds.phase3">Phase 3: local tickets, a foreground router with workers in worktrees and a fail-closed sandbox, a health watchdog, and atomic merge (fail | last_wins).</p>
+            <p data-i18n="cmds.phase3">Phase 3: local tickets, a foreground router with workers in worktrees and a fail-closed sandbox, a health watchdog, and atomic merge (fail | last_wins | semantic | prompt).</p>
             <div class="code-block">
               <div class="code-toolbar">
                 <span class="code-label">shell</span>
@@ -231,7 +231,7 @@ tb version</code></pre>
             </div>
           </article>
         </div>
-        <p class="footnote" data-i18n="cmds.note">Top-level tb run is still planned (Phase 3+); today use tb sandbox run for Landlock isolation on Linux. Also available: tb workspace (worktrees) and tb mcp.</p>
+        <p class="footnote" data-i18n="cmds.note">Top-level tb run is planned, not implemented; today use tb sandbox run for Landlock isolation on Linux. Also available: tb workspace (worktrees) and tb mcp.</p>
       </div>
     </section>
 
@@ -243,14 +243,15 @@ tb version</code></pre>
         </div>
         <div class="mcp-grid">
           <div>
-            <h3 data-i18n="mcp.toolsTitle">Tools (CLI parity · 36 in v0.0.5)</h3>
+            <h3 data-i18n="mcp.toolsTitle">Tools (CLI parity)</h3>
             <ul class="tool-list">
-              <li><code>tb_version</code>, <code>tb_echo</code>, <code>tb_env</code>, <code>tb_run</code></li>
+              <li><code>tb_version</code>, <code>tb_run</code></li>
               <li><code>tb_mem_*</code>, <code>tb_verify_run</code>, <code>tb_review</code></li>
               <li><code>tb_drift</code>, <code>tb_guard_check</code>, <code>tb_stack</code></li>
               <li><code>tb_graph_search</code> / <code>callers</code> / <code>deps</code> / <code>impact</code> / <code>explain</code> / <code>path</code> / <code>index</code></li>
               <li><code>tb_ticket_*</code>, <code>tb_board</code>, <code>tb_router_status</code>, <code>tb_watchdog_alerts</code>, <code>tb_merge</code></li>
-              <li><code>tb_bus_join</code> / <code>send</code> / <code>recv</code> / <code>claim</code> / <code>complete</code></li>
+              <li><code>tb_bus_join</code> / <code>send</code> / <code>recv</code> / <code>claim</code> / <code>complete</code> / <code>heartbeat</code> / <code>status</code></li>
+              <li><code>tb_vault_*</code>, <code>tb_egm_*</code>, <code>tb_red_*</code>, <code>tb_blue_*</code></li>
             </ul>
             <p class="muted" data-i18n="mcp.graphNote">Graph tools require TB_GRAPH=on in the server process.</p>
           </div>
@@ -287,10 +288,11 @@ tb version</code></pre>
         </div>
         <div class="code-block featured">
           <div class="code-toolbar">
-            <span class="code-label">Linux amd64 · example v0.0.5</span>
+            <span class="code-label">Linux amd64 · example (set VERSION to a release)</span>
             <button type="button" class="copy-btn" data-copy-target="#install-cmd">Copy</button>
           </div>
-          <pre id="install-cmd"><code>curl -sL "https://github.com/leonardo-moraes360/toolbelt/releases/download/v0.0.5/toolbelt_0.0.5_linux_amd64.tar.gz" \
+          <pre id="install-cmd"><code>VERSION=X.Y.Z
+curl -sL "https://github.com/leonardo-moraes360/toolbelt/releases/download/v${VERSION}/toolbelt_${VERSION}_linux_amd64.tar.gz" \
   | tar -xz tb
 sudo mv tb /usr/local/bin/
 tb version</code></pre>
