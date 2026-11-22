@@ -2,7 +2,7 @@
 
 # Árvore de Comandos do `tb`
 
-Este documento descreve a CLI do toolbelt: comandos **implementados** (espelham `tb --help`) e seções **planejadas** (`tb run`/`proc`, marcadas explicitamente; `tb md` e `tb agent` saíram). Em caso de divergência, a CLI Cobra é a fonte da verdade.
+Este documento descreve a CLI do toolbelt: comandos **implementados** (espelham `tb --help`); itens planejados são marcados no texto, comandos planejados (`tb run`, `tb proc`, `tb serve`) ficam no [roadmap do README](README.md), e `tb md` e `tb agent` saíram. Em caso de divergência, a CLI Cobra é a fonte da verdade.
 
 ## Local-first: sem GitHub
 
@@ -72,136 +72,38 @@ ainda é você quem escreve o `rd.md`.
 ## Visão Geral
 
 ```
-tb  (implemented today)
-├── init         Initializes local toolbelt configuration
-├── bench        Benchmark harness (run|list|report|compare)
-├── drift        Detects scope and base commit drift
-├── egm          Design-document review loop (review|loop next|resolve|status)  ✓ Phase A
-├── graph        On-demand code graph (TB_GRAPH=on or --enable)
-├── guard        Anti-cheat protections (check)
-├── mcp          Starts an MCP server over stdio
-├── mem          Invariants (add|list|show|edit|retire|search|check|init)
-├── review       Fresh-context review (Elephant-Goldfish)
-├── sandbox      Execution with Landlock isolation (check|run)
-├── stack        Stacks verification operations (verify/review/drift/guard/vault/egm/seccheck), not branches
-├── vault        Markdown vault of notes (new|list|show|search|links|backlinks|check)
-├── verify       Adversarial verification (run; rulers tests|coverage|visual)
-├── workspace    Isolated workspaces via git worktree (create|list|remove; alias: ws)
-├── version      Shows the toolbelt version (also: tb --version)
-├── ticket       Work tickets (create|list|show|cancel|retry)       ✓ Phase 3
-├── board        Ticket board (list|watch|pause|resume|drain)          ✓ Phase 3
-├── router       Foreground scheduler (run|status|config)           ✓ Phase 3
-├── watchdog     Worker alerts and control (status|alerts|kill)       ✓ Phase 3
-├── merge        Merges done tickets (fail|last_wins|semantic|prompt)     ✓ Phase 3
-└── bus          Agent bus (channel|invite|join|send|recv|claim|complete|heartbeat|watchdog|log|run|discover)  ✓ B1–B3
+tb  (todo comando de primeiro nível; tier = estabilidade sob o congelamento 1.0)
+├── init         Initializes local toolbelt configuration                                      [stable]
+├── version      Shows the toolbelt version (also: tb --version)                               [stable]
+├── mem          Invariants (add|list|show|edit|retire|search|check|init)                      [stable]
+├── verify       Adversarial verification (run; rulers tests|coverage|visual)                  [stable]
+├── guard        Anti-cheat protections (check)                                                [stable]
+├── review       Fresh-context review (Elephant-Goldfish)                                      [stable]
+├── drift        Detects scope and base commit drift                                           [stable]
+├── stack        Stacks verification operations (verify|review|drift|guard stable; vault|egm|seccheck experimental)  [stable]
+├── sandbox      Execution with Landlock isolation (check|run)                                 [stable]
+├── graph        On-demand code graph (index|rebuild|search|callers|deps|impact|explain|path|stats; TB_GRAPH=on or --enable)  [stable]
+├── ticket       Work tickets (create|list|show|cancel|retry)                                  [stable]
+├── workspace    Isolated workspaces via git worktree (create|list|remove; alias: ws)          [stable]
+├── merge        Merges done tickets (fail|last_wins|semantic stable; prompt experimental)     [stable]
+├── mcp          Starts an MCP server over stdio                                               [stable]
+├── board        Ticket board (list|watch|pause|resume|drain)                                  [experimental]
+├── router       Foreground scheduler (run|status|config)                                      [experimental]
+├── watchdog     Worker alerts and control (status|alerts|kill)                                [experimental]
+├── bus          Agent bus (channel|invite|join|send|recv|claim|complete|heartbeat|watchdog|log|tree|run|discover)  [experimental]
+├── egm          Design-document review loop (review|loop|resolve|status|receipt|drift-report|bootstrap|brainstorm|draft)  [experimental]
+├── vault        Markdown vault of notes (new|list|show|search|links|backlinks|check)          [experimental]
+├── red          Offensive AppSec playbooks (list|search|load|explain|pair)                    [experimental]
+├── blue         Defensive AppSec playbooks and checks (list|search|load|pair|apply|check)     [experimental]
+├── lab          Isolated red+blue exercise environments (new|list|status|up|run|logs|down|verify)  [experimental]
+└── bench        Benchmark harness (run|list|report|compare)                                   [experimental]
 
-tb  (planned)
-├── run / proc / md / agent
-└── serve        (today use: tb mcp)
+Removidos (ADR-020, ADR-016): tb agent, tb md. Planejados, não implementados: tb run, tb proc, tb serve.
 ```
 
 ---
 
 ## Comandos Detalhados
-
-### `tb run` — Execução de Comandos (planejado — Fase 3+)
-
-> **Não implementado como `tb run`.** Hoje use `tb sandbox run` para isolamento Landlock.
-
-Executa comandos com isolamento opcional.
-
-```bash
-tb run [flags] <command>
-
-Flags:
-  --timeout <duration>    Maximum execution time (default: 30s)
-  --sandbox               Runs in an isolated sandbox (default: false)
-  --allow-net <hosts>     Hosts allowed on the network (requires --sandbox)
-  --allow-read <paths>    Additional read paths (requires --sandbox)
-  --allow-write <paths>   Additional write paths (requires --sandbox)
-  --cgroup-cpu <percent>  CPU limit in % (default: 100)
-  --cgroup-mem <bytes>    Memory limit (default: 1G)
-  --json                  JSON output
-```
-
-**Exemplos:**
-
-```bash
-# Execução simples
-tb run "go test ./..."
-
-# Com timeout
-tb run --timeout 2m "npm run build"
-
-# Em sandbox completo
-tb run --sandbox --timeout 30s "python script.py"
-
-# Sandbox com rede limitada
-tb run --sandbox --allow-net "api.example.com:443" "curl https://api.example.com/data"
-
-# Com limites de recursos
-tb run --cgroup-cpu 50 --cgroup-mem 512M "heavy-process"
-```
-
----
-
-### `tb proc` — Gerenciamento de Processos (planejado — Fase 3+)
-
-> **Não implementado.** A CLI atual não expõe `tb proc`.
-
-Gerencia processos de longa duração (servidores, watchers).
-
-```bash
-tb proc <subcommand>
-
-Subcommands:
-  start     Starts a process
-  stop      Stops a process
-  restart   Restarts a process
-  list      Lists active processes
-  logs      Shows a process's logs
-  status    Status of a specific process
-```
-
-**`tb proc start`:**
-
-```bash
-tb proc start [flags] <command>
-
-Flags:
-  --name <name>           Process name (required)
-  --log <path>            Log file (default: .tb/logs/<name>.log)
-  --restart <policy>      Restart policy: never|on-failure|always
-  --max-restarts <n>      Maximum automatic restarts
-  --sandbox               Runs in a sandbox
-```
-
-**Exemplos:**
-
-```bash
-# Iniciar servidor de desenvolvimento
-tb proc start --name "dev-server" "npm run dev"
-
-# Com restart automático
-tb proc start --name "worker" --restart on-failure --max-restarts 3 "./worker"
-
-# Listar processos
-tb proc list
-# NAME         PID     STATUS    UPTIME      CPU    MEM
-# dev-server   12345   running   10m30s      2.1%   128M
-# worker       12346   running   5m15s       0.5%   64M
-
-# Ver logs
-tb proc logs dev-server --follow --tail 100
-
-# Parar processo
-tb proc stop dev-server
-
-# Parar todos
-tb proc stop --all
-```
-
----
 
 ### `tb graph` — Grafo Sob Demanda (✓ Fase 2, ADR-011)
 
@@ -254,7 +156,7 @@ graph:
   languages: [go, javascript, python, java, kotlin, csharp, cpp, rust, php, ruby, swift, shell]
   docs: [markdown, html, txt]
   frameworks: [react, vue, svelte, astro, angular, routes, mdx]
-  max_file_bytes: 524288   # ignora arquivos maiores
+  max_file_bytes: 524288   # ignora arquivos maiores (teto de 16 MiB)
   index_on_change: true    # reindexa em search/callers/deps/impact/explain/path/stats se o fingerprint mudou
 ```
 
@@ -265,6 +167,24 @@ um symlink (ex.: `/tmp/target` → dir real), ela é resolvida com
 `EvalSymlinks` antes do walk — caso contrário o índice ficaria vazio, pois
 `filepath.Walk` não desce symlinks. O grafo continua sob demanda (ADR-011):
 `TB_GRAPH=on` ou `--enable`.
+
+A varredura lê só arquivos regulares e nunca segue symlink: um link dentro do
+repositório (`docs/notes.md` → `../.env`) não é indexado, e uma FIFO ou outro
+arquivo especial é ignorado em vez de travar o `tb graph index`. Os arquivos
+passam pelo mesmo leitor do índice vetorial (sem symlink em nenhum componente
+do caminho, arquivo regular, teto de tamanho).
+
+IDs de nó em Go: um pacote é `pkg:<import path>` (o path do módulo no `go.mod`
+mais próximo mais o diretório; o diretório relativo à raiz quando não há
+`go.mod`), então cada `package main` de `cmd/*` é um nó próprio. Uma função é
+`func:<import path>.<Nome>` e um método `func:<import path>.<Recv>.<Nome>`
+(ponteiro e parâmetros de tipo removidos do receptor). Chamadas por import
+resolvem para o ID do pacote importado, e `recv.m()` dentro de um método
+resolve para o método do mesmo receptor. `callers --function Nome` ainda casa
+um método pelo nome simples. Os índices gravados levam `"version": 2`; um
+índice sem ele (ou mais antigo) é lido como desatualizado e reconstruído no
+próximo `tb graph index`. **Quebra de IDs gravados:** `func:main.Run` e
+`pkg:main` de builds anteriores deixam de existir.
 
 Frescor do índice: cada `graph.json` guarda um `fingerprint` (mtime+tamanho dos
 arquivos indexáveis). Em `search`/`callers`/`deps`/`impact`/`explain`/`path`/`stats`, se o
@@ -329,7 +249,7 @@ Flags:
 Não há `--file` em `callers` (use `--function`). Para impacto por arquivo, use `tb graph impact --file`.
 
 Em Python/JS/TS, `--function` resolve por título ou sufixo do id qualificado
-(`func:pkg.mod.nome`; componentes/hooks React também). Arestas `calls` com
+(`func:pkg.mod.nome`; componentes/hooks React também; Go: veja os IDs de nó acima). Arestas `calls` com
 confiança &lt; 0.6 (alvos ambíguos / sem import) ficam de fora do resultado
 default de `callers` e `impact`. Em TS/JS, imports relativos
 (`../components/Layout`, `./utils.js` → `utils.ts`, `./index`) e aliases de
@@ -2414,25 +2334,53 @@ menos que `sandbox.allow_unsandboxed: true`. O resultado traz
 
 ---
 
+## Envelopes JSON
+
+Todo documento JSON que o `tb` imprime no stdout com `--json`, e todo corpo de resultado de ferramenta MCP, tem um campo string de nível superior `v` = `<kind>/<major>.<minor>`. Um bump de minor adiciona campos; qualquer outra mudança sobe o major. Consumidores devem ignorar campos desconhecidos. A CLI e a ferramenta MCP correspondente emitem o mesmo kind. Os kinds ficam definidos num lugar só, `internal/envelope`.
+
+| Kind | Produtor |
+|------|----------|
+| `error/1.0` | o corpo de erro (abaixo); erros de ferramentas MCP |
+| `version/1.0` | `tb version`, `tb_version` |
+| `init/1.0` | `tb init` |
+| `mem/1.0` | `tb mem *`, `tb_mem_*` (uma lista é `{"v", "invariants": [...]}`) |
+| `verify/1.0` | `tb verify run`, `tb_verify_run` |
+| `guard/1.0` | `tb guard check`, `tb_guard_check` |
+| `review/1.0`, `drift/1.0`, `stack/1.0` | `tb review`, `tb drift`, `tb stack` e suas ferramentas |
+| `sandbox-run/1.0`, `sandbox-check/1.0` | `tb sandbox run`, `tb_run`; `tb sandbox check` |
+| `graph-<op>/1.0` | `tb graph search\|callers\|deps\|impact\|explain\|path\|stats\|index\|rebuild`, `tb_graph_*` |
+| `ticket/1.0`, `ticket-list/1.0` | `tb ticket *`, `tb_ticket_*` (uma lista é `{"v", "tickets": [...]}`) |
+| `workspace/1.0` | `tb workspace *` (uma lista é `{"v", "workspaces": [...]}`) |
+| `merge/1.0` | `tb merge`, `tb_merge` |
+
+Os comandos experimentais carimbam `board/1.0`, `router/1.0`, `router-status/1.0`, `watchdog/1.0` e `watchdog-alerts/1.0` pela mesma regra (não congelados; `tb watchdog alerts` e `tb_watchdog_alerts` são `{"v", "alerts": [...]}`; `tb_router_status` é `router-status/1.0`); as saídas de bus, egm, vault, red, blue, lab e bench ainda não são carimbadas. Envelopes que já tinham `v` o mantêm na própria versão (`bus/0.1`, `bus-wake/0.1`, `bus-discover/0.1`, `router-task/0.1`, `egm-source-drift/0.2`, `egm-draft/0.1`, `egm-brainstorm/0.1`).
+
+Arquivos em disco usam um `version` inteiro: `.toolbelt/graph.json` (cache derivado: um arquivo sem `version` ou com outra é descartado e reconstruído pelo próximo `tb graph index`, ou aparece como `stale: true` via MCP) e `.toolbelt/tickets/TKT-*.yaml` (`version: 1` opcional, ausente vale 1; uma versão mais nova é recusada, nunca reescrita: como os tickets são carregados juntos, um ticket com versão mais nova faz todo comando de ticket que varre o diretório falhar, com um erro que nomeia o arquivo e a versão, até o `tb` ser atualizado).
+
 ## Erros e Usage
 
-- Erros esperados de domínio/runtime (`RunE`, ex.: flag de negócio obrigatória ausente, falha de git, arquivo inexistente) saem com **exit ≠ 0** e mensagem em stderr **sem** dump de `Usage` do Cobra.
-- Erros genuínos de parse de **flags** ou **args** (flag desconhecida, `ExactArgs`/`MinimumNArgs`, etc.) mantêm `Usage` no stderr para orientar a invocação.
-- Subcomando desconhecido em qualquer nível (ex.: `tb mem nao-existe`, `tb bench nope`) sai com **exit ≠ 0** e erro `unknown command "…"`, em vez de imprimir help com exit 0.
+- Erros esperados de domínio/runtime (`RunE`, ex.: flag de negócio obrigatória ausente, falha de git, arquivo inexistente) saem com **exit 1** e mensagem em stderr **sem** dump de `Usage` do Cobra.
+- Erros genuínos de parse de **flags** ou **args** (flag desconhecida, `ExactArgs`/`MinimumNArgs`, flag obrigatória ausente, etc.) saem com **exit 2** e mantêm `Usage` no stderr para orientar a invocação.
+- Subcomando desconhecido em qualquer nível (ex.: `tb mem nao-existe`, `tb bench nope`) sai com **exit 2** e erro `unknown command "…"`, em vez de imprimir help com exit 0.
+- Com `--json`, o erro também sai no stdout como um documento `error/1.0`, `{"v": "error/1.0", "error": "<mensagem>", "reason": "<código>", "exit_code": <n>}`; a mensagem em texto continua no stderr. `reason` é `usage` no exit 2, `command_not_found` no exit 127, o motivo próprio do comando onde existe (egm, vault), senão `error`. Um comando que já imprimiu seu documento de resultado e depois falha (`tb mem check`, `tb merge`) não acrescenta um segundo. Via MCP, um erro de ferramenta é `isError: true` com o mesmo corpo como texto (`reason` é o prefixo `código:` da mensagem quando existe, `tool_not_found` com exit code 2 para ferramenta desconhecida, senão `error` com exit code 1).
 - Falhas de git em `guard` / `review` / `drift` / `verify` (e no `stack` que os empilha) **não** mostram só `exit status 128/129`: a mensagem inclui o stderr do git, a ref ausente (`ref missing: …`) e uma dica `git fetch origin <ref>`. Para uma ref relativa (`HEAD~2`, `main^`), a dica fala de histórico curto (repo de um commit ou clone raso: `--base <sha>` ou `git fetch --deepen=1`).
 - `--approved-sha` igual à base (intervalo `base..approved` vazio) não despeja o usage do `git range-diff`; sai com mensagem clara sobre o intervalo inválido.
 
 ## Códigos de Saída
 
-A CLI atual não usa uma tabela estável de códigos 2–7. Na prática:
+A tabela é estável (a 1.x pode acrescentar códigos, nunca mudar um significado).
 
 | Código | Significado |
 |--------|-------------|
-| 0 | Sucesso (`PASS`/`SKIPPED` no verify; guard sem `SeverityError` ou com `--warn-only`) |
-| ≠0 (tipicamente 1) | Erro de parse/domínio, `FAIL`/`ESCALATE` no verify, `SeverityError` no guard, subcomando desconhecido |
-| 2 | `tb verify run`: `--ruler` inválido (nome desconhecido, ou `visual` combinada com outra régua); nada roda |
-| 127 | `tb verify run`: `test_cmd` / `build_cmd` / `typecheck_cmd` / `lint_cmd` / um check nomeado / `hidden_test_cmd` não encontrado (ou não executável / `ErrNotFound`); com `--json` emite o envelope `verify.Result` com campo `error` |
-| exit do filho | `tb sandbox run` propaga o exit code do processo quando ≠ 0 e sem timeout |
+| 0 | Sucesso: `PASS`/`SKIPPED` no verify; guard sem `SeverityError` ou com `--warn-only`; um check que passou |
+| 1 | O check rodou e falhou (`FAIL`/`ESCALATE` no verify, `SeverityError` no guard, vault check, egm `FAIL`), ou erro de runtime depois que o trabalho começou |
+| 2 | Erro de uso ou recusa antes de qualquer trabalho: flag ou argumento inválido, subcomando desconhecido, flag obrigatória ausente, `--ruler`/`--check` inválido (`tb verify run`, `tb stack`), motivos de recusa do egm/vault |
+| 3 | `tb egm`: o veredito não permite a operação (`receipt` é recusado sem `PASS`/`PASS_PARTIAL`) |
+| 124 | `tb sandbox run`: o filho estourou `--timeout` (também com `--json`; o documento tem `timed_out: true`) |
+| 127 | Comando configurado não encontrado ou não executável: `tb verify run` (`test_cmd` / `build_cmd` / `typecheck_cmd` / `lint_cmd` / um check nomeado / `hidden_test_cmd`; com `--json` emite o envelope `verify.Result` com campo `error`) e o comando do `tb sandbox run` (não encontrado ou não executável; o corpo `error/1.0` tem `reason: "command_not_found"`, igual para nome simples e caminho) |
+| 130 | Interrompido por SIGINT/SIGTERM (`tb mcp`; `tb sandbox run` quando cancelado) |
+| do filho | `tb sandbox run` sai com o código não zero do filho, com ou sem `--json` (filho morto pelo sinal `n` sai com `128+n`, e o documento tem `signal`, ex.: `"SIGKILL"`) |
+| max | `tb stack` sai com o maior exit code entre os seus passos |
 
 Quando o comando configurado no verify não existe/não é executável, o verify falha imediatamente (sem retries) e o processo `tb` sai **127**.
 
@@ -2443,6 +2391,14 @@ Quando o comando configurado no verify não existe/não é executável, o verify
 Arquivo de configuração local em `.toolbelt/config.yaml` (global:
 `~/.config/toolbelt/config.yaml`). A flag `-c/--config` aponta para um YAML
 alternativo.
+
+Uma chave que o `tb` não conhece (erro de digitação, ou chave removida antes do 1.0) é ignorada: cada
+arquivo imprime no stderr uma linha por chave assim, uma vez por execução, com o caminho completo
+(`warning: .toolbelt/config.yaml: unknown config key graph.auto_index (ignored)`). Nunca é erro, então
+arquivos antigos continuam carregando. Chaves removidas: `defaults.*`, `sandbox.allow_net`,
+`sandbox.cpu_limit`, `sandbox.mem_limit`, `sandbox.time_limit`, `graph.auto_index`,
+`graph.infer_relations`, `vault.sync_on_change` e `logging.*`; eram lidas do arquivo mas nenhum comando as
+usava, então não aplicavam nada.
 
 ```yaml
 # .toolbelt/config.yaml (exemplo)

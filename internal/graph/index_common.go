@@ -1,10 +1,13 @@
 package graph
 
 import (
+	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"syscall"
 )
 
 func moduleNameFromRel(rel string) string {
@@ -47,8 +50,70 @@ func uniqueMatchesMulti(res []*regexp.Regexp, src string) []string {
 	return out
 }
 
+// maxIndexReadBytes caps what is read from one file and is the ceiling of
+// graph.max_file_bytes (normalizeBuildOptions clamps to it), so the walk, the
+// fingerprint and the reader agree on what is indexable.
+const maxIndexReadBytes = 16 << 20
+
+var (
+	errNotRegular = errors.New("not a regular file or crosses a symlink")
+	errTooLarge   = errors.New("file too large")
+)
+
+// readRegularFile reads rel under root, refusing a symlink on any path
+// component (the deny list and the repo boundary match the indexed name, so a
+// link such as docs/notes.md -> ../.env would smuggle a file in) and anything
+// that is not a regular file. The final open is non-blocking so a FIFO that
+// replaces the file after the Lstat cannot hang the walk.
+func readRegularFile(root *os.Root, rel string, maxBytes int64) ([]byte, error) {
+	parts := strings.Split(filepath.ToSlash(rel), "/")
+	var last os.FileInfo
+	for i := range parts {
+		fi, err := root.Lstat(filepath.FromSlash(strings.Join(parts[:i+1], "/")))
+		if err != nil {
+			return nil, err
+		}
+		if fi.Mode()&os.ModeSymlink != 0 || (i == len(parts)-1 && !fi.Mode().IsRegular()) {
+			return nil, errNotRegular
+		}
+		last = fi
+	}
+	f, err := root.OpenFile(filepath.FromSlash(rel), os.O_RDONLY|syscall.O_NONBLOCK, 0)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	fi, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
+	if !fi.Mode().IsRegular() || !os.SameFile(last, fi) {
+		return nil, errNotRegular
+	}
+	if fi.Size() > maxBytes {
+		return nil, errTooLarge
+	}
+	data, err := io.ReadAll(io.LimitReader(f, maxBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(data)) > maxBytes {
+		return nil, errTooLarge
+	}
+	return data, nil
+}
+
+func readSourceBytes(root, rel string) ([]byte, error) {
+	r, err := os.OpenRoot(root)
+	if err != nil {
+		return nil, err
+	}
+	defer r.Close()
+	return readRegularFile(r, rel, maxIndexReadBytes)
+}
+
 func readSource(root, rel string) (string, error) {
-	data, err := os.ReadFile(filepath.Join(root, rel))
+	data, err := readSourceBytes(root, rel)
 	if err != nil {
 		return "", err
 	}

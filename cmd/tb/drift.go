@@ -1,12 +1,12 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 
 	"github.com/spf13/cobra"
 
+	"github.com/leonardo-moraes360/toolbelt/internal/envelope"
 	"github.com/leonardo-moraes360/toolbelt/internal/review"
 )
 
@@ -83,15 +83,7 @@ func driftConfigFromFlags(cmd *cobra.Command, args []string) (*review.Config, er
 func emitDrift(cmd *cobra.Command, drift *review.DriftReport) error {
 	outPath, _ := cmd.Flags().GetString("output")
 	if jsonOutput || outPath != "" {
-		data, err := json.MarshalIndent(drift, "", "  ")
-		if err != nil {
-			return err
-		}
-		if outPath != "" {
-			return os.WriteFile(outPath, data, 0o600)
-		}
-		fmt.Println(string(data))
-		return nil
+		return emitJSONOrFile(envelope.Drift, drift, outPath)
 	}
 	printDriftReport(drift)
 	return nil

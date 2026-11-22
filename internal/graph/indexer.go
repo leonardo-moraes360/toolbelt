@@ -56,6 +56,11 @@ func normalizeBuildOptions(opts *BuildOptions) {
 	if opts.MaxFileBytes <= 0 {
 		opts.MaxFileBytes = DefaultMaxFileBytes
 	}
+	// The walk, the fingerprint and the reader share one limit: a file the
+	// reader would refuse is never counted as indexable.
+	if opts.MaxFileBytes > maxIndexReadBytes {
+		opts.MaxFileBytes = maxIndexReadBytes
+	}
 	if len(opts.SkipDirs) == 0 {
 		opts.SkipDirs = DefaultBuildOptions().SkipDirs
 	}
@@ -164,7 +169,7 @@ func BuildFromRootOpts(root string, opts *BuildOptions) (*Index, error) {
 	if err != nil {
 		return nil, err
 	}
-	idx := &Index{Root: abs}
+	idx := &Index{Root: abs, Version: IndexVersion}
 	nodes := map[string]Node{}
 	var edges []Edge
 	skip := map[string]bool{}
@@ -240,7 +245,7 @@ func walkSourceFile(
 		}
 		return nil
 	}
-	if info.Size() > opts.MaxFileBytes {
+	if !info.Mode().IsRegular() || info.Size() > opts.MaxFileBytes {
 		return nil
 	}
 	rel, _ := filepath.Rel(root, path)

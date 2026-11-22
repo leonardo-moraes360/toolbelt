@@ -1,13 +1,13 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
 
+	"github.com/leonardo-moraes360/toolbelt/internal/envelope"
 	"github.com/leonardo-moraes360/toolbelt/internal/review"
 	"github.com/leonardo-moraes360/toolbelt/internal/ticket"
 )
@@ -18,14 +18,6 @@ func openTicketStore() (*ticket.Store, error) {
 		return nil, err
 	}
 	return ticket.Open(ticket.FindRoot(cwd)), nil
-}
-
-func printJSONLine(v any) error { return json.NewEncoder(os.Stdout).Encode(v) }
-
-func printJSON(v any) error {
-	enc := json.NewEncoder(os.Stdout)
-	enc.SetIndent("", "  ")
-	return enc.Encode(v)
 }
 
 var ticketCmd = &cobra.Command{
@@ -85,7 +77,7 @@ var ticketCreateCmd = &cobra.Command{
 				return err
 			}
 			if jsonOutput {
-				return printJSON(t)
+				return emitJSONIndent(envelope.Ticket, t)
 			}
 			fmt.Printf("dry-run: ticket %q would be created (valid)\n", t.Title)
 			return nil
@@ -95,7 +87,7 @@ var ticketCreateCmd = &cobra.Command{
 			return err
 		}
 		if jsonOutput {
-			return printJSON(created)
+			return emitJSONIndent(envelope.Ticket, created)
 		}
 		fmt.Printf("ticket %s created: %s\n", created.ID, created.Title)
 		return nil
@@ -127,7 +119,7 @@ var ticketListCmd = &cobra.Command{
 			if list == nil {
 				list = []ticket.Ticket{}
 			}
-			return printJSON(list)
+			return emitJSONIndent(envelope.TicketList, list)
 		}
 		if len(list) == 0 {
 			fmt.Println("no tickets")
@@ -154,7 +146,7 @@ var ticketShowCmd = &cobra.Command{
 			return err
 		}
 		if jsonOutput {
-			return printJSON(t)
+			return emitJSONIndent(envelope.Ticket, t)
 		}
 		printTicketDetail(&t)
 		return nil
@@ -175,7 +167,7 @@ var ticketCancelCmd = &cobra.Command{
 			return err
 		}
 		if jsonOutput {
-			return printJSON(t)
+			return emitJSONIndent(envelope.Ticket, t)
 		}
 		fmt.Printf("ticket %s canceled\n", t.ID)
 		return nil
@@ -196,7 +188,7 @@ var ticketRetryCmd = &cobra.Command{
 			return err
 		}
 		if jsonOutput {
-			return printJSON(t)
+			return emitJSONIndent(envelope.Ticket, t)
 		}
 		fmt.Printf("ticket %s returned to pending\n", t.ID)
 		return nil

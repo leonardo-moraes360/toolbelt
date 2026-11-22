@@ -257,7 +257,7 @@ func (c *sourceCtx) checkIndex(ctx context.Context, files []string, ignored map[
 	return nil
 }
 
-const msgUnstaged = "faça git add das fontes citadas antes de convergir (git add the cited sources before converging)"
+const msgUnstaged = "git add the cited sources before converging"
 
 func (c *sourceCtx) unstaged(f, reason string) {
 	c.skip(f, reason)

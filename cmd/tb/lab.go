@@ -31,6 +31,7 @@ isolation.`,
 	// (fail-closed errors must not dump usage) and the authorized-use notice,
 	// once per repo, shared with tb red.
 	PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
+		markRunStarted()
 		cmd.SilenceUsage = true
 		log.Init(jsonOutput)
 		dir := secToolbeltDir()

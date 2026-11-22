@@ -73,10 +73,10 @@ Field study of `tb` (local `make build`, injected version `c8aae04`) against a l
 
 | ID | sev | repro | expected | actual |
 |----|-----|-------|----------|--------|
-| N1 | P1 | `tb init` in a Python repo; `tb verify run` without overriding cmds | Detect ecosystem or fail with clear guidance | Defaults `go test ./...`; opaque ESCALATE |
+| N1 | P1 | `tb init` in a Python repo; `tb verify run` without overriding cmds | Detect ecosystem or fail with clear guidance | Defaults `go test ./...`; opaque ESCALATE — **fixed in `e5ab8bf`** (re-checked 2026-11-22) |
 | N2 | P1 | `tb verify … --hidden-test-cmd 'pytest …'` without `tests/hidden/` dir | Honor the passed command | `hidden_available: false`; command ignored |
-| N3 | P2 | `tb graph impact --file <py with symbols>` after rebuild | List impacted callers/deps | `(vazio)` |
-| N4 | P2 | `tb graph callers last_modified` (positional, like search) | Accept positional or a single message | Requires `--function`; UX inconsistent with `search` |
+| N3 | P2 | `tb graph impact --file <py with symbols>` after rebuild | List impacted callers/deps | `(vazio)` — **fixed in `d788b1f`** (re-checked 2026-11-22) |
+| N4 | P2 | `tb graph callers last_modified` (positional, like search) | Accept positional or a single message | Requires `--function`; UX inconsistent with `search` — **still open** (re-checked 2026-11-22): `tb graph callers` still requires `--function`; a positional alias would be additive and is left to after 1.0, since flags are frozen as they are |
 | N5 | P2 | MCP `tools/list` after using CLI mem/verify/review | CLI↔MCP parity | Only `tb_graph_*`, `tb_version`, `tb_echo`, `tb_env`, `tb_run` |
 | N6 | P3 | Scope `pydantic_ai_slim/pydantic_ai/ui/*` vs file in the dir | Document that `*` is single-segment / prefer `dir/` or `dir/**` | Mixed behavior confuses (“globs”) |
 | N7 | P2 | Repo with rich AGENTS.md; `tb init` | Import/summarize project rules into vault/invariants | Ignores entirely; risk of conflict with generic Go-oriented invariants (`tests/hidden/`) |

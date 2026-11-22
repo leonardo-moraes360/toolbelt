@@ -65,10 +65,10 @@ Evidência coletada em 2026-11-15 no VM local. Clone em `/tmp/target/playwright-
 
 | ID | sev | repro | esperado | atual |
 |----|-----|-------|----------|-------|
-| N1 | P1 | `tb init` em repo Node; rodar `tb verify run` sem editar config | Defaults alinhados à toolchain detectada, ou onboarding que falha cedo com mensagem clara | Defaults Go; ESCALATE 3× se o agente copiar `chromium` do AGENTS.md enquanto o `playwright.config.ts` só define project `chrome` |
+| N1 | P1 | `tb init` em repo Node; rodar `tb verify run` sem editar config | Defaults alinhados à toolchain detectada, ou onboarding que falha cedo com mensagem clara | Defaults Go; ESCALATE 3× se o agente copiar `chromium` do AGENTS.md enquanto o `playwright.config.ts` só define project `chrome` — **corrigido em `e5ab8bf`** (reverificado em 2026-11-22) |
 | N2 | P2 | `tb drift` com scope `**/*.js` | Ou suporte a `**`, ou erro explícito “glob não suportado” | Trata como não-match silencioso → falso drift |
-| N3 | P2 | `tb review` + invariante default `tests/hidden` + diff com a substring no conteúdo | Heurística por path tocado, não substring no diff | False positive bloqueante |
-| N4 | P2 | Criar `.toolbelt/guard.yaml` e alterar path listado | Guard carrega o manifesto (como a docs promete) | Manifesto ignorado; só lista hardcoded em `internal/guard/guard.go` |
+| N3 | P2 | `tb review` + invariante default `tests/hidden` + diff com a substring no conteúdo | Heurística por path tocado, não substring no diff | False positive bloqueante — **corrigido em `35a8552`** (reverificado em 2026-11-22) |
+| N4 | P2 | Criar `.toolbelt/guard.yaml` e alterar path listado | Guard carrega o manifesto (como a docs promete) | Manifesto ignorado; só lista hardcoded em `internal/guard/guard.go` — **corrigido em `814c6cb`** (reverificado em 2026-11-22) |
 | N5 | P3 | `tb verify --ruler visual` com manifesto vazio `screens: []` | `skipped=true` + razão “nenhuma tela” | `skipped=false`, PASS |
 | N6 | P3 | `tb mem add --type fact ...` seguindo `docs/cli.md` | Comando da docs funciona ou docs atualizadas | `unknown flag: --type` |
 | N7 | P1 | Agente usa só `tb verify` configurado com teste parcial após editar gerador README | Verify exige (ou sugere) também `npm run lint` / syntax check do gerador | PASS com gerador quebrado |

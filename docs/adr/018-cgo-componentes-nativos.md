@@ -4,7 +4,7 @@
 
 ## Status
 
-proposed (2026-11-21). It becomes accepted only after the V0 spike of the [vector index spec](../specs/vector-index.md) builds and smoke-tests every target (spec AC1–AC3).
+accepted (2026-11-22; proposed 2026-11-21). The V0 spike of the [vector index spec](../specs/vector-index.md) builds and smoke-tests every target, and the vector index shipped (V0–V2); the release is built with cgo for the vendored, allowlisted native code only.
 
 It amends:
 - [ADR-001](001-go-vs-rust.md): the single static binary;

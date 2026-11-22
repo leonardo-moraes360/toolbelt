@@ -3,6 +3,7 @@ package registry
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/json"
 	"flag"
 	"math"
 	"os"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	"github.com/leonardo-moraes360/toolbelt/internal/embed"
+	"github.com/leonardo-moraes360/toolbelt/internal/envelope"
 	"github.com/leonardo-moraes360/toolbelt/internal/vecsearch"
 )
 
@@ -24,7 +26,21 @@ func callGraphText(t *testing.T, tool string, args map[string]any) (string, bool
 	if err != nil {
 		t.Fatalf("%s: %v", tool, err)
 	}
-	return res.Content[0].Text, res.IsError
+	if res.IsError {
+		return errorBodyText(t, res.Content[0].Text), true
+	}
+	return res.Content[0].Text, false
+}
+
+// errorBodyText checks a tool error is the error/1.0 body and returns its
+// message, which is what these tests assert on.
+func errorBodyText(t *testing.T, text string) string {
+	t.Helper()
+	var body envelope.ErrorBody
+	if err := json.Unmarshal([]byte(text), &body); err != nil || body.V != envelope.Error || body.ExitCode == 0 {
+		t.Fatalf("tool error is not an error/1.0 body: %v %q", err, text)
+	}
+	return body.Error
 }
 
 // testdataDir is resolved before graphRepo chdirs into the temp repo.

@@ -72,8 +72,11 @@ func checkTicketReads(t *testing.T, dir string) {
 		return m
 	}
 	_, text := callTool(t, "tb_ticket_list", cwd)
-	var list []ticket.Ticket
-	if err := json.Unmarshal([]byte(text), &list); err != nil || len(list) != 2 {
+	var listDoc struct {
+		V       string          `json:"v"`
+		Tickets []ticket.Ticket `json:"tickets"`
+	}
+	if err := json.Unmarshal([]byte(text), &listDoc); err != nil || listDoc.V != "ticket-list/1.0" || len(listDoc.Tickets) != 2 {
 		t.Fatalf("list: %v %s", err, text)
 	}
 	_, text = callTool(t, "tb_ticket_show", with(map[string]any{"id": "TKT-002"}))

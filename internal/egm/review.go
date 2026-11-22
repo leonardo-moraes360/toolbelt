@@ -219,7 +219,7 @@ func resolveEngine(o *Options, set *Settings) (engine, reason string, env *llmEn
 	switch o.Engine {
 	case "", EngineAuto:
 		if len(set.AgentCmd) == 0 {
-			return EngineDeterministic, "agent_cmd ausente na config de usuário (agent_cmd missing from user config)", nil, nil
+			return EngineDeterministic, "agent_cmd missing from user config", nil, nil
 		}
 		env, fallback, err := openLLM(set)
 		if fallback {

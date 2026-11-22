@@ -2,11 +2,11 @@
 
 # Spec: playbooks AppSec red/blue (`tb red` / `tb blue`)
 
-Autor: toolbelt · Status: proposto (não implementado) · Data: 2026-11-20 · Decisão: [ADR-017](../adr/017-appsec-red-blue-labs.md) · Companheiro: [red/blue labs](red-blue-labs.md)
+Autor: toolbelt · Status: Fase 1 implementada (`tb red`, `tb blue`, `tb stack seccheck`, ferramentas MCP; experimental na 1.0) · Data: 2026-11-20 · Decisão: [ADR-017](../adr/017-appsec-red-blue-labs.md) · Companheiro: [red/blue labs](red-blue-labs.md)
 
 ## Visão Geral
 
-`tb red` e `tb blue` dão ao agente metodologia AppSec nativa e nossa: um corpus **red** (ofensivo — como uma classe de vulnerabilidade se manifesta e é revelada em código ou serviço em execução) e um corpus **blue** (defensivo — detecção, hardening, resposta a incidente). O conteúdo é escrito no repo na voz do `tb`, escopado a segurança de software, sem dependência em runtime de qualquer corpus externo. Playbooks são indexados no grafo SQLite + FTS5 existente e servidos — compactos na busca, com orçamento no load — pela CLI e MCP.
+`tb red` e `tb blue` dão ao agente metodologia AppSec nativa e nossa: um corpus **red** (ofensivo — como uma classe de vulnerabilidade se manifesta e é revelada em código ou serviço em execução) e um corpus **blue** (defensivo — detecção, hardening, resposta a incidente). O conteúdo é escrito no repo na voz do `tb`, escopado a segurança de software, sem dependência em runtime de qualquer corpus externo. Playbooks são indexados no grafo existente (`graph.json`, BM25) e servidos — compactos na busca, com orçamento no load — pela CLI e MCP.
 
 Crucialmente, um playbook não é prosa inerte: um playbook blue pode emitir **checks executáveis** nos mecanismos de verificação existentes do `tb`, então o hardening vira algo que o projeto continua aplicando.
 
@@ -161,8 +161,8 @@ Tools de leitura são `readOnlyHint: true, openWorldHint: false`. `tb_blue_apply
 
 Implementado em `internal/secplay` com a CLI `tb red` / `tb blue` e os seis tools MCP. Três pontos de desenho foram resolvidos conforme o código real; eles refinam as seções acima:
 
-- **Índice.** O "grafo" do repo é um armazém JSON (`graph.json`) com BM25 em memória, não SQLite/FTS5. O corpus é pequeno, então a Fase 1 entrega um motor autocontido (corpus embutido, ranker compacto próprio, fatiador de seção próprio, estimador de token próprio `≈ runes/4`) em vez de escrever no `graph.json`. Ligar nós de playbook + uma aresta `mirror` ao grafo (para `tb graph path` ligá-los) é **Fase 2**.
-- **Checks executáveis.** `guard` é Go hardcoded e `verify` são quatro strings de comando — nenhum hospeda uma lista de checks nomeados. Então os checks blue vivem num **`.toolbelt/secchecks.yaml`** dedicado e versionado, gravado por `tb blue apply` e rodado por **`tb blue check`** (um scanner grep/regex). O "um `tb guard`/`tb stack` seguinte os roda" do critério A4 vira `tb blue check` na Fase 1; uma op seccheck no `tb stack` é **Fase 2**.
+- **Índice.** O "grafo" do repo é um armazém JSON (`graph.json`) com BM25 em memória, não SQLite/FTS5. O corpus é pequeno, então a Fase 1 entrega um motor autocontido (corpus embutido, ranker compacto próprio, fatiador de seção próprio, estimador de token próprio `≈ runes/4`) em vez de escrever no `graph.json`. Nós de playbook e uma aresta `mirror` são ligados ao grafo na indexação (`internal/secplay/graphsource.go`), então `tb graph path` os liga.
+- **Checks executáveis.** `guard` é Go hardcoded e `verify` são quatro strings de comando — nenhum hospeda uma lista de checks nomeados. Então os checks blue vivem num **`.toolbelt/secchecks.yaml`** dedicado e versionado, gravado por `tb blue apply` e rodado por **`tb blue check`** (um scanner grep/regex). O "um `tb guard`/`tb stack` seguinte os roda" do critério A4 vira `tb blue check` na Fase 1; `tb stack seccheck` (`OpSecCheck` em `internal/stack/stack.go`) os roda como op do stack.
 - **Local do corpus.** Escrito e **embutido** em `internal/secplay/corpus/{red,blue}/<classe>.md` via `go:embed` — nosso, embarcado no binário e fora de `docs/` (sem ônus de espelho pt-BR).
 
 **Corpus entregue (núcleo, 10 pares):** sql-injection, xss, ssrf, ssti, xxe, idor, rce, insecure-deserialization, jwt, oauth. Checks blue entram para todas menos as duas classes só-lógica (idor, oauth). **Adiado:** formatos SIEM (Sigma/KQL/YARA) e o resto da taxonomia.

@@ -4,7 +4,7 @@
 
 ## Status
 
-proposed
+proposed; experimental na 1.0.
 
 ## Contexto
 

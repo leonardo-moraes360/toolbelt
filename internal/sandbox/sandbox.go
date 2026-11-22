@@ -5,12 +5,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -86,15 +88,36 @@ type Sandbox struct {
 }
 
 type Result struct {
-	Output    string        `json:"output"`
-	ExitCode  int           `json:"exit_code"`
-	Duration  time.Duration `json:"duration_ns"`
-	TimedOut  bool          `json:"timed_out"`
-	Canceled  bool          `json:"canceled,omitempty"`
-	Sandboxed bool          `json:"sandboxed"`
+	Output   string        `json:"output"`
+	ExitCode int           `json:"exit_code"`
+	Duration time.Duration `json:"duration_ns"`
+	TimedOut bool          `json:"timed_out"`
+	Canceled bool          `json:"canceled,omitempty"`
+	// Signal names the signal that killed the child (SIGKILL, ...); ExitCode
+	// is then -1 and SignalNum holds the number.
+	Signal    string `json:"signal,omitempty"`
+	SignalNum int    `json:"-"`
+	Sandboxed bool   `json:"sandboxed"`
 	// StdoutOverflow reports that stdout went past MaxStdoutBytes (only with
 	// Config.Stdout).
 	StdoutOverflow bool `json:"stdout_overflow,omitempty"`
+}
+
+// ErrCommand marks a command that could not be resolved to an executable
+// (not found, or not executable); tb sandbox run exits 127 on it.
+var ErrCommand = errors.New("cannot run command")
+
+var signalNames = map[syscall.Signal]string{
+	syscall.SIGHUP: "SIGHUP", syscall.SIGINT: "SIGINT", syscall.SIGQUIT: "SIGQUIT", syscall.SIGILL: "SIGILL",
+	syscall.SIGABRT: "SIGABRT", syscall.SIGBUS: "SIGBUS", syscall.SIGFPE: "SIGFPE", syscall.SIGKILL: "SIGKILL",
+	syscall.SIGSEGV: "SIGSEGV", syscall.SIGPIPE: "SIGPIPE", syscall.SIGALRM: "SIGALRM", syscall.SIGTERM: "SIGTERM",
+}
+
+func signalName(sig syscall.Signal) string {
+	if n, ok := signalNames[sig]; ok {
+		return n
+	}
+	return fmt.Sprintf("signal %d", int(sig))
 }
 
 func New(config Config) (*Sandbox, error) { //nolint:gocritic // stable public API passed by value
@@ -135,13 +158,15 @@ func (s *Sandbox) Run(ctx context.Context, command string, args ...string) (*Res
 		defer cancel()
 	}
 
-	bin := command
-	if !filepath.IsAbs(command) {
-		var err error
-		bin, err = exec.LookPath(command)
-		if err != nil {
-			return nil, fmt.Errorf("command not found: %w", err)
+	// Resolved before the Landlock helper starts, so a bare name and a path
+	// fail the same way.
+	bin, err := exec.LookPath(command)
+	if err != nil {
+		kind := "not executable"
+		if errors.Is(err, exec.ErrNotFound) || errors.Is(err, fs.ErrNotExist) {
+			kind = "not found"
 		}
+		return nil, fmt.Errorf("%w (%s): %w", ErrCommand, kind, err)
 	}
 
 	if s.landlockOK {
@@ -373,6 +398,10 @@ func classifyRunError(ctx context.Context, cmd *exec.Cmd, res *Result, err error
 	var exitErr *exec.ExitError
 	if errors.As(err, &exitErr) {
 		res.ExitCode = exitErr.ExitCode()
+		if ws, ok := exitErr.Sys().(syscall.WaitStatus); ok && ws.Signaled() {
+			res.SignalNum = int(ws.Signal())
+			res.Signal = signalName(ws.Signal())
+		}
 		return res, nil
 	}
 	return nil, err

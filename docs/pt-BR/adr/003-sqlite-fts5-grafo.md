@@ -4,7 +4,7 @@
 
 ## Status
 
-accepted
+accepted quanto à decisão de manter um índice derivado; **superada na prática**: o índice SQLite + FTS5 com tabelas `nodes`/`edges` nunca foi construído. O grafo é o `.toolbelt/graph.json` com ranking BM25 ([ADR-011](011-grafo-sob-demanda.md), [ADR-014](014-graphify-reimplementacao.md)), e o SQLite no `tb` é só o store do barramento local (`bus.db`, [ADR-013](013-barramento-multi-vendor.md)).
 
 A seção "Sincronização Vault → SQLite" é substituída em parte na Fase A pela [ADR-016](016-vault-fase-a.md): o vault não tem índice derivado. A seção "Índice vetorial opcional" é substituída pela [spec do índice vetorial](../specs/vector-index.md) e pela [ADR-018](018-cgo-componentes-nativos.md): os vetores ficam ao lado do `graph.json`, não no sqlite-vec.
 

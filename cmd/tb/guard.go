@@ -1,13 +1,13 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
 
+	"github.com/leonardo-moraes360/toolbelt/internal/envelope"
 	"github.com/leonardo-moraes360/toolbelt/internal/guard"
 )
 
@@ -34,7 +34,7 @@ var guardCheckCmd = &cobra.Command{
 			return err
 		}
 		if jsonOutput {
-			if err := json.NewEncoder(os.Stdout).Encode(res); err != nil {
+			if err := emitJSON(envelope.Guard, res); err != nil {
 				return err
 			}
 		} else {

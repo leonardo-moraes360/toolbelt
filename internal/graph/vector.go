@@ -9,7 +9,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"math"
 	"os"
 	"path"
@@ -391,27 +390,8 @@ func collectUnits(repoRoot string, idx *Index, o *VectorOptions) (units []unit, 
 }
 
 func readUnitFile(root *os.Root, rel string, maxBytes int64) (string, bool) {
-	// The deny list matches the indexed name, so a symlink anywhere on the
-	// path (docs/notes.md -> ../.env) would smuggle a denied file in: refuse
-	// symlinks on every component instead of resolving them.
-	parts := strings.Split(rel, "/")
-	for i := range parts {
-		fi, err := root.Lstat(filepath.FromSlash(strings.Join(parts[:i+1], "/")))
-		if err != nil || fi.Mode()&os.ModeSymlink != 0 {
-			return "", false
-		}
-	}
-	f, err := root.Open(filepath.FromSlash(rel))
-	if err != nil {
-		return "", false
-	}
-	defer f.Close()
-	fi, err := f.Stat()
-	if err != nil || !fi.Mode().IsRegular() || fi.Size() > maxBytes {
-		return "", false
-	}
-	data, err := io.ReadAll(io.LimitReader(f, maxBytes+1))
-	if err != nil || int64(len(data)) > maxBytes || bytes.IndexByte(data, 0) >= 0 {
+	data, err := readRegularFile(root, rel, maxBytes)
+	if err != nil || bytes.IndexByte(data, 0) >= 0 {
 		return "", false
 	}
 	return strings.ToValidUTF8(string(data), "�"), true

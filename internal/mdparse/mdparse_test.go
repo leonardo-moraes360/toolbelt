@@ -180,8 +180,11 @@ func TestFrontmatterBOMAndMarkers(t *testing.T) {
 
 // TestWikilinksManyOnOneLine guards the linear column count (a 256 KiB
 // note can hold ~40k links on one line): 4x the links must not cost
-// anywhere near the 16x a quadratic count would. A ratio, not an absolute
-// time, so a slow CI runner does not flake it.
+// anywhere near the 16x a quadratic count would. Wall time is noisy on a
+// loaded runner, so each size is timed several times, interleaved, and only
+// the fastest run counts; a scheduling stall hits one run, not all of them.
+// The limit (10x plus a fixed slack) sits between the 4x of linear code and
+// the 16x of quadratic code.
 func TestWikilinksManyOnOneLine(t *testing.T) {
 	run := func(n int) time.Duration {
 		line := strings.Repeat("é [[a]] ", n)
@@ -193,8 +196,13 @@ func TestWikilinksManyOnOneLine(t *testing.T) {
 		}
 		return d
 	}
-	small, big := run(10000), run(40000)
-	if big > 10*small && big > 200*time.Millisecond {
-		t.Fatalf("not linear: 10k links %s, 40k links %s", small, big)
+	const reps = 7
+	small, big := time.Duration(1<<62), time.Duration(1<<62)
+	for range reps {
+		small = min(small, run(10000))
+		big = min(big, run(40000))
+	}
+	if big > 10*small+100*time.Millisecond {
+		t.Fatalf("not linear: 10k links %s, 40k links %s (best of %d)", small, big, reps)
 	}
 }

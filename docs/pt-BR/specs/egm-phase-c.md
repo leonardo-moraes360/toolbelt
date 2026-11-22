@@ -2,7 +2,7 @@
 
 # `tb egm brainstorm`, `tb egm draft` e drift por símbolo — spec da Fase C
 
-Autor: toolbelt · Status: **rascunho, rodada 1** (não revisada; D1, D2, D6 e D7 resolvidas, C1–C3 implementados; D3–D5 ainda precisam de resposta antes do slice que depende delas começar) · Data: 2026-11-22 · Decisão: [ADR-015](../adr/015-egm-nativo.md) (§8) · Depende de: [núcleo](egm-nativo.md) (Fase A), [confiança](egm-trust.md) (Fase A.2), [drift e bootstrap](egm-drift-bootstrap.md) (Fase B)
+Autor: toolbelt · Status: **parcialmente implementada** (rodada 1, não revisada; D1–D7 resolvidas; fatias C1–C5 implementadas, C6 adiada para depois da 1.0) · Data: 2026-11-22 · Decisão: [ADR-015](../adr/015-egm-nativo.md) (§8) · Depende de: [núcleo](egm-nativo.md) (Fase A), [confiança](egm-trust.md) (Fase A.2), [drift e bootstrap](egm-drift-bootstrap.md) (Fase B)
 
 ## Visão geral
 

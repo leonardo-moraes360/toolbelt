@@ -12,13 +12,13 @@ Sequência: `make install` → `tb init --write-agents` → `tb mem init` → `t
 
 | # | Comando | Esperado | Obtido | Sev. |
 |---|---------|----------|--------|------|
-| 1 | `tb init` | `lint_cmd` só se o binário existir no PATH (como `test_cmd`) | grava `golangci-lint run` sem checar PATH; `verify run` falha com `comando não encontrado` | média |
+| 1 | `tb init` | `lint_cmd` só se o binário existir no PATH (como `test_cmd`) | grava `golangci-lint run` sem checar PATH; `verify run` falha com `comando não encontrado` | média — **corrigido em `b73010e`** (reverificado em 2026-11-22: `tb init` sem `golangci-lint` no PATH grava `go vet ./...`) |
 | 2 | `tb verify run --json` | em FAIL/ESCALATE, indicar qual teste/pacote falhou | só `visible_passed: false` + `ESCALATE` após 3 iterações; sem trecho da saída — precisei rodar `go test` à mão | alta |
 | 3 | `tb verify run` | — | 3 iterações (~20s) re-rodando a mesma suíte determinística sem mudança de código entre elas | baixa |
 | 4 | `go test ./...` (suite do tb) | passa independente do git do host | `internal/review` falha com `init.defaultBranch=main`: `git checkout master` hardcoded (`review_test.go:1279,1326,1407`) | média |
 | 5 | `tb init --write-agents` | — | `agent_docs.yaml` registra `sources: [AGENTS.md]` — o arquivo que o próprio init acabou de semear (auto-referência) | baixa |
 | 6 | `tb mem edit --ref` | mensagem de erro coerente com o aceito | erro lista só `docs/adr/…`/`docs/decisions/…`, mas `docs/en/adr/…` é aceito; sem forma de limpar `ref` (precisei `retire` + `add`) | baixa |
-| 7 | `tb init` | arquivos versionáveis com modo padrão | `config.yaml`/`invariants.yaml` criados `0600` | baixa |
+| 7 | `tb init` | arquivos versionáveis com modo padrão | `config.yaml`/`invariants.yaml` criados `0600` | baixa — **corrigido em `b73010e`** (reverificado em 2026-11-22: `config.yaml`, `agent_docs.yaml`, `invariants.yaml` são `0644`) |
 | 8 | `tb graph index` | — | ok: 3960 nós / 14746 arestas em 0,16s; 2940 nós são `section` de docs (PT + EN duplicados) — avaliar ruído na busca | info |
 | 9 | `tb mcp` | — | ok: 22 tools no `tools/list` | info |
 
@@ -31,7 +31,7 @@ Assinatura/Rekor **não** verificados (sem `cosign`); `gh attestation verify` in
 | # | Comando | Esperado | Obtido | Sev. |
 |---|---------|----------|--------|------|
 | 2 | `tb verify run --json` | causa da falha no JSON | **resolvido**: `reason`/`error` trazem a saída do `test_cmd` | — |
-| 10 | `tb verify run --json` | trecho com as linhas `--- FAIL` | `reason` truncado pelo início (`[no test files]`, `ok …`); falhas de pacotes posteriores somem no `…` | média |
+| 10 | `tb verify run --json` | trecho com as linhas `--- FAIL` | `reason` truncado pelo início (`[no test files]`, `ok …`); falhas de pacotes posteriores somem no `…` | média — **corrigido em `610146d`** (`excerpt` mantém as linhas `--- FAIL`/`FAIL` primeiro; teste em `e869e43`; reverificado em 2026-11-22) |
 | 11 | `tb init` + `TestDocsEnglishMirrorComplete` | `--write-agents`/bootstrap não quebra a suíte | criar `docs/campo/*.md` sem par em `docs/en/` quebra `go test` — invariante de docs PT/EN pega pelo teste, não pelo `tb guard` | info |
 | 12 | `tb verify run --dry-run` | — | ok: `verdict: SKIPPED` + plano | info |
 
@@ -57,10 +57,10 @@ Bootstrap do zero numa worktree (`config.yaml`/`agent_docs.yaml`/`invariants.yam
 
 | # | Comando | Esperado | Obtido | Sev. |
 |---|---------|----------|--------|------|
-| 1 | `tb init` | `lint_cmd` só se o binário existir no PATH | **persiste** na v0.0.5: grava `golangci-lint run` sem `golangci-lint` no PATH; voltei a `go vet ./...` à mão | média |
+| 1 | `tb init` | `lint_cmd` só se o binário existir no PATH | **persiste** na v0.0.5: grava `golangci-lint run` sem `golangci-lint` no PATH; voltei a `go vet ./...` à mão. **Corrigido em b73010e** (`detectGoLintCmd` checa o PATH e cai para `go vet ./...`; `TestDetectLintCmd_GolangciMissingFromPath` cobre) | média |
 | 3 | `tb verify run` | — | **resolvido**: 1 iteração (~15s), `PASS` | — |
-| 7 | `tb init` / `tb mem init` | arquivos versionáveis com modo padrão | **persiste**: `config.yaml`, `agent_docs.yaml`, `invariants.yaml` criados `0600` | baixa |
-| 17 | `tb init` numa `git worktree` | padrões de estado local ignorados pelo git | grava em `.git/worktrees/<wt>/info/exclude`, que o git não lê (só `$GIT_COMMON_DIR/info/exclude`); aqui o `.gitignore` mascara, mas em repo sem `.gitignore` o estado local aparece no `git status` | média |
+| 7 | `tb init` / `tb mem init` | arquivos versionáveis com modo padrão | **persiste**: `config.yaml`, `agent_docs.yaml`, `invariants.yaml` criados `0600` | baixa — **corrigido em `b73010e`** |
+| 17 | `tb init` numa `git worktree` | padrões de estado local ignorados pelo git | grava em `.git/worktrees/<wt>/info/exclude`, que o git não lê (só `$GIT_COMMON_DIR/info/exclude`); aqui o `.gitignore` mascara, mas em repo sem `.gitignore` o estado local aparece no `git status` | média — **corrigido em `b73010e`** (reverificado em 2026-11-22: a partir de uma worktree, os padrões vão para `$GIT_COMMON_DIR/info/exclude`) |
 | 18 | `tb init` (dicas de AGENTS.md/CLAUDE.md) | só comandos | extraiu como dica um comentário de dentro de fence `bash` (`# make install sobrescreve…`) e `golangci-lint` solto da prosa | baixa |
 | 19 | `tb init` | — | ok: config nova já traz a seção `router:` com os padrões da Fase 3 | info |
 | 20 | `tb graph index` / `tb graph search "bus harness wake"` | função à frente de seções de docs | 4567 nós / 19328 arestas em 0,17s; 4 seções de `docs/` (PT + EN) antes de `func:busrun.wake` — mesmo ruído do #8 | baixa |
@@ -110,12 +110,14 @@ apontando para ele. Flags do goldfish: `-p --output-format json --tools "" --str
 
 ## 2026-11-22 — backlog de estabilidade (nota, não correção)
 
-Encontrado ao especificar o drift por símbolo ([egm Fase C](../specs/egm-phase-c.md)); nenhum comando `tb graph` foi rodado. Os dois vêm do indexador Go em `internal/graph/index_go.go` e ficam registrados para o slice do grafo (C6), sem correção:
+Encontrado ao especificar o drift por símbolo ([egm Fase C](../specs/egm-phase-c.md)); nenhum comando `tb graph` foi rodado. Os dois vêm do indexador Go em `internal/graph/index_go.go` e ficaram registrados para o slice do grafo (C6) e foram **corrigidos em `7b3bd7e`** (quebra de IDs de nó gravados, `graph.json` `version` 2):
 
 - Métodos perdem o receptor no ID (`func:<pkg>.<name>`, linha 52) e `funcIDs` usa só o nome (linha 54), então `(A) Name` e `(B) Name` no mesmo pacote viram um nó e as arestas de chamada do segundo são atribuídas ao primeiro.
 - IDs de pacote são `pkg:<name>` (linha 34), então vários pacotes chamados `main` (todo `cmd/*`) viram um só nó.
 
-O `tb egm` não depende de nenhum dos dois: seus símbolos têm escopo de arquivo.
+Correção: pacotes são `pkg:<import path>` e métodos `func:<import path>.<Recv>.<Nome>`. O `tb egm` não depende de nenhum dos dois: seus símbolos têm escopo de arquivo.
+
+Mesmo commit: a varredura do grafo não segue mais symlink nem bloqueia em FIFO (leitores compartilhados com o índice vetorial; vault spec Q5).
 
 ## 2026-11-21 — índice vetorial V1 (`tb graph index --vectors`, build local `embednative`, all-MiniLM-L6-v2 Q8_0)
 
@@ -131,3 +133,21 @@ O `tb egm` não depende de nenhum dos dois: seus símbolos têm escopo de arquiv
 | 45 | `TestSemanticRecall` (`internal/graph/eval/semantic.yaml`, 44 consultas por intenção) | recall@10 do hybrid ≥ lexical + 0,10 | ok: all-MiniLM-L6-v2 Q8_0 (sha256 `263215c3cadd6e16740741a7624ab4cbb6c8e777688bd5331ecfbf5681c2f8ed`), llama.cpp b12600 (`29b52d398b29`), 384 dimensões, build x86-64 local, 8 threads: 417 arquivos e 2701 chunks embedados em 3m03s (`third_party/` e `docs/pt-BR/` pulados). recall@10 lexical 0,273, semantic 0,670, hybrid 0,568 (+0,295), então o recurso deixa o status experimental. O semantic teve a maior nota nesta suíte; o hybrid mantém os acertos por nome exato. Ressalva: a suíte foi escrita pelo ferramental da própria sessão de implementação depois de ler o código (frases de intenção, tokens de nomes excluídos por um teste); consultas escritas de forma independente seriam uma evidência mais forte | info |
 | 46 | 3 chamadas `tb_graph_search` com `mode: hybrid` via `tb mcp` com o modelo real | o filho aquecido é reaproveitado | ok: cerca de 10 ms por consulta no filho aquecido, um único processo filho para as três | info |
 | 47 | `tb __graph-embed` com o shim multi-sequência (`tbe_embed_batch`), all-MiniLM-L6-v2 Q8_0, build x86-64-v2, 4 threads; depois `TestSemanticRecall` (8 threads, cache vazio) | agrupar os 64 textos de uma requisição reduz bem o tempo de indexação | ganho pequeno. 64 chunks de 1,5 KB: 8,70 s com uma chamada por texto, 9,22 s com orçamento de 2048 tokens (+6%: a atenção de um modelo não causal cresce com o quadrado dos tokens agrupados), 8,80 s com orçamento de 512 tokens (igual a antes: chunks longos continuam indo um por avaliação). 64 consultas curtas: 0,31 s → 0,24 s (−21%). Indexação da avaliação (2713 chunks): 3m03s → 2m55s (−4%), recall inalterado (0,273 / 0,670 / 0,568). Os vetores concordam com as chamadas únicas com cosseno ≥ 0,9999. O custo vem do piso de CPU (x86-64-v2, sem AVX/FMA pelo ADR-018), não do número de chamadas | info |
+
+## 2026-11-22 — sessão de campo do `tb bus` (dono, release v0.0.10)
+
+Registrado para o [plano de prontidão da 1.0](../specs/release-1.0.md) (trilha B); cada linha foi conferida no código lá.
+
+| # | Comando | Esperado | Obtido | Sev. |
+|---|---------|----------|--------|------|
+| 48 | dois clientes com `tb mcp --bus-as <channel>/iq3` | o segundo cliente vivo de uma identidade é recusado (ou ao menos avisado) | os dois rodaram como `iq3` e escreveram no mesmo worktree: `bindBusAs` carrega a sessão salva sem lock; só o `tb bus run` pega um (B1) | high |
+| 49 | `tb bus send` de `task.assign` com `deps` no payload, depois `tb bus claim` | um worker não consegue pegar um ticket antes de a dependência terminar | pegou antes: o bus trata `payload` como opaco e não tem regra de dependência; `dependencies` do ticket só valem no `tb router` (B2, O8) | medium |
+| 50 | achar o próximo ID de tarefa num canal | uma lista das tarefas do canal com o estado | não há; foi preciso `tb bus log \| grep` (O10) | medium |
+| 51 | reservar paths sem atribuir tarefa; liberar um claim; ver como os claims terminaram | uma operação para cada, e o desfecho de cada claim | não há reserva nem liberação manual; `tb_bus_status` mostra `released`, mas não se completou, expirou ou foi revogado (B6, O11) | medium |
+| 52 | hook SessionStart comparando o `tb` instalado | nenhum alarme quando só o hash do módulo difere | acusou versão divergente: um build sem ldflags informa `dev`/`unknown`, então o hook só tinha um hash para comparar (B5) | medium |
+| 53 | `tb bus send` de tickets com paths sobrepostos | um aviso de paths sobrepostos entre tickets | nenhuma checagem (O12) | low |
+| 54 | `tb bus invite <channel>` | expiração com data | imprime só a hora (`15:04:05Z07:00`) (B3) | low |
+| 55 | `tb bus run --check` | `wake_mismatch` diz como corrigir | só informa a divergência (B4) | low |
+| 56 | `tb bus send` de 17 tickets com chaves de idempotência, enviados de novo | sem duplicatas | ok: 17 mensagens, as repetições voltaram com `duplicate: true` (teste de regressão em B7) | info |
+| 57 | `tb bus send` para um agente fora do canal | erro claro | ok: nomeia o agente e o canal (B7) | info |
+| 58 | `tb mem list` no início da sessão | invariantes de imediato | ok (B7) | info |

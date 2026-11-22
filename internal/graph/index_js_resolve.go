@@ -43,7 +43,7 @@ func readJSConfigFile(path, root string, seen map[string]bool) (*jsPathConfig, b
 		return nil, false
 	}
 	seen[abs] = true
-	data, err := os.ReadFile(abs)
+	data, err := readConfigBytes(root, abs)
 	if err != nil {
 		return nil, false
 	}
@@ -300,4 +300,22 @@ func uniqueStrings(in []string) []string {
 		out = append(out, s)
 	}
 	return out
+}
+
+// readConfigBytes reads a tsconfig/jsconfig through the safe reader when it
+// lives under root. A config reached through `extends` outside root cannot go
+// through the root-confined reader; it is read only if it is a regular file,
+// so a FIFO there cannot block the walk.
+func readConfigBytes(root, abs string) ([]byte, error) {
+	if rel, err := filepath.Rel(root, abs); err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return readSourceBytes(root, rel)
+	}
+	fi, err := os.Stat(abs)
+	if err != nil {
+		return nil, err
+	}
+	if !fi.Mode().IsRegular() || fi.Size() > maxIndexReadBytes {
+		return nil, errNotRegular
+	}
+	return os.ReadFile(abs)
 }
