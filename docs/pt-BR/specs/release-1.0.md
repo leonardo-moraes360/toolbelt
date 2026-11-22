@@ -284,6 +284,8 @@ Ordem entre trilhas: C, G, B, K, D começam já. J e S começam já, mas se seri
 
 ## 6. Decisões para o dono
 
+Status: todas as recomendações O1–O19 aprovadas pelo dono em 2026-11-22.
+
 | # | Decisão | Recomendação | Motivo |
 |---|---------|--------------|--------|
 | O1 | Remover `tb guard check --strict` (e o `strict` do MCP) antes da 1.0, ou congelá-lo como no-op depreciado? | remover | um no-op congelado na 1.0 precisa ser carregado por toda a 1.x; antes da 1.0 é o único momento barato |

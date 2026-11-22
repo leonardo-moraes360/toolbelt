@@ -284,6 +284,8 @@ Order across tracks: C, G, B, K, D start at once. J and S start at once but seri
 
 ## 6. Decisions for the owner
 
+Status: all recommendations O1–O19 approved by the owner on 2026-11-22.
+
 | # | Decision | Recommendation | Rationale |
 |---|----------|----------------|-----------|
 | O1 | Remove `tb guard check --strict` (and MCP `strict`) before 1.0, or freeze it as a deprecated no-op? | remove | a no-op frozen in 1.0 must be carried through all of 1.x; pre-1.0 is the only cheap moment |
