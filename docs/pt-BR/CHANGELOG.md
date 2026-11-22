@@ -9,6 +9,11 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Não Lançado]
 
+## [1.0.0-rc.3] - 2026-11-22
+
+### Corrigido
+- Workflow de release: o gate de strace dos inicializadores estáticos compara o build nativo com um build sem tag e com cgo (como o `ci.yml` faz), então a inicialização cgo do próprio runtime Go (`x_cgo_init` lê `/proc/self/maps` via `pthread_getattr_np`) aparece dos dois lados, e ele guarda o primeiro argumento de caminho do syscall em vez de um buffer de resultado como o do `readlinkat`. A tag `v1.0.0-rc.2` parou nesse gate antes de publicar
+
 ## [1.0.0-rc.2] - 2026-11-22
 
 ### Corrigido

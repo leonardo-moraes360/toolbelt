@@ -95,7 +95,10 @@ jobs:
       # (its libc++ static init differs from the CI host build).
       - name: Static initializers do no I/O (release binary)
         run: |
-          CGO_ENABLED=0 go build -o "$RUNNER_TEMP/tb-untagged" ./cmd/tb
+          # cgo on, as in ci.yml: the Go runtime's own cgo start-up (x_cgo_init reads
+          # /proc/self/maps through pthread_getattr_np) is then on both sides, and
+          # the diff isolates the embednative code.
+          CGO_ENABLED=1 go build -o "$RUNNER_TEMP/tb-untagged" ./cmd/tb
           scripts/native-gate.sh strace dist/tb_linux_amd64*/tb "$RUNNER_TEMP/tb-untagged"
 
       - name: Attest build provenance

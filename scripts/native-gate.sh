@@ -63,13 +63,17 @@ artifact() {
 # trace prints the file and network syscalls of "tb version", without the
 # dynamic loader's library lookups, as sorted unique "syscall path" lines.
 # The trace goes to a file: tb's own stdout is discarded.
+# The path kept is a syscall's first string argument, never a result buffer
+# such as readlinkat's, which holds the binary's own location; strace's own
+# execve of the binary is dropped for the same reason.
 trace() {
   local log
   log="$(mktemp)"
   # Signals are not I/O, and the Go runtime sends itself SIGURG
   # (preemption) at random points: leave them out of the trace.
   strace -f -qq -e trace=%file,%network -e signal=none -o "$log" "$1" version >/dev/null 2>&1
-  grep -Ev '^([0-9]+ +)?(--- SIG|\+\+\+ )' "$log" | sed -E 's/^[0-9]+ +//; s/\(.*"([^"]*)".*/ \1/; s/\(.*//' |
+  grep -Ev '^([0-9]+ +)?(--- SIG|\+\+\+ )' "$log" | sed -E 's/^[0-9]+ +//; s/\([^"]*"([^"]*)".*/ \1/; s/\(.*//' |
+    awk '!(/^execve / && !launch++)' |
     grep -Ev '(/etc/ld\.so|/lib(32|64)?/|/usr/lib(32|64)?/|/proc/self/exe| /dev/null)' | LC_ALL=C sort -u || true
   rm -f "$log"
 }
