@@ -1,6 +1,7 @@
 package merge
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -33,7 +34,7 @@ func goldenJSON(t *testing.T, name string, res *Result) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(got) != string(want) {
+	if !bytes.Equal(got, want) {
 		t.Fatalf("%s drifted from the golden file:\n%s\nwant:\n%s", name, got, want)
 	}
 }

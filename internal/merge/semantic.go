@@ -122,6 +122,8 @@ type resolver struct {
 	maxFileBytes   int64
 	sensitive      map[string]bool
 	out            []Resolution
+	agent          *agentEnv // prompt proposal
+	replay         *replay   // prompt apply
 	// hook, when set (prompt), gets the files left unresolved by the rules.
 	hook func(rv *resolver, ctx *pickCtx, files []*fileState) error
 }
@@ -140,7 +142,7 @@ func joinLines(l []string) string { return strings.Join(l, "") }
 
 func splitLines(s string) []string {
 	var out []string
-	for len(s) > 0 {
+	for s != "" {
 		i := strings.IndexByte(s, '\n')
 		if i < 0 {
 			out = append(out, s)
@@ -162,6 +164,7 @@ func (rv *resolver) resolvePick(ctx *pickCtx, files []string, conflicts []Confli
 		return false, err
 	}
 	var states []*fileState
+	idx := map[*fileState]int{}
 	for i, f := range files {
 		st, reason, err := rv.prepareFile(f, stages[f])
 		if err != nil {
@@ -172,6 +175,7 @@ func (rv *resolver) resolvePick(ctx *pickCtx, files []string, conflicts []Confli
 			continue
 		}
 		states = append(states, st)
+		idx[st] = i
 	}
 	for _, st := range states {
 		st.semanticPass()
@@ -181,36 +185,39 @@ func (rv *resolver) resolvePick(ctx *pickCtx, files []string, conflicts []Confli
 			return false, err
 		}
 	}
-	byPath := map[string]int{}
-	for i, f := range files {
-		byPath[f] = i
-	}
-	allResolved = true
 	for _, st := range states {
-		c := &conflicts[byPath[st.path]]
-		content, reason := st.finish()
-		c.Hunks = st.hunks()
-		if reason != "" {
-			c.Reason = reason
-			continue
-		}
-		if err := rv.stage(st, content); err != nil {
+		if err := rv.settle(ctx, st, &conflicts[idx[st]]); err != nil {
 			return false, err
-		}
-		c.Resolution = string(StrategySemantic)
-		for _, rs := range st.resolutions(ctx) {
-			if rs.Rule == ruleAgent {
-				c.Resolution = string(StrategyPrompt)
-			}
-			rv.out = append(rv.out, rs)
 		}
 	}
 	for i := range conflicts {
 		if conflicts[i].Resolution == "" {
-			allResolved = false
+			return false, nil
 		}
 	}
-	return allResolved, nil
+	return true, nil
+}
+
+// settle runs the final checks of one file and, when it passes, stages it.
+func (rv *resolver) settle(ctx *pickCtx, st *fileState, c *Conflict) error {
+	content, reason := st.finish()
+	c.Hunks = st.hunks()
+	if reason != "" {
+		c.Reason = reason
+		return nil
+	}
+	if err := rv.stage(st, content); err != nil {
+		return err
+	}
+	c.Resolution = string(StrategySemantic)
+	rss := st.resolutions(ctx)
+	for i := range rss {
+		if rss[i].Rule == ruleAgent {
+			c.Resolution = string(StrategyPrompt)
+		}
+	}
+	rv.out = append(rv.out, rss...)
+	return nil
 }
 
 // readStages maps each unmerged path to its index stages (1=base, 2=ours, 3=theirs).
@@ -481,18 +488,19 @@ type edit struct {
 	repl   []string
 }
 
-// diffEdits returns the edits that turn base into side (a line LCS after
-// trimming the common prefix and suffix).
-func diffEdits(base, side []string) []edit {
-	p := 0
-	for p < len(base) && p < len(side) && base[p] == side[p] {
-		p++
+// commonAffixes is the length of the shared prefix and, after it, suffix.
+func commonAffixes(a, b []string) (prefix, suffix int) {
+	for prefix < len(a) && prefix < len(b) && a[prefix] == b[prefix] {
+		prefix++
 	}
-	s := 0
-	for s < len(base)-p && s < len(side)-p && base[len(base)-1-s] == side[len(side)-1-s] {
-		s++
+	for suffix < len(a)-prefix && suffix < len(b)-prefix && a[len(a)-1-suffix] == b[len(b)-1-suffix] {
+		suffix++
 	}
-	a, b := base[p:len(base)-s], side[p:len(side)-s]
+	return prefix, suffix
+}
+
+// lcsTable is the suffix LCS length table of a and b (row stride len(b)+1).
+func lcsTable(a, b []string) []uint16 {
 	w := len(b) + 1
 	dp := make([]uint16, (len(a)+1)*w)
 	for i := len(a) - 1; i >= 0; i-- {
@@ -504,6 +512,16 @@ func diffEdits(base, side []string) []edit {
 			}
 		}
 	}
+	return dp
+}
+
+// diffEdits returns the edits that turn base into side (a line LCS after
+// trimming the common prefix and suffix).
+func diffEdits(base, side []string) []edit {
+	p, s := commonAffixes(base, side)
+	a, b := base[p:len(base)-s], side[p:len(side)-s]
+	w := len(b) + 1
+	dp := lcsTable(a, b)
 	var edits []edit
 	var cur *edit
 	flush := func() {
@@ -652,11 +670,22 @@ func (st *fileState) goImports(rg *region) ([]string, bool) {
 	if od < 0 || od != td {
 		return nil, false
 	}
-	removed := map[string]bool{}
-	keep := map[string]string{}
+	indent := importIndent(rg)
+	specs := mergeImportSpecs(rg)
+	out := make([]string, len(specs))
+	for i, sp := range specs {
+		out[i] = indent + sp + "\n"
+	}
+	return out, true
+}
+
+// mergeImportSpecs is ours ∪ theirs minus the specs either side removed from
+// base, sorted by import path.
+func mergeImportSpecs(rg *region) []string {
+	keep := map[string]bool{}
 	for _, side := range [][]string{rg.Ours, rg.Theirs} {
 		for _, l := range side {
-			keep[importKey(l)] = importKey(l)
+			keep[importKey(l)] = true
 		}
 	}
 	for _, side := range [][]string{rg.Ours, rg.Theirs} {
@@ -666,15 +695,13 @@ func (st *fileState) goImports(rg *region) ([]string, bool) {
 		}
 		for _, b := range rg.Base {
 			if !have[importKey(b)] {
-				removed[importKey(b)] = true
+				delete(keep, importKey(b))
 			}
 		}
 	}
-	var specs []string
+	specs := make([]string, 0, len(keep))
 	for k := range keep {
-		if !removed[k] {
-			specs = append(specs, k)
-		}
+		specs = append(specs, k)
 	}
 	sort.Slice(specs, func(i, j int) bool {
 		if pi, pj := importPath(specs[i]), importPath(specs[j]); pi != pj {
@@ -682,19 +709,19 @@ func (st *fileState) goImports(rg *region) ([]string, bool) {
 		}
 		return specs[i] < specs[j]
 	})
-	indent := "\t"
+	return specs
+}
+
+// importIndent is the leading whitespace of the first line of ours (else
+// theirs, else base); a tab when the region is empty.
+func importIndent(rg *region) string {
 	for _, side := range [][]string{rg.Ours, rg.Theirs, rg.Base} {
 		if len(side) > 0 {
 			l := side[0]
-			indent = l[:len(l)-len(strings.TrimLeft(l, " \t"))]
-			break
+			return l[:len(l)-len(strings.TrimLeft(l, " \t"))]
 		}
 	}
-	out := make([]string, len(specs))
-	for i, s := range specs {
-		out[i] = indent + s + "\n"
-	}
-	return out, true
+	return "\t"
 }
 
 // assemble joins clean text and region resolutions.
@@ -722,10 +749,25 @@ func markerLine(l string, n int) bool {
 
 // finish checks every region's resolution and the whole file (M6). It returns
 // the content to stage or the file-level reason.
-func (st *fileState) finish() ([]byte, string) {
+func (st *fileState) finish() (content []byte, reason string) {
 	if len(st.unresolved()) > 0 {
 		return nil, firstReason(st)
 	}
+	if reason := st.checkMarkers(); reason != "" {
+		return nil, reason
+	}
+	content = st.assemble()
+	if strings.HasSuffix(st.path, ".go") &&
+		parseGo(st.stages[1].data, 0) != nil && parseGo(st.stages[2].data, 0) != nil &&
+		parseGo(content, 0) == nil {
+		return nil, reasonParseFailed
+	}
+	return content, ""
+}
+
+// checkMarkers refuses a resolved region that holds a conflict-marker line
+// its own inputs did not have; the region goes back to unresolved.
+func (st *fileState) checkMarkers() string {
 	for _, rg := range st.regions {
 		seen := map[string]bool{}
 		for _, side := range [][]string{rg.Base, rg.Ours, rg.Theirs} {
@@ -737,17 +779,11 @@ func (st *fileState) finish() ([]byte, string) {
 			if markerLine(l, st.markerSize) && !seen[l] {
 				st.reasons[rg.ID] = markersReason(st.rules[rg.ID])
 				delete(st.texts, rg.ID)
-				return nil, st.reasons[rg.ID]
+				return st.reasons[rg.ID]
 			}
 		}
 	}
-	content := st.assemble()
-	if strings.HasSuffix(st.path, ".go") &&
-		parseGo(st.stages[1].data, 0) != nil && parseGo(st.stages[2].data, 0) != nil &&
-		parseGo(content, 0) == nil {
-		return nil, reasonParseFailed
-	}
-	return content, ""
+	return ""
 }
 
 func markersReason(rule string) string {

@@ -288,3 +288,12 @@ func TestRepoMergeKeys(t *testing.T) {
 		t.Fatalf("keys: %v %v", keys, err)
 	}
 }
+
+func TestRepoMergeKeysIncludesEgmAgentKeys(t *testing.T) {
+	_, repo := isolate(t)
+	writeFile(t, filepath.Join(repo, ".toolbelt", "config.yaml"), "egm:\n  agent_cmd: [/bin/x]\n  max_rounds: 3\n")
+	keys, err := RepoMergeKeys(repo)
+	if err != nil || !reflect.DeepEqual(keys, []string{"egm.agent_cmd"}) {
+		t.Fatalf("keys: %v %v", keys, err)
+	}
+}

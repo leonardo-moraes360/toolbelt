@@ -76,8 +76,13 @@ func (m *MergeConfig) Validate() error {
 	return nil
 }
 
-// RepoMergeKeys returns the sorted dotted keys set under merge in
-// <repoRoot>/.toolbelt/config.yaml, for config_untrusted warnings. A missing
+// egmUserOnlyKeys are the egm keys that choose the agent; the prompt strategy
+// reads them from the user config only.
+var egmUserOnlyKeys = []string{"agent_cmd", "path", "env", "home", "vendor", "output", "tools_disabled", "tools_check", "forbidden_flags"}
+
+// RepoMergeKeys returns the sorted dotted keys set under merge, plus the egm
+// agent keys, in <repoRoot>/.toolbelt/config.yaml (all ignored by merge), for
+// config_untrusted warnings. A missing
 // file is (nil, nil); an unsafe or unparsable one is an error (warn, ignore).
 func RepoMergeKeys(repoRoot string) ([]string, error) {
 	b, err := readRepoConfig(repoRoot)
@@ -85,13 +90,19 @@ func RepoMergeKeys(repoRoot string) ([]string, error) {
 		return nil, err
 	}
 	var raw struct {
-		Merge any `yaml:"merge"`
+		Merge any            `yaml:"merge"`
+		Egm   map[string]any `yaml:"egm"`
 	}
 	if err := yaml.Unmarshal(b, &raw); err != nil {
 		return nil, fmt.Errorf("parsing .toolbelt/config.yaml: %w", err)
 	}
 	seen := map[string]bool{}
 	flattenKeys("merge", raw.Merge, seen)
+	for _, k := range egmUserOnlyKeys {
+		if v, ok := raw.Egm[k]; ok && v != nil {
+			seen["egm."+k] = true
+		}
+	}
 	keys := make([]string, 0, len(seen))
 	for k := range seen {
 		keys = append(keys, k)

@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/leonardo-moraes360/toolbelt/internal/merge"
+	"github.com/leonardo-moraes360/toolbelt/internal/sandbox"
 	"github.com/leonardo-moraes360/toolbelt/internal/ticket"
 )
 
@@ -158,4 +159,76 @@ func TestMergeConflictStatus(t *testing.T) {
 			t.Errorf("%q want %q", got, tc.want)
 		}
 	}
+}
+
+// End to end through the CLI: the proposal prints a receipt and moves nothing;
+// the apply replays it with a user config that has no agent.
+func TestMergePromptCLI(t *testing.T) {
+	if testing.Short() {
+		t.Skip()
+	}
+	if ok, _, err := sandbox.CheckLandlockSupport(); !ok {
+		t.Skip("no Landlock:", err)
+	}
+	t.Setenv("TB_MERGE_STATE_DIR", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	bin := buildTB(t)
+	dir := mergeRepo(t)
+	mergeTicket(t, dir, "a.txt", "one\n")
+	mergeTicket(t, dir, "a.txt", "two\n")
+	start := mergeGit(t, dir, "rev-parse", "main")
+
+	if out, err := runTB(t, bin, dir, "merge", "--strategy", "prompt", "1", "2"); err == nil || !strings.Contains(out, "agent_unavailable") {
+		t.Fatalf("no agent: %v %s", err, out)
+	}
+
+	cfg := writeMergeAgentCfg(t)
+	out, err := runTB(t, bin, dir, "-c", cfg, "merge", "--strategy", "prompt", "--json", "1", "2")
+	if err != nil {
+		t.Fatalf("proposal: %v %s", err, out)
+	}
+	var res struct {
+		Applied    bool   `json:"applied"`
+		ResultTree string `json:"result_tree"`
+		Receipt    struct {
+			ID, Path string
+		} `json:"receipt"`
+	}
+	if err := json.Unmarshal([]byte(out), &res); err != nil || res.Applied || res.Receipt.ID == "" || res.ResultTree == "" {
+		t.Fatalf("proposal json: %v %s", err, out)
+	}
+	if mergeGit(t, dir, "rev-parse", "main") != start {
+		t.Fatal("the proposal moved a ref")
+	}
+	empty := filepath.Join(t.TempDir(), "empty.yaml")
+	if err := os.WriteFile(empty, []byte("{}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if out, err = runTB(t, bin, dir, "-c", empty, "merge", "--strategy", "prompt", "--resolutions", res.Receipt.ID, "1", "2"); err != nil {
+		t.Fatalf("apply: %v %s", err, out)
+	}
+	if mergeGit(t, dir, "rev-parse", "main^{tree}") != res.ResultTree {
+		t.Fatal("applied tree differs from result_tree")
+	}
+	if b, _ := os.ReadFile(filepath.Join(dir, "a.txt")); string(b) != "merged\n" {
+		t.Fatalf("a.txt = %q", b)
+	}
+}
+
+// writeMergeAgentCfg writes a user config whose egm agent is a /bin/sh fake
+// that always answers region 1 with "merged".
+func writeMergeAgentCfg(t *testing.T) string {
+	t.Helper()
+	agent := filepath.Join(t.TempDir(), "agent.sh")
+	script := "#!/bin/sh\ninput=$(cat)\nnonce=$(printf '%s\\n' \"$input\" | sed -n 's/^NONCE: //p' | head -n1)\n" +
+		"printf '{\"nonce\":\"%s\",\"regions\":[{\"id\":1,\"text\":\"merged\\\\n\"}]}' \"$nonce\"\n"
+	if err := os.WriteFile(agent, []byte(script), 0o755); err != nil { //nolint:gosec // test agent
+		t.Fatal(err)
+	}
+	cfg := filepath.Join(t.TempDir(), "user.yaml")
+	body := "egm:\n  agent_cmd: [\"" + agent + "\"]\n  vendor: custom\n  tools_disabled: true\n  output: raw\n  timeout_per_reviewer: 20s\n"
+	if err := os.WriteFile(cfg, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return cfg
 }

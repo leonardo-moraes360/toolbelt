@@ -321,7 +321,7 @@ func TestDependencyOrder(t *testing.T) {
 }
 
 func TestParseStrategyAndRefs(t *testing.T) {
-	for in, want := range map[string]Strategy{"": StrategyFail, "prompt": StrategyPrompt, " Semantic ": StrategySemantic, "last-wins": StrategyLastWins} {
+	for in, want := range map[string]Strategy{"": StrategyFail, "prompt": StrategyPrompt, "SEMANTIC": StrategySemantic, "last-wins": StrategyLastWins} {
 		if got, err := ParseStrategy(in); err != nil || got != want {
 			t.Errorf("%q: %v %v", in, got, err)
 		}

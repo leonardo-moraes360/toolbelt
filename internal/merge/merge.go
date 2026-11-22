@@ -172,7 +172,23 @@ type prepared struct {
 	files   []string
 }
 
-func Run(opts *Options) (*Result, error) {
+// session is the state of one Run after validation and ticket preparation.
+type session struct {
+	r                runner
+	top              string
+	opts             *Options
+	strategy         Strategy
+	target, startSHA string
+	// proposal: a prompt run that writes a receipt and never moves a ref.
+	proposal bool
+	rc       *Receipt // receipt being replayed (prompt apply)
+	prep     []prepared
+	res      *Result
+	byFile   map[string][]string
+	rv       *resolver
+}
+
+func newSession(opts *Options) (*session, error) {
 	strategy, err := validateOptions(opts)
 	if err != nil {
 		return nil, err
@@ -181,61 +197,126 @@ func Run(opts *Options) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
-
-	target, startSHA, err := resolveTarget(r, opts.Into)
-	if err != nil {
+	s := &session{r: r, top: top, opts: opts, strategy: strategy}
+	if s.target, s.startSHA, err = resolveTarget(r, opts.Into); err != nil {
 		return nil, err
 	}
-	canApply := !opts.DryRun && opts.Output == ""
-	if canApply && target == "" {
+	// A prompt proposal never moves a ref, whatever --dry-run says.
+	s.proposal = strategy == StrategyPrompt && opts.Resolutions == ""
+	if s.canApply() && s.target == "" {
 		return nil, fmt.Errorf("detached HEAD: provide --into <branch> (or use --dry-run/--output)")
 	}
+	if opts.Resolutions != "" {
+		if s.rc, err = loadReceipt(top, opts.Resolutions); err != nil {
+			return nil, err
+		}
+	}
+	if s.prep, err = prepare(r, opts); err != nil {
+		return nil, err
+	}
+	if s.rc != nil {
+		if err := s.rc.checkStale(s.target, s.startSHA, s.prep); err != nil {
+			return nil, err
+		}
+	}
+	s.res = &Result{Strategy: strategy, Target: s.target, StartSHA: s.startSHA, DryRun: opts.DryRun, Conflicts: []Conflict{}}
+	s.byFile = indexTickets(s.res, s.prep)
+	return s, nil
+}
 
-	prep, err := prepare(r, opts)
+func (s *session) canApply() bool {
+	return !s.opts.DryRun && s.opts.Output == "" && !s.proposal
+}
+
+func Run(opts *Options) (*Result, error) {
+	s, err := newSession(opts)
 	if err != nil {
 		return nil, err
 	}
-
-	res := &Result{Strategy: strategy, Target: target, StartSHA: startSHA, DryRun: opts.DryRun, Conflicts: []Conflict{}}
-	byFile := indexTickets(res, prep)
-
 	// Trust gate: paths that lead to code execution outside the sandbox.
-	if err := checkSensitive(r, prep, res, canApply && !opts.AllowSensitive); err != nil {
+	if err := checkSensitive(s.r, s.prep, s.res, s.canApply() && !opts.AllowSensitive); err != nil {
 		if errors.Is(err, ErrSensitive) {
-			return res, err
+			return s.res, err
 		}
 		return nil, err
 	}
-
-	wt, cleanup, err := addTempWorktree(r, top, startSHA)
-	if err != nil {
-		return nil, err
-	}
-	defer cleanup()
-
-	var rv *resolver
-	if strategy.resolving() {
+	if s.strategy.resolving() {
 		var closeRV func()
-		if rv, closeRV, err = newResolver(r, wt, opts, strategy, res); err != nil {
+		if s.rv, closeRV, err = prepareSemantic(s.r, opts, s.strategy, s.prep, s.res, s.rc); err != nil {
 			return nil, err
 		}
 		defer closeRV()
 	}
-
-	status := map[string]string{}
-	failed, err := pickAll(r, wt, prep, strategy, byFile, res, status, rv)
+	wt, cleanup, err := addTempWorktree(s.r, s.top, s.startSHA)
 	if err != nil {
 		return nil, err
 	}
-	if rv != nil {
-		res.Resolutions = rv.out
+	defer cleanup()
+	if s.rv != nil {
+		s.rv.wt = wt
 	}
-	res.Files = fileEntries(byFile, status)
-	if failed {
-		return res, fmt.Errorf("%w: %d file(s) in conflict; no ref was changed (%s)", ErrConflict, len(res.Conflicts), conflictHint(strategy))
-	}
+	return s.integrate(wt)
+}
 
-	return finalize(r, top, wt, opts, target, startSHA, prep, res)
+// integrate cherry-picks every ticket into wt, then reports, records the
+// proposal receipt or advances the target.
+func (s *session) integrate(wt string) (*Result, error) {
+	status := map[string]string{}
+	failed, err := pickAll(s.r, wt, s.prep, s.strategy, s.byFile, s.res, status, s.rv)
+	if err != nil {
+		return nil, err
+	}
+	if s.rv != nil {
+		s.res.Resolutions = s.rv.out
+	}
+	s.res.Files = fileEntries(s.byFile, status)
+	if s.proposal {
+		if err := writeProposal(s.r, s.top, wt, s.target, s.startSHA, s.prep, s.res, s.rv, failed); err != nil {
+			return nil, err
+		}
+	}
+	if failed {
+		return s.res, fmt.Errorf("%w: %d file(s) in conflict; no ref was changed (%s)", ErrConflict, len(s.res.Conflicts), conflictHint(s.strategy))
+	}
+	if s.rc != nil {
+		if err := checkReplay(s.r, wt, s.rc, s.rv); err != nil {
+			return nil, err
+		}
+	}
+	return finalize(s.r, s.top, wt, s.opts, s.target, s.startSHA, s.prep, s.res, s.proposal)
+}
+
+// writeProposal records the prompt proposal in a receipt (also when files
+// stayed unresolved, for audit; such a receipt cannot be applied).
+func writeProposal(r runner, top, wt, target, startSHA string, prep []prepared, res *Result, rv *resolver, failed bool) error {
+	tree := ""
+	if !failed {
+		var err error
+		if tree, err = r.out(wt, "rev-parse", "HEAD^{tree}"); err != nil {
+			return err
+		}
+	}
+	ref, err := writeReceipt(top, newReceipt(target, startSHA, prep, res, rv.agent, tree))
+	if err != nil {
+		return err
+	}
+	res.Receipt = ref
+	return nil
+}
+
+// checkReplay confirms the replayed receipt produced exactly the reviewed tree.
+func checkReplay(r runner, wt string, rc *Receipt, rv *resolver) error {
+	if err := rv.replay.checkAllUsed(); err != nil {
+		return err
+	}
+	tree, err := r.out(wt, "rev-parse", "HEAD^{tree}")
+	if err != nil {
+		return err
+	}
+	if tree != rc.ResultTree {
+		return reasonErr("receipt_mismatch", "the integrated tree %.12s differs from the receipt's %.12s", tree, rc.ResultTree)
+	}
+	return nil
 }
 
 // conflictHint is the tail of the ErrConflict message.
@@ -252,7 +333,7 @@ func conflictHint(s Strategy) string {
 // finalize records the resulting SHA and then, depending on options, writes the
 // patch (--output), only reports (--dry-run) or advances the target and marks
 // the tickets.
-func finalize(r runner, top, wt string, opts *Options, target, startSHA string, prep []prepared, res *Result) (*Result, error) {
+func finalize(r runner, top, wt string, opts *Options, target, startSHA string, prep []prepared, res *Result, proposal bool) (*Result, error) {
 	sha, err := r.out(wt, "rev-parse", "HEAD")
 	if err != nil {
 		return nil, err
@@ -268,7 +349,7 @@ func finalize(r runner, top, wt string, opts *Options, target, startSHA string, 
 	if opts.Output != "" {
 		return writeOutputPatch(r, top, opts.Output, startSHA, res)
 	}
-	if opts.DryRun {
+	if opts.DryRun || proposal {
 		return res, nil
 	}
 	return applyAndMark(r, top, opts, target, startSHA, prep, res)
@@ -374,8 +455,9 @@ func pickAll(r runner, wt string, prep []prepared, strategy Strategy, byFile map
 				return false, err
 			}
 			unresolved := false
-			for _, cf := range conflicts {
-				res.Conflicts = append(res.Conflicts, cf)
+			for i := range conflicts {
+				cf := &conflicts[i]
+				res.Conflicts = append(res.Conflicts, *cf)
 				switch {
 				case cf.Resolution == "":
 					status[cf.File] = "conflict"

@@ -73,6 +73,12 @@ func TestSemanticDisjointAdjacentEdits(t *testing.T) {
 	if got := readFile(t, dir, "shared.txt"); got != "l1\nl2\nl3\nA4\nB5\nl6\nl7\nl8\nl9\n" {
 		t.Fatalf("content %q", got)
 	}
+	checkAdjacentReport(t, dir, res, start)
+	assertNoTempWorktree(t, dir)
+}
+
+func checkAdjacentReport(t *testing.T, dir string, res *Result, start string) {
+	t.Helper()
 	if res.Files[0].Status != "semantic" || len(res.Resolutions) != 1 || res.Resolutions[0].Rule != "disjoint" {
 		t.Fatalf("report: %+v", res)
 	}
@@ -88,7 +94,6 @@ func TestSemanticDisjointAdjacentEdits(t *testing.T) {
 	if res.Conflicts[0].Resolution != "semantic" || res.Conflicts[0].Hunks[0].Rule != "disjoint" {
 		t.Fatalf("conflict: %+v", res.Conflicts[0])
 	}
-	assertNoTempWorktree(t, dir)
 }
 
 const goBase = "package p\n\nimport (\n\t\"fmt\"\n\t\"os\"\n)\n\nfunc f() { fmt.Println(os.Args) }\n"

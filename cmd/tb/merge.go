@@ -116,8 +116,9 @@ func printMergeTable(r *merge.Result) {
 		fmt.Fprintf(tw, "%s\t%s\t%s\n", f.Path, strings.Join(f.Tickets, ","), f.Status)
 	}
 	tw.Flush()
-	for _, c := range r.Conflicts {
-		fmt.Printf("conflict: %s (%s, commit %.8s; also: %s) - %s\n", c.File, c.Ticket, c.Commit, strings.Join(c.Others, ","), conflictStatus(&c))
+	for i := range r.Conflicts {
+		c := &r.Conflicts[i]
+		fmt.Printf("conflict: %s (%s, commit %.8s; also: %s) - %s\n", c.File, c.Ticket, c.Commit, strings.Join(c.Others, ","), conflictStatus(c))
 		for _, h := range c.Hunks {
 			if h.Reason != "" {
 				fmt.Printf("  region %d: ours %d-%d, theirs %d-%d: %s\n", h.Region, h.OursLines[0], h.OursLines[1], h.TheirsLines[0], h.TheirsLines[1], h.Reason)
