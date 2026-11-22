@@ -9,6 +9,8 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Não Lançado]
 
+## [1.0.0-rc.2] - 2026-11-22
+
 ### Corrigido
 - Workflow de release: o arquivo do zig fixado é baixado em `$RUNNER_TEMP`, não no checkout, então o GoReleaser não recusa mais uma árvore suja (a tag `v1.0.0-rc.1` falhou antes de publicar qualquer coisa)
 
