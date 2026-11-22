@@ -93,7 +93,7 @@ func TestExtractCommandHints_ProseWithoutBackticks(t *testing.T) {
 
 func TestSeedAgentsMD_CreatesWhenAbsent(t *testing.T) {
 	root := t.TempDir()
-	seeded, err := SeedAgentsMD(root, VerifyConfig{TestCmd: "go test ./..."})
+	seeded, err := SeedAgentsMD(root, &VerifyConfig{TestCmd: "go test ./..."})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -120,7 +120,7 @@ func TestSeedAgentsMD_MentionsToolchainCmds(t *testing.T) {
 		BuildCmd: "npm run build",
 		LintCmd:  "npm run lint",
 	}
-	seeded, err := SeedAgentsMD(root, verify)
+	seeded, err := SeedAgentsMD(root, &verify)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -141,7 +141,7 @@ func TestSeedAgentsMD_MentionsToolchainCmds(t *testing.T) {
 
 func TestSeedAgentsMD_OmitsEmptyBuildLint(t *testing.T) {
 	root := t.TempDir()
-	seeded, err := SeedAgentsMD(root, VerifyConfig{TestCmd: "make check"})
+	seeded, err := SeedAgentsMD(root, &VerifyConfig{TestCmd: "make check"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -166,7 +166,7 @@ func TestSeedAgentsMD_OmitsEmptyBuildLint(t *testing.T) {
 
 func TestSeedAgentsMD_EmptyTestCmdDoesNotFallbackToGo(t *testing.T) {
 	root := t.TempDir()
-	seeded, err := SeedAgentsMD(root, VerifyConfig{
+	seeded, err := SeedAgentsMD(root, &VerifyConfig{
 		BuildCmd: "npm run build",
 		LintCmd:  "npm run lint",
 	})
@@ -199,7 +199,7 @@ func TestSeedAgentsMD_NeverOverwrites(t *testing.T) {
 	if err := os.WriteFile(path, []byte(original), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	seeded, err := SeedAgentsMD(root, VerifyConfig{TestCmd: "cargo test"})
+	seeded, err := SeedAgentsMD(root, &VerifyConfig{TestCmd: "cargo test"})
 	if err != nil {
 		t.Fatal(err)
 	}

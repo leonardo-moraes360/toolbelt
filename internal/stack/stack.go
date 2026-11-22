@@ -2,6 +2,7 @@ package stack
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -90,15 +91,26 @@ type Options struct {
 	LintCmdSet         bool
 	NoBuild            bool
 	NoLint             bool
-	DryRun             bool
-	MaxIter            int
-	Timeout            time.Duration
-	Reviewers          int
-	Standards          []string
-	LoadGraph          bool
-	Loaders            *Loaders
-	EnvAllow           []string
-	EnvPass            []string
+	// Ruler is the verify op's --ruler list (empty = tests); visual is
+	// refused in a stack.
+	Ruler           string
+	TypecheckCmd    string
+	TypecheckCmdSet bool
+	NoTypecheck     bool
+	// Checks adds or overrides named checks; SkipChecks drops some by name;
+	// NoChecks drops them all.
+	Checks     []config.VerifyCheck
+	SkipChecks []string
+	NoChecks   bool
+	DryRun     bool
+	MaxIter    int
+	Timeout    time.Duration
+	Reviewers  int
+	Standards  []string
+	LoadGraph  bool
+	Loaders    *Loaders
+	EnvAllow   []string
+	EnvPass    []string
 	// EgmDocs are added to the egm op's selection (R33).
 	EgmDocs []string
 	// Strict makes PASS_PARTIAL and an empty egm selection fail (R33).
@@ -208,7 +220,28 @@ func validateOptions(opts *Options) error {
 			return err
 		}
 	}
+	if _, err := verifyRulers(opts.Ruler); err != nil {
+		return err
+	}
+	if err := verify.ValidateChecks(opts.Checks); err != nil {
+		return &verify.UsageError{Msg: "--check: " + strings.TrimPrefix(err.Error(), "verify.checks: ")}
+	}
 	return nil
+}
+
+// verifyRulers parses the verify op's ruler list; visual needs a browser and
+// screens, not the stack's shared diff, so it is refused here.
+func verifyRulers(s string) ([]string, error) {
+	names, err := verify.ParseRulers(s)
+	if err != nil {
+		return nil, err
+	}
+	for _, n := range names {
+		if n == verify.RulerVisual {
+			return nil, &verify.UsageError{Msg: "ruler visual is not available in tb stack; run tb verify run --ruler visual"}
+		}
+	}
+	return names, nil
 }
 
 func Run(ctx context.Context, opts *Options) (*Result, error) {
@@ -578,44 +611,45 @@ func runOp(ctx context.Context, op Op, opts *Options, shared *Shared) (StepResul
 }
 
 func runVerify(ctx context.Context, opts *Options, shared *Shared) (StepResult, error) {
-	cfg := buildVerifyConfig(opts, shared)
-	res, err := verify.Run(ctx, &cfg)
+	names, err := verifyRulers(opts.Ruler)
 	if err != nil {
 		return StepResult{}, err
 	}
-	if !res.DryRun {
-		shared.VerifyVerdict = string(res.Verdict)
+	cfg, err := buildVerifyConfig(opts, shared)
+	if err != nil {
+		return StepResult{}, err
 	}
-	return verifyStepResult(res), nil
+	multi, err := verify.RunRulers(ctx, &cfg, names)
+	if err != nil {
+		return StepResult{}, err
+	}
+	// A missing command stays a step error, as with verify.Run before.
+	for _, rr := range multi.Results {
+		if res, ok := rr.Payload.(*verify.Result); ok && rr.ExitCode == 127 {
+			return StepResult{}, errors.New(res.Error)
+		}
+	}
+	if !multi.DryRun {
+		shared.VerifyVerdict = string(multi.Verdict)
+	}
+	return verifyStepResult(multi), nil
 }
 
-func buildVerifyConfig(opts *Options, shared *Shared) verify.Config {
+// buildVerifyConfig leaves the command merge to verify: R0 reads the verify
+// section from the base ref over the trusted config, then the stack flags
+// apply as overrides.
+func buildVerifyConfig(opts *Options, shared *Shared) (verify.Config, error) {
 	cfg := verify.DefaultConfig(shared.RepoDir)
 	cfg.BaseRef = shared.Base
 	cfg.HeadRef = shared.Head
 	cfg.NameStatusDiff = shared.NameStatus
 	cfg.DryRun = opts.DryRun
-	if shared.FileConfig != nil {
-		if shared.FileConfig.Verify.TestCmd != "" {
-			cfg.VisibleTest = shared.FileConfig.Verify.TestCmd
-		}
-		if shared.FileConfig.Verify.HiddenTestCmd != "" {
-			cfg.HiddenTest = shared.FileConfig.Verify.HiddenTestCmd
-		}
-		if shared.FileConfig.Verify.BuildCmd != "" {
-			cfg.BuildCmd = shared.FileConfig.Verify.BuildCmd
-		}
-		if shared.FileConfig.Verify.LintCmd != "" {
-			cfg.LintCmd = shared.FileConfig.Verify.LintCmd
-		}
+	trusted, err := config.LoadTrusted()
+	if err != nil {
+		return cfg, err
 	}
-	if opts.TestCmd != "" {
-		cfg.VisibleTest = opts.TestCmd
-	}
-	if opts.HiddenTestCmd != "" {
-		cfg.HiddenTest = opts.HiddenTestCmd
-	}
-	verify.ApplyCmdOverrides(&cfg, opts.BuildCmd, opts.BuildCmdSet, opts.NoBuild, opts.LintCmd, opts.LintCmdSet, opts.NoLint)
+	cfg.TrustedConfig = trusted
+	cfg.Overrides = verifyOverrides(opts)
 	if opts.MaxIter > 0 {
 		cfg.MaxIterations = opts.MaxIter
 	}
@@ -627,21 +661,33 @@ func buildVerifyConfig(opts *Options, shared *Shared) verify.Config {
 	}
 	cfg.EnvAllow = append(cfg.EnvAllow, opts.EnvAllow...)
 	cfg.EnvPass = append(cfg.EnvPass, opts.EnvPass...)
-	if shared.FileConfig != nil {
-		cfg.EnvAllow = append(cfg.EnvAllow, shared.FileConfig.Env.Allow...)
-		cfg.EnvPass = append(cfg.EnvPass, shared.FileConfig.Env.Pass...)
-	}
-	return cfg
+	// env.allow/pass from config come through R0 (base ref), never the
+	// working tree, so a change cannot grant its tests secrets.
+	return cfg, nil
 }
 
-func verifyStepResult(res *verify.Result) StepResult {
-	ok := res.Verdict == verify.VerdictPass || res.Verdict == verify.VerdictSkipped
-	exit := 0
-	if !ok {
-		exit = 1
+// verifyOverrides maps the stack options; the hidden command only overrides
+// when non-empty, as tb stack always did.
+func verifyOverrides(opts *Options) *verify.FlagOverrides {
+	return &verify.FlagOverrides{
+		TestCmd:       verify.CmdOverride{Cmd: opts.TestCmd, Set: opts.TestCmd != ""},
+		HiddenTestCmd: verify.CmdOverride{Cmd: opts.HiddenTestCmd, Set: opts.HiddenTestCmd != ""},
+		BuildCmd:      verify.CmdOverride{Cmd: opts.BuildCmd, Set: opts.BuildCmdSet},
+		LintCmd:       verify.CmdOverride{Cmd: opts.LintCmd, Set: opts.LintCmdSet},
+		TypecheckCmd:  verify.CmdOverride{Cmd: opts.TypecheckCmd, Set: opts.TypecheckCmdSet},
+		NoBuild:       opts.NoBuild,
+		NoLint:        opts.NoLint,
+		NoTypecheck:   opts.NoTypecheck,
+		Checks:        opts.Checks,
+		SkipChecks:    opts.SkipChecks,
+		NoChecks:      opts.NoChecks,
 	}
-	step := StepResult{Op: string(OpVerify), OK: ok, ExitCode: exit, Result: res}
-	if res.Reason != "" {
+}
+
+func verifyStepResult(multi *verify.MultiResult) StepResult {
+	exit := multi.ExitCode()
+	step := StepResult{Op: string(OpVerify), OK: exit == 0, ExitCode: exit, Result: multi.Payload()}
+	if res, ok := step.Result.(*verify.Result); ok && res.Reason != "" {
 		step.Reason = res.Reason
 		step.Error = res.Error
 	}

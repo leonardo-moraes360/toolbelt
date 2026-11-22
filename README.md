@@ -252,7 +252,7 @@ tb bus recv --channel feature-x --as grok-1 --wait 20s
 - [x] Elephant-Goldfish Model reimplementation, Phase A (`tb egm`, [ADR-015](docs/adr/015-egm-nativo.md) accepted): R0 spike; deterministic and `llm` engines, arbiter, gate in `tb stack` (`status --at`) and MCP tools
 - [ ] `tb egm` next phases: Phase C (`draft`, `brainstorm`, symbol-level drift); Phase B (`drift-report` and `bootstrap`, [spec](docs/specs/egm-drift-bootstrap.md)) is implemented, LLM parts included; Phase A.2 (CI as the trust boundary, [spec](docs/specs/egm-trust.md)) is implemented; R0 item 8 open
 - [x] Local inference: covered by vendored llama.cpp in a sandboxed child ([ADR-018](docs/adr/018-cgo-componentes-nativos.md), [ADR-019](docs/adr/019-cpu-v3-embedding.md)); a Rust component stays possible behind the same child protocol if ever needed
-- [ ] Additional rulers for `tb verify`
+- [ ] Additional rulers for `tb verify` ([spec](docs/specs/verify-rulers.md)): slice 1 (typecheck, named checks, base-ref config) done; coverage ruler next
 - [ ] `tb merge` `prompt` / `semantic` strategies
 
 ### Multi-vendor bus (`tb bus`, [ADR-013](docs/adr/013-barramento-multi-vendor.md))
@@ -303,7 +303,7 @@ This project is in **Phase 3 (in progress)**: besides verify/guard/mem/graph/rev
 | `tb bench compare` | ✅ | Compares two benchmarks |
 | `tb sandbox` | ✅ | Worktrees + Landlock (Linux) (`check`/`run`) |
 | `tb guard` | ✅ | Anti-cheat check on diff (strict by default / exit ≠ 0 on `SeverityError`; `--warn-only` opt-out; `--strict` deprecated) |
-| `tb verify` | ✅ | `tests` + `visual` rulers (`tb verify run`; `--build-cmd`/`--lint-cmd`/`--no-build`/`--no-lint`/`--dry-run`; hidden suite via `--hidden-test-cmd` or toolchain detection in `tests/hidden/` — N/A if not applicable; build/lint cache within the run; `reason`/`error` in JSON; `--base`/`--head` run in the head worktree; fail-fast if command missing/not executable; custom `protected_paths` from `guard.yaml` do not abort the loop — Scope exception via `--ticket`) |
+| `tb verify` | ✅ | `tests` + `visual` rulers (`tb verify run`; `--ruler` list, unknown → exit 2; `--build-cmd`/`--lint-cmd`/`--no-build`/`--no-lint`/`--dry-run`; gate steps build → typecheck (`--typecheck-cmd`/`--no-typecheck`) → lint → named checks (`verify.checks`, `--check name=cmd`/`--no-check`/`--no-checks`); `verify.*` read from the base ref, guard `verify_config_changed`; hidden suite via `--hidden-test-cmd` or toolchain detection in `tests/hidden/` — N/A if not applicable; build/lint cache within the run; `reason`/`error` in JSON; `--base`/`--head` run in the head worktree; fail-fast if command missing/not executable; custom `protected_paths` from `guard.yaml` do not abort the loop — Scope exception via `--ticket`) |
 | `tb mem` | ✅ | Invariants (`add`/`list`/`show`/`edit`/`retire`/`search`/`check`/`init`; `--ref` ADR; soft-retire + `--all`) |
 | `tb graph` | ✅ | On-demand multi-language graph + frameworks + docs (ADR-011); `javascript` covers TypeScript (`ts`/`tsx`); BM25-ranked `search`, `callers`/`deps`/`impact`, `explain`/`path` (ADR-014); opt-in vector index via `index --vectors` and `search --mode semantic|hybrid` (also MCP) |
 | `tb review` | ✅ | Fresh-context review against local ticket/`rd.md` (no GitHub); `--approved-sha` |
