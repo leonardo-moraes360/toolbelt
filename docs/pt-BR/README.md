@@ -244,7 +244,7 @@ tb bus recv --channel feature-x --as grok-1 --wait 20s
 - [x] Entrega direta (direct delivery) — follow-ups vão direto ao worker dono
 - [x] `tb ticket` / `tb board` — gerenciamento de tickets de trabalho
 - [x] `tb router` / `tb watchdog` — controle de delegação e saúde
-- [x] `tb merge` — agregação de resultados de workers (`fail` | `last_wins`)
+- [x] `tb merge` — agregação de resultados de workers (`fail` | `last_wins` | `semantic` | `prompt`)
 - [x] Índice vetorial opcional ([spec](specs/vector-index.md), [ADR-018](adr/018-cgo-componentes-nativos.md)): V0 (release com cgo, llama.cpp vendorizado, gate de qualidade de C/C++), V1 (`tb graph index --vectors`, `tb graph search --mode semantic|hybrid`) e V2 (`mode`/`vectors` no MCP, filho de embedding aquecido, avaliação de recall) prontas; recall@10 em 44 consultas por intenção sobre este repositório (all-MiniLM-L6-v2 Q8_0): lexical 0,273, semantic 0,670, hybrid 0,568 ([dogfood](campo/dogfood.md) #45)
 - [x] Graphify: reimplementação própria ([ADR-014](adr/014-graphify-reimplementacao.md)) — `tb graph explain`/`path`
 - [x] `tb graph search` com ranking BM25 (título/path/pacote, quebra de camelCase/`snake_case`, multi-termo)
@@ -253,7 +253,7 @@ tb bus recv --channel feature-x --as grok-1 --wait 20s
 - [x] Próximas fases do `tb egm`: as fatias C1–C5 da Fase C ([spec](specs/egm-phase-c.md)) estão implementadas (`brainstorm`, `draft`, `draft --update`, citação de símbolos e drift por símbolo); a C6 (ranges de linha e IDs de método no grafo) e os outros itens da Fase C do ADR-015 ficam para depois do 1.0; a Fase B (`drift-report` e `bootstrap`, [spec](specs/egm-drift-bootstrap.md)) está implementada, partes com LLM incluídas; a Fase A.2 (CI como fronteira de confiança, [spec](specs/egm-trust.md)) está implementada; item 8 do R0 em aberto
 - [x] Inferência local: coberta pelo llama.cpp vendorizado num filho em sandbox ([ADR-018](../adr/018-cgo-componentes-nativos.md), [ADR-019](../adr/019-cpu-v3-embedding.md)); um componente em Rust continua possível atrás do mesmo protocolo do filho, se um dia for preciso
 - [x] Rulers adicionais para `tb verify` ([spec](specs/verify-rulers.md)): typecheck, checks nomeados, config do ref base, régua de coverage
-- [ ] `tb merge` estratégias `prompt` / `semantic`
+- [x] `tb merge` estratégias `semantic` (regras determinísticas por hunk) e `prompt` (agente em sandbox, recibo em duas etapas) ([spec](specs/merge-strategies.md)); `--verify` antes de avançar segue em aberto (Fase C)
 
 ### Barramento multi-vendor (`tb bus`, [ADR-013](adr/013-barramento-multi-vendor.md))
 - [x] B0 — spec `bus/0.1`: envelope, Agent Card e convite ([docs/pt-BR/bus-protocolo.md](bus-protocolo.md))
@@ -315,6 +315,6 @@ Este projeto está na **Fase 3 (em andamento)**: além de verify/guard/mem/graph
 | `tb board` | ✅ | Board RUNNING/READY/BLOCKED/DONE/FAILED; `pause`/`resume`/`drain`/`watch` (MCP `tb_board`) |
 | `tb router` | ✅ | Scheduler em primeiro plano (`run`/`status`/`config`) com entrega direta; sandbox fail-closed (`--allow-unsandboxed`) |
 | `tb watchdog` | ✅ | Alertas e controle dos workers (`status`/`alerts`/`kill`); roda dentro do loop do router |
-| `tb merge` | ✅ | Integra tickets `done` de forma atômica; `fail` (padrão) ou `last_wins` (MCP `tb_merge`); `prompt`/`semantic` não implementadas |
+| `tb merge` | ✅ | Integra tickets `done` de forma atômica; `fail` (padrão), `last_wins`, `semantic` ou `prompt` (o MCP `tb_merge` aceita todas menos `prompt`) |
 | `tb bus` | 🟡 | Barramento local entre agentes (ADR-013): `channel`/`invite`/`join`/`send`/`recv`/`claim`/`complete`/`heartbeat`/`watchdog`/`log` sobre `.toolbelt/bus/bus.db`; lease com fencing por epoch (B2); `tb bus run` acorda o agente (adapters `exec`/`harness`/`notify`); `tb bus discover` cataloga os agentes locais |
 | `tb mcp` | ✅ | Servidor MCP stateless (stdio); 54 tools na v0.0.10: mem/verify/review/drift/guard/stack, vault (`tb_vault_*`), graph (`search`/`callers`/`deps`/`impact`/`explain`/`path`/`index`; exige `TB_GRAPH=on`), ticket/board/router/watchdog/merge e bus (`tb_bus_join`/`send`/`recv`/`claim`/`complete`/`heartbeat`/`status`); `--bus-as` prende a conexão a uma sessão do bus |

@@ -96,9 +96,12 @@ func LoadUser(override string) (*Config, error) {
 		path = GlobalConfigPath()
 	}
 	cfg := DefaultConfig()
+	cfg.Merge = DefaultMergeConfig()
 	if err := loadFromFile(path, cfg); err != nil {
 		if override == "" && errors.Is(err, os.ErrNotExist) {
-			return DefaultConfig(), nil
+			d := DefaultConfig()
+			d.Merge = DefaultMergeConfig()
+			return d, nil
 		}
 		return nil, fmt.Errorf("loading user config %s: %w", path, err)
 	}
@@ -106,6 +109,9 @@ func LoadUser(override string) (*Config, error) {
 		return nil, err
 	}
 	if err := cfg.Graph.Embed.Validate(); err != nil {
+		return nil, err
+	}
+	if err := cfg.Merge.Validate(); err != nil {
 		return nil, err
 	}
 	return cfg, nil

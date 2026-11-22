@@ -20,27 +20,6 @@ import (
 	"github.com/leonardo-moraes360/toolbelt/internal/ticket"
 )
 
-type Strategy string
-
-const (
-	StrategyFail     Strategy = "fail"
-	StrategyLastWins Strategy = "last_wins"
-)
-
-// ParseStrategy treats "" as fail.
-func ParseStrategy(s string) (Strategy, error) {
-	switch v := strings.ToLower(strings.TrimSpace(s)); v {
-	case "", "fail":
-		return StrategyFail, nil
-	case "last_wins", "last-wins":
-		return StrategyLastWins, nil
-	case "prompt", "semantic":
-		return "", fmt.Errorf("strategy %q not implemented (use fail or last_wins)", v)
-	default:
-		return "", fmt.Errorf("invalid strategy %q (use fail or last_wins)", s)
-	}
-}
-
 // ErrConflict is returned (wrapped) when the fail strategy hits a conflict.
 var ErrConflict = errors.New("merge conflict")
 
@@ -57,12 +36,18 @@ type Options struct {
 	// AllowSensitive allows applying tickets that change sensitive paths
 	// (hooks, .toolbelt, workflows, .gitmodules, gitlinks, .gitattributes...).
 	AllowSensitive bool
+
+	// Resolutions is a receipt ID to replay (prompt only).
+	Resolutions string
+	// Config is the root -c user config override for the semantic and prompt
+	// settings (empty: the global config).
+	Config string
 }
 
 type File struct {
 	Path    string   `json:"path"`
 	Tickets []string `json:"tickets"`
-	Status  string   `json:"status"` // merge | conflict | last_wins
+	Status  string   `json:"status"` // merge | conflict | last_wins | semantic | prompt
 }
 
 type Conflict struct {
@@ -70,7 +55,17 @@ type Conflict struct {
 	Ticket     string   `json:"ticket"`
 	Commit     string   `json:"commit"`
 	Others     []string `json:"others,omitempty"`
-	Resolution string   `json:"resolution"` // "" (unresolved) or last_wins
+	Resolution string   `json:"resolution"` // "" (unresolved), last_wins, semantic or prompt
+	// Reason is why the file stayed unresolved (semantic and prompt only).
+	Reason string `json:"reason,omitempty"`
+	// Hunks lists the conflict regions with their rule or reason.
+	Hunks []Hunk `json:"hunks,omitempty"`
+}
+
+// Warning is a non-fatal notice, e.g. config_untrusted.
+type Warning struct {
+	Code    string `json:"code"`
+	Message string `json:"message,omitempty"`
 }
 
 type TicketInfo struct {
@@ -93,6 +88,12 @@ type Result struct {
 	Output    string       `json:"output,omitempty"`
 	NoChanges bool         `json:"no_changes"`
 	Sensitive []Sensitive  `json:"sensitive"`
+
+	// Fields below only appear with the semantic and prompt strategies.
+	Resolutions []Resolution `json:"resolutions,omitempty"`
+	ResultTree  string       `json:"result_tree,omitempty"`
+	Receipt     *ReceiptRef  `json:"receipt,omitempty"`
+	Warnings    []Warning    `json:"warnings,omitempty"`
 }
 
 var (
@@ -122,15 +123,24 @@ type runner struct {
 	cfg  []string // -c user.name/email fallback
 }
 
-func (r runner) git(dir string, args ...string) (string, error) {
+// command builds a hardened git invocation (shared by git and gitStatus).
+func (r runner) command(dir string, args ...string) (*exec.Cmd, error) {
 	full := append(append(append([]string{}, hardenedGitArgs...), r.cfg...), args...)
 	bin, err := gitPath()
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	cmd := exec.Command(bin, full...)
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "LC_ALL=C", "GIT_EDITOR=true")
+	return cmd, nil
+}
+
+func (r runner) git(dir string, args ...string) (string, error) {
+	cmd, err := r.command(dir, args...)
+	if err != nil {
+		return "", err
+	}
 	var stdout, stderr strings.Builder
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	if err := cmd.Run(); err != nil {
@@ -162,7 +172,23 @@ type prepared struct {
 	files   []string
 }
 
-func Run(opts *Options) (*Result, error) {
+// session is the state of one Run after validation and ticket preparation.
+type session struct {
+	r                runner
+	top              string
+	opts             *Options
+	strategy         Strategy
+	target, startSHA string
+	// proposal: a prompt run that writes a receipt and never moves a ref.
+	proposal bool
+	rc       *Receipt // receipt being replayed (prompt apply)
+	prep     []prepared
+	res      *Result
+	byFile   map[string][]string
+	rv       *resolver
+}
+
+func newSession(opts *Options) (*session, error) {
 	strategy, err := validateOptions(opts)
 	if err != nil {
 		return nil, err
@@ -171,66 +197,159 @@ func Run(opts *Options) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
-
-	target, startSHA, err := resolveTarget(r, opts.Into)
-	if err != nil {
+	s := &session{r: r, top: top, opts: opts, strategy: strategy}
+	if s.target, s.startSHA, err = resolveTarget(r, opts.Into); err != nil {
 		return nil, err
 	}
-	canApply := !opts.DryRun && opts.Output == ""
-	if canApply && target == "" {
+	// A prompt proposal never moves a ref, whatever --dry-run says.
+	s.proposal = strategy == StrategyPrompt && opts.Resolutions == ""
+	if s.canApply() && s.target == "" {
 		return nil, fmt.Errorf("detached HEAD: provide --into <branch> (or use --dry-run/--output)")
 	}
+	if opts.Resolutions != "" {
+		if s.rc, err = loadReceipt(top, opts.Resolutions); err != nil {
+			return nil, err
+		}
+	}
+	if s.prep, err = prepare(r, opts); err != nil {
+		return nil, err
+	}
+	if s.rc != nil {
+		if err := s.rc.checkStale(s.target, s.startSHA, s.prep); err != nil {
+			return nil, err
+		}
+	}
+	s.res = &Result{Strategy: strategy, Target: s.target, StartSHA: s.startSHA, DryRun: opts.DryRun, Conflicts: []Conflict{}}
+	s.byFile = indexTickets(s.res, s.prep)
+	return s, nil
+}
 
-	prep, err := prepare(r, opts)
+func (s *session) canApply() bool {
+	return !s.opts.DryRun && s.opts.Output == "" && !s.proposal
+}
+
+func Run(opts *Options) (*Result, error) {
+	s, err := newSession(opts)
 	if err != nil {
 		return nil, err
 	}
-
-	res := &Result{Strategy: strategy, Target: target, StartSHA: startSHA, DryRun: opts.DryRun, Conflicts: []Conflict{}}
-	byFile := indexTickets(res, prep)
-
 	// Trust gate: paths that lead to code execution outside the sandbox.
-	if err := checkSensitive(r, prep, res, canApply && !opts.AllowSensitive); err != nil {
+	if err := checkSensitive(s.r, s.prep, s.res, s.canApply() && !opts.AllowSensitive); err != nil {
 		if errors.Is(err, ErrSensitive) {
-			return res, err
+			return s.res, err
 		}
 		return nil, err
 	}
-
-	wt, cleanup, err := addTempWorktree(r, top, startSHA)
+	if s.strategy.resolving() {
+		var closeRV func()
+		if s.rv, closeRV, err = prepareSemantic(s.r, opts, s.strategy, s.prep, s.res, s.rc); err != nil {
+			return nil, err
+		}
+		defer closeRV()
+	}
+	wt, cleanup, err := addTempWorktree(s.r, s.top, s.startSHA)
 	if err != nil {
 		return nil, err
 	}
 	defer cleanup()
+	if s.rv != nil {
+		s.rv.wt = wt
+	}
+	return s.integrate(wt)
+}
 
+// integrate cherry-picks every ticket into wt, then reports, records the
+// proposal receipt or advances the target.
+func (s *session) integrate(wt string) (*Result, error) {
 	status := map[string]string{}
-	failed, err := pickAll(r, wt, prep, strategy, byFile, res, status)
+	failed, err := pickAll(s.r, wt, s.prep, s.strategy, s.byFile, s.res, status, s.rv)
 	if err != nil {
 		return nil, err
 	}
-	res.Files = fileEntries(byFile, status)
-	if failed {
-		return res, fmt.Errorf("%w: %d file(s) in conflict; no ref was changed (use --strategy last_wins to resolve)", ErrConflict, len(res.Conflicts))
+	if s.rv != nil {
+		s.res.Resolutions = s.rv.out
 	}
+	s.res.Files = fileEntries(s.byFile, status)
+	if s.proposal {
+		if err := writeProposal(s.r, s.top, wt, s.target, s.startSHA, s.prep, s.res, s.rv, failed); err != nil {
+			return nil, err
+		}
+	}
+	if failed {
+		return s.res, fmt.Errorf("%w: %d file(s) in conflict; no ref was changed (%s)", ErrConflict, len(s.res.Conflicts), conflictHint(s.strategy))
+	}
+	if s.rc != nil {
+		if err := checkReplay(s.r, wt, s.rc, s.rv); err != nil {
+			return nil, err
+		}
+	}
+	return finalize(s.r, s.top, wt, s.opts, s.target, s.startSHA, s.prep, s.res, s.proposal)
+}
 
-	return finalize(r, top, wt, opts, target, startSHA, prep, res)
+// writeProposal records the prompt proposal in a receipt (also when files
+// stayed unresolved, for audit; such a receipt cannot be applied).
+func writeProposal(r runner, top, wt, target, startSHA string, prep []prepared, res *Result, rv *resolver, failed bool) error {
+	tree := ""
+	if !failed {
+		var err error
+		if tree, err = r.out(wt, "rev-parse", "HEAD^{tree}"); err != nil {
+			return err
+		}
+	}
+	ref, err := writeReceipt(top, newReceipt(target, startSHA, prep, res, rv.agent, tree))
+	if err != nil {
+		return err
+	}
+	res.Receipt = ref
+	return nil
+}
+
+// checkReplay confirms the replayed receipt produced exactly the reviewed tree.
+func checkReplay(r runner, wt string, rc *Receipt, rv *resolver) error {
+	if err := rv.replay.checkAllUsed(); err != nil {
+		return err
+	}
+	tree, err := r.out(wt, "rev-parse", "HEAD^{tree}")
+	if err != nil {
+		return err
+	}
+	if tree != rc.ResultTree {
+		return reasonErr("receipt_mismatch", "the integrated tree %.12s differs from the receipt's %.12s", tree, rc.ResultTree)
+	}
+	return nil
+}
+
+// conflictHint is the tail of the ErrConflict message.
+func conflictHint(s Strategy) string {
+	switch s {
+	case StrategySemantic:
+		return "use --strategy prompt or --strategy last_wins to resolve"
+	case StrategyPrompt:
+		return "see the hunk reasons; --strategy last_wins keeps the later ticket's file"
+	}
+	return "use --strategy last_wins to resolve"
 }
 
 // finalize records the resulting SHA and then, depending on options, writes the
 // patch (--output), only reports (--dry-run) or advances the target and marks
 // the tickets.
-func finalize(r runner, top, wt string, opts *Options, target, startSHA string, prep []prepared, res *Result) (*Result, error) {
+func finalize(r runner, top, wt string, opts *Options, target, startSHA string, prep []prepared, res *Result, proposal bool) (*Result, error) {
 	sha, err := r.out(wt, "rev-parse", "HEAD")
 	if err != nil {
 		return nil, err
 	}
 	res.ResultSHA = sha
 	res.NoChanges = sha == startSHA
+	if res.Strategy.resolving() {
+		if res.ResultTree, err = r.out(wt, "rev-parse", "HEAD^{tree}"); err != nil {
+			return nil, err
+		}
+	}
 
 	if opts.Output != "" {
 		return writeOutputPatch(r, top, opts.Output, startSHA, res)
 	}
-	if opts.DryRun {
+	if opts.DryRun || proposal {
 		return res, nil
 	}
 	return applyAndMark(r, top, opts, target, startSHA, prep, res)
@@ -259,8 +378,13 @@ func validateOptions(opts *Options) (Strategy, error) {
 	if strategy == "" {
 		strategy = StrategyFail
 	}
-	if strategy != StrategyFail && strategy != StrategyLastWins {
-		return "", fmt.Errorf("strategy %q not implemented", strategy)
+	switch strategy {
+	case StrategyFail, StrategyLastWins, StrategySemantic, StrategyPrompt:
+	default:
+		return "", fmt.Errorf("invalid strategy %q (use %s)", strategy, strategyChoices)
+	}
+	if opts.Resolutions != "" && strategy != StrategyPrompt {
+		return "", fmt.Errorf("--resolutions only applies to --strategy prompt")
 	}
 	if opts.Store == nil {
 		return "", fmt.Errorf("ticket store missing")
@@ -322,23 +446,28 @@ func addTempWorktree(r runner, top, startSHA string) (wt string, cleanup func(),
 
 // pickAll accumulates conflicts in res and per-file status. failed=true when
 // the fail strategy hit a conflict (it stops at the first one).
-func pickAll(r runner, wt string, prep []prepared, strategy Strategy, byFile map[string][]string, res *Result, status map[string]string) (failed bool, err error) {
+func pickAll(r runner, wt string, prep []prepared, strategy Strategy, byFile map[string][]string, res *Result, status map[string]string, rv *resolver) (failed bool, err error) {
 	for i := range prep {
 		p := &prep[i]
 		for _, c := range p.commits {
-			conflicts, err := pick(r, wt, c, p, strategy, byFile)
+			conflicts, err := pick(r, wt, c, p, strategy, byFile, rv)
 			if err != nil {
 				return false, err
 			}
-			for _, cf := range conflicts {
-				res.Conflicts = append(res.Conflicts, cf)
-				if cf.Resolution == "" {
+			unresolved := false
+			for i := range conflicts {
+				cf := &conflicts[i]
+				res.Conflicts = append(res.Conflicts, *cf)
+				switch {
+				case cf.Resolution == "":
 					status[cf.File] = "conflict"
-				} else if status[cf.File] != "conflict" {
-					status[cf.File] = "last_wins"
+					unresolved = true
+				case status[cf.File] == "conflict" || (status[cf.File] == string(StrategyPrompt) && cf.Resolution == string(StrategySemantic)):
+				default:
+					status[cf.File] = cf.Resolution
 				}
 			}
-			if strategy == StrategyFail && len(conflicts) > 0 {
+			if strategy == StrategyFail && len(conflicts) > 0 || strategy.resolving() && unresolved {
 				return true, nil
 			}
 		}
@@ -503,7 +632,7 @@ func prepareOne(r runner, opts *Options, id string) (prepared, error) {
 // last_wins: on conflict, the WHOLE file from the later ticket's commit
 // replaces the accumulated one (no per-hunk merge); earlier tickets' changes
 // to that same file are discarded.
-func pick(r runner, wt, commit string, p *prepared, strategy Strategy, byFile map[string][]string) ([]Conflict, error) {
+func pick(r runner, wt, commit string, p *prepared, strategy Strategy, byFile map[string][]string, rv *resolver) ([]Conflict, error) {
 	_, err := r.wtGit(wt, "cherry-pick", "--allow-empty", "--keep-redundant-commits", commit)
 	if err == nil {
 		return nil, nil
@@ -537,12 +666,34 @@ func pick(r runner, wt, commit string, p *prepared, strategy Strategy, byFile ma
 		_, _ = r.git(wt, "cherry-pick", "--abort")
 		return out, nil
 	}
+	if rv != nil {
+		return pickResolving(r, wt, rv, &pickCtx{commit: commit, ticket: p.t.ID}, files, out)
+	}
 	for i, f := range files {
 		if err := resolveTheirs(r, wt, commit, f); err != nil {
 			_, _ = r.git(wt, "cherry-pick", "--abort")
 			return nil, err
 		}
 		out[i].Resolution = string(StrategyLastWins)
+	}
+	if err := finishPick(r, wt); err != nil {
+		_, _ = r.git(wt, "cherry-pick", "--abort")
+		return nil, err
+	}
+	return out, nil
+}
+
+// pickResolving runs the semantic resolver on the unmerged files; the pick is
+// aborted (nothing kept) unless every file resolved.
+func pickResolving(r runner, wt string, rv *resolver, ctx *pickCtx, files []string, out []Conflict) ([]Conflict, error) {
+	ok, err := rv.resolvePick(ctx, files, out)
+	if err != nil {
+		_, _ = r.git(wt, "cherry-pick", "--abort")
+		return nil, err
+	}
+	if !ok {
+		_, _ = r.git(wt, "cherry-pick", "--abort")
+		return out, nil
 	}
 	if err := finishPick(r, wt); err != nil {
 		_, _ = r.git(wt, "cherry-pick", "--abort")

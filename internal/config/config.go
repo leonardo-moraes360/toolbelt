@@ -45,6 +45,11 @@ type Config struct {
 
 	// tb egm (docs/specs/egm-nativo.md).
 	Egm EgmConfig `yaml:"egm"`
+
+	// tb merge semantic/prompt budgets (docs/specs/merge-strategies.md);
+	// user-only. Zero outside LoadUser, so `tb init` never writes the section
+	// (a repository value would only trigger config_untrusted).
+	Merge MergeConfig `yaml:"merge,omitempty"`
 }
 
 type Defaults struct {

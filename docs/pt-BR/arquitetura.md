@@ -823,7 +823,7 @@ tb board list --status pending,running
 # Monitorar workers (subscriptions ativas, contagem de alertas)
 tb watchdog status
 
-# Integrar resultados (estratégias: fail | last_wins)
+# Integrar resultados (estratégias: fail | last_wins | semantic | prompt)
 tb merge TKT-001 TKT-002
 ```
 

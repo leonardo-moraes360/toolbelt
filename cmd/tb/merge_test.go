@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/leonardo-moraes360/toolbelt/internal/merge"
+	"github.com/leonardo-moraes360/toolbelt/internal/sandbox"
 	"github.com/leonardo-moraes360/toolbelt/internal/ticket"
 )
 
@@ -82,8 +84,15 @@ func TestMergeCLI(t *testing.T) {
 // An invalid strategy and a conflict under fail must not move refs.
 func mergeCLIRejections(t *testing.T, bin, dir, start string) {
 	t.Helper()
-	if out, err := runTB(t, bin, dir, "merge", "--strategy", "semantic", "1"); err == nil || !strings.Contains(out, "not implemented") {
-		t.Fatalf("semantic: %v %s", err, out)
+	if out, err := runTB(t, bin, dir, "merge", "--strategy", "xyz", "1"); err == nil || !strings.Contains(out, "semantic") {
+		t.Fatalf("invalid strategy: %v %s", err, out)
+	}
+	if out, err := runTB(t, bin, dir, "merge", "--strategy", "semantic", "--resolutions", "abc", "1"); err == nil || !strings.Contains(out, "--resolutions") {
+		t.Fatalf("resolutions without prompt: %v %s", err, out)
+	}
+	// Both tickets add x.txt: semantic refuses (add_add) and moves nothing.
+	if out, err := runTB(t, bin, dir, "merge", "--strategy", "semantic", "1", "2"); err == nil || !strings.Contains(out, "unresolved (add_add)") {
+		t.Fatalf("semantic overlap: %v %s", err, out)
 	}
 	out, err := runTB(t, bin, dir, "merge", "--json", "1", "2")
 	if err == nil || !strings.Contains(out, "conflict") {
@@ -114,4 +123,112 @@ func mergeCLIApplyLastWins(t *testing.T, bin, dir string) {
 	if b, _ := os.ReadFile(filepath.Join(dir, "x.txt")); string(b) != "dois\n" {
 		t.Fatalf("x.txt = %q", b)
 	}
+}
+
+// The fail/last_wins table must not change when strategies are added.
+func TestMergeTableGolden(t *testing.T) {
+	r := &merge.Result{
+		Strategy: merge.StrategyLastWins, Target: "main", StartSHA: "aaaaaaaabbbbbbbb", ResultSHA: "ccccccccdddddddd", DryRun: true,
+		Tickets:   []merge.TicketInfo{{ID: "TKT-001"}, {ID: "TKT-002"}},
+		Files:     []merge.File{{Path: "shared.txt", Tickets: []string{"TKT-001", "TKT-002"}, Status: "last_wins"}},
+		Conflicts: []merge.Conflict{{File: "shared.txt", Ticket: "TKT-002", Commit: "1234567890abcdef", Others: []string{"TKT-001"}, Resolution: "last_wins"}},
+	}
+	got := captureStdout(t, func() { printMergeTable(r) })
+	want := "merge TKT-001 TKT-002 -> main (last_wins) [dry-run]\n" +
+		"FILE        TICKETS          STATUS\n" +
+		"shared.txt  TKT-001,TKT-002  last_wins\n" +
+		"conflict: shared.txt (TKT-002, commit 12345678; also: TKT-001) - resolved by last_wins\n" +
+		"result: ccccccccdddddddd (start aaaaaaaa)\n"
+	if got != want {
+		t.Fatalf("table drifted:\n%q\nwant:\n%q", got, want)
+	}
+}
+
+func TestMergeConflictStatus(t *testing.T) {
+	for _, tc := range []struct {
+		c    merge.Conflict
+		want string
+	}{
+		{merge.Conflict{}, "unresolved"},
+		{merge.Conflict{Reason: "binary"}, "unresolved (binary)"},
+		{merge.Conflict{Resolution: "last_wins"}, "resolved by last_wins"},
+		{merge.Conflict{Resolution: "semantic", Hunks: []merge.Hunk{{Rule: "disjoint"}, {Rule: "go_imports"}, {Rule: "disjoint"}}}, "resolved by semantic (disjoint, go_imports)"},
+		{merge.Conflict{Resolution: "prompt", Hunks: []merge.Hunk{{Rule: "agent", NovelLines: 2}}}, "resolved by prompt (agent; 2 novel line(s))"},
+	} {
+		if got := conflictStatus(&tc.c); got != tc.want {
+			t.Errorf("%q want %q", got, tc.want)
+		}
+	}
+}
+
+// End to end through the CLI: the proposal prints a receipt and moves nothing;
+// the apply replays it with a user config that has no agent.
+func TestMergePromptCLI(t *testing.T) {
+	if testing.Short() {
+		t.Skip()
+	}
+	if ok, _, err := sandbox.CheckLandlockSupport(); !ok {
+		t.Skip("no Landlock:", err)
+	}
+	t.Setenv("TB_MERGE_STATE_DIR", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	bin := buildTB(t)
+	dir := mergeRepo(t)
+	mergeTicket(t, dir, "a.txt", "one\n")
+	mergeTicket(t, dir, "a.txt", "two\n")
+	start := mergeGit(t, dir, "rev-parse", "main")
+
+	if out, err := runTB(t, bin, dir, "merge", "--strategy", "prompt", "1", "2"); err == nil || !strings.Contains(out, "agent_unavailable") {
+		t.Fatalf("no agent: %v %s", err, out)
+	}
+
+	cfg := writeMergeAgentCfg(t)
+	out, err := runTB(t, bin, dir, "-c", cfg, "merge", "--strategy", "prompt", "--json", "1", "2")
+	if err != nil {
+		t.Fatalf("proposal: %v %s", err, out)
+	}
+	var res struct {
+		Applied    bool   `json:"applied"`
+		ResultTree string `json:"result_tree"`
+		Receipt    struct {
+			ID, Path string
+		} `json:"receipt"`
+	}
+	if err := json.Unmarshal([]byte(out), &res); err != nil || res.Applied || res.Receipt.ID == "" || res.ResultTree == "" {
+		t.Fatalf("proposal json: %v %s", err, out)
+	}
+	if mergeGit(t, dir, "rev-parse", "main") != start {
+		t.Fatal("the proposal moved a ref")
+	}
+	empty := filepath.Join(t.TempDir(), "empty.yaml")
+	if err := os.WriteFile(empty, []byte("{}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if out, err = runTB(t, bin, dir, "-c", empty, "merge", "--strategy", "prompt", "--resolutions", res.Receipt.ID, "1", "2"); err != nil {
+		t.Fatalf("apply: %v %s", err, out)
+	}
+	if mergeGit(t, dir, "rev-parse", "main^{tree}") != res.ResultTree {
+		t.Fatal("applied tree differs from result_tree")
+	}
+	if b, _ := os.ReadFile(filepath.Join(dir, "a.txt")); string(b) != "merged\n" {
+		t.Fatalf("a.txt = %q", b)
+	}
+}
+
+// writeMergeAgentCfg writes a user config whose egm agent is a /bin/sh fake
+// that always answers region 1 with "merged".
+func writeMergeAgentCfg(t *testing.T) string {
+	t.Helper()
+	agent := filepath.Join(t.TempDir(), "agent.sh")
+	script := "#!/bin/sh\ninput=$(cat)\nnonce=$(printf '%s\\n' \"$input\" | sed -n 's/^NONCE: //p' | head -n1)\n" +
+		"printf '{\"nonce\":\"%s\",\"regions\":[{\"id\":1,\"text\":\"merged\\\\n\"}]}' \"$nonce\"\n"
+	if err := os.WriteFile(agent, []byte(script), 0o755); err != nil { //nolint:gosec // test agent
+		t.Fatal(err)
+	}
+	cfg := filepath.Join(t.TempDir(), "user.yaml")
+	body := "egm:\n  agent_cmd: [\"" + agent + "\"]\n  vendor: custom\n  tools_disabled: true\n  output: raw\n  timeout_per_reviewer: 20s\n"
+	if err := os.WriteFile(cfg, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return cfg
 }

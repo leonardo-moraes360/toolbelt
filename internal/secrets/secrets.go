@@ -40,6 +40,15 @@ func Redact(s string) (out string, found bool) {
 	return out, found
 }
 
+// Matches returns every secret-like excerpt of s, one entry per match.
+func Matches(s string) []string {
+	var out []string
+	for _, re := range redactPatterns {
+		out = append(out, re.FindAllString(s, -1)...)
+	}
+	return out
+}
+
 var (
 	// DenyBaseGlob is matched against a path's last element.
 	DenyBaseGlob = []string{
