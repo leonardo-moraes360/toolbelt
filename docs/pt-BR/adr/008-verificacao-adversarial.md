@@ -119,6 +119,8 @@ Cada ruler define:
 - Regras específicas de trapaça
 - Formato de relatório
 
+**Nota de implementação (2026-11, [spec verify-rulers](../specs/verify-rulers.md) fatia 1).** `tb verify run --ruler` implementa `tests` e `visual`; `review` é o comando separado `tb review`, não uma régua do `tb verify`. Em vez de réguas novas, o type checker e os checks nomeados declarados pelo usuário viraram **etapas de gate** da régua `tests` (build → typecheck → lint → checks → testes visíveis → ocultos; cada gate roda uma vez e sua falha é `ESCALATE`). `--ruler` aceita uma lista separada por vírgulas e um nome desconhecido é erro de uso (exit 2). Os comandos do verify são lidos do `.toolbelt/config.yaml` do ref **base** (R0), e o guard reporta `verify_config_changed` quando uma mudança edita a seção `verify:`, então a mudança sob teste não consegue reescrever o próprio gate. Uma régua `coverage` (threshold do `.toolbelt/thresholds.yaml` do base) está planejada como a próxima fatia.
+
 ## Consequências
 
 ### Positivas
