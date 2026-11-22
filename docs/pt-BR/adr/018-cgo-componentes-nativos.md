@@ -4,7 +4,7 @@
 
 ## Status
 
-proposto (2026-11-21). Só passa a aceito depois que o spike do V0 da [spec do índice vetorial](../specs/vector-index.md) compilar e passar no smoke test em todos os alvos (critérios 1 a 3 da spec).
+aceito (2026-11-22; proposto em 2026-11-21). O spike do V0 da [spec do índice vetorial](../specs/vector-index.md) compila e passa no smoke test em todos os alvos, e o índice vetorial foi entregue (V0–V2); a release é compilada com cgo só para o código nativo vendorizado e na allowlist.
 
 Ele emenda:
 - o [ADR-001](001-go-vs-rust.md): o binário estático único;

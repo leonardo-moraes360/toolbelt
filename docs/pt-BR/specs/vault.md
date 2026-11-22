@@ -2,7 +2,7 @@
 
 # Spec: Vault Markdown compatível com Obsidian, Fase A (`tb vault`)
 
-Autor: toolbelt · Status: Rascunho (rodada 3: atualizada contra a main, revisão em contexto novo aplicada, Q1 resolvida pela [ADR-016](../adr/016-vault-fase-a.md); Q4 aberta); fatias 1 (mdparse), 2 (vault só leitura), 3 (escrita, busca, MCP, versionamento) e 4 (grafo) de implementação feitas · Data: 2026-11-20 · Decisão: [ADR-016](../adr/016-vault-fase-a.md) · Decisões de origem: [ADR-006](../adr/006-inspiracoes-graphify-obsidian.md), [ADR-003](../adr/003-sqlite-fts5-grafo.md) · Relacionadas: [ADR-010](../adr/010-invariantes-fora-compactacao.md), [ADR-011](../adr/011-grafo-sob-demanda.md)
+Autor: toolbelt · Status: Fase A implementada, experimental na 1.0 (rodada 3: atualizada contra a main, revisão em contexto novo aplicada, Q1 resolvida pela [ADR-016](../adr/016-vault-fase-a.md); Q4 aberta); fatias 1 (mdparse), 2 (vault só leitura), 3 (escrita, busca, MCP, versionamento) e 4 (grafo) de implementação feitas · Data: 2026-11-20 · Decisão: [ADR-016](../adr/016-vault-fase-a.md) · Decisões de origem: [ADR-006](../adr/006-inspiracoes-graphify-obsidian.md), [ADR-003](../adr/003-sqlite-fts5-grafo.md) · Relacionadas: [ADR-010](../adr/010-invariantes-fora-compactacao.md), [ADR-011](../adr/011-grafo-sob-demanda.md)
 
 ## Visão geral
 
@@ -18,7 +18,7 @@ A Fase A é deliberadamente pequena e **diverge** de partes aceitas do ADR-006 e
 
 | Item | Situação |
 |------|----------|
-| `VaultConfig{Path, SyncOnChange}` em `internal/config/config.go` | Existe, default `path: .toolbelt/vault`, `sync_on_change: true`; **nunca lido** |
+| `VaultConfig{Path}` em `internal/config/config.go` | Existe, default `path: .toolbelt/vault`; a chave não usada `sync_on_change` foi removida antes do 1.0 |
 | `.toolbelt/vault/` | Criado por `tb init`, vazio |
 | `config.LocalCacheExcludePatterns` | Inclui `.toolbelt/vault/`: o vault é tratado como cache local e **não é versionado**, o que contradiz o ADR-006 |
 | `.gitignore` deste repositório | Ignora `.toolbelt/vault/`, então mesmo sem o exclude o vault não seria versionado aqui |
@@ -62,9 +62,9 @@ A Fase A é deliberadamente pequena e **diverge** de partes aceitas do ADR-006 e
 
 ## Não-objetivos
 
-- Substituir ou espelhar as invariantes no vault. As invariantes são um arquivo estruturado, fora da compactação (ADR-010, ainda `proposed`), com checagem fail-closed em `tb mem check`; um vault editável por humanos não oferece isso.
+- Substituir ou espelhar as invariantes no vault. As invariantes são um arquivo estruturado, fora da compactação (ADR-010, accepted), com checagem fail-closed em `tb mem check`; um vault editável por humanos não oferece isso.
 - Índice SQLite/FTS5 (ADR-003). Fica para quando o NFR de desempenho falhar. Sem índice, a questão "sync bidirecional" do ADR-006 deixa de existir na Fase A.
-- TUI `tb md`, `tb md --obsidian`, watcher. `sync_on_change` fica reservado e sem efeito.
+- TUI `tb md`, `tb md --obsidian`, watcher. `vault.sync_on_change` foi removida.
 - Tags inline (`#tag` no corpo), Dataview, Canvas, plugins do Obsidian, `.obsidian/` como configuração lida pelo tb.
 - Editar notas existentes pelo tb (renomear com atualização de links, mover).
 - Wikilinks para arquivos fora do vault. Para isso existem links Markdown relativos; um campo `refs` no frontmatter fica para a Fase B.
@@ -195,7 +195,6 @@ humano (Obsidian/editor) ──┐                 ┌── agente (MCP tb_vaul
 ```yaml
 vault:
   path: .toolbelt/vault        # existente
-  sync_on_change: true         # existente (default atual true); reservado, sem efeito na Fase A
   max_note_bytes: 262144       # novo
   types: [fact, decision, context, log]  # novo
   graph: true                  # novo; false deixa as notas fora do grafo mesmo com markdown ligado

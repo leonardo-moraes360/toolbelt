@@ -198,13 +198,15 @@ func TestClientFailures(t *testing.T) {
 		"hang":      ErrEmbedTimeout,
 	} {
 		t.Run(mode, func(t *testing.T) {
-			o := fakeOptions(t, mode)
-			o.Timeout = time.Second
-			c, err := Start(context.Background(), o)
+			c, err := Start(context.Background(), fakeOptions(t, mode))
 			if err != nil {
 				t.Fatal(err)
 			}
 			defer c.Close()
+			// The handshake keeps the roomy default: under ASan or -race the
+			// child's startup alone can exceed a second. Only the batch
+			// under test gets the short timeout.
+			c.timeout = time.Second
 			start := time.Now()
 			_, _, err = c.Embed(context.Background(), KindDoc, []string{"a", "b"})
 			if !errors.Is(err, want) {
@@ -257,6 +259,10 @@ func TestClientStartFailures(t *testing.T) {
 	o := fakeOptions(t, "unavailable")
 	if _, err := Start(context.Background(), o); !errors.Is(err, ErrEmbedUnavailable) {
 		t.Fatalf("unavailable: %v", err)
+	}
+	o = fakeOptions(t, "unavailable-noisy")
+	if _, err := Start(context.Background(), o); !errors.Is(err, ErrEmbedUnavailable) {
+		t.Fatalf("unavailable with trailing noise: %v", err)
 	}
 	o = fakeOptions(t, "cpu")
 	if _, err := Start(context.Background(), o); !errors.Is(err, ErrEmbedCPU) {

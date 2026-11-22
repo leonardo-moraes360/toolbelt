@@ -21,6 +21,10 @@ type Availability struct {
 // podmanProbe is the podman availability check; overridable in tests.
 var podmanProbe = probePodmanReal
 
+// landlockProbe is the Landlock check behind ProbeSandbox; tests replace it to
+// reach the fail-closed path on kernels that have Landlock.
+var landlockProbe = sandbox.CheckLandlockSupport
+
 // ProbeSandbox reports whether the sandbox tier can run. It requires Landlock
 // on Linux; elsewhere the tier is unavailable (fail-closed).
 func ProbeSandbox() Availability {
@@ -29,7 +33,7 @@ func ProbeSandbox() Availability {
 		a.Remediation = "the sandbox tier requires Linux with Landlock; this host is " + runtime.GOOS
 		return a
 	}
-	ok, _, err := sandbox.CheckLandlockSupport()
+	ok, _, err := landlockProbe()
 	if ok {
 		a.Available = true
 		return a

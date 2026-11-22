@@ -73,10 +73,10 @@ Estudo de campo do `tb` (build local `make build`, versão injetada `c8aae04`) c
 
 | ID | sev | repro | esperado | atual |
 |----|-----|-------|----------|-------|
-| N1 | P1 | `tb init` em repo Python; `tb verify run` sem sobrescrever cmds | Detectar ecossistema ou falhar com orientação clara | Defaults `go test ./...`; ESCALATE opaco |
+| N1 | P1 | `tb init` em repo Python; `tb verify run` sem sobrescrever cmds | Detectar ecossistema ou falhar com orientação clara | Defaults `go test ./...`; ESCALATE opaco — **corrigido em `e5ab8bf`** (reverificado em 2026-11-22) |
 | N2 | P1 | `tb verify … --hidden-test-cmd 'pytest …'` sem dir `tests/hidden/` | Honrar o comando passado | `hidden_available: false`; comando ignorado |
-| N3 | P2 | `tb graph impact --file <py com símbolos>` após rebuild | Lista callers/deps impactados | `(vazio)` |
-| N4 | P2 | `tb graph callers last_modified` (posicional, como search) | Aceitar posicional ou mensagem única | Exige `--function`; UX inconsistente com `search` |
+| N3 | P2 | `tb graph impact --file <py com símbolos>` após rebuild | Lista callers/deps impactados | `(vazio)` — **corrigido em `d788b1f`** (reverificado em 2026-11-22) |
+| N4 | P2 | `tb graph callers last_modified` (posicional, como search) | Aceitar posicional ou mensagem única | Exige `--function`; UX inconsistente com `search` — **segue aberto** (reverificado em 2026-11-22): `tb graph callers` ainda exige `--function`; um alias posicional seria aditivo e fica para depois do 1.0, já que as flags congelam como estão |
 | N5 | P2 | MCP `tools/list` após usar CLI mem/verify/review | Paridade CLI↔MCP | Só `tb_graph_*`, `tb_version`, `tb_echo`, `tb_env`, `tb_run` |
 | N6 | P3 | Scope `pydantic_ai_slim/pydantic_ai/ui/*` vs arquivo no dir | Documentar que `*` é single-segment / preferir `dir/` ou `dir/**` | Comportamento misto confunde (“globs”) |
 | N7 | P2 | Repo com AGENTS.md rico; `tb init` | Importar/resumir regras do projeto no vault/invariants | Ignora por completo; risco de conflito com invariantes genéricas Go-oriented (`tests/hidden/`) |

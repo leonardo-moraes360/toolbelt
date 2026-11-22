@@ -21,22 +21,22 @@ Cada ADR segue o formato:
 |-----|--------|--------|
 | [001](001-go-vs-rust.md) | Go como linguagem principal | accepted |
 | [002](002-mcp-a2a-protocolos.md) | MCP + A2A como protocolos de comunicação | accepted (parte A2A substituída pelo [ADR-020](020-agent-hierarchy-a2a.md)) |
-| [003](003-sqlite-fts5-grafo.md) | SQLite + FTS5 como grafo e índice de memória | accepted |
-| [004](004-sandbox-isolamento.md) | Sandbox com bubblewrap + Landlock + seccomp | accepted |
+| [003](003-sqlite-fts5-grafo.md) | SQLite + FTS5 como grafo e índice de memória | accepted (índice superado por `graph.json` + BM25; SQLite só no `bus.db`) |
+| [004](004-sandbox-isolamento.md) | Sandbox com bubblewrap + Landlock + seccomp | accepted (Landlock + seccomp implementados; bubblewrap não construído) |
 | [005](005-anti-trapaca.md) | Estratégia anti-trapaça | accepted |
 | [006](006-inspiracoes-graphify-obsidian.md) | Inspirações: Graphify e Obsidian | accepted |
 | [007](007-inspiracao-elephant-goldfish.md) | Inspiração: Elephant-Goldfish Model | accepted |
 | [008](008-verificacao-adversarial.md) | Verificação adversarial (gerador vs discriminador) | accepted |
-| [009](009-router-e-workers.md) | Padrão Router e Workers para delegação | proposed |
-| [010](010-invariantes-fora-compactacao.md) | Invariantes fixados fora da compactação | proposed |
+| [009](009-router-e-workers.md) | Padrão Router e Workers para delegação | proposed (experimental na 1.0) |
+| [010](010-invariantes-fora-compactacao.md) | Invariantes fixados fora da compactação | accepted |
 | [011](011-grafo-sob-demanda.md) | Grafo de código sob demanda com A/B | accepted |
 | [012](../decisions/012-cli-framework-cobra.md) | Framework de CLI: cobra | accepted |
-| [013](013-barramento-multi-vendor.md) | Barramento local multi-vendor de agentes (`tb bus`) | proposed (B0/B1 e parte do B3 implementados) |
+| [013](013-barramento-multi-vendor.md) | Barramento local multi-vendor de agentes (`tb bus`) | proposed (B0–B5 implementados; experimental na 1.0) |
 | [014](014-graphify-reimplementacao.md) | Graphify: reimplementar, não integrar | accepted |
 | [015](015-egm-nativo.md) | Reimplementação nativa do Elephant-Goldfish Model (`tb egm`) | accepted |
-| [016](016-vault-fase-a.md) | Vault Markdown, Fase A: o vault é o único armazenamento | proposed |
-| [017](017-appsec-red-blue-labs.md) | Capacidades nativas de AppSec red/blue e labs isolados (`tb red` / `tb blue` / `tb lab`) | proposto |
-| [018](018-cgo-componentes-nativos.md) | cgo para componentes nativos, começando pelo llama.cpp vendorizado, sob um gate de qualidade de C/C++ | proposto |
+| [016](016-vault-fase-a.md) | Vault Markdown, Fase A: o vault é o único armazenamento | proposed (experimental na 1.0) |
+| [017](017-appsec-red-blue-labs.md) | Capacidades nativas de AppSec red/blue e labs isolados (`tb red` / `tb blue` / `tb lab`) | proposed (experimental na 1.0) |
+| [018](018-cgo-componentes-nativos.md) | cgo para componentes nativos, começando pelo llama.cpp vendorizado, sob um gate de qualidade de C/C++ | accepted |
 | [019](019-cpu-v3-embedding.md) | Kernels AVX2/FMA no filho de embedding, com guarda em tempo de execução | aceito |
 | [020](020-agent-hierarchy-a2a.md) | Hierarquia de agentes como árvores de delegação no barramento local; o A2A fica como formato de envelope, sem rede no `tb` | aceito |
 

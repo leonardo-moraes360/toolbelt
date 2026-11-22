@@ -1,7 +1,6 @@
 package graph
 
 import (
-	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -52,8 +51,7 @@ func (PythonIndexer) Match(path string) bool {
 }
 
 func (PythonIndexer) IndexFile(root, rel string) ([]Node, []Edge, error) {
-	full := filepath.Join(root, rel)
-	data, err := os.ReadFile(full)
+	data, err := readSourceBytes(root, rel)
 	if err != nil {
 		return nil, nil, err
 	}

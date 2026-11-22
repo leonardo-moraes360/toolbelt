@@ -8,7 +8,7 @@
 
 <p align="center">
   <a href="../../LICENSE"><img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg" alt="License"></a>
-  <a href="https://go.dev/"><img src="https://img.shields.io/badge/Go-1.22+-00ADD8?logo=go&logoColor=white" alt="Go Version"></a>
+  <a href="https://go.dev/"><img src="https://img.shields.io/badge/Go-1.27+-00ADD8?logo=go&logoColor=white" alt="Go Version"></a>
   <a href="arquitetura.md"><img src="https://img.shields.io/badge/Status-Fase%203%20em%20andamento-yellow" alt="Status"></a>
   <a href="https://github.com/leonardo-moraes360/toolbelt/actions"><img src="https://github.com/leonardo-moraes360/toolbelt/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="https://modelcontextprotocol.io/"><img src="https://img.shields.io/badge/Protocol-MCP-purple" alt="MCP"></a>
@@ -25,8 +25,8 @@
 | Objetivo | Como o toolbelt ajuda |
 |----------|----------------------|
 | **Economizar tokens** | Grafo de conhecimento queryável evita grep em arquivos; contexto montado sob orçamento de tokens; memória compacta com sumários e fatos extraídos |
-| **Melhorar a acurácia** | Sandbox isolado com bubblewrap+Landlock; permissões por capacidade; proteções contra trapaça; separador entre implementador e avaliador |
-| **Aumentar a velocidade** | Execução paralela com goroutines; delegação pelo `tb router` e pelos papéis do `tb bus` (router, supervisor, worker, reviewer); busca rápida em grafo com FTS5 |
+| **Melhorar a acurácia** | Isolamento de filesystem com Landlock (falha fechada); filtro seccomp de rede para o filho de embedding; ambiente do filho por allowlist; proteções contra trapaça; separação entre implementador e avaliador |
+| **Aumentar a velocidade** | Execução paralela com goroutines; delegação pelo `tb router` e pelos papéis do `tb bus` (router, supervisor, worker, reviewer); busca em grafo com ranking BM25 |
 
 ## 🏗️ Arquitetura
 
@@ -50,7 +50,7 @@
 ┌─────────────────────────────────────────────────────────────────┐
 │                           Núcleo                                │
 │  ┌────────────┐  ┌────────────┐  ┌────────────┐  ┌───────────┐  │
-│  │ Orquestrador│  │  Memória   │  │  Contexto  │  │   Grafo   │  │
+│  │   Router   │  │  Memória   │  │  Verify    │  │   Grafo   │  │
 │  └────────────┘  └────────────┘  └────────────┘  └───────────┘  │
 └─────────────────────────────────────────────────────────────────┘
         │
@@ -58,8 +58,8 @@
 ┌─────────────────────────────────────────────────────────────────┐
 │                      Armazenamento                              │
 │  ┌─────────────────────┐    ┌─────────────────────────────────┐ │
-│  │ Vault Markdown      │───▶│ SQLite + FTS5 (índice derivado) │ │
-│  │ (fonte de verdade)  │    │ + tabelas de arestas            │ │
+│  │ Vault Markdown      │───▶│ graph.json (derivado, BM25)     │ │
+│  │ (lido sob demanda)  │    │ bus.db (SQLite, só o bus)       │ │
 │  └─────────────────────┘    └─────────────────────────────────┘ │
 └─────────────────────────────────────────────────────────────────┘
         │
@@ -67,8 +67,8 @@
 ┌─────────────────────────────────────────────────────────────────┐
 │                        Execução                                 │
 │  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────────┐  │
-│  │ Worktrees   │  │ bubblewrap  │  │ cgroups (CPU/RAM/tempo) │  │
-│  │ Git         │  │ +Landlock   │  │                         │  │
+│  │ Worktrees   │  │ Landlock    │  │ seccomp (embed: s/ rede)│  │
+│  │ Git         │  │ (arquivos)  │  │                         │  │
 │  └─────────────┘  └─────────────┘  └─────────────────────────┘  │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -84,7 +84,7 @@ Landing pública: [https://leonardo-moraes360.github.io/toolbelt/](https://leona
 | Documento | Descrição |
 |-----------|-----------|
 | [docs/pt-BR/arquitetura.md](arquitetura.md) | Arquitetura detalhada com diagramas Mermaid |
-| [docs/pt-BR/cli.md](cli.md) | Árvore de comandos do `tb` (implementado + planejado) |
+| [docs/pt-BR/cli.md](cli.md) | Árvore de comandos do `tb` (comandos implementados, com tier de estabilidade) |
 | [docs/pt-BR/bus-protocolo.md](bus-protocolo.md) · [docs/pt-BR/bus-harness.md](bus-harness.md) | Barramento local `tb bus` (protocolo `bus/0.1` e harness `tb bus run`) |
 | [docs/pt-BR/benchmark.md](benchmark.md) | KPIs e metodologia de avaliação |
 | [docs/pt-BR/site.md](site.md) | Landing page e deploy no GitHub Pages |
@@ -236,6 +236,10 @@ tb bus recv --channel feature-x --as grok-1 --wait 20s
 - [x] Landing page em [`site/`](../../site/) + GitHub Pages ([docs/pt-BR/site.md](site.md) · [site ao vivo](https://leonardo-moraes360.github.io/toolbelt/))
 - [x] Hierarquia de agentes / A2A / `tb md`: decidido no [ADR-020](adr/020-agent-hierarchy-a2a.md). O A2A é o envelope `bus/0.1` no formato A2A, no barramento local, sem HTTP nem socket no `tb` (uma ponte é um agente comum do barramento que o humano roda); a hierarquia é o `tb router` + os papéis do barramento; `tb md` e `tb agent` saem. O B5 abaixo (árvores de delegação) está construído
 
+### Planejado (não implementado) e removido
+- Planejado: `tb run` e `tb proc` (executar e supervisionar comandos; hoje use `tb sandbox run`), `tb serve` (hoje `tb mcp` via stdio), e o item C6 da Fase C do EGM (adiado para depois da 1.0).
+- Removido: `tb agent` e `tb md` ([ADR-020](adr/020-agent-hierarchy-a2a.md)). Não construídos e fora do plano: bubblewrap, cgroups, índice de código SQLite/FTS5.
+
 ### Entrada para a próxima fase (estudo de campo)
 - Estudo de campo do `tb` em 20 repositórios públicos (relatórios em [`docs/pt-BR/campo/`](campo/) + síntese de melhorias em [`docs/pt-BR/campo/SINTESE.md`](campo/SINTESE.md)), como input priorizado para os próximos PRs de produto.
 
@@ -290,7 +294,7 @@ Veja os ADRs para detalhes:
 
 ## 📊 Status do Projeto
 
-Este projeto está na **Fase 3 (em andamento)**: além de verify/guard/mem/graph/review/drift/MCP e harness de benchmark, já há tickets, board, router/workers, watchdog, merge e o barramento local `tb bus` (B0/B1 e parte do B3 do [ADR-013](adr/013-barramento-multi-vendor.md)) (ganho de escala ainda não medido — ver [ADR-009](adr/009-router-e-workers.md)). A arquitetura completa está documentada em [docs/pt-BR/arquitetura.md](arquitetura.md).
+Este projeto está na **Fase 3 (em andamento)**: além de verify/guard/mem/graph/review/drift/MCP e harness de benchmark, já há tickets, board, router/workers, watchdog, merge e o barramento local `tb bus` (B0–B5 do [ADR-013](adr/013-barramento-multi-vendor.md) e do [ADR-020](adr/020-agent-hierarchy-a2a.md)) (ganho de escala ainda não medido — ver [ADR-009](adr/009-router-e-workers.md)). A arquitetura completa está documentada em [docs/pt-BR/arquitetura.md](arquitetura.md).
 
 ### Comandos Implementados
 
@@ -317,4 +321,4 @@ Este projeto está na **Fase 3 (em andamento)**: além de verify/guard/mem/graph
 | `tb watchdog` | ✅ | Alertas e controle dos workers (`status`/`alerts`/`kill`); roda dentro do loop do router |
 | `tb merge` | ✅ | Integra tickets `done` de forma atômica; `fail` (padrão), `last_wins`, `semantic` ou `prompt` (o MCP `tb_merge` aceita todas menos `prompt`) |
 | `tb bus` | 🟡 | Barramento local entre agentes (ADR-013): `channel`/`invite`/`join`/`send`/`recv`/`claim`/`complete`/`heartbeat`/`watchdog`/`log` sobre `.toolbelt/bus/bus.db`; lease com fencing por epoch (B2); `tb bus run` acorda o agente (adapters `exec`/`harness`/`notify`); `tb bus discover` cataloga os agentes locais |
-| `tb mcp` | ✅ | Servidor MCP stateless (stdio); 54 tools na v0.0.10: mem/verify/review/drift/guard/stack, vault (`tb_vault_*`), graph (`search`/`callers`/`deps`/`impact`/`explain`/`path`/`index`; exige `TB_GRAPH=on`), ticket/board/router/watchdog/merge e bus (`tb_bus_join`/`send`/`recv`/`claim`/`complete`/`heartbeat`/`status`); `--bus-as` prende a conexão a uma sessão do bus |
+| `tb mcp` | ✅ | Servidor MCP stateless (stdio); 54 tools: mem/verify/review/drift/guard/stack, vault (`tb_vault_*`), graph (`search`/`callers`/`deps`/`impact`/`explain`/`path`/`index`; exige `TB_GRAPH=on`), ticket/board/router/watchdog/merge e bus (`tb_bus_join`/`send`/`recv`/`claim`/`complete`/`heartbeat`/`status`) e playbooks red/blue (`tb_red_*`, `tb_blue_*`, `tb_sec_pair`); `--bus-as` prende a conexão a uma sessão do bus |

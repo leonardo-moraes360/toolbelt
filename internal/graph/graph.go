@@ -64,9 +64,9 @@ type Edge struct {
 	Confidence float64  `json:"confidence"`
 }
 
-// IndexVersion is the integer version of graph.json. graph.json is a derived
-// cache: a file with another version (or none, as before 1.0) is discarded and
-// the next index run rebuilds it, never an error.
+// IndexVersion is bumped when stored node IDs change shape. An index with an
+// older (or missing) version reads as stale, so the next index rebuilds it.
+// v2: Go package IDs are import paths; method IDs carry the receiver.
 const IndexVersion = 2
 
 type Index struct {

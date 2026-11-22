@@ -125,6 +125,9 @@ func openGraphStore() (*graph.Store, error) {
 // graphStaleHint tells the agent how to refresh a stale index.
 const graphStaleHint = "index is stale (files changed since the last index): call tb_graph_index, then repeat the query"
 
+// graphFormatHint is the stale hint for an index written by an older node ID scheme.
+const graphFormatHint = "index format changed (written by an older tb): call tb_graph_index, then repeat the query"
+
 // openGraphStoreReadOnly opens the index for an MCP query without ever
 // writing it. Unlike the CLI, which reindexes when graph.index_on_change is
 // on, MCP queries only report staleness: they are annotated readOnlyHint, so
@@ -149,6 +152,9 @@ func graphPayload(s *graph.Store, fields map[string]any) map[string]any {
 	fields["stale"] = s.Stale()
 	if s.Stale() {
 		fields["hint"] = graphStaleHint
+		if s.FormatOutdated() {
+			fields["hint"] = graphFormatHint
+		}
 	}
 	return fields
 }

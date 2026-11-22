@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	gopath "path"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -69,7 +70,7 @@ func jsWorkspaceStamp(root string) string {
 func readJSWorkspace(root string) *jsWorkspace {
 	ws := &jsWorkspace{pkgs: map[string]jsWorkspacePkg{}}
 	var globs []string
-	if data, err := os.ReadFile(filepath.Join(root, "pnpm-workspace.yaml")); err == nil {
+	if data, err := readSourceBytes(root, "pnpm-workspace.yaml"); err == nil {
 		var raw struct {
 			Packages []string `yaml:"packages"`
 		}
@@ -91,7 +92,7 @@ func readJSWorkspace(root string) *jsWorkspace {
 // packageJSONWorkspaces reads "workspaces" from the root package.json, in the
 // array form (npm/yarn) or the {"packages": [...]} object form (yarn classic).
 func packageJSONWorkspaces(root string) []string {
-	data, err := os.ReadFile(filepath.Join(root, "package.json"))
+	data, err := readSourceBytes(root, "package.json")
 	if err != nil {
 		return nil
 	}
@@ -178,7 +179,7 @@ func walkPackageDirs(root, base string) []string {
 }
 
 func readWorkspacePackage(root, dir string) (jsWorkspacePkg, string, bool) {
-	data, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(dir), "package.json"))
+	data, err := readSourceBytes(root, gopath.Join(filepath.ToSlash(dir), "package.json"))
 	if err != nil {
 		return jsWorkspacePkg{}, "", false
 	}

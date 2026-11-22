@@ -9,9 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
-	"syscall"
 	"testing"
 	"time"
 
@@ -73,7 +71,7 @@ func TestEscapeSweptByOtherTicketIsAttributedToCulprit(t *testing.T) {
 	// Landlock only lets B write to its own worktree; A only needs to read the pidfile
 	pidf := filepath.Join(root, ".toolbelt", "workspaces", b.ID, "pidfile")
 	script := fmt.Sprintf(`if [ "$TB_TICKET_ID" = %q ]; then
-  ( setsid sh -c 'echo $$ > pidfile; exec sleep 37' & )
+  ( setsid sh -c 'echo $$ > pidfile; exec sleep 300' & )
   i=0; while [ ! -s %s ] && [ $i -lt 500 ]; do sleep 0.01; i=$((i+1)); done
   sleep 1.5
 else
@@ -97,10 +95,7 @@ echo x > f.txt`, b.ID, pidf, pidf)
 	if gotB.Status != ticket.StatusFailed || gotB.Attempts != 1 || !strings.Contains(gotB.Result.Error, "agent_escaped") {
 		t.Fatalf("culpado deveria falhar sem retry: %+v %+v", gotB, gotB.Result)
 	}
-	data, _ := os.ReadFile(pidf)
-	if pid, _ := strconv.Atoi(strings.TrimSpace(string(data))); pid <= 0 || syscall.Kill(pid, 0) == nil {
-		t.Fatalf("escapado %d ainda vivo", pid)
-	}
+	pidGone(t, readPid(t, pidf), "escaped process")
 	as := alertsOf(t, root, AlertAgentEscaped)
 	if len(as) != 1 || as[0].Ticket != b.ID {
 		t.Fatalf("alertas: %+v", as)
@@ -215,7 +210,7 @@ func TestDaemonFromWorktreeCreationDoesNotFailTicket(t *testing.T) {
 	}
 	defer release()
 	pidf := filepath.Join(t.TempDir(), "daemon.pid")
-	gitShim(t, "", fmt.Sprintf("setsid sh -c 'echo $$ > %s; exec sleep 37' </dev/null >/dev/null 2>&1 &", pidf))
+	gitShim(t, "", fmt.Sprintf("setsid sh -c 'echo $$ > %s; exec sleep 300' </dev/null >/dev/null 2>&1 &\ni=0; while [ ! -s %s ] && [ $i -lt 500 ]; do sleep 0.01; i=$((i+1)); done", pidf, pidf))
 	root := newRepo(t)
 	st := ticket.Open(root)
 	tk := mk(t, st, "daemon do usuário")
@@ -232,10 +227,7 @@ func TestDaemonFromWorktreeCreationDoesNotFailTicket(t *testing.T) {
 	if as := alertsOf(t, root, AlertOrphanKilled); as[0].Severity != SevWarn || as[0].Ticket != "" {
 		t.Fatalf("%+v", as[0])
 	}
-	data, _ := os.ReadFile(pidf)
-	if pid, _ := strconv.Atoi(strings.TrimSpace(string(data))); pid <= 0 || syscall.Kill(pid, 0) == nil {
-		t.Fatalf("daemon %d ainda vivo", pid)
-	}
+	pidGone(t, readPid(t, pidf), "daemon")
 }
 
 // Finding 4: the workspace manager's git does not run user hooks.
@@ -243,7 +235,7 @@ func TestWorktreeCreationDoesNotRunUserHooks(t *testing.T) {
 	root := newRepo(t)
 	marker := filepath.Join(t.TempDir(), "hook-ran")
 	hook := filepath.Join(root, ".git", "hooks", "post-checkout")
-	if err := os.WriteFile(hook, []byte("#!/bin/sh\ntouch "+marker+"\nsetsid sleep 37 </dev/null >/dev/null 2>&1 &\n"), 0o755); err != nil { //nolint:gosec // test
+	if err := os.WriteFile(hook, []byte("#!/bin/sh\ntouch "+marker+"\nsetsid sleep 300 </dev/null >/dev/null 2>&1 &\n"), 0o755); err != nil { //nolint:gosec // test
 		t.Fatal(err)
 	}
 	st := ticket.Open(root)

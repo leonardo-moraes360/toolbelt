@@ -86,7 +86,7 @@ func (rc *roundCtx) gateLoop(ctx context.Context) (*Outcome, error) {
 		rc.arbiterRan = ran
 	}
 	if last != nil && last.Content == s.content && stuck(st, rc.env != nil) {
-		msg := fmt.Sprintf("documento e fontes não mudaram desde a rodada %d; há findings bloqueantes abertos (document and sources have not changed since round %d; there are open blocking findings)", last.N, last.N)
+		msg := fmt.Sprintf("document and sources have not changed since round %d; there are open blocking findings", last.N)
 		if rc.arbiterRan {
 			if err := saveState(s.stateDir, st); err != nil {
 				return nil, err
