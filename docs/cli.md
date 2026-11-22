@@ -1234,7 +1234,7 @@ when it resolves on `PATH` or through the package manager):
 | Toolchain | `build_cmd` | `typecheck_cmd` | `lint_cmd` |
 |-----------|-------------|-----------------|------------|
 | `go.mod` | `go build ./...` | (none: the build type-checks) | `.golangci.y*ml`/`.toml` → `golangci-lint run` if the binary is on PATH, else `go vet ./...`; no config → `make lint` target |
-| `package.json` | `build` script → `npm run …` / `pnpm run …` / `yarn …` | `typecheck`/`type-check` script → `<pm> run …`; else `tsconfig.json` + local `node_modules/.bin/tsc` → `<pm> exec tsc --noEmit` | `lint` script → analogous |
+| `package.json` | `build` script → `npm run …` / `pnpm run …` / `yarn …` | `typecheck`/`type-check` script → `<pm> run …`; else `tsconfig.json` + local `node_modules/.bin/tsc` → `npm exec -- tsc --noEmit` / `pnpm exec tsc --noEmit` / `yarn tsc --noEmit` / `bunx tsc --noEmit` | `lint` script → analogous |
 | `Cargo.toml` | `cargo build` | (none: the build type-checks) | `cargo clippy` |
 | Python (`pyproject`/`uv.lock`/…) | (empty) | mypy (`[tool.mypy]`, `mypy.ini`, `.mypy.ini`, `setup.cfg [mypy]`) or pyright (`[tool.pyright]`, `pyrightconfig.json`) configured and on PATH or in `.venv/bin` → `mypy .` / `pyright` (or `uv run …`) | `[tool.ruff]`/`ruff.toml` → `ruff check .` (or `uv run …`); mypy is no longer a lint fallback |
 | only `Makefile` | `build` target → `make build` | (none) | `lint` target → `make lint` |
@@ -1332,21 +1332,29 @@ network (e.g. `govulncheck`) belongs in CI, or is skipped locally with `--no-che
 
 New JSON keys, all `omitempty` (a run with today's config and flags prints the same
 keys as before): `typecheck_ran`, `typecheck_passed`, `checks`
-(`[{name, passed, reason}]`), `config_source` (`base` | `worktree`), `warnings` and
+(`[{name, passed, reason}]`), `config_source` (`none`, only without a base file), `warnings` and
 `skip_kind`.
 
 **Verify's commands come from the base ref.** The `verify:` section is read from
-`git show <base>:.toolbelt/config.yaml`, merged over the user config (`-c` or global)
-and the defaults, never from the working tree, so the change under test cannot
+`git show <base>:.toolbelt/config.yaml`, merged over the global config and the
+defaults (with `-c`, only that file; see below), never from the working tree, so the change under test cannot
 rewrite its own gate (e.g. `test_cmd: true`). Flags and MCP arguments still
 override, since they come from the caller. Guard compares the `verify:` section at
 base and head: a difference is an error finding `verify_config_changed` that aborts
 verify like a protected-path hit, listing the changed keys; other sections of the
-file stay unrestricted. With no base file, or base == head with a dirty tree, the
-working-tree file is used and the report says `config_source: "worktree"` with a
-warning (nothing pins it); otherwise `config_source: "base"`. `--base` is chosen by
-the caller, so **CI must pin the base** (the PR's merge base); verify warns when the
-base resolves to head.
+file stay unrestricted. `--base` is chosen by the caller, so **CI must pin the base**
+(the PR's merge base); verify warns (`base resolves to head`) when the base SHA equals
+the resolved head SHA.
+
+Config layers for verify (R0): with `-c`, only the `-c` file and the defaults (the
+repository config is not read, as before). Without `-c`: defaults < global config <
+`.toolbelt/config.yaml` as committed at the base ref. The working-tree file is never
+read, for `verify:` and for `env:` (`allow`/`pass`), so a change cannot pass secrets
+to its own tests. When the working tree's `verify:`/`env:` keys differ from the base
+file's, verify warns, e.g. `ignored .toolbelt/config.yaml keys not in the base ref:
+verify.test_cmd (verify reads the base ref; commit them to the base branch)`. `config_source` is omitted
+in the normal case and is `"none"` when the base ref has no file (global config and
+defaults only). A malformed global or `-c` config aborts verify.
 
 ```bash
 tb verify run --test-cmd "pnpm test" --hidden-test-cmd "pnpm test:hidden"

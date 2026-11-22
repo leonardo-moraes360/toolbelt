@@ -67,11 +67,14 @@ Ela também lê os comandos do verify a partir da ref base, para que a mudança 
 
 ### R0. A configuração do verify vem da ref base
 
-- A seção `verify:` é lida de `git show <base>:.toolbelt/config.yaml`, mesclada sobre a config do usuário (`-c` ou global) e os padrões, nunca da árvore de trabalho. O mesmo vale para o `.toolbelt/thresholds.yaml` (R4). Flags e argumentos MCP continuam sobrepondo, como hoje: vêm de quem chama, não da mudança.
+- Com `-c`: só o arquivo do `-c` e os padrões, exatamente como antes das réguas; o `.toolbelt/config.yaml` do repositório não é lido (nem na base, nem na árvore de trabalho).
+- Sem `-c`: padrões < config global do usuário < o `.toolbelt/config.yaml` do repositório **como commitado na ref base** (`git show <baseSHA>:.toolbelt/config.yaml`). O arquivo da árvore de trabalho nunca é lido pelo verify. Isso vale para a seção `verify:` e para a seção `env:` (`allow`/`pass`), então uma mudança não consegue dar segredos aos próprios testes. O mesmo vale para o `.toolbelt/thresholds.yaml` (R4). Flags e argumentos MCP continuam sobrepondo, como hoje: vêm de quem chama, não da mudança.
+- Quando a seção `verify:` ou `env:` da árvore de trabalho difere da do arquivo da base (edições não commitadas, um arquivo novo não commitado, ou edições commitadas no branch), o verify acrescenta um aviso com as chaves ignoradas: `ignored .toolbelt/config.yaml keys not in the base ref: verify.test_cmd (verify reads the base ref; commit them to the base branch)`.
+- `config_source` só aparece fora do caso normal: omitido quando o arquivo da base foi usado (e com `-c`), `"none"` quando a ref base não tem o arquivo (só config global e padrões). Assim, execuções normais imprimem as mesmas chaves JSON de antes (G5).
 - O guard compara a seção `verify:` do `.toolbelt/config.yaml` entre base e head. Uma diferença é um achado de erro (`verify_config_changed`) que aborta o verify como um acerto em caminho protegido, com as chaves alteradas listadas. As outras seções do arquivo continuam livres.
-- Sem arquivo na base, ou base == head com a árvore suja: usa-se o arquivo da árvore de trabalho, e o relatório ganha `config_source: "worktree"` com um aviso, já que nada o fixa. Nos demais casos, `config_source: "base"`.
-- Quem chama escolhe o `--base`. Um agente pode commitar um limiar rebaixado ou um comando reescrito e passar `--base HEAD`. Por isso os docs dizem que o CI precisa fixar a base (o merge base do PR), e o verify avisa quando a base resolve para o head.
-- Isso também fecha o buraco que já existe para `test_cmd`/`lint_cmd`/`build_cmd`/`hidden_test_cmd`. Só muda o comportamento de execuções cuja mudança edita essas chaves.
+- Quem chama escolhe o `--base`. Um agente pode commitar um limiar rebaixado ou um comando reescrito e passar `--base HEAD`. Por isso os docs dizem que o CI precisa fixar a base (o merge base do PR), e o verify avisa (`base resolves to head`) quando o SHA da base é igual ao SHA resolvido do head.
+- Uma config global (ou arquivo do `-c`) malformada aborta o verify (fail-closed) em vez de ser ignorada em silêncio.
+- Isso também fecha o buraco que já existe para `test_cmd`/`lint_cmd`/`build_cmd`/`hidden_test_cmd` e `env.pass`. Muda o comportamento de execuções cuja mudança edita essas chaves, e de usuários que editavam chaves de `verify:` ou `env:` sem commitar (agora ignoradas, com o aviso).
 
 ### R1. Seleção de régua
 
@@ -88,7 +91,7 @@ Ela também lê os comandos do verify a partir da ref base, para que a mudança 
 - É um passo de gate, rodado depois do build e antes do lint, uma vez por execução.
 - JSON: `typecheck_ran` e `typecheck_passed`, ambos `omitempty` (diferente de `lint_ran`, que está sempre presente, para que o G5 valha), e o trecho da falha em `reason`, como o lint faz hoje.
 - Detecção no `tb init` (conservadora, só quando a ferramenta resolve no `PATH` ou pelo gerenciador de pacotes):
-  - Node: um script `typecheck` vira `typecheck_cmd` (`<pm> run typecheck`) em vez de `build_cmd`; sem o script, um `tsconfig.json` e um `tsc` local dão `<pm> exec tsc --noEmit`.
+  - Node: um script `typecheck` vira `typecheck_cmd` (`<pm> run typecheck`) em vez de `build_cmd`; sem o script, um `tsconfig.json` e um `tsc` local dão o `tsc` pelo gerenciador de pacotes (`npm exec -- tsc --noEmit`, `pnpm exec tsc --noEmit`, `yarn tsc --noEmit`, `bunx tsc --noEmit`).
   - Python: `mypy` ou `pyright` configurado no `pyproject.toml` (`[tool.mypy]`, `[tool.pyright]`) ou nos arquivos de config deles, com a ferramenta no `PATH`. O fallback de lint atual ruff → mypy deixa de usar o mypy como lint.
   - Go e Rust: nada (o build já verifica tipos).
 - Configs existentes continuam funcionando: um `build_cmd` que é um script de typecheck continua sendo build até o usuário movê-lo. Rodar o `tb init` de novo muda o que ele escreve para esses repositórios (`typecheck` sai de `build_cmd` e vai para `typecheck_cmd`; o mypy deixa de ser o fallback de lint do Python). Os testes afetados estão em `internal/config/detect_test.go` e `cmd/tb/init_json_test.go`, e o CHANGELOG registra isso.
@@ -144,9 +147,9 @@ Ela também lê os comandos do verify a partir da ref base, para que a mudança 
 
 1. `tb verify run` com uma config existente e sem flags novas dá o mesmo veredicto e as mesmas chaves JSON de antes (teste golden num repositório fixture).
 2. `--ruler foo` sai com 2 antes de rodar qualquer coisa; `--ruler visual,tests` é recusado.
-3. Uma mudança que edita `verify.test_cmd` ou `verify.coverage_cmd` no `.toolbelt/config.yaml` é reportada pelo guard (`verify_config_changed`) e o verify aborta; o valor da base é o que rodaria. Com base == head, o relatório diz `config_source: "worktree"` e avisa.
+3. Uma mudança que edita `verify.test_cmd` ou `verify.coverage_cmd` no `.toolbelt/config.yaml` é reportada pelo guard (`verify_config_changed`) e o verify aborta; o valor da base é o que rodaria. Uma edição não commitada (também com base == head) é ignorada com um aviso que cita as chaves; sem arquivo na base, o relatório diz `config_source: "none"`.
 4. Um repositório cujos testes passam e cujo `typecheck_cmd` falha termina em `ESCALATE` com `typecheck_passed: false`; o typecheck roda uma vez entre iterações.
-5. O `tb init` num fixture Node com script `typecheck` o escreve como `typecheck_cmd`, não `build_cmd`; com só `tsconfig.json` e um `tsc` local, escreve `<pm> exec tsc --noEmit`.
+5. O `tb init` num fixture Node com script `typecheck` o escreve como `typecheck_cmd`, não `build_cmd`; com só `tsconfig.json` e um `tsc` local, escreve a forma do gerenciador de pacotes (`npm exec -- tsc --noEmit`, `pnpm exec tsc --noEmit`, `yarn tsc --noEmit`, `bunx tsc --noEmit`).
 6. Dois checks, um falhando: `ESCALATE`, e `checks` lista os dois com o trecho do que falhou; `--no-check` pula um; um executável ausente sai com 127.
 7. `--ruler coverage` num fixture Go calcula o mesmo total que o `go tool cover -func` (com diferença de até 0,1), também com duplicatas de `-coverpkg`; abaixo do limiar da base → `FAIL`; igual ou acima → `PASS`.
 8. Uma mudança que baixa `coverage.min_percent` no `.toolbelt/thresholds.yaml` não baixa o limiar usado (a base é lida) e é reportada pelo guard.

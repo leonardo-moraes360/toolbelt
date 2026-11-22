@@ -50,9 +50,10 @@ type Config struct {
 	// TypecheckCmd and Checks are gate steps after build (R2, R3).
 	TypecheckCmd string
 	Checks       []config.VerifyCheck
-	// TrustedConfig enables R0 in Run/RunRulers: verify's commands are read
-	// from the base ref over this config (-c or global, never the working
-	// tree), then Overrides apply. Nil keeps the commands already in Config.
+	// TrustedConfig enables R0 in Run/RunRulers: verify's commands and env
+	// allow/pass come from this config (-c alone, or the global config under
+	// the repository file committed at the base ref; never the working tree),
+	// then Overrides apply. Nil keeps the commands already in Config.
 	TrustedConfig *config.Config
 	Overrides     *FlagOverrides
 	// Visual configures the visual ruler; nil uses its defaults.
@@ -85,7 +86,8 @@ type Result struct {
 	// FilteredEnv lists the variable names (never values) the env allowlist
 	// removed from the child commands; set only when the verdict is not PASS.
 	FilteredEnv []string `json:"filtered_env,omitempty"`
-	// ConfigSource is "base" or "worktree" when R0 loaded the config.
+	// ConfigSource is "none" when R0 found no repository config at the base
+	// ref; omitted in the normal case.
 	ConfigSource string   `json:"config_source,omitempty"`
 	Warnings     []string `json:"warnings,omitempty"`
 	SkipKind     SkipKind `json:"skip_kind,omitempty"`

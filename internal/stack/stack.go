@@ -220,8 +220,13 @@ func validateOptions(opts *Options) error {
 			return err
 		}
 	}
-	_, err := verifyRulers(opts.Ruler)
-	return err
+	if _, err := verifyRulers(opts.Ruler); err != nil {
+		return err
+	}
+	if err := verify.ValidateChecks(opts.Checks); err != nil {
+		return &verify.UsageError{Msg: "--check: " + strings.TrimPrefix(err.Error(), "verify.checks: ")}
+	}
+	return nil
 }
 
 // verifyRulers parses the verify op's ruler list; visual needs a browser and
@@ -656,10 +661,8 @@ func buildVerifyConfig(opts *Options, shared *Shared) (verify.Config, error) {
 	}
 	cfg.EnvAllow = append(cfg.EnvAllow, opts.EnvAllow...)
 	cfg.EnvPass = append(cfg.EnvPass, opts.EnvPass...)
-	if shared.FileConfig != nil {
-		cfg.EnvAllow = append(cfg.EnvAllow, shared.FileConfig.Env.Allow...)
-		cfg.EnvPass = append(cfg.EnvPass, shared.FileConfig.Env.Pass...)
-	}
+	// env.allow/pass from config come through R0 (base ref), never the
+	// working tree, so a change cannot grant its tests secrets.
 	return cfg, nil
 }
 

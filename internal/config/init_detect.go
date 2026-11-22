@@ -28,7 +28,8 @@ type InitResult struct {
 
 // InitWithOptions creates the config dir and, when config.yaml is missing,
 // writes it with the detected verify commands. An existing config.yaml is
-// never rewritten; checks are still detected so the caller can suggest them.
+// never rewritten; checks are probed for it only with WriteChecks, so the
+// caller can suggest them.
 func InitWithOptions(dir string, opts InitOptions) (InitResult, error) {
 	var res InitResult
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -41,12 +42,17 @@ func InitWithOptions(dir string, opts InitOptions) (InitResult, error) {
 		}
 	}
 
-	if root, ok := projectRootForInit(dir); ok {
-		res.SuggestedChecks = DetectSuggestedChecks(root)
-	}
-
 	configPath := filepath.Join(dir, DefaultConfigFile)
-	if _, err := os.Stat(configPath); !errors.Is(err, os.ErrNotExist) {
+	_, statErr := os.Stat(configPath)
+	creating := errors.Is(statErr, os.ErrNotExist)
+	// Probing runs tools (cargo clippy -V), so a plain re-init of an
+	// existing config skips it unless the caller asked for checks.
+	if creating || opts.WriteChecks {
+		if root, ok := projectRootForInit(dir); ok {
+			res.SuggestedChecks = DetectSuggestedChecks(root)
+		}
+	}
+	if !creating {
 		return res, nil
 	}
 

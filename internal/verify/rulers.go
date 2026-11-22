@@ -8,6 +8,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/leonardo-moraes360/toolbelt/internal/config"
 	"github.com/leonardo-moraes360/toolbelt/internal/gitref"
 	"github.com/leonardo-moraes360/toolbelt/internal/guard"
 	"github.com/leonardo-moraes360/toolbelt/internal/log"
@@ -248,8 +249,9 @@ func prepareRun(ctx context.Context, cfg *Config) (context.Context, *RunState, f
 	return ctx, st, cleanup, nil
 }
 
-// applyRunConfig applies R0 when the caller supplied a trusted config, then
-// the caller's overrides.
+// applyRunConfig applies R0 when the caller supplied a trusted config (the
+// verify and env sections; -c skips the repository file), then the caller's
+// overrides. Refs are already resolved to SHAs.
 func applyRunConfig(cfg *Config, st *RunState) error {
 	if cfg.TrustedConfig == nil {
 		if cfg.Overrides == nil {
@@ -257,15 +259,14 @@ func applyRunConfig(cfg *Config, st *RunState) error {
 		}
 		return MergeFlags(cfg, nil, cfg.Overrides)
 	}
-	vc, source, warnings, err := LoadVerifyConfig(cfg.RepoDir, cfg.BaseRef, cfg.TrustedConfig)
+	rc, err := LoadVerifyConfig(cfg.RepoDir, cfg.BaseRef, cfg.HeadRef, cfg.TrustedConfig, config.File() != "")
 	if err != nil {
 		return err
 	}
-	if cfg.BaseRef == cfg.HeadRef {
-		warnings = append(warnings, "base resolves to head: nothing pins verify's config; CI should pass the merge base as --base")
-	}
-	st.ConfigSource, st.Warnings = source, warnings
-	return MergeFlags(cfg, &vc, cfg.Overrides)
+	cfg.EnvAllow = append(cfg.EnvAllow, rc.Env.Allow...)
+	cfg.EnvPass = append(cfg.EnvPass, rc.Env.Pass...)
+	st.ConfigSource, st.Warnings = rc.Source, rc.Warnings
+	return MergeFlags(cfg, &rc.Verify, cfg.Overrides)
 }
 
 type testsRuler struct{}

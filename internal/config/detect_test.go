@@ -688,7 +688,37 @@ func TestDetectTypecheckCmd(t *testing.T) {
 				"tsconfig.json":         "{}\n",
 				"node_modules/.bin/tsc": "#!/bin/sh\n",
 			},
-			want: "yarn exec tsc --noEmit",
+			want: "yarn tsc --noEmit",
+		},
+		{
+			name: "tsconfig with local tsc, npm",
+			files: map[string]string{
+				"package.json":          `{"scripts":{"test":"jest"}}`,
+				"package-lock.json":     "{}\n",
+				"tsconfig.json":         "{}\n",
+				"node_modules/.bin/tsc": "#!/bin/sh\n",
+			},
+			want: "npm exec -- tsc --noEmit",
+		},
+		{
+			name: "tsconfig with local tsc, pnpm",
+			files: map[string]string{
+				"package.json":          `{"scripts":{"test":"jest"}}`,
+				"pnpm-lock.yaml":        "x\n",
+				"tsconfig.json":         "{}\n",
+				"node_modules/.bin/tsc": "#!/bin/sh\n",
+			},
+			want: "pnpm exec tsc --noEmit",
+		},
+		{
+			name: "tsconfig with local tsc, bun",
+			files: map[string]string{
+				"package.json":          `{"scripts":{"test":"jest"}}`,
+				"bun.lock":              "x\n",
+				"tsconfig.json":         "{}\n",
+				"node_modules/.bin/tsc": "#!/bin/sh\n",
+			},
+			want: "bunx tsc --noEmit",
 		},
 		{
 			name:  "tsconfig without local tsc",
@@ -850,7 +880,8 @@ func TestInitWithOptions_WriteChecks(t *testing.T) {
 			t.Fatalf("write=%v: verify.checks = %v", write, loaded.Verify.Checks)
 		}
 
-		// A second run never rewrites config.yaml but still suggests.
+		// A second run never rewrites config.yaml; it probes for checks
+		// only when asked to (--write-checks), never on a plain re-init.
 		again, err := InitWithOptions(dir, InitOptions{WriteChecks: true})
 		if err != nil {
 			t.Fatal(err)
@@ -858,5 +889,28 @@ func TestInitWithOptions_WriteChecks(t *testing.T) {
 		if again.Created || again.ChecksWritten || len(again.SuggestedChecks) != 1 {
 			t.Fatalf("write=%v: rerun result %+v", write, again)
 		}
+	}
+}
+
+func TestInitWithOptions_ReinitDoesNotProbe(t *testing.T) {
+	withLookPath(t, map[string]bool{"go": true, "govulncheck": true})
+	probed := false
+	orig := cargoClippyWorks
+	cargoClippyWorks = func() bool { probed = true; return true }
+	t.Cleanup(func() { cargoClippyWorks = orig })
+
+	root := t.TempDir()
+	writeFixture(t, root, map[string]string{"go.mod": "module x\n", "Cargo.toml": "[package]\n"})
+	dir := filepath.Join(root, DefaultConfigDir)
+	if _, err := InitWithOptions(dir, InitOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	probed = false
+	again, err := InitWithOptions(dir, InitOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if probed || len(again.SuggestedChecks) != 0 {
+		t.Fatalf("re-init without --write-checks probed: probed=%v suggested=%v", probed, again.SuggestedChecks)
 	}
 }

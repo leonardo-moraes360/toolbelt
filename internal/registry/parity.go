@@ -544,10 +544,6 @@ func verifyConfigFromArgs(cwd string, args map[string]any) (verify.Config, error
 		return cfg, err
 	}
 	cfg.TrustedConfig = trusted
-	if fileCfg, loadErr := config.Load(); loadErr == nil {
-		cfg.EnvAllow = append(cfg.EnvAllow, fileCfg.Env.Allow...)
-		cfg.EnvPass = append(cfg.EnvPass, fileCfg.Env.Pass...)
-	}
 	if v := StringArg(args, "base"); v != "" {
 		cfg.BaseRef = v
 	}

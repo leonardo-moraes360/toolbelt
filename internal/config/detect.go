@@ -171,8 +171,23 @@ func detectNodeTypecheckCmd(root string) string {
 		!fileExists(filepath.Join(root, "node_modules", ".bin", "tsc")) {
 		return ""
 	}
-	pm := nodePackageManager(root, readPackageManagerField(root))
-	return pm + " exec tsc --noEmit"
+	return nodeTscCommand(nodePackageManager(root, readPackageManagerField(root)))
+}
+
+// nodeTscCommand runs the local tsc through the package manager: npm exec
+// needs "--" so --noEmit reaches tsc, and yarn/bun have no exec subcommand
+// with that meaning.
+func nodeTscCommand(pm string) string {
+	switch pm {
+	case "pnpm":
+		return "pnpm exec tsc --noEmit"
+	case "yarn":
+		return "yarn tsc --noEmit"
+	case "bun":
+		return "bunx tsc --noEmit"
+	default:
+		return "npm exec -- tsc --noEmit"
+	}
 }
 
 func readPackageManagerField(root string) string {

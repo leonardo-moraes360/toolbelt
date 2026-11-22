@@ -3,6 +3,7 @@ package verify
 import (
 	"fmt"
 	"slices"
+	"strings"
 
 	"github.com/leonardo-moraes360/toolbelt/internal/config"
 )
@@ -76,6 +77,11 @@ func applyOverrides(cfg *Config, o *FlagOverrides) error {
 }
 
 func applyCheckOverrides(cfg *Config, o *FlagOverrides) error {
+	// Caller-supplied checks are a usage error when malformed, like a bad
+	// --ruler; only file config errors stay plain errors.
+	if err := ValidateChecks(o.Checks); err != nil {
+		return &UsageError{Msg: "--check: " + strings.TrimPrefix(err.Error(), "verify.checks: ")}
+	}
 	if o.NoChecks {
 		cfg.Checks = nil
 		return nil

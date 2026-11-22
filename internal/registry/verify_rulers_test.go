@@ -93,6 +93,8 @@ func TestVerifyRunToolChecksAndTypecheck(t *testing.T) {
 		{"ruler": "foo"},
 		{"skip_checks": []any{"nope"}},
 		{"checks": []any{"not-an-object"}},
+		{"checks": []any{map[string]any{"name": "Bad Name", "cmd": "true"}}},
+		{"checks": []any{map[string]any{"name": "dup", "cmd": "true"}, map[string]any{"name": "dup", "cmd": "false"}}},
 	} {
 		if _, text, isErr := callJSON(t, "tb_verify_run", with(bad)); !isErr {
 			t.Fatalf("%v should be a tool error: %s", bad, text)
@@ -117,6 +119,10 @@ func TestStackToolVerifyRulerAndChecks(t *testing.T) {
 	args["no_checks"] = true
 	if payload, text, isErr = callJSON(t, "tb_stack", args); isErr || payload["ok"] != true {
 		t.Fatalf("stack no_checks: %s", text)
+	}
+	args["checks"] = []any{map[string]any{"name": "dup", "cmd": "true"}, map[string]any{"name": "dup", "cmd": "true"}}
+	if _, text, isErr = callJSON(t, "tb_stack", args); !isErr || !strings.Contains(text, "duplicate") {
+		t.Fatalf("stack duplicate check must be a tool error: %s", text)
 	}
 	args["ruler"] = "visual"
 	if _, text, isErr = callJSON(t, "tb_stack", args); !isErr || !strings.Contains(text, "visual") {

@@ -139,6 +139,16 @@ func TestInitJSONTypecheck(t *testing.T) {
 			},
 			want: "pnpm exec tsc --noEmit",
 		},
+		{
+			name: "tsconfig with local tsc, npm",
+			files: map[string]string{
+				"package.json":          `{"scripts":{"test":"jest"}}`,
+				"package-lock.json":     "{}\n",
+				"tsconfig.json":         "{}\n",
+				"node_modules/.bin/tsc": "#!/bin/sh\n",
+			},
+			want: "npm exec -- tsc --noEmit",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

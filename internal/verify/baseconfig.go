@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"regexp"
+	"sort"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -16,57 +18,178 @@ import (
 )
 
 const (
-	ConfigSourceBase     = "base"
-	ConfigSourceWorktree = "worktree"
+	// ConfigSourceNone: no .toolbelt/config.yaml at the base ref, so only the
+	// global config and the defaults apply. The normal case (base file used,
+	// or -c) leaves config_source out of the JSON.
+	ConfigSourceNone = "none"
 
 	repoConfigPath = ".toolbelt/config.yaml"
 )
 
 var checkNameRe = regexp.MustCompile(`^[a-z0-9-]{1,32}$`)
 
-// LoadVerifyConfig implements R0: the verify section comes from the base
-// ref's .toolbelt/config.yaml, overlaid on the trusted user config (-c or
-// global), so the change under test cannot rewrite its own gate. The
-// working-tree file is used only when nothing pins it: no file at base, or
-// base equal to HEAD with a dirty tree; that is reported as source
-// "worktree" with a warning.
-func LoadVerifyConfig(repoDir, baseRef string, user *config.Config) (vc config.VerifyConfig, source string, warnings []string, err error) {
-	if user != nil {
-		vc = user.Verify
-		vc.Checks = append([]config.VerifyCheck(nil), user.Verify.Checks...)
+// RepoConfig is what R0 resolved for one run.
+type RepoConfig struct {
+	Verify config.VerifyConfig
+	Env    config.EnvConfig
+	// Source is "" in the normal case and ConfigSourceNone without a base file.
+	Source   string
+	Warnings []string
+}
+
+// LoadVerifyConfig implements R0 (docs/specs/verify-rulers.md).
+//
+// With explicit (-c), user is the -c file over the defaults and is used
+// as is: the repository config is not read at all.
+//
+// Without it, the verify: and env: sections are defaults < user (global
+// config) < the repository's .toolbelt/config.yaml as committed at baseSHA.
+// The working-tree file is never used; keys whose working-tree value differs
+// from the base file are named in a warning. baseSHA and headSHA must be
+// resolved SHAs.
+func LoadVerifyConfig(repoDir, baseSHA, headSHA string, user *config.Config, explicit bool) (RepoConfig, error) {
+	var rc RepoConfig
+	if user == nil {
+		user = config.DefaultConfig()
+	}
+	rc.Verify = user.Verify
+	rc.Verify.Checks = append([]config.VerifyCheck(nil), user.Verify.Checks...)
+	rc.Env = config.EnvConfig{
+		Allow: append([]string(nil), user.Env.Allow...),
+		Pass:  append([]string(nil), user.Env.Pass...),
+	}
+	if explicit {
+		return rc, ValidateChecks(rc.Verify.Checks)
+	}
+	if err := gitref.Validate(baseSHA); err != nil {
+		return rc, err
+	}
+	data, found, err := readBaseRepoConfig(repoDir, baseSHA)
+	if err != nil {
+		return rc, err
+	}
+	var base repoSections
+	if found {
+		if base, err = parseRepoSections(data); err != nil {
+			return rc, fmt.Errorf("%s malformed at base %s: %w", repoConfigPath, shortSHA(baseSHA), err)
+		}
+		if err := base.overlay(&rc); err != nil {
+			return rc, fmt.Errorf("%s malformed at base %s: %w", repoConfigPath, shortSHA(baseSHA), err)
+		}
 	} else {
-		vc = config.DefaultConfig().Verify
+		rc.Source = ConfigSourceNone
 	}
-	if err := gitref.Validate(baseRef); err != nil {
-		return vc, "", nil, err
+	if err := ValidateChecks(rc.Verify.Checks); err != nil {
+		return rc, err
 	}
-	data, found, err := readBaseRepoConfig(repoDir, baseRef)
-	if err != nil {
-		return vc, "", nil, err
+	if w := ignoredWorktreeKeys(repoDir, &base); w != "" {
+		rc.Warnings = append(rc.Warnings, w)
 	}
-	unpinned, reason, err := baseUnpinned(repoDir, baseRef, found)
-	if err != nil {
-		return vc, "", nil, err
+	if baseSHA == headSHA {
+		rc.Warnings = append(rc.Warnings, "base resolves to head: nothing pins verify's config; CI should pass the merge base as --base")
 	}
-	source = ConfigSourceBase
-	if unpinned {
-		source = ConfigSourceWorktree
-		warnings = append(warnings, reason)
-		data, err = readWorktreeRepoConfig(repoDir)
-		if err != nil {
-			return vc, "", nil, err
+	return rc, nil
+}
+
+// repoSections holds the two sections R0 reads from the repository file.
+type repoSections struct {
+	Verify yaml.Node `yaml:"verify"`
+	Env    yaml.Node `yaml:"env"`
+}
+
+func parseRepoSections(data []byte) (repoSections, error) {
+	var s repoSections
+	err := yaml.Unmarshal(data, &s)
+	return s, err
+}
+
+func (s *repoSections) overlay(rc *RepoConfig) error {
+	if s.Verify.Kind != 0 {
+		if err := s.Verify.Decode(&rc.Verify); err != nil {
+			return fmt.Errorf("verify: %w", err)
 		}
 	}
-	if err := overlayVerifySection(&vc, data, source, baseRef); err != nil {
-		return vc, "", nil, err
+	if s.Env.Kind != 0 {
+		if err := s.Env.Decode(&rc.Env); err != nil {
+			return fmt.Errorf("env: %w", err)
+		}
 	}
-	if err := ValidateChecks(vc.Checks); err != nil {
-		return vc, "", nil, err
+	return nil
+}
+
+// ignoredWorktreeKeys compares the working tree's verify: and env: keys with
+// the base file's and returns the warning naming the ones verify ignored,
+// or "" when they match.
+func ignoredWorktreeKeys(repoDir string, base *repoSections) string {
+	data, err := os.ReadFile(filepath.Join(repoDir, repoConfigPath))
+	if errors.Is(err, os.ErrNotExist) {
+		return ""
 	}
-	return vc, source, warnings, nil
+	if err != nil {
+		return fmt.Sprintf("working-tree %s unreadable, ignored (verify reads the base ref): %v", repoConfigPath, err)
+	}
+	wt, err := parseRepoSections(data)
+	if err != nil {
+		return fmt.Sprintf("working-tree %s malformed, ignored (verify reads the base ref)", repoConfigPath)
+	}
+	var keys []string
+	keys = append(keys, diffSectionKeys("verify", &base.Verify, &wt.Verify)...)
+	keys = append(keys, diffSectionKeys("env", &base.Env, &wt.Env)...)
+	if len(keys) == 0 {
+		return ""
+	}
+	return "ignored " + repoConfigPath + " keys not in the base ref: " + strings.Join(keys, ", ") +
+		" (verify reads the base ref; commit them to the base branch)"
+}
+
+// diffSectionKeys lists section.key for every key whose value differs.
+func diffSectionKeys(section string, base, wt *yaml.Node) []string {
+	b, w := sectionMap(base), sectionMap(wt)
+	if b == nil && w == nil {
+		if !reflect.DeepEqual(nodeValue(base), nodeValue(wt)) {
+			return []string{section}
+		}
+		return nil
+	}
+	seen := map[string]struct{}{}
+	var out []string
+	for _, m := range []map[string]any{b, w} {
+		for k := range m {
+			if _, ok := seen[k]; ok {
+				continue
+			}
+			seen[k] = struct{}{}
+			if !reflect.DeepEqual(b[k], w[k]) {
+				out = append(out, section+"."+k)
+			}
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+func sectionMap(n *yaml.Node) map[string]any {
+	m, _ := nodeValue(n).(map[string]any)
+	return m
+}
+
+func nodeValue(n *yaml.Node) any {
+	if n == nil || n.Kind == 0 {
+		return nil
+	}
+	var v any
+	if err := n.Decode(&v); err != nil {
+		return nil
+	}
+	return v
 }
 
 func readBaseRepoConfig(repoDir, baseRef string) (data []byte, found bool, err error) {
+	// git show reports an unknown commit as a path missing from it, so the
+	// commit is checked first: a bad base stays an error, never "none".
+	if _, err := git.Output(repoDir, "rev-parse", "--verify", "--quiet", baseRef+"^{commit}"); err != nil {
+		return nil, false, fmt.Errorf("base %s is not a commit: %w", baseRef, err)
+	}
 	out, err := git.Output(repoDir, "show", "--no-textconv", baseRef+":"+repoConfigPath)
 	if err == nil {
 		return out, true, nil
@@ -75,56 +198,6 @@ func readBaseRepoConfig(repoDir, baseRef string) (data []byte, found bool, err e
 		return nil, false, nil
 	}
 	return nil, false, fmt.Errorf("reading %s from base %s: %w", repoConfigPath, baseRef, err)
-}
-
-func readWorktreeRepoConfig(repoDir string) ([]byte, error) {
-	data, err := os.ReadFile(filepath.Join(repoDir, repoConfigPath))
-	if errors.Is(err, os.ErrNotExist) {
-		return nil, nil
-	}
-	return data, err
-}
-
-// baseUnpinned reports whether the base file cannot pin verify's commands.
-func baseUnpinned(repoDir, baseRef string, found bool) (unpinned bool, reason string, err error) {
-	if !found {
-		return true, "no " + repoConfigPath + " at base " + shortSHA(baseRef) + ": verify config read from the working tree, not pinned", nil
-	}
-	headSHA, err := gitRevParse(repoDir, "HEAD")
-	if err != nil {
-		return false, "", fmt.Errorf("resolving HEAD: %w", err)
-	}
-	if headSHA != baseRef {
-		return false, "", nil
-	}
-	dirty, err := gitWorkTreeDirty(repoDir)
-	if err != nil || !dirty {
-		return false, "", err
-	}
-	return true, "base equals HEAD with a dirty tree: verify config read from the working tree, not pinned", nil
-}
-
-func overlayVerifySection(vc *config.VerifyConfig, data []byte, source, baseRef string) error {
-	if len(data) == 0 {
-		return nil
-	}
-	var raw struct {
-		Verify yaml.Node `yaml:"verify"`
-	}
-	where := "working tree"
-	if source == ConfigSourceBase {
-		where = "base " + shortSHA(baseRef)
-	}
-	if err := yaml.Unmarshal(data, &raw); err != nil {
-		return fmt.Errorf("%s malformed at %s: %w", repoConfigPath, where, err)
-	}
-	if raw.Verify.Kind == 0 {
-		return nil
-	}
-	if err := raw.Verify.Decode(vc); err != nil {
-		return fmt.Errorf("%s malformed at %s (verify): %w", repoConfigPath, where, err)
-	}
-	return nil
 }
 
 // ValidateChecks enforces R3's naming rules: [a-z0-9-]{1,32}, unique, and a

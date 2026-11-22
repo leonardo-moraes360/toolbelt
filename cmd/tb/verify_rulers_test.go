@@ -6,6 +6,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
+	"sort"
 	"strings"
 	"testing"
 
@@ -17,9 +19,15 @@ import (
 // returned apart: text mode prints warnings on stderr.
 func runTBIsolated(t *testing.T, tbBin, dir string, args ...string) (stdout, stderr string, code int) {
 	t.Helper()
+	return runTBWithEnv(t, tbBin, dir, []string{"XDG_CONFIG_HOME=" + t.TempDir()}, args...)
+}
+
+// runTBWithEnv runs tb with env appended to the process environment.
+func runTBWithEnv(t *testing.T, tbBin, dir string, env []string, args ...string) (stdout, stderr string, code int) {
+	t.Helper()
 	cmd := exec.Command(tbBin, args...)
 	cmd.Dir = dir
-	cmd.Env = append(os.Environ(), "XDG_CONFIG_HOME="+t.TempDir())
+	cmd.Env = append(os.Environ(), env...)
 	var outB, errB strings.Builder
 	cmd.Stdout, cmd.Stderr = &outB, &errB
 	err := cmd.Run()
@@ -190,7 +198,10 @@ func TestVerifyCLIChecksOverrideAndSkip(t *testing.T) {
 		t.Fatalf("--no-checks: exit=%d %+v", code, res)
 	}
 
-	for _, bad := range [][]string{{"--no-check", "nope"}, {"--check", "missing-equals"}} {
+	for _, bad := range [][]string{
+		{"--no-check", "nope"}, {"--check", "missing-equals"},
+		{"--check", "Bad_Name=true"}, {"--check", "dup=true", "--check", "dup=false"},
+	} {
 		if _, stderr, code := runTBIsolated(t, tbBin, dir, append(base, bad...)...); code != 2 {
 			t.Fatalf("%v: exit=%d want 2\n%s", bad, code, stderr)
 		}
@@ -210,8 +221,11 @@ func TestVerifyCLIConfigEditAbortsAndBaseWins(t *testing.T) {
 	writeRepoConfig(t, dir, "verify:\n  test_cmd: \"echo base-ignored\"\n")
 	out, _, code := runTBIsolated(t, tbBin, dir, "verify", "run", "--json", "--dry-run")
 	res := decodeResult(t, out)
-	if code != 0 || res.ConfigSource != verify.ConfigSourceBase || res.Plan == nil || res.Plan.Commands["test"] != "true" {
+	if code != 0 || res.ConfigSource != "" || res.Plan == nil || res.Plan.Commands["test"] != "true" {
 		t.Fatalf("worktree edit must not change the plan: exit=%d %+v", code, res)
+	}
+	if !strings.Contains(strings.Join(res.Warnings, "\n"), "ignored .toolbelt/config.yaml keys not in the base ref: verify.test_cmd") {
+		t.Fatalf("warnings=%q", res.Warnings)
 	}
 
 	writeRepoConfig(t, dir, "verify:\n  test_cmd: \"touch "+marker+"\"\n")
@@ -229,6 +243,7 @@ func TestVerifyCLIConfigEditAbortsAndBaseWins(t *testing.T) {
 	}
 }
 
+// R0: with base == HEAD, a dirty edit of the committed file is ignored too.
 func TestVerifyCLIBaseEqualsHeadDirtyWarns(t *testing.T) {
 	if testing.Short() {
 		t.Skip()
@@ -240,16 +255,137 @@ func TestVerifyCLIBaseEqualsHeadDirtyWarns(t *testing.T) {
 
 	out, _, code := runTBIsolated(t, tbBin, dir, append(args, "--json")...)
 	res := decodeResult(t, out)
-	if code != 0 || res.ConfigSource != verify.ConfigSourceWorktree || res.Plan.Commands["test"] != "echo worktree-cmd" {
+	if code != 0 || res.ConfigSource != "" || res.Plan.Commands["test"] != "true" {
 		t.Fatalf("exit=%d %+v", code, res)
 	}
-	if len(res.Warnings) < 2 || !strings.Contains(strings.Join(res.Warnings, "\n"), "base resolves to head") {
+	joined := strings.Join(res.Warnings, "\n")
+	if len(res.Warnings) != 2 || !strings.Contains(joined, "base resolves to head") || !strings.Contains(joined, "base ref: verify.test_cmd") {
 		t.Fatalf("warnings=%q", res.Warnings)
 	}
 
 	stdout, stderr, code := runTBIsolated(t, tbBin, dir, args...)
 	if code != 0 || !strings.Contains(stderr, "Warning: base resolves to head") || strings.Contains(stdout, "Warning") {
 		t.Fatalf("text mode warnings go to stderr: exit=%d\nstdout=%s\nstderr=%s", code, stdout, stderr)
+	}
+}
+
+// pre-rulers JSON keys of a tests-ruler run with build and lint, captured
+// from an origin/main build (before verify read the base ref) on the same
+// fixture.
+var preRulersRunKeys = []string{
+	"build_passed", "build_ran", "guard", "head_sha", "hidden_available", "hidden_passed",
+	"iterations", "lint_passed", "lint_ran", "verdict", "visible_passed", "workdir",
+}
+
+func topLevelKeys(t *testing.T, out string) []string {
+	t.Helper()
+	var m map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(out), &m); err != nil {
+		t.Fatalf("json: %v\n%s", err, out)
+	}
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+// G5: no -c, a committed repo config and no new flags give the same JSON
+// keys and verdict as before this slice.
+func TestVerifyCLIGoldenCommittedConfigUnchanged(t *testing.T) {
+	if testing.Short() {
+		t.Skip()
+	}
+	tbBin := buildTB(t)
+	dir := rulersRepo(t, "verify:\n  test_cmd: \"true\"\n  build_cmd: \"true\"\n  lint_cmd: \"true\"\n")
+	out, stderr, code := runTBIsolated(t, tbBin, dir, "verify", "run", "--json")
+	if code != 0 {
+		t.Fatalf("exit=%d\n%s%s", code, out, stderr)
+	}
+	if got := topLevelKeys(t, out); !slices.Equal(got, preRulersRunKeys) {
+		t.Fatalf("keys=%v\nwant %v", got, preRulersRunKeys)
+	}
+	if res := decodeResult(t, out); res.Verdict != verify.VerdictPass {
+		t.Fatalf("verdict=%s", res.Verdict)
+	}
+}
+
+// R0 with -c: only the -c file and the defaults, the repository config is
+// not read (neither base nor working tree), as before this slice.
+func TestVerifyCLIExplicitConfigIgnoresRepo(t *testing.T) {
+	if testing.Short() {
+		t.Skip()
+	}
+	tbBin := buildTB(t)
+	dir := rulersRepo(t, "verify:\n  test_cmd: \"echo from-base\"\n")
+	writeRepoConfig(t, dir, "verify:\n  test_cmd: \"echo from-worktree\"\n")
+	cfgFile := filepath.Join(t.TempDir(), "c.yaml")
+	writeTestFile(t, cfgFile, "verify:\n  test_cmd: \"echo from-c\"\n")
+	out, stderr, code := runTBIsolated(t, tbBin, dir, "-c", cfgFile, "verify", "run", "--json", "--dry-run")
+	res := decodeResult(t, out)
+	if code != 0 || res.Plan == nil || res.Plan.Commands["test"] != "echo from-c" {
+		t.Fatalf("exit=%d %+v\n%s", code, res, stderr)
+	}
+	if res.ConfigSource != "" || len(res.Warnings) != 0 {
+		t.Fatalf("-c must not report repo config: source=%q warnings=%q", res.ConfigSource, res.Warnings)
+	}
+}
+
+// Review repro: no base file, global test_cmd fails, the working tree sets
+// test_cmd to true. The edit must not turn the run into a PASS.
+func TestVerifyCLIUncommittedTestCmdIgnored(t *testing.T) {
+	if testing.Short() {
+		t.Skip()
+	}
+	tbBin := buildTB(t)
+	dir := rulersRepo(t, "")
+	writeRepoConfig(t, dir, "verify:\n  test_cmd: \"true\"\n")
+	xdg := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(xdg, "toolbelt"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeTestFile(t, filepath.Join(xdg, "toolbelt", "config.yaml"), "verify:\n  test_cmd: \"exit 1\"\n")
+	out, stderr, code := runTBWithEnv(t, tbBin, dir, []string{"XDG_CONFIG_HOME=" + xdg}, "verify", "run", "--json", "--max-iter", "1")
+	res := decodeResult(t, out)
+	if code != 1 || (res.Verdict != verify.VerdictFail && res.Verdict != verify.VerdictEscalate) {
+		t.Fatalf("want FAIL/ESCALATE: exit=%d %+v\n%s", code, res, stderr)
+	}
+	if res.ConfigSource != verify.ConfigSourceNone {
+		t.Fatalf("config_source=%q want none", res.ConfigSource)
+	}
+	if !strings.Contains(strings.Join(res.Warnings, "\n"), "ignored .toolbelt/config.yaml keys not in the base ref: verify.test_cmd") {
+		t.Fatalf("warnings=%q", res.Warnings)
+	}
+}
+
+// Finding 6: env.pass added in the working tree does not reach the tests;
+// the same key committed at base does.
+func TestVerifyCLIWorktreeEnvPassIgnored(t *testing.T) {
+	if testing.Short() {
+		t.Skip()
+	}
+	tbBin := buildTB(t)
+	const probe = "TB_R0_SECRET_PROBE"
+	testCmd := "verify:\n  test_cmd: 'test -z \"$" + probe + "\"'\n"
+	env := func() []string { return []string{"XDG_CONFIG_HOME=" + t.TempDir(), probe + "=leak"} }
+	args := []string{"verify", "run", "--json", "--max-iter", "1"}
+
+	dir := rulersRepo(t, testCmd)
+	writeRepoConfig(t, dir, testCmd+"env:\n  pass: ["+probe+"]\n")
+	out, stderr, code := runTBWithEnv(t, tbBin, dir, env(), args...)
+	res := decodeResult(t, out)
+	if code != 0 || res.Verdict != verify.VerdictPass {
+		t.Fatalf("worktree env.pass must be ignored: exit=%d %+v\n%s", code, res, stderr)
+	}
+	if !strings.Contains(strings.Join(res.Warnings, "\n"), "base ref: env.pass") {
+		t.Fatalf("warnings=%q", res.Warnings)
+	}
+
+	dir = rulersRepo(t, testCmd+"env:\n  pass: ["+probe+"]\n")
+	out, _, code = runTBWithEnv(t, tbBin, dir, env(), args...)
+	if res := decodeResult(t, out); code != 1 || res.Verdict == verify.VerdictPass {
+		t.Fatalf("base env.pass must reach the tests: exit=%d %+v", code, res)
 	}
 }
 
@@ -289,5 +425,8 @@ func TestStackCLIVerifyRulerAndTypecheck(t *testing.T) {
 		if _, stderr, code := runTBIsolated(t, tbBin, dir, append(stackArgs, "--ruler", ruler)...); code != 2 {
 			t.Fatalf("stack --ruler %s: exit=%d want 2\n%s", ruler, code, stderr)
 		}
+	}
+	if _, stderr, code := runTBIsolated(t, tbBin, dir, append(stackArgs, "--check", "Bad_Name=true")...); code != 2 {
+		t.Fatalf("stack --check Bad_Name: exit=%d want 2\n%s", code, stderr)
 	}
 }

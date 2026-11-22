@@ -1246,7 +1246,7 @@ Quando há marcadores claros, o init também preenche `verify.build_cmd`,
 | Toolchain | `build_cmd` | `typecheck_cmd` | `lint_cmd` |
 |-----------|-------------|-----------------|------------|
 | `go.mod` | `go build ./...` | (nenhum: o build já checa tipos) | `.golangci.y*ml`/`.toml` → `golangci-lint run` se o binário estiver no PATH, senão `go vet ./...`; sem config, target `make lint` |
-| `package.json` | script `build` → `npm run …` / `pnpm run …` / `yarn …` | script `typecheck`/`type-check` → `<pm> run …`; senão `tsconfig.json` + `tsc` local em `node_modules/.bin` → `<pm> exec tsc --noEmit` | script `lint` → análogo |
+| `package.json` | script `build` → `npm run …` / `pnpm run …` / `yarn …` | script `typecheck`/`type-check` → `<pm> run …`; senão `tsconfig.json` + `tsc` local em `node_modules/.bin` → `npm exec -- tsc --noEmit` / `pnpm exec tsc --noEmit` / `yarn tsc --noEmit` / `bunx tsc --noEmit` | script `lint` → análogo |
 | `Cargo.toml` | `cargo build` | (nenhum: o build já checa tipos) | `cargo clippy` |
 | Python (`pyproject`/`uv.lock`/…) | (vazio) | mypy (`[tool.mypy]`, `mypy.ini`, `.mypy.ini`, `setup.cfg [mypy]`) ou pyright (`[tool.pyright]`, `pyrightconfig.json`) configurado e no PATH ou em `.venv/bin` → `mypy .` / `pyright` (ou `uv run …`) | `[tool.ruff]`/`ruff.toml` → `ruff check .` (ou `uv run …`); mypy deixou de ser fallback de lint |
 | só `Makefile` | target `build` → `make build` | (nenhum) | target `lint` → `make lint` |
@@ -1353,22 +1353,31 @@ que precisa de rede (ex. `govulncheck`) pertence ao CI, ou é pulado localmente 
 
 Chaves JSON novas, todas `omitempty` (uma execução com a config e as flags de hoje
 imprime as mesmas chaves de antes): `typecheck_ran`, `typecheck_passed`, `checks`
-(`[{name, passed, reason}]`), `config_source` (`base` | `worktree`), `warnings` e
+(`[{name, passed, reason}]`), `config_source` (`none`, só sem arquivo no base), `warnings` e
 `skip_kind`.
 
 **Os comandos do verify vêm do ref base.** A seção `verify:` é lida de
-`git show <base>:.toolbelt/config.yaml`, mesclada sobre a config do usuário (`-c` ou
-global) e os defaults, nunca da árvore de trabalho, então a mudança sob teste não
+`git show <base>:.toolbelt/config.yaml`, mesclada sobre a config global e os
+defaults (com `-c`, só esse arquivo; veja abaixo), nunca da árvore de trabalho, então a mudança sob teste não
 consegue reescrever o próprio gate (ex. `test_cmd: true`). Flags e argumentos MCP
 continuam sobrescrevendo, já que vêm de quem chama. O guard compara a seção
 `verify:` no base e no head: uma diferença é um achado de erro
 `verify_config_changed` que aborta o verify como um hit em path protegido, listando
-as chaves alteradas; as outras seções do arquivo seguem livres. Sem arquivo no base,
-ou com base == head e árvore suja, vale o arquivo da árvore de trabalho e o
-relatório traz `config_source: "worktree"` com um aviso (nada o fixa); senão,
-`config_source: "base"`. Quem escolhe o `--base` é quem chama, então **o CI precisa
-fixar o base** (o merge base do PR); o verify avisa quando o base resolve para o
-head.
+as chaves alteradas; as outras seções do arquivo seguem livres. Quem escolhe o
+`--base` é quem chama, então **o CI precisa fixar o base** (o merge base do PR); o
+verify avisa (`base resolves to head`) quando o SHA do base é igual ao SHA resolvido
+do head.
+
+Camadas de config do verify (R0): com `-c`, só o arquivo do `-c` e os defaults (a
+config do repositório não é lida, como antes). Sem `-c`: defaults < config global <
+`.toolbelt/config.yaml` como commitado no ref base. O arquivo da árvore de trabalho
+nunca é lido, para `verify:` e para `env:` (`allow`/`pass`), então uma mudança não
+consegue passar segredos aos próprios testes. Quando as chaves de `verify:`/`env:` da
+árvore de trabalho diferem das do arquivo do base, o verify avisa, ex. `ignored
+.toolbelt/config.yaml keys not in the base ref: verify.test_cmd (verify reads the
+base ref; commit them to the base branch)`. `config_source` é omitido no caso normal e vale `"none"` quando o ref
+base não tem o arquivo (só config global e defaults). Uma config global ou do `-c`
+malformada aborta o verify.
 
 ```bash
 tb verify run --test-cmd "pnpm test" --hidden-test-cmd "pnpm test:hidden"

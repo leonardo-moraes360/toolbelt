@@ -278,72 +278,114 @@ func commitConfig(t *testing.T, dir, yaml string) string {
 func TestLoadVerifyConfigFromBase(t *testing.T) {
 	dir := goldenRepo(t)
 	base := commitConfig(t, dir, "verify:\n  test_cmd: base-test\n  checks:\n    - {name: vuln, cmd: govulncheck ./...}\nenv:\n  pass: [SECRET]\n")
-	commitConfig(t, dir, "verify:\n  test_cmd: true\n")
+	head := commitConfig(t, dir, "verify:\n  test_cmd: true\n")
 	user := config.DefaultConfig()
 	user.Verify.LintCmd = "user-lint"
 	user.Verify.Checks = []config.VerifyCheck{{Name: "user", Cmd: "u"}}
+	user.Env.Allow = []string{"USER_OK"}
 
-	vc, source, warnings, err := LoadVerifyConfig(dir, base, user)
+	rc, err := LoadVerifyConfig(dir, base, head, user, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if source != ConfigSourceBase || len(warnings) != 0 {
-		t.Fatalf("source=%s warnings=%v", source, warnings)
+	if rc.Source != "" {
+		t.Fatalf("source=%q, want omitted when the base file is used", rc.Source)
 	}
-	if vc.TestCmd != "base-test" || vc.LintCmd != "user-lint" {
-		t.Fatalf("vc=%+v", vc)
+	if rc.Verify.TestCmd != "base-test" || rc.Verify.LintCmd != "user-lint" {
+		t.Fatalf("vc=%+v", rc.Verify)
 	}
-	if len(vc.Checks) != 1 || vc.Checks[0].Name != "vuln" {
-		t.Fatalf("checks=%+v (base list replaces the user list)", vc.Checks)
+	if len(rc.Verify.Checks) != 1 || rc.Verify.Checks[0].Name != "vuln" {
+		t.Fatalf("checks=%+v (base list replaces the user list)", rc.Verify.Checks)
+	}
+	if len(rc.Env.Pass) != 1 || rc.Env.Pass[0] != "SECRET" || len(rc.Env.Allow) != 1 {
+		t.Fatalf("env=%+v", rc.Env)
+	}
+	// The head commit changed the file; the working tree matches head, so
+	// every changed key is reported as ignored.
+	want := "ignored .toolbelt/config.yaml keys not in the base ref: verify.checks, verify.test_cmd, env.pass"
+	if len(rc.Warnings) != 1 || !strings.HasPrefix(rc.Warnings[0], want) {
+		t.Fatalf("warnings=%v", rc.Warnings)
 	}
 	if len(user.Verify.Checks) != 1 || user.Verify.Checks[0].Name != "user" {
 		t.Fatal("LoadVerifyConfig mutated the user config")
 	}
 }
 
-func TestLoadVerifyConfigWorktreeFallback(t *testing.T) {
+func TestLoadVerifyConfigIgnoresWorktree(t *testing.T) {
 	dir := goldenRepo(t)
 	base := gitRev(t, dir)
-	writeFile(t, filepath.Join(dir, ".toolbelt", "config.yaml"), "verify:\n  test_cmd: wt-test\n")
-	vc, source, warnings, err := LoadVerifyConfig(dir, base, nil)
+	user := config.DefaultConfig()
+	user.Verify.TestCmd = "exit 1"
+	writeFile(t, filepath.Join(dir, ".toolbelt", "config.yaml"), "verify:\n  test_cmd: wt-test\nenv:\n  pass: [GITHUB_TOKEN]\n")
+	rc, err := LoadVerifyConfig(dir, base, base, user, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if source != ConfigSourceWorktree || len(warnings) != 1 || vc.TestCmd != "wt-test" {
-		t.Fatalf("no base file: source=%s warnings=%v vc=%+v", source, warnings, vc)
+	if rc.Source != ConfigSourceNone || rc.Verify.TestCmd != "exit 1" || len(rc.Env.Pass) != 0 {
+		t.Fatalf("no base file: rc=%+v", rc)
+	}
+	joined := strings.Join(rc.Warnings, "\n")
+	if !strings.Contains(joined, "base ref: verify.test_cmd, env.pass") || !strings.Contains(joined, "base resolves to head") {
+		t.Fatalf("warnings=%v", rc.Warnings)
 	}
 
 	head := commitConfig(t, dir, "verify:\n  test_cmd: committed\n")
 	writeFile(t, filepath.Join(dir, ".toolbelt", "config.yaml"), "verify:\n  test_cmd: dirty\n")
-	vc, source, warnings, err = LoadVerifyConfig(dir, head, nil)
+	rc, err = LoadVerifyConfig(dir, head, head, nil, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if source != ConfigSourceWorktree || len(warnings) != 1 || vc.TestCmd != "dirty" {
-		t.Fatalf("base==HEAD dirty: source=%s warnings=%v vc=%+v", source, warnings, vc)
+	if rc.Source != "" || rc.Verify.TestCmd != "committed" || len(rc.Warnings) != 2 {
+		t.Fatalf("base==HEAD dirty: rc=%+v", rc)
+	}
+
+	// Worktree equal to base: no warnings beyond base == head.
+	runGit(t, dir, "checkout", "--", ".toolbelt/config.yaml")
+	rc, err = LoadVerifyConfig(dir, head, head, nil, false)
+	if err != nil || len(rc.Warnings) != 1 {
+		t.Fatalf("clean: rc=%+v err=%v", rc, err)
+	}
+}
+
+func TestLoadVerifyConfigExplicitSkipsRepo(t *testing.T) {
+	dir := goldenRepo(t)
+	base := commitConfig(t, dir, "verify:\n  test_cmd: base-test\nenv:\n  pass: [SECRET]\n")
+	writeFile(t, filepath.Join(dir, ".toolbelt", "config.yaml"), "verify:\n  test_cmd: wt\n")
+	user := config.DefaultConfig()
+	user.Verify.TestCmd = "from-c"
+	rc, err := LoadVerifyConfig(dir, base, base, user, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rc.Verify.TestCmd != "from-c" || rc.Source != "" || len(rc.Warnings) != 0 || len(rc.Env.Pass) != 0 {
+		t.Fatalf("-c: rc=%+v", rc)
 	}
 }
 
 func TestLoadVerifyConfigErrors(t *testing.T) {
 	dir := goldenRepo(t)
+	load := func(ref string) error {
+		_, err := LoadVerifyConfig(dir, ref, ref, nil, false)
+		return err
+	}
 	bad := commitConfig(t, dir, "verify: [unclosed\n")
-	if _, _, _, err := LoadVerifyConfig(dir, bad, nil); err == nil || !strings.Contains(err.Error(), "malformed at base") {
+	if err := load(bad); err == nil || !strings.Contains(err.Error(), "malformed at base") {
 		t.Fatalf("malformed base: err=%v", err)
 	}
 	dup := commitConfig(t, dir, "verify:\n  checks:\n    - {name: a, cmd: x}\n    - {name: a, cmd: y}\n")
-	if _, _, _, err := LoadVerifyConfig(dir, dup, nil); err == nil || !strings.Contains(err.Error(), "duplicate") {
+	if err := load(dup); err == nil || !strings.Contains(err.Error(), "duplicate") {
 		t.Fatalf("duplicate check: err=%v", err)
 	}
 	empty := commitConfig(t, dir, "verify:\n  checks:\n    - {name: a, cmd: ''}\n")
-	if _, _, _, err := LoadVerifyConfig(dir, empty, nil); err == nil {
+	if err := load(empty); err == nil {
 		t.Fatal("empty check cmd accepted")
 	}
-	if _, _, _, err := LoadVerifyConfig(dir, "0123456789abcdef0123456789abcdef01234567", nil); err == nil {
+	if err := load("0123456789abcdef0123456789abcdef01234567"); err == nil {
 		t.Fatal("unknown base ref must be an error, not a missing file")
 	}
 }
 
-func TestRunRulersReportsConfigSource(t *testing.T) {
+func TestRunRulersConfigFromBase(t *testing.T) {
 	dir := goldenRepo(t)
 	commitConfig(t, dir, "verify:\n  test_cmd: 'true'\n  typecheck_cmd: 'echo tc-from-base; exit 1'\n")
 	cfg := rulerCfg(dir)
@@ -354,15 +396,28 @@ func TestRunRulersReportsConfigSource(t *testing.T) {
 		t.Fatal(err)
 	}
 	res := multi.Payload().(*Result)
-	if res.ConfigSource != ConfigSourceBase || len(res.Warnings) != 1 || !strings.Contains(res.Warnings[0], "base resolves to head") {
+	if res.ConfigSource != "" || len(res.Warnings) != 1 || !strings.Contains(res.Warnings[0], "base resolves to head") {
 		t.Fatalf("source=%s warnings=%v", res.ConfigSource, res.Warnings)
 	}
 	if res.Verdict != VerdictEscalate || !strings.Contains(res.Reason, "tc-from-base") {
 		t.Fatalf("verdict=%s reason=%q", res.Verdict, res.Reason)
 	}
 	raw, _ := json.Marshal(res)
-	if !strings.Contains(string(raw), `"config_source":"base"`) {
+	if strings.Contains(string(raw), `"config_source"`) {
 		t.Fatalf("json=%s", raw)
+	}
+}
+
+func TestMergeFlagsBadCheckIsUsageError(t *testing.T) {
+	for _, checks := range [][]config.VerifyCheck{
+		{{Name: "Bad Name", Cmd: "x"}},
+		{{Name: "a", Cmd: "x"}, {Name: "a", Cmd: "y"}},
+	} {
+		cfg := DefaultConfig(t.TempDir())
+		err := MergeFlags(&cfg, nil, &FlagOverrides{Checks: checks, NoChecks: true})
+		if !IsUsageError(err) {
+			t.Fatalf("checks=%v: err=%v, want a usage error", checks, err)
+		}
 	}
 }
 

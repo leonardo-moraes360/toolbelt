@@ -84,10 +84,6 @@ func verifyRunConfig(cmd *cobra.Command) (verify.Config, error) {
 		return cfg, err
 	}
 	cfg.TrustedConfig = trusted
-	if fileCfg, loadErr := config.Load(); loadErr == nil {
-		cfg.EnvAllow = append(cfg.EnvAllow, fileCfg.Env.Allow...)
-		cfg.EnvPass = append(cfg.EnvPass, fileCfg.Env.Pass...)
-	}
 	cfg.EnvAllow = append(cfg.EnvAllow, envAllow...)
 	cfg.EnvPass = append(cfg.EnvPass, envPass...)
 	if v, _ := cmd.Flags().GetString("base"); v != "" {
