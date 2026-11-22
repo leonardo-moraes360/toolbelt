@@ -33,10 +33,21 @@ func (e *SessionInUseError) Error() string {
 
 func (e *SessionInUseError) Is(target error) bool { return target == ErrSessionInUse }
 
-// identityLockPath is <private>/run/<channel>/<name>.lock, the same file for
-// every kind of holder, so `tb bus run`, `tb mcp --bus-as` and a re-join
-// compete for one lock.
-func identityLockPath(root, channel, name string) (string, error) {
+// Two locks guard an identity <channel>/<name>, both under <private>/run/<channel>:
+//
+//	<name>.harness.lock  one `tb bus run` per agent
+//	<name>.lock          one MCP/CLI client per agent: whatever serves the
+//	                     identity (the GUI client in notify mode, the wake
+//	                     child in harness mode, a mutating CLI one-shot)
+//
+// flock is host-local: on an NFS mount mounted with nolock it only covers
+// processes of one machine.
+const (
+	clientSuffix  = ".lock"
+	harnessSuffix = ".harness.lock"
+)
+
+func lockPath(root, channel, name, suffix string) (string, error) {
 	if err := ValidName("channel", channel); err != nil {
 		return "", err
 	}
@@ -47,14 +58,33 @@ func identityLockPath(root, channel, name string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(priv, "run", channel, name+".lock"), nil
+	return filepath.Join(priv, "run", channel, name+suffix), nil
 }
 
-// LockIdentity takes the exclusive lock of <channel>/<name> without waiting.
-// kind is recorded with the pid for the error of the next contender. The
-// lock dies with the process (flock), so a crashed holder never blocks.
-func LockIdentity(root, channel, name, kind string) (release func(), err error) {
-	p, err := identityLockPath(root, channel, name)
+// ClientLockPath is the file a sandboxed wake child is granted so it can
+// take the client lock itself (flock needs only an open descriptor).
+// EnsureClientLockFile creates it first: a path rule needs an existing file.
+func ClientLockPath(root, channel, name string) (string, error) {
+	return lockPath(root, channel, name, clientSuffix)
+}
+
+func EnsureClientLockFile(root, channel, name string) (string, error) {
+	p, err := ClientLockPath(root, channel, name)
+	if err != nil {
+		return "", err
+	}
+	if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
+		return "", err
+	}
+	f, err := os.OpenFile(p, os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		return "", err
+	}
+	return p, f.Close()
+}
+
+func lockNamed(root, channel, name, suffix, kind string) (release func(), err error) {
+	p, err := lockPath(root, channel, name, suffix)
 	if err != nil {
 		return nil, err
 	}
@@ -67,6 +97,36 @@ func LockIdentity(root, channel, name, kind string) (release func(), err error) 
 		return nil, &SessionInUseError{Channel: channel, Name: name, PID: pid, Kind: k}
 	}
 	return rel, err
+}
+
+// LockClient takes the client lock without waiting. kind is recorded with
+// the pid for the next contender's error. The lock dies with the process.
+func LockClient(root, channel, name, kind string) (release func(), err error) {
+	return lockNamed(root, channel, name, clientSuffix, kind)
+}
+
+// LockHarness takes the one-harness-per-agent lock.
+func LockHarness(root, channel, name string) (release func(), err error) {
+	return lockNamed(root, channel, name, harnessSuffix, "tb bus run")
+}
+
+// ProbeClient reports session_in_use when a client holds the identity,
+// without keeping the lock.
+func ProbeClient(root, channel, name string) error {
+	rel, err := LockClient(root, channel, name, "probe")
+	if err == nil {
+		rel()
+	}
+	return err
+}
+
+// ProbeHarness is ProbeClient for the harness lock.
+func ProbeHarness(root, channel, name string) error {
+	rel, err := LockHarness(root, channel, name)
+	if err == nil {
+		rel()
+	}
+	return err
 }
 
 func holderRecord(kind string) string {

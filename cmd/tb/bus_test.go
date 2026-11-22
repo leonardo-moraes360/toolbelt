@@ -440,22 +440,16 @@ func TestBusIdentityHeldByOneClient(t *testing.T) {
 		if ee.ExitCode() != 2 {
 			t.Fatalf("%s: exit %d, want 2\n%s", name, ee.ExitCode(), stderr.String())
 		}
-		if !strings.Contains(stderr.String(), "session_in_use") || (name != "dead harness pid" && !strings.Contains(stderr.String(), pid)) {
+		if !strings.Contains(stderr.String(), "session_in_use") || !strings.Contains(stderr.String(), pid) {
 			t.Fatalf("%s: stderr must name session_in_use and %q:\n%s", name, pid, stderr.String())
 		}
 	}
 	refused("second mcp", exec.Command(tbBin, "mcp", "--bus-as", "fx/claude-main", "--bus-root", dir))
-	wake := filepath.Join(t.TempDir(), "wake.yaml")
-	if err := os.WriteFile(wake, []byte("adapter: notify\nnotify:\n  backend: terminal\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	refused("bus run", exec.Command(tbBin, "bus", "run", "--channel", "fx", "--as", "claude-main", "--config", wake, "--check"))
+	refused("one-shot send", exec.Command(tbBin, "bus", "send", "--channel", "fx", "--as", "claude-main", "--to", "topic:x", "--type", "query"))
+	refused("one-shot recv", exec.Command(tbBin, "bus", "recv", "--channel", "fx", "--as", "claude-main"))
 	var inv struct{ Code string }
 	unmarshalOut(t, runBus(t, tbBin, dir, "invite", "fx", "--role", "supervisor", "--name", "claude-main"), &inv)
 	refused("re-join", exec.Command(tbBin, "bus", "join", "fx", "--invite", inv.Code, "--name", "claude-main"))
-
-	// A harness pid that is gone no longer vouches for the identity.
-	refused("dead harness pid", exec.Command(tbBin, "mcp", "--bus-as", "fx/claude-main", "--bus-root", dir, "--bus-holder-pid", "2147483646"))
 
 	// A crashed holder leaves the identity free.
 	_ = first.Process.Kill()
@@ -549,4 +543,55 @@ func TestBusInviteExpiryPrintsDateCLI(t *testing.T) {
 	if !regexp.MustCompile(`expires \d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}`).Match(out) {
 		t.Fatalf("expiry without a date: %s", out)
 	}
+}
+
+// Notify onboarding (docs/bus-notify-discover.md): the GUI client's
+// `tb mcp --bus-as` runs next to `tb bus run` with adapter notify; two
+// harnesses for one agent are still refused.
+func TestBusNotifyHarnessAlongsideMCPClient(t *testing.T) {
+	tbBin := buildTB(t)
+	dir := t.TempDir()
+	busCLISetup(t, tbBin, dir)
+	cfg := filepath.Join(t.TempDir(), "wake.yaml")
+	if err := os.WriteFile(cfg, []byte("adapter: notify\nnotify:\n  backend: terminal\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	run := exec.Command(tbBin, "bus", "run", "--channel", "fx", "--as", "claude-main", "--config", cfg)
+	run.Dir = dir
+	var runErr strings.Builder
+	run.Stderr = &runErr
+	if err := run.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = run.Process.Kill(); _ = run.Wait() })
+	holderPID := fmt.Sprintf("pid %d", run.Process.Pid)
+
+	// --check takes no lock: it reports the holder once the harness is up.
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		check := exec.Command(tbBin, "bus", "run", "--channel", "fx", "--as", "claude-main", "--config", cfg, "--check")
+		check.Dir = dir
+		var ce strings.Builder
+		check.Stderr = &ce
+		if err := check.Run(); err != nil {
+			t.Fatalf("--check must not fail on a holder: %v\n%s", err, ce.String())
+		}
+		if strings.Contains(ce.String(), "warning: session_in_use") && strings.Contains(ce.String(), holderPID) {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("first harness never took its lock\n%s", runErr.String())
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	second := exec.Command(tbBin, "bus", "run", "--channel", "fx", "--as", "claude-main", "--config", cfg)
+	second.Dir = dir
+	var se strings.Builder
+	second.Stderr = &se
+	if err := second.Run(); err == nil || !strings.Contains(se.String(), "session_in_use") || !strings.Contains(se.String(), holderPID) {
+		t.Fatalf("second harness: %v\n%s", err, se.String())
+	}
+
+	c := startMCP(t, tbBin, dir, "--bus-as", "fx/claude-main", "--bus-root", dir)
+	c.must("tb_bus_recv", map[string]any{})
 }

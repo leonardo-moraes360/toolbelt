@@ -166,6 +166,15 @@ func (a claudeAdapter) argv(p *Packet, session, mcpConfig string) []string {
 }
 
 func (a claudeAdapter) Wake(ctx context.Context, p *Packet, st *State) (Outcome, error) {
+	// A foreign client (a GUI session) serving this identity would share it
+	// with the wake child: refuse, naming it.
+	if err := bus.ProbeClient(a.h.root, a.h.member.Channel, a.h.member.Name); err != nil {
+		return Outcome{}, err
+	}
+	clientLock, err := bus.EnsureClientLockFile(a.h.root, a.h.member.Channel, a.h.member.Name)
+	if err != nil {
+		return Outcome{}, err
+	}
 	mcpConfig, tbBin, err := a.h.writeMCPConfig()
 	if err != nil {
 		return Outcome{}, err
@@ -183,7 +192,9 @@ func (a claudeAdapter) Wake(ctx context.Context, p *Packet, st *State) (Outcome,
 	env := childEnv(a.h.cfg, p, "TMPDIR="+tmp, "CLAUDE_CODE_TMPDIR="+tmp)
 	spec := func(session string) *childSpec {
 		return &childSpec{argv: a.argv(p, session, mcpConfig), env: env, workdir: workdir,
-			extraBins: []string{tbBin}, extraRead: []string{a.h.agentDir}, extraWrite: []string{tmp}}
+			extraBins: []string{tbBin}, extraRead: []string{a.h.agentDir},
+			// the one new rule: the child flocks the client lock itself
+			extraWrite: []string{tmp, clientLock}}
 	}
 	session := a.h.session()
 	out, err := runChild(ctx, a.h, spec(session))
@@ -306,7 +317,6 @@ func (h *Harness) writeMCPConfig() (path, tbBin string, err error) {
 		"toolbelt": {Command: tbBin, Args: []string{"mcp",
 			"--bus-as", h.member.Channel + "/" + h.member.Name,
 			"--bus-root", h.root,
-			"--bus-holder-pid", strconv.Itoa(os.Getpid()),
 			"--bus-state", filepath.Dir(priv)}},
 	}}
 	b, err := json.MarshalIndent(cfg, "", "  ")

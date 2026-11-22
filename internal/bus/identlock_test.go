@@ -14,9 +14,9 @@ import (
 
 func TestLockIdentityExclusiveAndNamesHolder(t *testing.T) {
 	root := t.TempDir()
-	rel, err := LockIdentity(root, "ch", "a", "tb mcp --bus-as")
+	rel, err := LockClient(root, "ch", "a", "tb mcp --bus-as")
 	must(t, err)
-	_, err = LockIdentity(root, "ch", "a", "tb bus run")
+	_, err = LockClient(root, "ch", "a", "tb bus run")
 	var inUse *SessionInUseError
 	if !errors.As(err, &inUse) || !errors.Is(err, ErrSessionInUse) {
 		t.Fatalf("second holder: %v", err)
@@ -28,11 +28,11 @@ func TestLockIdentityExclusiveAndNamesHolder(t *testing.T) {
 		t.Fatalf("message: %s", msg)
 	}
 	// Another identity is independent.
-	other, err := LockIdentity(root, "ch", "b", "x")
+	other, err := LockClient(root, "ch", "b", "x")
 	must(t, err)
 	other()
 	rel()
-	again, err := LockIdentity(root, "ch", "a", "x")
+	again, err := LockClient(root, "ch", "a", "x")
 	must(t, err)
 	again()
 }
@@ -40,14 +40,15 @@ func TestLockIdentityExclusiveAndNamesHolder(t *testing.T) {
 func TestLockIdentityConcurrentBindOneWinner(t *testing.T) {
 	root := t.TempDir()
 	const n = 16
-	var wins atomic.Int32
+	var wins, attempted atomic.Int32
 	var wg sync.WaitGroup
 	release := make(chan struct{})
 	for range n {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			rel, err := LockIdentity(root, "ch", "a", "tb mcp --bus-as")
+			rel, err := LockClient(root, "ch", "a", "tb mcp --bus-as")
+			attempted.Add(1)
 			if err == nil {
 				wins.Add(1)
 				<-release
@@ -59,15 +60,35 @@ func TestLockIdentityConcurrentBindOneWinner(t *testing.T) {
 			}
 		}()
 	}
-	// Wait until every contender has either won or been refused.
-	for wins.Load() == 0 {
+	// Nobody releases before every goroutine has tried.
+	for attempted.Load() < n {
 		runtime.Gosched()
 	}
 	close(release)
 	wg.Wait()
-	if wins.Load() < 1 {
-		t.Fatal("nobody got the lock")
+	if wins.Load() != 1 {
+		t.Fatalf("wins = %d, want exactly 1", wins.Load())
 	}
+}
+
+// A GUI client (client lock) and `tb bus run` (harness lock) coexist in
+// notify mode; two of the same kind do not.
+func TestClientAndHarnessLocksAreIndependent(t *testing.T) {
+	root := t.TempDir()
+	c, err := LockClient(root, "ch", "a", "tb mcp --bus-as")
+	must(t, err)
+	h, err := LockHarness(root, "ch", "a")
+	must(t, err)
+	if _, err := LockHarness(root, "ch", "a"); !errors.Is(err, ErrSessionInUse) {
+		t.Fatalf("second harness: %v", err)
+	}
+	if err := ProbeClient(root, "ch", "a"); !errors.Is(err, ErrSessionInUse) {
+		t.Fatalf("probe client: %v", err)
+	}
+	c()
+	h()
+	must(t, ProbeClient(root, "ch", "a"))
+	must(t, ProbeHarness(root, "ch", "a"))
 }
 
 func TestJoinRefusedWhileIdentityHeld(t *testing.T) {
@@ -75,7 +96,7 @@ func TestJoinRefusedWhileIdentityHeld(t *testing.T) {
 	_, ownerInv, _ := s.CreateChannel("c", "boss", 0, 0)
 	first, err := s.Join("c", ownerInv.Code, &AgentCard{Name: "boss"}, "")
 	must(t, err)
-	rel, err := LockIdentity(s.Root(), "c", "boss", "tb mcp --bus-as")
+	rel, err := LockClient(s.Root(), "c", "boss", "tb mcp --bus-as")
 	must(t, err)
 	re, _ := s.CreateInvite("c", RoleSupervisor, "boss", 0)
 	if _, err := s.Join("c", re.Code, &AgentCard{Name: "boss"}, ""); !errors.Is(err, ErrSessionInUse) {
@@ -85,6 +106,12 @@ func TestJoinRefusedWhileIdentityHeld(t *testing.T) {
 		t.Fatalf("refused re-join must not rotate the token: %v", err)
 	}
 	rel()
+	h, err := LockHarness(s.Root(), "c", "boss")
+	must(t, err)
+	if _, err := s.Join("c", re.Code, &AgentCard{Name: "boss"}, ""); !errors.Is(err, ErrSessionInUse) {
+		t.Fatalf("re-join while a harness runs: %v", err)
+	}
+	h()
 	if _, err := s.Join("c", re.Code, &AgentCard{Name: "boss"}, ""); err != nil {
 		t.Fatalf("re-join after release (the refused attempt must not burn the invite): %v", err)
 	}
@@ -104,14 +131,14 @@ func TestLockIdentityRecoversFromCrashedHolder(t *testing.T) {
 	if strings.TrimSpace(line) != "locked" {
 		t.Fatalf("helper: %q", line)
 	}
-	_, err = LockIdentity(root, "ch", "a", "x")
+	_, err = LockClient(root, "ch", "a", "x")
 	var inUse *SessionInUseError
 	if !errors.As(err, &inUse) || inUse.PID != cmd.Process.Pid {
 		t.Fatalf("while the helper lives: %v (helper pid %d)", err, cmd.Process.Pid)
 	}
 	must(t, cmd.Process.Kill())
 	_ = cmd.Wait()
-	rel, err := LockIdentity(root, "ch", "a", "x")
+	rel, err := LockClient(root, "ch", "a", "x")
 	must(t, err)
 	rel()
 }
@@ -124,7 +151,7 @@ func TestLockHelperProcess(t *testing.T) {
 	if err := os.Setenv(EnvStateDir, os.Getenv("TB_LOCK_STATE")); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := LockIdentity(os.Getenv("TB_LOCK_ROOT"), "ch", "a", "helper"); err != nil {
+	if _, err := LockClient(os.Getenv("TB_LOCK_ROOT"), "ch", "a", "helper"); err != nil {
 		t.Fatal(err)
 	}
 	_, _ = os.Stdout.WriteString("locked\n")

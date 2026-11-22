@@ -327,7 +327,7 @@ func TestWatchdogSparesAliveOwners(t *testing.T) {
 }
 
 func TestStatusClaimOutcome(t *testing.T) {
-	s, c, _, a := setup(t)
+	s, c, owner, a := setup(t)
 	_, err := s.ClaimThread(a, "A")
 	must(t, err)
 	outcome := func() *string {
@@ -339,14 +339,19 @@ func TestStatusClaimOutcome(t *testing.T) {
 		t.Fatalf("held claim has outcome %q, want null", *o)
 	}
 	c.add(DefaultLease + time.Second)
-	if o := outcome(); o == nil || *o != "expired" {
-		t.Fatalf("expired claim outcome = %v", o)
+	if o := outcome(); o != nil {
+		t.Fatalf("an expired (not yet released) claim can revert to held: outcome = %q, want null", *o)
 	}
 	if _, err := s.Watchdog("feature-x", false); err != nil {
 		t.Fatal(err)
 	}
 	if o := outcome(); o == nil || *o != "expired" {
 		t.Fatalf("released claim outcome = %v", o)
+	}
+	_, err = s.ClaimThread(owner, "A")
+	must(t, err)
+	if o := outcome(); o == nil || *o != "taken_over" {
+		t.Fatalf("taken-over claim outcome = %v", o)
 	}
 	b, err := json.Marshal(ClaimLease{Thread: "A"})
 	must(t, err)

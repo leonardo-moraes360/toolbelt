@@ -243,7 +243,7 @@ func (h *Harness) wakeMismatch() (string, error) {
 				w = bus.WakeManual
 			}
 			return fmt.Sprintf("wake_mismatch (card says %s, wake file says notify); to make the card say notify, stop this tb bus run, then: "+
-				"tb bus invite %s --role %s --name %s, and tb bus join %s --invite <code> --name %s --wake notify; "+
+				"tb bus invite %s --role %s --name %s, and tb bus join %s --invite <code> --name %s --wake notify (then restart the GUI MCP client: the join rotates the session token); "+
 				"to follow the card instead, change adapter in %s",
 				w, h.member.Channel, h.member.Role, h.member.Name, h.member.Channel, h.member.Name, h.wakeFilePath()), nil
 		}

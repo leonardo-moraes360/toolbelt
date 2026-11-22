@@ -223,7 +223,7 @@ func registerBusLeaseTools(chProp *Property) {
 	})
 	Register(&Tool{
 		Name:        "tb_bus_status",
-		Description: "Agents of this connection's channel (alive, last_seen; no Agent Cards) and open claims (owner, epoch, state held/expired/released/revoked, outcome null/expired/revoked) (parity with tb bus channel show)",
+		Description: "Agents of this connection's channel (alive, last_seen; no Agent Cards) and open claims (owner, epoch, state held/expired/released/revoked, outcome null/expired/revoked/taken_over) (parity with tb bus channel show)",
 		InputSchema: &InputSchema{Type: "object", Properties: map[string]Property{"channel": *chProp}},
 		Handler:     handleBusStatus,
 	})

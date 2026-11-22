@@ -22,7 +22,14 @@ func openBusStore() (*bus.Store, error) {
 	return bus.Open(ticket.FindRoot(cwd))
 }
 
-// busMember authenticates --channel/--as against the CLI session.
+// busClientLocks keeps the client locks of this one-shot process referenced
+// (an unreferenced lock's file is closed by the GC); the kernel drops them at exit.
+var busClientLocks []func()
+
+// busMember authenticates --channel/--as against the CLI session. Every
+// caller mutates (send, recv advancing the cursor, claim, complete,
+// heartbeat), so it takes the identity's client lock for the whole command
+// and refuses with session_in_use while another client serves the identity.
 func busMember(cmd *cobra.Command) (*bus.Store, bus.Member, error) {
 	channel, _ := cmd.Flags().GetString("channel")
 	as, _ := cmd.Flags().GetString("as")
@@ -33,6 +40,12 @@ func busMember(cmd *cobra.Command) (*bus.Store, bus.Member, error) {
 	if err != nil {
 		return nil, bus.Member{}, err
 	}
+	release, err := bus.LockClient(s.Root(), channel, as, "tb bus "+cmd.Name())
+	if err != nil {
+		_ = s.Close()
+		return nil, bus.Member{}, err
+	}
+	busClientLocks = append(busClientLocks, release)
 	m, err := s.LoadMember(channel, as)
 	if err != nil {
 		_ = s.Close()

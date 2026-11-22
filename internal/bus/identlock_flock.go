@@ -34,9 +34,3 @@ func lockFile(path, kind string) (func(), error) {
 		_ = f.Close()
 	}, nil
 }
-
-// ProcessAlive reports whether pid exists (EPERM means it does, owned by someone else).
-func ProcessAlive(pid int) bool {
-	err := syscall.Kill(pid, 0)
-	return err == nil || err == syscall.EPERM
-}

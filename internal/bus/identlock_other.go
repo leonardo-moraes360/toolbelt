@@ -1,4 +1,4 @@
-//go:build !(linux || darwin || freebsd || netbsd || openbsd)
+//go:build !(linux || darwin || freebsd || netbsd || openbsd || windows)
 
 package bus
 
@@ -7,31 +7,18 @@ import (
 	"os"
 )
 
-// Without flock the lock is an O_EXCL file; a file whose pid no longer
-// exists is stale and is taken over.
+// Without flock or LockFileEx the lock is an O_EXCL file removed on release.
+// It cannot tell a live holder from a dead one, so a file left by a crashed
+// holder must be removed by hand; a lock is never taken over.
 func lockFile(path, kind string) (func(), error) {
-	lockPath := path
-	for range 2 {
-		f, err := os.OpenFile(lockPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
-		if err == nil {
-			_, _ = f.WriteString(holderRecord(kind))
-			_ = f.Close()
-			return func() { _ = os.Remove(lockPath) }, nil
-		}
-		if !errors.Is(err, os.ErrExist) {
-			return nil, err
-		}
-		pid, _ := readHolder(lockPath)
-		if pid > 0 && ProcessAlive(pid) {
-			return nil, errLockHeld
-		}
-		_ = os.Remove(lockPath)
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+	if errors.Is(err, os.ErrExist) {
+		return nil, errLockHeld
 	}
-	return nil, errLockHeld
-}
-
-// ProcessAlive reports whether pid exists.
-func ProcessAlive(pid int) bool {
-	_, err := os.FindProcess(pid)
-	return err == nil
+	if err != nil {
+		return nil, err
+	}
+	_, _ = f.WriteString(holderRecord(kind))
+	_ = f.Close()
+	return func() { _ = os.Remove(path) }, nil
 }

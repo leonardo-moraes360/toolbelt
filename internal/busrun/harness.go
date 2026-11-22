@@ -20,11 +20,14 @@ type Options struct {
 	Name             string
 	ConfigPath       string // empty = default
 	AllowUnsandboxed bool
-	TBBinary         string        // tests: tb binary written to .mcp.json
-	Poll             time.Duration // default 250ms
-	Backoff          time.Duration // retry base; default 1s
-	Attempts         int           // default 5
-	Adapter          Adapter       // tests: overrides the config's adapter
+	// NoLock: --check and --dry-run read the holders (Warnings) instead of
+	// taking the harness lock.
+	NoLock   bool
+	TBBinary string        // tests: tb binary written to .mcp.json
+	Poll     time.Duration // default 250ms
+	Backoff  time.Duration // retry base; default 1s
+	Attempts int           // default 5
+	Adapter  Adapter       // tests: overrides the config's adapter
 	// HeartbeatEvery overrides the channel's heartbeat interval (tests).
 	HeartbeatEvery time.Duration
 	// TaskPoll is how often a router task's claim is checked (default 1s).
@@ -121,11 +124,13 @@ func (h *Harness) init() error {
 	if h.agentDir, err = bus.AgentDir(h.root, m.Channel, m.Name); err != nil {
 		return err
 	}
-	unlock, err := bus.LockIdentity(h.root, m.Channel, m.Name, "tb bus run")
-	if err != nil {
-		return err
+	if !h.opts.NoLock {
+		unlock, err := bus.LockHarness(h.root, m.Channel, m.Name)
+		if err != nil {
+			return err
+		}
+		h.unlock = unlock
 	}
-	h.unlock = unlock
 	if h.st, err = loadState(h.base + ".state"); err != nil {
 		return err
 	}
@@ -195,14 +200,35 @@ func (h *Harness) Member() bus.Member { return h.member }
 // Warnings are printed by tb bus run and --check; they never stop the
 // harness, so a failure to compute one becomes a warning too.
 func (h *Harness) Warnings() []string {
+	var out []string
+	if h.opts.NoLock {
+		// A check never takes the harness lock; it only reports who has it.
+		out = append(out, h.holderWarnings()...)
+	}
 	w, err := h.wakeMismatch()
 	switch {
 	case err != nil:
-		return []string{"wake_mismatch not checked: " + err.Error()}
-	case w == "":
-		return nil
+		out = append(out, "wake_mismatch not checked: "+err.Error())
+	case w != "":
+		out = append(out, w)
 	}
-	return []string{w}
+	return out
+}
+
+// holderWarnings: another tb bus run, or (wake child modes) a foreign client
+// serving the identity. A GUI client is the normal partner of notify.
+func (h *Harness) holderWarnings() []string {
+	var out []string
+	m := h.member
+	if err := bus.ProbeHarness(h.root, m.Channel, m.Name); err != nil {
+		out = append(out, err.Error())
+	}
+	if h.cfg.Adapter != AdapterNotify {
+		if err := bus.ProbeClient(h.root, m.Channel, m.Name); err != nil {
+			out = append(out, err.Error())
+		}
+	}
+	return out
 }
 
 // backend names the notify backend for the audit; empty for other adapters.
