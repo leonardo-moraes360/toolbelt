@@ -137,7 +137,7 @@ func stampObject(kind string, obj []byte) (json.RawMessage, error) {
 		return obj, nil
 	}
 	head, _ := json.Marshal(kind)
-	out := make([]byte, 0, len(obj)+len(head)+6)
+	var out []byte
 	out = append(out, `{"v":`...)
 	out = append(out, head...)
 	if len(probe) > 0 {
