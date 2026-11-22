@@ -260,6 +260,10 @@ func TestClientStartFailures(t *testing.T) {
 	if _, err := Start(context.Background(), o); !errors.Is(err, ErrEmbedUnavailable) {
 		t.Fatalf("unavailable: %v", err)
 	}
+	o = fakeOptions(t, "unavailable-noisy")
+	if _, err := Start(context.Background(), o); !errors.Is(err, ErrEmbedUnavailable) {
+		t.Fatalf("unavailable with trailing noise: %v", err)
+	}
 	o = fakeOptions(t, "cpu")
 	if _, err := Start(context.Background(), o); !errors.Is(err, ErrEmbedCPU) {
 		t.Fatalf("cpu: %v", err)

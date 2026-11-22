@@ -71,7 +71,7 @@ func TestEscapeSweptByOtherTicketIsAttributedToCulprit(t *testing.T) {
 	// Landlock only lets B write to its own worktree; A only needs to read the pidfile
 	pidf := filepath.Join(root, ".toolbelt", "workspaces", b.ID, "pidfile")
 	script := fmt.Sprintf(`if [ "$TB_TICKET_ID" = %q ]; then
-  ( setsid sh -c 'echo $$ > pidfile; exec sleep 37' & )
+  ( setsid sh -c 'echo $$ > pidfile; exec sleep 300' & )
   i=0; while [ ! -s %s ] && [ $i -lt 500 ]; do sleep 0.01; i=$((i+1)); done
   sleep 1.5
 else
@@ -210,7 +210,7 @@ func TestDaemonFromWorktreeCreationDoesNotFailTicket(t *testing.T) {
 	}
 	defer release()
 	pidf := filepath.Join(t.TempDir(), "daemon.pid")
-	gitShim(t, "", fmt.Sprintf("setsid sh -c 'echo $$ > %s; exec sleep 37' </dev/null >/dev/null 2>&1 &", pidf))
+	gitShim(t, "", fmt.Sprintf("setsid sh -c 'echo $$ > %s; exec sleep 300' </dev/null >/dev/null 2>&1 &\ni=0; while [ ! -s %s ] && [ $i -lt 500 ]; do sleep 0.01; i=$((i+1)); done", pidf, pidf))
 	root := newRepo(t)
 	st := ticket.Open(root)
 	tk := mk(t, st, "daemon do usuário")
@@ -235,7 +235,7 @@ func TestWorktreeCreationDoesNotRunUserHooks(t *testing.T) {
 	root := newRepo(t)
 	marker := filepath.Join(t.TempDir(), "hook-ran")
 	hook := filepath.Join(root, ".git", "hooks", "post-checkout")
-	if err := os.WriteFile(hook, []byte("#!/bin/sh\ntouch "+marker+"\nsetsid sleep 37 </dev/null >/dev/null 2>&1 &\n"), 0o755); err != nil { //nolint:gosec // test
+	if err := os.WriteFile(hook, []byte("#!/bin/sh\ntouch "+marker+"\nsetsid sleep 300 </dev/null >/dev/null 2>&1 &\n"), 0o755); err != nil { //nolint:gosec // test
 		t.Fatal(err)
 	}
 	st := ticket.Open(root)

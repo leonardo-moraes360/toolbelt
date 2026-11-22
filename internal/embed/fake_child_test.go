@@ -87,6 +87,11 @@ func runFake(mode, sha string, args []string) {
 		// What tb __graph-embed prints when CheckCPU fails (ADR-019).
 		fmt.Fprintln(os.Stderr, "tb __graph-embed: embed_cpu_unsupported: the embedding engine needs an x86-64-v3 CPU (missing [AVX2]); every other tb command still works")
 		exitQuiet(2)
+	case "unavailable-noisy":
+		// The reason line followed by what a coverage build appends at exit.
+		fmt.Fprintln(os.Stderr, "tb __graph-embed: embed_unavailable: this tb was built without the native engine")
+		fmt.Fprintln(os.Stderr, "warning: GOCOVERDIR not set, no coverage data emitted")
+		exitQuiet(2)
 	case "unavailable":
 		fmt.Fprintln(os.Stderr, "tb __graph-embed: embed_unavailable: this tb was built without the native engine")
 		exitQuiet(2)

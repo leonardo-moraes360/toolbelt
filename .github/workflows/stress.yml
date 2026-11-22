@@ -10,6 +10,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: stress-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   stress:
     name: Race x10 (${{ matrix.pkg }})

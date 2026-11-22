@@ -3,6 +3,7 @@ package lab
 import (
 	"errors"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/leonardo-moraes360/toolbelt/internal/lab/scenario"
@@ -47,13 +48,13 @@ func TestRunSandboxUnknownClass(t *testing.T) {
 	}
 }
 
-func TestRunSandboxNonLinuxFailsClosed(t *testing.T) {
+func TestRunSandboxFailsClosedWithoutLandlock(t *testing.T) {
 	if runtime.GOOS == "linux" {
 		prev := landlockProbe
 		landlockProbe = func() (bool, int, error) { return false, 0, errors.New("simulated: no Landlock") }
 		t.Cleanup(func() { landlockProbe = prev })
 	}
-	if _, err := RunSandbox(sqliLab()); err == nil {
-		t.Error("RunSandbox must fail closed where the sandbox tier is unavailable")
+	if _, err := RunSandbox(sqliLab()); err == nil || !strings.Contains(err.Error(), "sandbox tier unavailable") {
+		t.Errorf("RunSandbox must fail closed where the sandbox tier is unavailable: %v", err)
 	}
 }

@@ -111,7 +111,7 @@ func TestSetsidGrandchildIsKilledAndTicketFailsWithoutCommit(t *testing.T) {
 	cfg := testCfg()
 	cfg.Retry.MaxAttempts = 3
 	// pidfile inside the worktree (Landlock only allows writing there)
-	script := `setsid sh -c 'echo $$ > pidfile; exec sleep 37' &
+	script := `setsid sh -c 'echo $$ > pidfile; exec sleep 300' &
 i=0; while [ ! -s pidfile ] && [ $i -lt 500 ]; do sleep 0.01; i=$((i+1)); done
 echo x > f.txt`
 	r := newRouter(t, root, func(o *Options) { o.Config = cfg; o.AgentCmd = sh(script) })

@@ -12,10 +12,10 @@ import (
 	"testing"
 )
 
-// pidGone waits until pid no longer exists. A killed process that the test
-// process (the router's subreaper) has not reaped yet is still a zombie that
-// answers kill(pid, 0), so the check polls with a deadline instead of
-// sampling once.
+// pidGone waits until pid no longer exists. The router kills and reaps the
+// escapee synchronously, but the kill can land after the router run returns
+// on a loaded runner, so the check polls with a deadline instead of sampling
+// once.
 func pidGone(t *testing.T, pid int, what string) {
 	t.Helper()
 	if pid <= 0 {
