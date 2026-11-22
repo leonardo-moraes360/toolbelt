@@ -9,9 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
-	"syscall"
 	"testing"
 	"time"
 
@@ -97,10 +95,7 @@ echo x > f.txt`, b.ID, pidf, pidf)
 	if gotB.Status != ticket.StatusFailed || gotB.Attempts != 1 || !strings.Contains(gotB.Result.Error, "agent_escaped") {
 		t.Fatalf("culpado deveria falhar sem retry: %+v %+v", gotB, gotB.Result)
 	}
-	data, _ := os.ReadFile(pidf)
-	if pid, _ := strconv.Atoi(strings.TrimSpace(string(data))); pid <= 0 || syscall.Kill(pid, 0) == nil {
-		t.Fatalf("escapado %d ainda vivo", pid)
-	}
+	pidGone(t, readPid(t, pidf), "escaped process")
 	as := alertsOf(t, root, AlertAgentEscaped)
 	if len(as) != 1 || as[0].Ticket != b.ID {
 		t.Fatalf("alertas: %+v", as)
@@ -232,10 +227,7 @@ func TestDaemonFromWorktreeCreationDoesNotFailTicket(t *testing.T) {
 	if as := alertsOf(t, root, AlertOrphanKilled); as[0].Severity != SevWarn || as[0].Ticket != "" {
 		t.Fatalf("%+v", as[0])
 	}
-	data, _ := os.ReadFile(pidf)
-	if pid, _ := strconv.Atoi(strings.TrimSpace(string(data))); pid <= 0 || syscall.Kill(pid, 0) == nil {
-		t.Fatalf("daemon %d ainda vivo", pid)
-	}
+	pidGone(t, readPid(t, pidf), "daemon")
 }
 
 // Finding 4: the workspace manager's git does not run user hooks.

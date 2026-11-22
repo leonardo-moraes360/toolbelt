@@ -140,14 +140,14 @@ func runWithTimeout(ctx context.Context, t *testing.T, r *Router) *Summary {
 
 func waitFor(t *testing.T, what string, cond func() bool) {
 	t.Helper()
-	deadline := time.Now().Add(30 * time.Second)
+	deadline := time.Now().Add(waitTimeout)
 	for time.Now().Before(deadline) {
 		if cond() {
 			return
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	t.Fatalf("timeout esperando: %s", what)
+	t.Fatalf("timed out after %s waiting for: %s", waitTimeout, what)
 }
 
 func alertKinds(t *testing.T, root string) []string {
@@ -528,7 +528,20 @@ func TestPauseThenResume(t *testing.T) {
 	}
 	r := newRouter(t, root, nil)
 	ch := make(chan *Summary, 1)
-	go func() { s, _ := r.Run(context.Background()); ch <- s }()
+	ctx, cancel := context.WithCancel(context.Background())
+	exited := make(chan struct{})
+	go func() { defer close(exited); s, _ := r.Run(ctx); ch <- s }()
+	// Runs before the TempDir cleanup (LIFO): a router still writing state
+	// and workspaces would make RemoveAll fail with "directory not empty",
+	// also when the test bails out through t.Fatal.
+	t.Cleanup(func() {
+		cancel()
+		select {
+		case <-exited:
+		case <-time.After(waitTimeout):
+			t.Error("router goroutine did not exit after cancellation")
+		}
+	})
 	// state.json is written after the first step; a fixed sleep lost the race
 	// against startup (preflight, git, workspace) under -race on CI.
 	waitFor(t, "state com pause", func() bool {
