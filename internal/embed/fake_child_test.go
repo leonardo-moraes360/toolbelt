@@ -9,6 +9,7 @@ import (
 	"math"
 	"os"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -32,6 +33,12 @@ func TestMain(m *testing.M) {
 	}
 	os.Exit(m.Run())
 }
+
+// exitQuiet ends the fake child without os.Exit's exit hooks: a coverage-
+// instrumented test binary prints "GOCOVERDIR not set" from them (the client
+// strips GOCOVERDIR from the child's environment), noise after the reason
+// line that start-failure tests assert on.
+func exitQuiet(code int) { syscall.Exit(code) }
 
 type fakeEngine struct{}
 
@@ -64,7 +71,7 @@ func runFake(mode, sha string, args []string) {
 	case "crash":
 		_ = serve(ctx, os.Stdin, os.Stdout, fakeInfo(sha), funcEngine(func(string) ([]float32, bool, error) {
 			fmt.Fprintln(os.Stderr, "fake: boom")
-			os.Exit(3)
+			exitQuiet(3)
 			return nil, false, nil
 		}))
 	case "hang":
@@ -79,10 +86,10 @@ func runFake(mode, sha string, args []string) {
 	case "cpu":
 		// What tb __graph-embed prints when CheckCPU fails (ADR-019).
 		fmt.Fprintln(os.Stderr, "tb __graph-embed: embed_cpu_unsupported: the embedding engine needs an x86-64-v3 CPU (missing [AVX2]); every other tb command still works")
-		os.Exit(2)
+		exitQuiet(2)
 	case "unavailable":
 		fmt.Fprintln(os.Stderr, "tb __graph-embed: embed_unavailable: this tb was built without the native engine")
-		os.Exit(2)
+		exitQuiet(2)
 	case "wide":
 		// A real model's width: 64 vectors of 384 dims exceed the 64 KiB
 		// handshake cap, so the reply cap must already be the per-dims one.
