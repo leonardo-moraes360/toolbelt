@@ -26,9 +26,13 @@ var mcpCmd = &cobra.Command{
 The server exposes registered tools via JSON-RPC 2.0 over stdio,
 aligned with stateless MCP. The same tools as the CLI are available via tools/list and tools/call.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		if err := bindBusAs(cmd); err != nil {
+		// The identity lock lives as long as the server; the kernel also
+		// drops the flock on exit or crash.
+		releaseBus, err := bindBusAs(cmd)
+		if err != nil {
 			return err
 		}
+		defer releaseBus()
 		log.Info("MCP server started", "transport", "stdio")
 		srv := mcp.NewServer(registry.Default())
 		// Bus sessions bound to this connection keep their leases while it
@@ -57,29 +61,37 @@ aligned with stateless MCP. The same tools as the CLI are available via tools/li
 
 // bindBusAs handles --bus-as <channel>/<name>: binds the connection to the
 // agent's CLI session (same trust boundary as the CLI; used by tb bus run).
-func bindBusAs(cmd *cobra.Command) error {
+func bindBusAs(cmd *cobra.Command) (release func(), err error) {
 	as, _ := cmd.Flags().GetString("bus-as")
 	if as == "" {
-		return nil
+		return func() {}, nil
 	}
 	channel, name, ok := strings.Cut(as, "/")
 	if !ok || channel == "" || name == "" {
-		return fmt.Errorf("invalid --bus-as %q (use <channel>/<name>)", as)
+		return nil, fmt.Errorf("invalid --bus-as %q (use <channel>/<name>)", as)
 	}
 	if state, _ := cmd.Flags().GetString("bus-state"); state != "" {
 		if err := os.Setenv(bus.EnvStateDir, state); err != nil {
-			return err
+			return nil, err
 		}
 	}
 	root, _ := cmd.Flags().GetString("bus-root")
 	if root == "" {
 		cwd, err := os.Getwd()
 		if err != nil {
-			return err
+			return nil, err
 		}
 		root = ticket.FindRoot(cwd)
 	}
-	return registry.BindBusSession(root, channel, name)
+	release, err = bus.LockClient(root, channel, name, "tb mcp --bus-as")
+	if err != nil {
+		return nil, err
+	}
+	if err := registry.BindBusSession(root, channel, name); err != nil {
+		release()
+		return nil, err
+	}
+	return release, nil
 }
 
 func init() {

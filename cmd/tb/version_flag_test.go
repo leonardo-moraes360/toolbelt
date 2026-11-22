@@ -3,10 +3,10 @@ package main
 import (
 	"strings"
 	"testing"
-
-	"github.com/leonardo-moraes360/toolbelt/internal/version"
 )
 
+// The built binary and the test binary carry different build info (the test
+// binary has no vcs stamp), so only the shape of the line is compared.
 func TestRootVersionFlag(t *testing.T) {
 	if testing.Short() {
 		t.Skip()
@@ -14,13 +14,13 @@ func TestRootVersionFlag(t *testing.T) {
 	tbBin := buildTB(t)
 	out, code := runTBCapture(t, tbBin, "", "--version")
 	if code != 0 {
-		t.Fatalf("tb --version deveria sair 0\n%s", out)
+		t.Fatalf("tb --version should exit 0\n%s", out)
 	}
-	info := version.Get()
-	if !strings.Contains(out, info.Version) {
-		t.Fatalf("stdout deveria conter versão %q:\n%s", info.Version, out)
+	first, _, _ := strings.Cut(out, "\n")
+	if !strings.HasPrefix(first, "toolbelt ") || strings.TrimSpace(strings.TrimPrefix(first, "toolbelt ")) == "" {
+		t.Fatalf("first line should be `toolbelt <version>`:\n%s", out)
 	}
 	if strings.Contains(out, "unknown flag") {
-		t.Fatalf("tb --version não deve reportar unknown flag:\n%s", out)
+		t.Fatalf("tb --version must not report unknown flag:\n%s", out)
 	}
 }

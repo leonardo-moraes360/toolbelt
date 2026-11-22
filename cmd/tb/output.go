@@ -8,6 +8,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/leonardo-moraes360/toolbelt/internal/bus"
 	"github.com/leonardo-moraes360/toolbelt/internal/envelope"
 	"github.com/leonardo-moraes360/toolbelt/internal/verify"
 )
@@ -95,7 +96,7 @@ func exitCodeFor(err error) int {
 		return coded.code
 	}
 	switch {
-	case verify.IsUsageError(err):
+	case verify.IsUsageError(err), errors.Is(err, bus.ErrSessionInUse):
 		return exitUsage
 	case !runStarted || isRequiredFlagError(err):
 		return exitUsage
@@ -112,6 +113,9 @@ func isRequiredFlagError(err error) bool {
 
 // errorReasonFor is the reason field of the error/1.0 body.
 func errorReasonFor(err error, code int) string {
+	if errors.Is(err, bus.ErrSessionInUse) {
+		return "session_in_use"
+	}
 	switch code {
 	case exitUsage:
 		return "usage"

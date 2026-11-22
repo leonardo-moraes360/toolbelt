@@ -1912,7 +1912,7 @@ tb bus discover
 | Comando | Quem | Função |
 |---|---|---|
 | `channel create <channel> --owner N` | humano | cria canal (`--ttl`, padrão sem expiração; `--lease`, padrão `2m`, `30s`–`1h`) e convite do dono (papel `supervisor`; `--invite-ttl`, padrão `10m`) |
-| `channel list` / `channel show <channel>` | humano | lista canais / mostra o lease do canal, os agentes (papel, vivo, `last_seen`) e os claims abertos (dono, epoch, seguro/expirado/liberado); sem `session` do Agent Card, token nem payload |
+| `channel list` / `channel show <channel>` | humano | lista canais / mostra o lease do canal, os agentes (papel, vivo, `last_seen`) e os claims abertos (dono, epoch, `state` seguro/expirado/liberado/revogado, `outcome` nulo enquanto seguro ou só expirado, `expired` depois de liberado, `revoked`, `taken_over`; claims completados não são listados); sem `session` do Agent Card, token nem payload |
 | `channel extend <channel> --ttl D` | humano | redefine a expiração para agora + `D` (`0` = sem expiração); reabre canal expirado mantendo sessões e histórico |
 | `invite <channel> --role R` | humano | convite de uso único com papel fixado (`--ttl`, padrão `10m`); `--name` vincula a um agente e, se ele já estiver no canal, recupera a sessão perdida (token novo) |
 | `join <channel> --invite C` | agente | entra com Agent Card (`--name`, `--vendor`, `--model`, `--tier`, `--wake`, `--session`, `--capability` ou `--card card.json`); `--role` precisa coincidir com o papel do convite; grava a sessão no diretório privado do bus, fora do repositório (`$XDG_STATE_HOME/toolbelt/bus/`, `0600`) |
@@ -1927,7 +1927,13 @@ tb bus discover
 | `run --channel C --as N` | humano | harness B3: espera sem LLM e acorda o agente pelo arquivo de wake (`exec`, `harness` ou `notify`, que avisa o humano para agentes só de GUI); `--once`, `--check`, `--dry-run`, `--invite`, `--role`, `--config`, `--allow-unsandboxed`. Spec: [bus-harness.md](bus-harness.md), [bus-notify-discover.md](bus-notify-discover.md) |
 | `discover` | humano | catálogo só de leitura das CLIs de agente conhecidas no `PATH` e das configs de cliente MCP que rodam `tb mcp` (outros servidores só contados), com próximos passos; não executa nada; `--cwd`, `--json` |
 
-Comandos de agente exigem `--channel` e `--as`. O token de sessão nunca é impresso. `--json` devolve envelopes JSON-RPC.
+Comandos de agente exigem `--channel` e `--as`. O token de sessão nunca é impresso.
+
+**Um cliente vivo por identidade.** Dois flocks protegem `<canal>/<nome>` no diretório privado. O lock do harness (`<nome>.harness.lock`) permite um `tb bus run` por agente. O lock de cliente (`<nome>.lock`) permite um cliente servindo a identidade: o `tb mcp --bus-as` o segura enquanto viver (o cliente GUI com `adapter: notify`, ou o filho de despertar com `harness`), e um one-shot mutante (`send`, `recv` sem `--peek`, `claim`, `complete`, `heartbeat`) o segura durante o comando. Por isso `tb bus run` (notify) e o `tb mcp --bus-as` do GUI convivem. Um segundo detentor do mesmo lock sai com código 2 e `session_in_use`, citando o pid de quem segura; a reentrada com convite vinculado checa os dois locks e é recusada antes de girar o token. Um detentor que caiu ou foi morto libera o flock (nada a limpar; no Windows `LockFileEx`; nas demais plataformas um arquivo O_EXCL deixado por uma queda deve ser removido à mão). Os locks valem só no host: em NFS montado com `nolock` cobrem uma máquina. No modo `harness` o filho de despertar toma o lock de cliente ele mesmo (a política Landlock dele ganha leitura e escrita nesse único arquivo) e um cliente alheio é reportado como `session_in_use` antes do despertar. `tb bus run --check`/`--dry-run` não tomam lock; `--check` avisa com os detentores. `tb_bus_join` não segura o lock durante a conexão: é recusado enquanto outro cliente tem a identidade, mas um `--bus-as` posterior falharia de qualquer forma pelo token girado.
+
+**O payload é opaco.** O broker nunca lê nem ordena pelo `--payload`. Um payload de `task.assign` com `deps` ou `dependencies` não é aplicado: o `tb bus send` imprime um aviso no stderr, e a ordem de dependência entre tarefas é trabalho do `tb router` (`dependencies` do ticket). Dependências no nível do bus não fazem parte da 1.0.
+
+A expiração de convite e de criação de canal sai em RFC 3339 com data e fuso local. O aviso `wake_mismatch` (card e arquivo de wake divergem) cita os comandos que corrigem. `--json` devolve envelopes JSON-RPC.
 
 ---
 
@@ -2031,7 +2037,7 @@ Inicia o toolbelt como servidor MCP sobre **stdio** (JSON-RPC 2.0). Não há `tb
 tb mcp [flags]
 
 Flags:
-  --bus-as <channel>/<name>  Binds the connection to the bus session <channel>/<name> (used by tb bus run)
+  --bus-as <channel>/<name>  Binds the connection to the bus session <channel>/<name> (used by tb bus run); one live client per identity: exits 2 with session_in_use naming the holder pid when held
   --bus-root <path>          Bus repository root (default: searches for .toolbelt from the cwd)
   --bus-state <dir>          Base of the bus private directory (default $XDG_STATE_HOME/toolbelt/bus)
 ```
@@ -2190,8 +2196,10 @@ tb --version
 #   embed:  llama.cpp b12600 (29b52d398b29)
 
 tb version --json
-# {"version":"dev","commit":"unknown","build_time":"unknown","go_version":"go1.22.2","embed":"llama.cpp b12600 (29b52d398b29)"}
+# {"version":"dev","commit":"unknown","build_time":"unknown","modified":false,"go_version":"go1.22.2","embed":"llama.cpp b12600 (29b52d398b29)"}
 ```
+
+`modified` é `true` quando o binário foi compilado de uma árvore com mudanças não commitadas. Um build sem `-ldflags` (`go build`, `go install`) pega `version`, `commit`, `build_time` e `modified` da build info que o toolchain do Go embute (`Main.Version`, `vcs.revision`, `vcs.time`, `vcs.modified`) em vez de `dev`/`unknown`; uma árvore fora de uma versão de módulo com tag continua `dev`. **Para um hook que compara dois binários: compare `version` e `commit` (e `modified`), nunca um hash do módulo ou do binário.**
 
 Um build de release; um build sem `-tags embednative` (`go build ./cmd/tb`) imprime `embed:  unavailable (built without embednative)`.
 

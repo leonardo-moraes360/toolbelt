@@ -3,6 +3,7 @@ package busrun
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -303,7 +304,7 @@ func TestConfigValidationAndLock(t *testing.T) {
 	}
 	_ = os.Chmod(p, 0o600)
 	e.open(t, &fakeAdapter{})
-	if _, err := Open(&Options{Root: e.root, Channel: "ch", Name: "w", Adapter: &fakeAdapter{}}); err == nil || !strings.Contains(err.Error(), "already running") {
+	if _, err := Open(&Options{Root: e.root, Channel: "ch", Name: "w", Adapter: &fakeAdapter{}}); !errors.Is(err, bus.ErrSessionInUse) || !strings.Contains(err.Error(), "pid") {
 		t.Fatalf("segundo harness: %v", err)
 	}
 }
@@ -577,5 +578,43 @@ func TestOnceOnExpiredChannelFails(t *testing.T) {
 	}
 	if len(f.got()) != 0 {
 		t.Fatalf("acordou: %+v", f.got())
+	}
+}
+
+func TestToolbeltServerFailure(t *testing.T) {
+	init := func(status string) string {
+		return `{"type":"system","subtype":"init","mcp_servers":[{"name":"toolbelt","status":"` + status + `"}]}` + "\n" +
+			`{"type":"result","subtype":"success"}`
+	}
+	if got := toolbeltServerFailure(init("connected")); got != "" {
+		t.Fatalf("connected: %q", got)
+	}
+	if got := toolbeltServerFailure(init("failed")); !strings.Contains(got, "session_in_use") {
+		t.Fatalf("failed: %q", got)
+	}
+	if got := toolbeltServerFailure("not json\n{}"); got != "" {
+		t.Fatalf("no init event: %q", got)
+	}
+}
+
+// A fake claude that exits 0 with the toolbelt server failed (a client took
+// the identity after the probe) is a failed attempt, not wake_ok.
+func TestClaudeWakeFailsWhenToolbeltServerDoesNotConnect(t *testing.T) {
+	e := newEnv(t)
+	script := filepath.Join(t.TempDir(), "claude")
+	body := "#!/bin/sh\ncat <<'EOF'\n" +
+		`{"type":"system","subtype":"init","mcp_servers":[{"name":"toolbelt","status":"failed"}]}` + "\n" +
+		`{"type":"result","subtype":"success","is_error":false,"result":"ok","session_id":"s1"}` + "\nEOF\n"
+	if err := os.WriteFile(script, []byte(body), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	e.writeConfig(t, "adapter: harness\nharness:\n  vendor: claude\n  command: "+script+"\n")
+	h := e.open(t, nil)
+	out, err := claudeAdapter{h}.Wake(context.Background(), &Packet{Channel: "ch", Agent: "w"}, &State{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.ExitCode == 0 || !strings.Contains(out.Output, "session_in_use") {
+		t.Fatalf("outcome = %+v", out)
 	}
 }

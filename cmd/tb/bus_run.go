@@ -52,7 +52,7 @@ func runBusRun(cmd *cobra.Command, _ []string) error {
 			return err
 		}
 	}
-	h, err := busrun.Open(&busrun.Options{Root: root, Channel: channel, Name: as, ConfigPath: cfgPath, AllowUnsandboxed: unsandboxed})
+	h, err := busrun.Open(&busrun.Options{Root: root, Channel: channel, Name: as, ConfigPath: cfgPath, AllowUnsandboxed: unsandboxed, NoLock: check || dry})
 	if err != nil {
 		return err
 	}
