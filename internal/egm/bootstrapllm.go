@@ -102,15 +102,21 @@ func newSkips(before, after []SkippedSource) []SkippedSource {
 // bootstrapBody validates and cleans one payload: UTF-8, at most maxBytes,
 // and not empty once cleaned.
 func bootstrapBody(payload []byte, maxBytes int64) (body, reason string) {
-	p := stripMarkdownFence(payload)
-	if int64(len(p)) > maxBytes || !utf8.Valid(p) || bytes.ContainsRune(p, 0) {
-		return "", reasonBootstrapInvalid
-	}
-	body = cleanBootstrapBody(string(p))
-	if body == "" {
+	body, ok := cleanPayload(payload, maxBytes)
+	if !ok {
 		return "", reasonBootstrapInvalid
 	}
 	return body, ""
+}
+
+// cleanPayload is the shared body validation of the generating commands.
+func cleanPayload(payload []byte, maxBytes int64) (string, bool) {
+	p := stripMarkdownFence(payload)
+	if int64(len(p)) > maxBytes || !utf8.Valid(p) || bytes.ContainsRune(p, 0) {
+		return "", false
+	}
+	body := cleanBootstrapBody(string(p))
+	return body, body != ""
 }
 
 // stripMarkdownFence removes one fence around the whole payload (```,

@@ -26,9 +26,10 @@ var PersonaNames = []string{
 }
 
 // UtilityPersonaNames are the Phase B personas (docs/specs/egm-drift-bootstrap.md,
-// B3): embedded, but not reviewers. Neither is in the preset, so
+// B3) and the Phase C generators (docs/specs/egm-phase-c.md): embedded, but
+// not reviewers. Neither is in the preset, so
 // --reviewers and the arbiter never select them.
-var UtilityPersonaNames = []string{"drift", "bootstrap"}
+var UtilityPersonaNames = []string{"drift", "bootstrap", "brainstorm", "draft"}
 
 // StandardNames lists the embedded standards (R10, R13).
 var StandardNames = []string{"feature-spec", "adr", "implementation-readiness", "zoom-out"}

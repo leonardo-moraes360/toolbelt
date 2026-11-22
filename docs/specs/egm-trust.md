@@ -2,7 +2,7 @@
 
 # Spec: EGM trust, Phase A.2 (CI as the trust boundary)
 
-Author: toolbelt · Status: Draft, round 2 (rewritten after Phase A, one fresh-context review applied); implementation slices 1 (receipt), 2 (CI mode) and 3 (example workflow and guide) done; the flakiness measurement is pending · Date: 2026-11-19 · Decision: [ADR-015](../adr/015-egm-nativo.md) · Depends on: [core](egm-nativo.md) (Phase A, implemented)
+Author: toolbelt · Status: Implemented (slices 1–3; the flakiness measurement is pending); round 2 (rewritten after Phase A, one fresh-context review applied); slices 1 (receipt), 2 (CI mode) and 3 (example workflow and guide) done · Date: 2026-11-19 · Decision: [ADR-015](../adr/015-egm-nativo.md) · Depends on: [core](egm-nativo.md) (Phase A, implemented)
 
 ## Overview
 

@@ -59,13 +59,16 @@ type ReviewerRun struct {
 
 // Round is one review round (R21).
 type Round struct {
-	N            int               `json:"n"`
-	Cycle        int               `json:"cycle"`
-	Content      string            `json:"content"`
-	PolicySHA    string            `json:"policy_sha"`
-	DocSHA256    string            `json:"doc_sha256"`
-	HeadCommit   string            `json:"head_commit,omitempty"`
-	Sources      map[string]string `json:"sources"`
+	N          int               `json:"n"`
+	Cycle      int               `json:"cycle"`
+	Content    string            `json:"content"`
+	PolicySHA  string            `json:"policy_sha"`
+	DocSHA256  string            `json:"doc_sha256"`
+	HeadCommit string            `json:"head_commit,omitempty"`
+	Sources    map[string]string `json:"sources"`
+	// Symbols are the resolved symbol citations' hashes ("path#Name" →
+	// sha256); absent in rounds written before C4: no symbol baseline.
+	Symbols      map[string]string `json:"symbols,omitempty"`
 	Engine       string            `json:"engine"`
 	EngineReason string            `json:"engine_reason,omitempty"`
 	Required     []string          `json:"required"`

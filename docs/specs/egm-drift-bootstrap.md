@@ -186,7 +186,7 @@ Nothing is written on an abort.
 - Opening review lineages from drift findings, or re-certifying automatically.
 - Bootstrapping several documents at once, or choosing the files by itself.
 - MCP tools for the new commands.
-- `draft` and `brainstorm`, symbol-level drift and the other Phase C items.
+- `draft` and `brainstorm`, symbol-level drift and the other Phase C items ([Phase C spec](egm-phase-c.md); `brainstorm` and `draft` are implemented).
 
 ## Docs to update with the implementation
 

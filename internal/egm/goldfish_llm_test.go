@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/leonardo-moraes360/toolbelt/internal/graph"
 )
 
 // B3 (docs/specs/egm-drift-bootstrap.md): the drift and bootstrap goldfish,
@@ -249,4 +251,54 @@ func TestBootstrapLLMRefusals(t *testing.T) {
 	wantReason(t, err, "bootstrap_invalid")
 	_, _, err = lf.boot(ctx, "clean", "docs/specs/new-src.md", "internal/inj.go")
 	wantReason(t, err, "bootstrap_injection")
+}
+
+// R22: the drift goldfish also runs for symbol_changed and symbol_missing,
+// and its packet names the changed symbols' line ranges / the missing ones.
+func TestDriftLLMSymbolStatuses(t *testing.T) {
+	lf := newLLMFlow(t, "")
+	ctx := context.Background()
+	doc := filepath.Join(lf.root, lf.doc)
+	b, err := os.ReadFile(doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, doc, string(b)+"\nSee `internal/sym.go#Foo`.\n")
+	writeFile(t, filepath.Join(lf.root, "internal", "sym.go"), symGo)
+	gitT(t, lf.root, "add", ".")
+	gitT(t, lf.root, "commit", "-qm", "cite symbol")
+	d, _ := os.ReadFile(doc)
+	kept, _ := os.ReadFile(filepath.Join(lf.root, "internal", "kept.go"))
+	syms, err := graph.GoSymbols([]byte(symGo))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var foo graph.Symbol
+	for _, s := range syms {
+		if s.Name == "Foo" {
+			foo = s
+		}
+	}
+	rc := &Receipt{Version: receiptVersionSymbols, Commit: lf.head(), Doc: lf.doc, DocSHA256: sha256Hex(d),
+		Sources: map[string]string{"internal/kept.go": sha256Hex(kept), "internal/sym.go": sha256Hex([]byte(symGo))},
+		Symbols: map[string]string{"internal/sym.go#Foo": foo.SHA256}, Claims: []Claim{}}
+	writeFile(t, filepath.Join(lf.root, ReceiptPath(lf.doc)), string(rc.Encode()))
+	gitT(t, lf.root, "add", "-f", ".toolbelt")
+	gitT(t, lf.root, "commit", "-qm", "receipt")
+	symEdit := func(from, to string) {
+		p := filepath.Join(lf.root, "internal", "sym.go")
+		b, _ := os.ReadFile(p)
+		writeFile(t, p, strings.Replace(string(b), from, to, 1))
+		gitT(t, lf.root, "commit", "-qam", "edit")
+	}
+	symEdit("return helper()", "return helper() + 1")
+	lf.setModes(map[string][]string{"drift": {"require-symbols"}})
+	if d := driftOfDoc(lf.driftLLM(ctx), lf.doc); d.Status != DriftSymbolChanged || d.LLM == nil || d.LLM.Status != "completed" {
+		t.Fatalf("symbol_changed: %+v %+v", d, d.LLM)
+	}
+	symEdit("func Foo()", "func Foo2()")
+	lf.setModes(map[string][]string{"drift": {"require-missing-symbols"}})
+	if d := driftOfDoc(lf.driftLLM(ctx), lf.doc); d.Status != DriftSymbolMissing || d.LLM == nil || d.LLM.Status != "completed" {
+		t.Fatalf("symbol_missing: %+v %+v", d, d.LLM)
+	}
 }
