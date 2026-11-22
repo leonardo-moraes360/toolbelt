@@ -2,11 +2,11 @@
 
 # Spec: playbooks AppSec red/blue (`tb red` / `tb blue`)
 
-Autor: toolbelt · Status: proposto (não implementado) · Data: 2026-11-20 · Decisão: [ADR-017](../adr/017-appsec-red-blue-labs.md) · Companheiro: [red/blue labs](red-blue-labs.md)
+Autor: toolbelt · Status: Fase 1 implementada (`tb red`, `tb blue`, `tb stack seccheck`, ferramentas MCP; experimental na 1.0) · Data: 2026-11-20 · Decisão: [ADR-017](../adr/017-appsec-red-blue-labs.md) · Companheiro: [red/blue labs](red-blue-labs.md)
 
 ## Visão Geral
 
-`tb red` e `tb blue` dão ao agente metodologia AppSec nativa e nossa: um corpus **red** (ofensivo — como uma classe de vulnerabilidade se manifesta e é revelada em código ou serviço em execução) e um corpus **blue** (defensivo — detecção, hardening, resposta a incidente). O conteúdo é escrito no repo na voz do `tb`, escopado a segurança de software, sem dependência em runtime de qualquer corpus externo. Playbooks são indexados no grafo SQLite + FTS5 existente e servidos — compactos na busca, com orçamento no load — pela CLI e MCP.
+`tb red` e `tb blue` dão ao agente metodologia AppSec nativa e nossa: um corpus **red** (ofensivo — como uma classe de vulnerabilidade se manifesta e é revelada em código ou serviço em execução) e um corpus **blue** (defensivo — detecção, hardening, resposta a incidente). O conteúdo é escrito no repo na voz do `tb`, escopado a segurança de software, sem dependência em runtime de qualquer corpus externo. Playbooks são indexados no grafo existente (`graph.json`, BM25) e servidos — compactos na busca, com orçamento no load — pela CLI e MCP.
 
 Crucialmente, um playbook não é prosa inerte: um playbook blue pode emitir **checks executáveis** nos mecanismos de verificação existentes do `tb`, então o hardening vira algo que o projeto continua aplicando.
 

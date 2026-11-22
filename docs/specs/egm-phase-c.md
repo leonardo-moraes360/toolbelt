@@ -2,7 +2,7 @@
 
 # `tb egm brainstorm`, `tb egm draft` and symbol-level drift — Phase C spec
 
-Author: toolbelt · Status: **draft, round 1** (not reviewed; D1, D2, D6 and D7 resolved, C1–C3 implemented; D3–D5 still need an answer before the slice that depends on them starts) · Date: 2026-11-22 · Decision: [ADR-015](../adr/015-egm-nativo.md) (§8) · Depends on: [core](egm-nativo.md) (Phase A), [trust](egm-trust.md) (Phase A.2), [drift and bootstrap](egm-drift-bootstrap.md) (Phase B)
+Author: toolbelt · Status: **partly implemented** (round 1, not reviewed; D1–D7 resolved; slices C1–C5 implemented, C6 deferred after 1.0) · Date: 2026-11-22 · Decision: [ADR-015](../adr/015-egm-nativo.md) (§8) · Depends on: [core](egm-nativo.md) (Phase A), [trust](egm-trust.md) (Phase A.2), [drift and bootstrap](egm-drift-bootstrap.md) (Phase B)
 
 ## Overview
 
