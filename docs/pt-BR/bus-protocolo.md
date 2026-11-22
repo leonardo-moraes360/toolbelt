@@ -32,7 +32,7 @@ Toda mensagem é um objeto JSON-RPC 2.0 com `method: "bus/message"`. Campos de `
 | `causation_id` | remetente | opcional; ID da mensagem que causou esta |
 | `idempotency_key` | remetente | opcional; `[A-Za-z0-9._:/-]{1,128}` |
 | `ttl` | remetente | opcional; duração Go (`30m`); depois disso a mensagem não é entregue |
-| `payload` | remetente | um único objeto JSON, até 64 KiB; números preservados sem perda; strings com segredos conhecidos são redigidas antes de gravar |
+| `payload` | remetente | um único objeto JSON, até 64 KiB; números preservados sem perda; strings com segredos conhecidos são redigidas antes de gravar. **Opaco para o broker:** ele nunca lê, valida nem ordena por ele. Ordenar por dependência é trabalho do `tb router` (`dependencies` do ticket); um payload de `task.assign` com `deps` ou `dependencies` não é aplicado, e o `tb bus send` avisa no stderr. Dependências no nível do bus não fazem parte da 1.0 |
 | `created_at` | broker | RFC 3339 UTC |
 
 Exemplo como `tb bus recv --json` devolve:
@@ -90,7 +90,7 @@ Declarado no `join`. É informativo: **capacidade não é permissão**; o papel 
 - `tb bus invite` emite convites adicionais, um por agente, com papel fixado (`router`, `supervisor`, `worker`, `reviewer`). `--name` vincula o convite a um agente.
 - Convite **não** vinculado não aceita o nome do dono do canal nem nomes com convite vinculado ainda aberto.
 - Código: 8 caracteres Crockford base32 em dois grupos (`K7Q2-9XMD`), gerado com `crypto/rand`; o store guarda só o SHA-256.
-- Uso único; expira em `--ttl` (padrão `10m`). Convite usado, expirado, de outro canal, ou válido mas usado com nome ou papel diferentes do fixado, é recusado com a mesma mensagem genérica (e, no último caso, não é consumido).
+- Uso único; expira em `--ttl` (padrão `10m`; a CLI imprime a expiração em RFC 3339 com data e fuso local). Convite usado, expirado, de outro canal, ou válido mas usado com nome ou papel diferentes do fixado, é recusado com a mesma mensagem genérica (e, no último caso, não é consumido).
 - Criar canal e emitir convite **não** existe via MCP: só o humano, na CLI.
 
 ## Sessão e identidade

@@ -3,6 +3,7 @@ package busrun
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -303,7 +304,7 @@ func TestConfigValidationAndLock(t *testing.T) {
 	}
 	_ = os.Chmod(p, 0o600)
 	e.open(t, &fakeAdapter{})
-	if _, err := Open(&Options{Root: e.root, Channel: "ch", Name: "w", Adapter: &fakeAdapter{}}); err == nil || !strings.Contains(err.Error(), "already running") {
+	if _, err := Open(&Options{Root: e.root, Channel: "ch", Name: "w", Adapter: &fakeAdapter{}}); !errors.Is(err, bus.ErrSessionInUse) || !strings.Contains(err.Error(), "pid") {
 		t.Fatalf("segundo harness: %v", err)
 	}
 }

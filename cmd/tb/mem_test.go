@@ -248,3 +248,23 @@ func runMem(tbBin, dir string, args ...string) ([]byte, error) {
 	cmd.Dir = dir
 	return cmd.CombinedOutput()
 }
+
+func TestMemListShowsSeededInvariantsCLI(t *testing.T) {
+	if testing.Short() {
+		t.Skip()
+	}
+	tbBin := buildTB(t)
+	dir := memFixtureDir(t)
+	if out, err := runMem(tbBin, dir, "init"); err != nil {
+		t.Fatalf("init: %v\n%s", err, out)
+	}
+	out, err := runMem(tbBin, dir, "list")
+	if err != nil {
+		t.Fatalf("list: %v\n%s", err, out)
+	}
+	for _, want := range []string{"anti_cheat: NEVER modify files in tests/hidden/", "security: Secrets never appear in logs or prompts"} {
+		if !strings.Contains(string(out), want) {
+			t.Fatalf("list on a freshly initialized repo misses %q:\n%s", want, out)
+		}
+	}
+}

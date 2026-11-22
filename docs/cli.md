@@ -1996,7 +1996,7 @@ tb bus discover
 | Command | Who | Purpose |
 |---|---|---|
 | `channel create <channel> --owner N` | human | creates the channel (`--ttl`, no expiry by default; `--lease`, default `2m`, `30s`–`1h`) and the owner invite (role `supervisor`; `--invite-ttl`, default `10m`) |
-| `channel list` / `channel show <channel>` | human | lists channels / shows the channel's lease, the agents (role, alive, `last_seen`) and the open claims (owner, epoch, held/expired/released); no Agent Card `session`, token or payload |
+| `channel list` / `channel show <channel>` | human | lists channels / shows the channel's lease, the agents (role, alive, `last_seen`) and the open claims (owner, epoch, `state` held/expired/released/revoked, `outcome` null while held, `expired` or `revoked`); no Agent Card `session`, token or payload |
 | `channel extend <channel> --ttl D` | human | resets the expiry to now + `D` (`0` = no expiry); reopens an expired channel keeping sessions and history |
 | `invite <channel> --role R` | human | single-use invite with a pinned role (`--ttl`, default `10m`); `--name` binds it to an agent and, if that agent is already in the channel, recovers its lost session (new token) |
 | `join <channel> --invite C` | agent | joins with an Agent Card (`--name`, `--vendor`, `--model`, `--tier`, `--wake`, `--session`, `--capability` or `--card card.json`); `--role` must match the invite's role; stores the session in the bus private directory, outside the repository (`$XDG_STATE_HOME/toolbelt/bus/`, `0600`) |
@@ -2011,7 +2011,13 @@ tb bus discover
 | `run --channel C --as N` | human | B3 harness: waits without an LLM and wakes the agent through the wake file (`exec`, `harness` or `notify`, which pings the human for GUI-only agents); `--once`, `--check`, `--dry-run`, `--invite`, `--role`, `--config`, `--allow-unsandboxed`. Spec: [bus-harness.md](bus-harness.md), [bus-notify-discover.md](bus-notify-discover.md) |
 | `discover` | human | read-only catalog of known agent CLIs on `PATH` and MCP client configs that run `tb mcp` (other servers only counted), with next steps; executes nothing; `--cwd`, `--json` |
 
-Agent commands require `--channel` and `--as`. The session token is never printed. `--json` returns JSON-RPC envelopes.
+Agent commands require `--channel` and `--as`. The session token is never printed.
+
+**One live client per identity.** `tb mcp --bus-as <channel>/<name>`, `tb bus run` and a `join` that re-joins with a bound invite share one exclusive lock on the identity (`<private>/run/<channel>/<name>.lock`, held for the life of the process). A second holder exits 2 with `session_in_use`, naming the holder's pid; a re-join is refused the same way, before the token is rotated. The lock is a `flock`, so a crashed or killed holder frees it (nothing to clean up); on a platform without `flock` a lock file whose pid is gone is taken over. The MCP server that `tb bus run` spawns is the one exception: it carries the harness pid and does not lock again. `tb_bus_join` does not hold the lock for the connection: it is refused while another client holds the identity, but a connection that joined through it is not protected against a later `--bus-as` start (that start would fail on the rotated token anyway).
+
+**The payload is opaque.** The broker never reads or orders by `--payload`. A `task.assign` payload with `deps` or `dependencies` is not enforced: `tb bus send` prints a stderr warning, and dependency order between tasks is `tb router`'s job (ticket `dependencies`). Bus-level dependencies are not part of 1.0.
+
+Invite and channel-create expiry is printed as RFC 3339 with the date and the local zone. A `wake_mismatch` warning (card and wake file disagree) names the commands that fix it. `--json` returns JSON-RPC envelopes.
 
 ---
 
@@ -2115,7 +2121,7 @@ Starts toolbelt as an MCP server over **stdio** (JSON-RPC 2.0). There is no `tb 
 tb mcp [flags]
 
 Flags:
-  --bus-as <channel>/<name>  Binds the connection to the bus session <channel>/<name> (used by tb bus run)
+  --bus-as <channel>/<name>  Binds the connection to the bus session <channel>/<name> (used by tb bus run); one live client per identity: exits 2 with session_in_use naming the holder pid when held
   --bus-root <path>          Bus repository root (default: searches for .toolbelt from the cwd)
   --bus-state <dir>          Base of the bus private directory (default $XDG_STATE_HOME/toolbelt/bus)
 ```
@@ -2276,8 +2282,10 @@ tb --version
 #   embed:  llama.cpp b12600 (29b52d398b29)
 
 tb version --json
-# {"version":"dev","commit":"unknown","build_time":"unknown","go_version":"go1.22.2","embed":"llama.cpp b12600 (29b52d398b29)"}
+# {"version":"dev","commit":"unknown","build_time":"unknown","modified":false,"go_version":"go1.22.2","embed":"llama.cpp b12600 (29b52d398b29)"}
 ```
+
+`modified` is `true` when the binary was built from a tree with uncommitted changes. A build without `-ldflags` (`go build`, `go install`) takes `version`, `commit`, `build_time` and `modified` from the build info the Go toolchain embeds (`Main.Version`, `vcs.revision`, `vcs.time`, `vcs.modified`) instead of `dev`/`unknown`; a tree outside a tagged module version still reports `dev`. **For a hook comparing two binaries: compare `version` and `commit` (and `modified`), never a module or binary hash.**
 
 A release build; a build without `-tags embednative` (`go build ./cmd/tb`) prints `embed:  unavailable (built without embednative)`.
 

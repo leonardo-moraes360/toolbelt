@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -332,6 +333,11 @@ func TestBusRunNotifyWakeMismatchCLI(t *testing.T) {
 	if n := strings.Count(stderr.String(), "warning: wake_mismatch (card says manual, wake file says notify)"); n != 1 {
 		t.Fatalf("stderr:\n%s", stderr.String())
 	}
+	for _, fix := range []string{"tb bus invite fx --role supervisor --name claude-main", "tb bus join fx --invite <code> --name claude-main --wake notify", "change adapter in " + cfg} {
+		if !strings.Contains(stderr.String(), fix) {
+			t.Fatalf("wake_mismatch does not say how to fix it (%q missing):\n%s", fix, stderr.String())
+		}
+	}
 }
 
 func TestFormatTreeAlignsAndIndents(t *testing.T) {
@@ -456,4 +462,91 @@ func TestBusIdentityHeldByOneClient(t *testing.T) {
 	_ = first.Wait()
 	second := startMCP(t, tbBin, dir, "--bus-as", "fx/claude-main", "--bus-root", dir)
 	second.must("tb_bus_recv", map[string]any{})
+}
+
+func runBusErr(tbBin, dir string, args ...string) (stdout, stderr string, err error) {
+	cmd := exec.Command(tbBin, append([]string{"--json", "bus"}, args...)...)
+	cmd.Dir = dir
+	var so, se strings.Builder
+	cmd.Stdout, cmd.Stderr = &so, &se
+	err = cmd.Run()
+	return so.String(), se.String(), err
+}
+
+// 17 sends with one idempotency key store one message; the second answers duplicate.
+func TestBusSendIdempotencyKeyCLI(t *testing.T) {
+	tbBin := buildTB(t)
+	dir := t.TempDir()
+	busCLISetup(t, tbBin, dir)
+	send := func() (dup bool) {
+		var out struct {
+			Duplicate bool `json:"duplicate"`
+		}
+		unmarshalOut(t, runBus(t, tbBin, dir, "send", "--channel", "fx", "--as", "claude-main",
+			"--to", "topic:board", "--type", "query", "--idempotency-key", "k-17", "--payload", `{"n":17}`), &out)
+		return out.Duplicate
+	}
+	if send() {
+		t.Fatal("first send reported duplicate")
+	}
+	if !send() {
+		t.Fatal("second send with the same key must be a duplicate")
+	}
+	var msgs []json.RawMessage
+	unmarshalOut(t, runBus(t, tbBin, dir, "log", "fx"), &msgs)
+	n := 0
+	for _, m := range msgs {
+		if strings.Contains(string(m), `"n":17`) || strings.Contains(string(m), `"n": 17`) {
+			n++
+		}
+	}
+	if n != 1 {
+		t.Fatalf("stored %d messages for one idempotency key, want 1", n)
+	}
+}
+
+func TestBusSendToAgentNotInChannelCLI(t *testing.T) {
+	tbBin := buildTB(t)
+	dir := t.TempDir()
+	busCLISetup(t, tbBin, dir)
+	_, stderr, err := runBusErr(tbBin, dir, "send", "--channel", "fx", "--as", "claude-main", "--to", "agent:ghost", "--type", "query")
+	if err == nil || !strings.Contains(stderr, "ghost") || !strings.Contains(stderr, "is not in channel") {
+		t.Fatalf("want an error naming ghost: %v\n%s", err, stderr)
+	}
+}
+
+func TestBusSendWarnsOnUnenforcedDependenciesCLI(t *testing.T) {
+	tbBin := buildTB(t)
+	dir := t.TempDir()
+	busCLISetup(t, tbBin, dir)
+	for _, key := range []string{"deps", "dependencies"} {
+		_, stderr, err := runBusErr(tbBin, dir, "send", "--channel", "fx", "--as", "claude-main",
+			"--to", "role:worker", "--type", "task.assign", "--thread", "T-"+key, "--payload", `{"`+key+`":["T-0"]}`)
+		if err != nil {
+			t.Fatalf("send: %v\n%s", err, stderr)
+		}
+		if !strings.Contains(stderr, "warning: the bus does not enforce") {
+			t.Fatalf("%s: no warning:\n%s", key, stderr)
+		}
+	}
+	_, stderr, err := runBusErr(tbBin, dir, "send", "--channel", "fx", "--as", "claude-main",
+		"--to", "role:worker", "--type", "task.assign", "--thread", "T-plain", "--payload", `{"ticket":"TKT-1"}`)
+	if err != nil || strings.Contains(stderr, "warning") {
+		t.Fatalf("plain payload: %v\n%s", err, stderr)
+	}
+}
+
+func TestBusInviteExpiryPrintsDateCLI(t *testing.T) {
+	tbBin := buildTB(t)
+	dir := t.TempDir()
+	busCLISetup(t, tbBin, dir)
+	cmd := exec.Command(tbBin, "bus", "invite", "fx", "--role", "worker")
+	cmd.Dir = dir
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !regexp.MustCompile(`expires \d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}`).Match(out) {
+		t.Fatalf("expiry without a date: %s", out)
+	}
 }

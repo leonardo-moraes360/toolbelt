@@ -32,7 +32,7 @@ Every message is a JSON-RPC 2.0 object with `method: "bus/message"`. `params` fi
 | `causation_id` | sender | optional; ID of the message that caused this one |
 | `idempotency_key` | sender | optional; `[A-Za-z0-9._:/-]{1,128}` |
 | `ttl` | sender | optional; Go duration (`30m`); after it the message is not delivered |
-| `payload` | sender | a single JSON object, up to 64 KiB; numbers kept without loss; strings with known secrets are redacted before being stored |
+| `payload` | sender | a single JSON object, up to 64 KiB; numbers kept without loss; strings with known secrets are redacted before being stored. **Opaque to the broker:** it never reads, validates or orders by it. Ordering by dependency is `tb router`'s job (ticket `dependencies`); a `task.assign` payload with `deps` or `dependencies` is not enforced, and `tb bus send` warns on stderr. Bus-level dependencies are not part of 1.0 |
 | `created_at` | broker | RFC 3339 UTC |
 
 Example as returned by `tb bus recv --json`:
@@ -90,7 +90,7 @@ Declared on `join`. It is informational: **capability is not permission**; the r
 - `tb bus invite` issues more invites, one per agent, with a pinned role (`router`, `supervisor`, `worker`, `reviewer`). `--name` binds the invite to an agent.
 - An **unbound** invite does not accept the channel owner's name nor names that still have an open bound invite.
 - Code: 8 Crockford base32 characters in two groups (`K7Q2-9XMD`), generated with `crypto/rand`; the store keeps only its SHA-256.
-- Single use; expires after `--ttl` (default `10m`). A used, expired or other-channel invite, or a valid one used with a name or role other than the pinned ones, is refused with the same generic message (and, in the last case, is not consumed).
+- Single use; expires after `--ttl` (default `10m`; the CLI prints the expiry as RFC 3339 with date and local zone). A used, expired or other-channel invite, or a valid one used with a name or role other than the pinned ones, is refused with the same generic message (and, in the last case, is not consumed).
 - Creating channels and issuing invites does **not** exist through MCP: only the human, on the CLI.
 
 ## Session and identity

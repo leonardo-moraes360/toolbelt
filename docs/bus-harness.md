@@ -37,7 +37,7 @@ tb bus run --channel feature-x --as marin --dry-run
 | `--dry-run` | prints the wake packet that would be delivered instead of calling the adapter |
 | `--allow-unsandboxed` | explicit opt-in to run the child without the sandbox (as in `tb router run`) |
 
-One harness per agent: exclusive lock on `<private>/run/<channel>/<name>.lock`. A second `tb bus run` for the same agent exits with an error.
+One harness per agent: exclusive lock on `<private>/run/<channel>/<name>.lock`. The same lock is taken by `tb mcp --bus-as` and by a re-join with a bound invite (`tb bus join`, `tb_bus_join`), so an identity has one live client. A second holder exits 2 with `session_in_use` naming the holder's pid; the lock is a `flock`, so a crashed holder frees it. The MCP server the harness spawns does not lock again: the generated `.mcp.json` passes `--bus-holder-pid <harness pid>` (hidden flag), and the server refuses to start if that pid is gone. The sandbox could not open the lock file anyway.
 
 ## Loop (layer L0)
 
@@ -188,5 +188,5 @@ Other vendors come in as new presets of the same adapter once they have a headle
 5. An `exec` adapter exiting non-zero is retried; the message is still in the agent's `recv`.
 6. The wake packet, the audit log and the `harness` prompt never contain a payload, session token or `pass_env` value.
 7. `--check` refuses: a wake file with loose permissions, a relative `argv`, `bypassPermissions`, a missing CLI session, an unavailable sandbox without `--allow-unsandboxed`.
-8. Two `tb bus run` for the same agent: the second exits with an error.
+8. Two clients for one identity (`tb bus run` and/or `tb mcp --bus-as`): the second exits 2 with `session_in_use` and the holder's pid; after a `kill -9` of the holder a new one starts; a re-join with a bound invite while held is refused without rotating the token.
 9. E2E with the `claude` preset replaced by a fake binary: wake, `recv` through MCP with `--bus-as`, `complete`, and `session_id` stored for the next `--resume`.

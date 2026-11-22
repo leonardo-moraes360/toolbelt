@@ -73,13 +73,13 @@ func holderRecord(kind string) string {
 	return strconv.Itoa(os.Getpid()) + " " + kind + "\n"
 }
 
-func readHolder(path string) (int, string) {
+func readHolder(path string) (pid int, kind string) {
 	b, err := os.ReadFile(path)
 	if err != nil {
 		return 0, ""
 	}
 	pidStr, kind, _ := strings.Cut(strings.TrimSpace(string(b)), " ")
-	pid, err := strconv.Atoi(pidStr)
+	pid, err = strconv.Atoi(pidStr)
 	if err != nil || pid <= 0 {
 		return 0, ""
 	}

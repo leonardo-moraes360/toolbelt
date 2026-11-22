@@ -325,3 +325,32 @@ func TestWatchdogSparesAliveOwners(t *testing.T) {
 		t.Fatalf("watchdog released %+v", got)
 	}
 }
+
+func TestStatusClaimOutcome(t *testing.T) {
+	s, c, _, a := setup(t)
+	_, err := s.ClaimThread(a, "A")
+	must(t, err)
+	outcome := func() *string {
+		st, err := s.Status("feature-x")
+		must(t, err)
+		return st.Claims[0].Outcome
+	}
+	if o := outcome(); o != nil {
+		t.Fatalf("held claim has outcome %q, want null", *o)
+	}
+	c.add(DefaultLease + time.Second)
+	if o := outcome(); o == nil || *o != "expired" {
+		t.Fatalf("expired claim outcome = %v", o)
+	}
+	if _, err := s.Watchdog("feature-x", false); err != nil {
+		t.Fatal(err)
+	}
+	if o := outcome(); o == nil || *o != "expired" {
+		t.Fatalf("released claim outcome = %v", o)
+	}
+	b, err := json.Marshal(ClaimLease{Thread: "A"})
+	must(t, err)
+	if !strings.Contains(string(b), `"outcome":null`) {
+		t.Fatalf("a held claim must serialize outcome as null: %s", b)
+	}
+}

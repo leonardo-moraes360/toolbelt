@@ -37,7 +37,7 @@ tb bus run --channel feature-x --as marin --dry-run
 | `--dry-run` | imprime o wake packet que seria entregue em vez de invocar o adapter |
 | `--allow-unsandboxed` | opt-in explícito para rodar o filho sem sandbox (como no `tb router run`) |
 
-Um harness por agente: lock exclusivo em `<privado>/run/<canal>/<nome>.lock`. Um segundo `tb bus run` para o mesmo agente sai com erro.
+Um harness por agente: lock exclusivo em `<privado>/run/<canal>/<nome>.lock`. O mesmo lock é tomado por `tb mcp --bus-as` e por uma reentrada com convite vinculado (`tb bus join`, `tb_bus_join`): uma identidade tem um cliente vivo. Um segundo detentor sai com código 2 e `session_in_use` citando o pid de quem segura; o lock é um `flock`, então um detentor que caiu o libera. O servidor MCP que o harness sobe não trava de novo: o `.mcp.json` gerado passa `--bus-holder-pid <pid do harness>` (flag oculta), e o servidor recusa subir se esse pid sumiu. O sandbox não conseguiria abrir o arquivo de lock de qualquer forma.
 
 ## Laço (camada L0)
 
@@ -188,5 +188,5 @@ Outros vendors entram como novos presets do mesmo adapter quando tiverem modo he
 5. Adapter `exec` com saída ≠ 0 entra em retry; a mensagem continua no `recv` do agente.
 6. O wake packet, o log de auditoria e o prompt do `harness` nunca contêm payload, token de sessão ou valor de `pass_env`.
 7. `--check` recusa: arquivo de wake com permissão aberta, `argv` relativo, `bypassPermissions`, sessão CLI ausente, sandbox indisponível sem `--allow-unsandboxed`.
-8. Dois `tb bus run` para o mesmo agente: o segundo sai com erro.
+8. Dois clientes para uma identidade (`tb bus run` e/ou `tb mcp --bus-as`): o segundo sai com código 2 e `session_in_use` com o pid de quem segura; depois de um `kill -9` do detentor um novo sobe; reentrada com convite vinculado enquanto segura é recusada sem girar o token.
 9. E2E com o preset `claude` substituído por um binário fake: despertar, `recv` pelo MCP com `--bus-as`, `complete`, e `session_id` gravado para o próximo `--resume`.

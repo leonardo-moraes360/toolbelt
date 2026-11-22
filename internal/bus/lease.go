@@ -414,7 +414,22 @@ type ClaimLease struct {
 	Thread string `json:"thread"`
 	Owner  string `json:"owner"`
 	Epoch  int64  `json:"epoch"`
-	State  string `json:"state"` // held, expired or released
+	State  string `json:"state"` // held, expired, released or revoked
+	// Outcome is how the claim ended: null while held, "expired" once the
+	// owner's lease lapsed (or the watchdog released it), "revoked" when a
+	// supervisor closed it. Completed claims leave the open list.
+	Outcome *string `json:"outcome"`
+}
+
+func claimOutcome(state string) *string {
+	switch state {
+	case "expired", "released":
+		o := "expired"
+		return &o
+	case "revoked":
+		return &state
+	}
+	return nil
 }
 
 // LeaseStatus is R8's status.
@@ -458,7 +473,7 @@ func (s *Store) Status(channel string) (LeaseStatus, error) {
 		case !alive[c.Owner]:
 			state = "expired"
 		}
-		st.Claims = append(st.Claims, ClaimLease{Thread: c.Thread, Owner: c.Owner, Epoch: c.Epoch, State: state})
+		st.Claims = append(st.Claims, ClaimLease{Thread: c.Thread, Owner: c.Owner, Epoch: c.Epoch, State: state, Outcome: claimOutcome(state)})
 	}
 	return st, nil
 }

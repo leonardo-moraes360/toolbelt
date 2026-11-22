@@ -2021,7 +2021,7 @@ tb bus discover
 | Comando | Quem | Função |
 |---|---|---|
 | `channel create <channel> --owner N` | humano | cria canal (`--ttl`, padrão sem expiração; `--lease`, padrão `2m`, `30s`–`1h`) e convite do dono (papel `supervisor`; `--invite-ttl`, padrão `10m`) |
-| `channel list` / `channel show <channel>` | humano | lista canais / mostra o lease do canal, os agentes (papel, vivo, `last_seen`) e os claims abertos (dono, epoch, seguro/expirado/liberado); sem `session` do Agent Card, token nem payload |
+| `channel list` / `channel show <channel>` | humano | lista canais / mostra o lease do canal, os agentes (papel, vivo, `last_seen`) e os claims abertos (dono, epoch, `state` seguro/expirado/liberado/revogado, `outcome` nulo enquanto seguro, `expired` ou `revoked`); sem `session` do Agent Card, token nem payload |
 | `channel extend <channel> --ttl D` | humano | redefine a expiração para agora + `D` (`0` = sem expiração); reabre canal expirado mantendo sessões e histórico |
 | `invite <channel> --role R` | humano | convite de uso único com papel fixado (`--ttl`, padrão `10m`); `--name` vincula a um agente e, se ele já estiver no canal, recupera a sessão perdida (token novo) |
 | `join <channel> --invite C` | agente | entra com Agent Card (`--name`, `--vendor`, `--model`, `--tier`, `--wake`, `--session`, `--capability` ou `--card card.json`); `--role` precisa coincidir com o papel do convite; grava a sessão no diretório privado do bus, fora do repositório (`$XDG_STATE_HOME/toolbelt/bus/`, `0600`) |
@@ -2036,7 +2036,13 @@ tb bus discover
 | `run --channel C --as N` | humano | harness B3: espera sem LLM e acorda o agente pelo arquivo de wake (`exec`, `harness` ou `notify`, que avisa o humano para agentes só de GUI); `--once`, `--check`, `--dry-run`, `--invite`, `--role`, `--config`, `--allow-unsandboxed`. Spec: [bus-harness.md](bus-harness.md), [bus-notify-discover.md](bus-notify-discover.md) |
 | `discover` | humano | catálogo só de leitura das CLIs de agente conhecidas no `PATH` e das configs de cliente MCP que rodam `tb mcp` (outros servidores só contados), com próximos passos; não executa nada; `--cwd`, `--json` |
 
-Comandos de agente exigem `--channel` e `--as`. O token de sessão nunca é impresso. `--json` devolve envelopes JSON-RPC.
+Comandos de agente exigem `--channel` e `--as`. O token de sessão nunca é impresso.
+
+**Um cliente vivo por identidade.** `tb mcp --bus-as <canal>/<nome>`, `tb bus run` e um `join` que reentra com convite vinculado disputam um lock exclusivo da identidade (`<privado>/run/<canal>/<nome>.lock`, mantido enquanto o processo viver). Um segundo detentor sai com código 2 e `session_in_use`, citando o pid de quem segura; a reentrada é recusada do mesmo jeito, antes de girar o token. O lock é um `flock`: um detentor que caiu ou foi morto o libera (nada a limpar); em plataforma sem `flock`, um arquivo de lock cujo pid sumiu é assumido. O servidor MCP que o `tb bus run` sobe é a única exceção: ele leva o pid do harness e não trava de novo. `tb_bus_join` não segura o lock durante a conexão: é recusado enquanto outro cliente tem a identidade, mas uma conexão que entrou por ele não fica protegida contra um `--bus-as` posterior (que falharia de qualquer forma pelo token girado).
+
+**O payload é opaco.** O broker nunca lê nem ordena pelo `--payload`. Um payload de `task.assign` com `deps` ou `dependencies` não é aplicado: o `tb bus send` imprime um aviso no stderr, e a ordem de dependência entre tarefas é trabalho do `tb router` (`dependencies` do ticket). Dependências no nível do bus não fazem parte da 1.0.
+
+A expiração de convite e de criação de canal sai em RFC 3339 com data e fuso local. O aviso `wake_mismatch` (card e arquivo de wake divergem) cita os comandos que corrigem. `--json` devolve envelopes JSON-RPC.
 
 ---
 
@@ -2140,7 +2146,7 @@ Inicia o toolbelt como servidor MCP sobre **stdio** (JSON-RPC 2.0). Não há `tb
 tb mcp [flags]
 
 Flags:
-  --bus-as <channel>/<name>  Binds the connection to the bus session <channel>/<name> (used by tb bus run)
+  --bus-as <channel>/<name>  Binds the connection to the bus session <channel>/<name> (used by tb bus run); one live client per identity: exits 2 with session_in_use naming the holder pid when held
   --bus-root <path>          Bus repository root (default: searches for .toolbelt from the cwd)
   --bus-state <dir>          Base of the bus private directory (default $XDG_STATE_HOME/toolbelt/bus)
 ```
@@ -2301,8 +2307,10 @@ tb --version
 #   embed:  llama.cpp b12600 (29b52d398b29)
 
 tb version --json
-# {"version":"dev","commit":"unknown","build_time":"unknown","go_version":"go1.22.2","embed":"llama.cpp b12600 (29b52d398b29)"}
+# {"version":"dev","commit":"unknown","build_time":"unknown","modified":false,"go_version":"go1.22.2","embed":"llama.cpp b12600 (29b52d398b29)"}
 ```
+
+`modified` é `true` quando o binário foi compilado de uma árvore com mudanças não commitadas. Um build sem `-ldflags` (`go build`, `go install`) pega `version`, `commit`, `build_time` e `modified` da build info que o toolchain do Go embute (`Main.Version`, `vcs.revision`, `vcs.time`, `vcs.modified`) em vez de `dev`/`unknown`; uma árvore fora de uma versão de módulo com tag continua `dev`. **Para um hook que compara dois binários: compare `version` e `commit` (e `modified`), nunca um hash do módulo ou do binário.**
 
 Um build de release; um build sem `-tags embednative` (`go build ./cmd/tb`) imprime `embed:  unavailable (built without embednative)`.
 

@@ -130,8 +130,8 @@ var versionCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		info := version.Get()
 		if jsonOutput {
-			fmt.Printf("{\"version\":%q,\"commit\":%q,\"build_time\":%q,\"go_version\":%q,\"embed\":%q}\n",
-				info.Version, info.Commit, info.BuildTime, info.GoVersion, info.Embed)
+			fmt.Printf("{\"version\":%q,\"commit\":%q,\"build_time\":%q,\"modified\":%t,\"go_version\":%q,\"embed\":%q}\n",
+				info.Version, info.Commit, info.BuildTime, info.Modified, info.GoVersion, info.Embed)
 		} else {
 			fmt.Println(info.String())
 		}
