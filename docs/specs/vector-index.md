@@ -2,7 +2,7 @@
 
 # Optional vector index for `tb graph search` — spec
 
-Status: **V0, V1 and V2 implemented**; no longer experimental: recall@10 on 44 intent queries over this repository (all-MiniLM-L6-v2 Q8_0): lexical 0.273, semantic 0.670, hybrid 0.568, so hybrid − lexical = +0.295 ≥ +0.10 ([dogfood](../campo/dogfood.md) #45). Semantic mode scored highest on this suite; hybrid keeps exact-name matches. The shim still embeds one text per native call: the multi-sequence batch (`n_seq_max ≥ 64`) is still pending. Decision record: [ADR-018](../adr/018-cgo-componentes-nativos.md) (cgo, vendored llama.cpp, C/C++ quality gate).
+Status: **V0, V1 and V2 implemented**; no longer experimental: recall@10 on 44 intent queries over this repository (all-MiniLM-L6-v2 Q8_0): lexical 0.273, semantic 0.670, hybrid 0.568, so hybrid − lexical = +0.295 ≥ +0.10 ([dogfood](../campo/dogfood.md) #45). Semantic mode scored highest on this suite; hybrid keeps exact-name matches. The shim packs a request's texts into shared evaluations (`n_seq_max` 64, unified KV, a 512-token budget); on the x86-64-v2 floor that saves about 4% when indexing and about 21% on short texts ([dogfood](../campo/dogfood.md) #47). Decision record: [ADR-018](../adr/018-cgo-componentes-nativos.md) (cgo, vendored llama.cpp, C/C++ quality gate).
 
 The vector index adds semantic search to the code graph:
 
@@ -109,7 +109,7 @@ Fallbacks:
 ### Engine settings in the shim
 
 - A model whose pooling type is `NONE` is refused (`model_unsupported`): it gives no sentence vector.
-- For non-causal models, `n_ubatch ≥ n_ctx` and `n_seq_max ≥ 64`, so one request is one batch of sequences (V1, with the protocol; the V0 shim embeds one text per call as sequence 0, with `n_ctx = min(n_ctx_train, 8192)`).
+- `n_seq_max = 64` with a unified KV buffer, so each sequence keeps the full `n_ctx = min(n_ctx_train, 8192)`. A request is packed in order into evaluations of at most 512 tokens, and a single longer text runs alone (up to `n_ctx`): a non-causal model reads one evaluation in a single ubatch and its attention grows with the square of the tokens, so a larger budget made long chunks slower (budget 2048: +6% on 64 chunks of 1.5 KB). Sequences do not attend to each other: batched and single-call vectors agree to cosine ≥ 0.999 (`TestEmbedBatchMatchesSingle`).
 - A text longer than `n_ctx` tokens keeps its first `n_ctx − 1` tokens and its last one (the trailing special token).
 - Vectors are read per sequence and L2-normalized.
 

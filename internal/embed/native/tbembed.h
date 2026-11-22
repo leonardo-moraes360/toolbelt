@@ -39,6 +39,16 @@ int32_t tbe_n_ctx(const tbe_model *m);
  * floats. *truncated is 1 when the text was cut to tbe_n_ctx tokens. */
 int tbe_embed(tbe_model *m, const char *text, size_t len, float *out, size_t out_len, int *truncated);
 
+/* TBE_MAX_SEQ is the most texts one tbe_embed_batch call takes. */
+#define TBE_MAX_SEQ 64
+
+/* tbe_embed_batch embeds n texts (1..TBE_MAX_SEQ; texts[i] holds lens[i]
+ * bytes) into out, n rows of tbe_dims floats (out_len floats in all), and
+ * sets truncated[i] like tbe_embed. Texts are packed into as few
+ * evaluations as the token budget allows; on error no row is valid. */
+int tbe_embed_batch(tbe_model *m, const char *const *texts, const size_t *lens, int32_t n, float *out,
+		    size_t out_len, int *truncated);
+
 void tbe_close(tbe_model *m);
 
 #ifdef __cplusplus

@@ -2,7 +2,7 @@
 
 # Índice vetorial opcional para o `tb graph search` — spec
 
-Status: **V0, V1 e V2 implementadas**; deixou de ser experimental: recall@10 em 44 consultas por intenção sobre este repositório (all-MiniLM-L6-v2 Q8_0): lexical 0,273, semantic 0,670, hybrid 0,568, então hybrid − lexical = +0,295 ≥ +0,10 ([dogfood](../campo/dogfood.md) #45). O modo semantic teve a maior nota nesta suíte; o hybrid mantém os acertos por nome exato. O shim ainda embeda um texto por chamada nativa: o lote multi-sequência (`n_seq_max ≥ 64`) ainda está pendente. Registro de decisão: [ADR-018](../adr/018-cgo-componentes-nativos.md) (cgo, llama.cpp vendorizado, gate de qualidade C/C++).
+Status: **V0, V1 e V2 implementadas**; deixou de ser experimental: recall@10 em 44 consultas por intenção sobre este repositório (all-MiniLM-L6-v2 Q8_0): lexical 0,273, semantic 0,670, hybrid 0,568, então hybrid − lexical = +0,295 ≥ +0,10 ([dogfood](../campo/dogfood.md) #45). O modo semantic teve a maior nota nesta suíte; o hybrid mantém os acertos por nome exato. O shim agrupa os textos de uma requisição em avaliações compartilhadas (`n_seq_max` 64, KV unificado, orçamento de 512 tokens); no piso x86-64-v2 isso economiza cerca de 4% na indexação e cerca de 21% em textos curtos ([dogfood](../campo/dogfood.md) #47). Registro de decisão: [ADR-018](../adr/018-cgo-componentes-nativos.md) (cgo, llama.cpp vendorizado, gate de qualidade C/C++).
 
 O índice vetorial acrescenta busca semântica ao grafo de código:
 
@@ -109,7 +109,7 @@ Fallbacks:
 ### Configurações do motor no shim
 
 - Um modelo cujo tipo de pooling é `NONE` é recusado (`model_unsupported`): ele não gera vetor de sentença.
-- Para modelos não causais, `n_ubatch ≥ n_ctx` e `n_seq_max ≥ 64`, para que uma requisição seja um único lote de sequências (V1, com o protocolo; o shim da V0 gera o embedding de um texto por chamada como sequência 0, com `n_ctx = min(n_ctx_train, 8192)`).
+- `n_seq_max = 64` com buffer de KV unificado, para que cada sequência mantenha o `n_ctx = min(n_ctx_train, 8192)` inteiro. Uma requisição é agrupada, em ordem, em avaliações de no máximo 512 tokens, e um texto mais longo roda sozinho (até `n_ctx`): um modelo não causal lê uma avaliação numa única ubatch e sua atenção cresce com o quadrado dos tokens, então um orçamento maior deixou os chunks longos mais lentos (orçamento 2048: +6% em 64 chunks de 1,5 KB). As sequências não se enxergam: os vetores em lote e por chamada concordam com cosseno ≥ 0,999 (`TestEmbedBatchMatchesSingle`).
 - Um texto com mais de `n_ctx` tokens mantém os primeiros `n_ctx − 1` tokens e o último (o token especial final).
 - Os vetores são lidos por sequência e normalizados em L2.
 

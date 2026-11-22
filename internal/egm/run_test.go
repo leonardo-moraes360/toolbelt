@@ -17,7 +17,18 @@ import (
 
 // fakeAgent is a custom-vendor agent driven by the first stdin line, so one
 // script covers every scenario without the real claude binary.
+//
+// escape/anon wait until the background child has run setsid and left the
+// agent's group (it touches the marker only after setsid) before exiting. A
+// fixed sleep raced under load: the agent could exit while the child was still
+// in the group, the group kill took it silently, and there was no escape left
+// to detect.
 const fakeAgent = `#!/bin/sh
+wait_escaped() {
+	i=0
+	while [ ! -e "$TMPDIR/escaped" ] && [ $i -lt 1000 ]; do sleep 0.01; i=$((i+1)); done
+	[ -e "$TMPDIR/escaped" ] || { echo "no escapee marker" >&2; exit 1; }
+}
 read -r mode
 case "$mode" in
 echo) cat ;;
@@ -35,8 +46,8 @@ probe)
 flood) head -c 5000 /dev/zero | tr '\0' a ;;
 sleep) sleep 30 ;;
 fail) echo boom >&2; exit 3 ;;
-escape) setsid sh -c 'sleep 30' </dev/null >/dev/null 2>&1 & sleep 0.3; echo payload ;;
-anon) env -u TB_EGM_OWNER setsid sh -c 'sleep 30' </dev/null >/dev/null 2>&1 & sleep 0.3; echo payload ;;
+escape) setsid sh -c ': > "$TMPDIR/escaped"; sleep 30' </dev/null >/dev/null 2>&1 & wait_escaped; echo payload ;;
+anon) env -u TB_EGM_OWNER setsid sh -c ': > "$TMPDIR/escaped"; sleep 30' </dev/null >/dev/null 2>&1 & wait_escaped; echo payload ;;
 esac
 `
 
