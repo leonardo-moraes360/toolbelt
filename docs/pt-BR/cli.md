@@ -2436,6 +2436,14 @@ Arquivo de configuração local em `.toolbelt/config.yaml` (global:
 `~/.config/toolbelt/config.yaml`). A flag `-c/--config` aponta para um YAML
 alternativo.
 
+Uma chave que o `tb` não conhece (erro de digitação, ou chave removida antes do 1.0) é ignorada: cada
+arquivo imprime no stderr uma linha por chave assim, uma vez por execução, com o caminho completo
+(`warning: .toolbelt/config.yaml: unknown config key graph.auto_index (ignored)`). Nunca é erro, então
+arquivos antigos continuam carregando. Chaves removidas: `defaults.*`, `sandbox.allow_net`,
+`sandbox.cpu_limit`, `sandbox.mem_limit`, `sandbox.time_limit`, `graph.auto_index`,
+`graph.infer_relations`, `vault.sync_on_change` e `logging.*`; eram lidas do arquivo mas nenhum comando as
+usava, então não aplicavam nada.
+
 ```yaml
 # .toolbelt/config.yaml (exemplo)
 verify:

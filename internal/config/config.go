@@ -20,15 +20,11 @@ const DefaultConfigDir = ".toolbelt"
 const DefaultConfigFile = "config.yaml"
 
 type Config struct {
-	Defaults Defaults `yaml:"defaults"`
-
 	Sandbox SandboxConfig `yaml:"sandbox"`
 
 	Graph GraphConfig `yaml:"graph"`
 
 	Vault VaultConfig `yaml:"vault"`
-
-	Logging LoggingConfig `yaml:"logging"`
 
 	Bench BenchConfig `yaml:"bench"`
 
@@ -52,17 +48,7 @@ type Config struct {
 	Merge MergeConfig `yaml:"merge,omitempty"`
 }
 
-type Defaults struct {
-	Sandbox    bool   `yaml:"sandbox"`
-	Timeout    string `yaml:"timeout"`
-	JSONOutput bool   `yaml:"json_output"`
-}
-
 type SandboxConfig struct {
-	AllowNet  []string `yaml:"allow_net"`
-	CPULimit  int      `yaml:"cpu_limit"`
-	MemLimit  string   `yaml:"mem_limit"`
-	TimeLimit string   `yaml:"time_limit"`
 	// Read and Write are extra absolute paths (~/ allowed) granted to the MCP
 	// tb_run sandbox, read-only and read-write, on top of the workdir, the
 	// system dirs, PATH, GOROOT and the toolchain caches.
@@ -74,13 +60,11 @@ type SandboxConfig struct {
 }
 
 type GraphConfig struct {
-	AutoIndex      bool     `yaml:"auto_index"`
-	IndexOnChange  bool     `yaml:"index_on_change"`
-	InferRelations bool     `yaml:"infer_relations"`
-	Languages      []string `yaml:"languages"`
-	Docs           []string `yaml:"docs"`
-	Frameworks     []string `yaml:"frameworks"`
-	MaxFileBytes   int64    `yaml:"max_file_bytes"`
+	IndexOnChange bool     `yaml:"index_on_change"`
+	Languages     []string `yaml:"languages"`
+	Docs          []string `yaml:"docs"`
+	Frameworks    []string `yaml:"frameworks"`
+	MaxFileBytes  int64    `yaml:"max_file_bytes"`
 	// Vector and Embed are user-only: Load drops them from the repository
 	// layer and graph reads them through LoadUser.
 	Vector GraphVectorConfig `yaml:"vector,omitempty"`
@@ -90,7 +74,6 @@ type GraphConfig struct {
 // VaultConfig is the vault: section (docs/specs/vault.md, Configuration).
 type VaultConfig struct {
 	Path         string `yaml:"path"`
-	SyncOnChange bool   `yaml:"sync_on_change"` // reserved, no effect in Phase A
 	MaxNoteBytes int64  `yaml:"max_note_bytes"`
 	// Types are the allowed frontmatter type values.
 	Types []string `yaml:"types"`
@@ -145,12 +128,6 @@ func validVaultTypes(types []string) error {
 		seen[t] = true
 	}
 	return nil
-}
-
-type LoggingConfig struct {
-	Level  string `yaml:"level"`
-	File   string `yaml:"file"`
-	Format string `yaml:"format"`
 }
 
 type BenchConfig struct {
@@ -324,21 +301,8 @@ func (r *RouterConfig) Validate() error {
 func DefaultConfig() *Config {
 	return &Config{
 		Egm: DefaultEgmConfig(),
-		Defaults: Defaults{
-			Sandbox:    false,
-			Timeout:    "30s",
-			JSONOutput: false,
-		},
-		Sandbox: SandboxConfig{
-			AllowNet:  []string{},
-			CPULimit:  100,
-			MemLimit:  "1G",
-			TimeLimit: "5m",
-		},
 		Graph: GraphConfig{
-			AutoIndex:      true,
-			IndexOnChange:  true,
-			InferRelations: false,
+			IndexOnChange: true,
 			Languages: []string{
 				"go", "javascript", "python", "java", "kotlin", "csharp",
 				"cpp", "rust", "php", "ruby", "swift", "shell",
@@ -353,15 +317,9 @@ func DefaultConfig() *Config {
 		},
 		Vault: VaultConfig{
 			Path:         ".toolbelt/vault",
-			SyncOnChange: true,
 			MaxNoteBytes: 256 << 10,
 			Types:        []string{"fact", "decision", "context", "log"},
 			Graph:        true,
-		},
-		Logging: LoggingConfig{
-			Level:  "info",
-			File:   ".toolbelt/logs/tb.log",
-			Format: "text",
 		},
 		Bench: BenchConfig{
 			TasksDir:     "bench/tasks",
@@ -453,6 +411,7 @@ func loadFromFile(path string, cfg *Config) error {
 	if err != nil {
 		return err
 	}
+	warnUnknownKeys(path, data)
 	return yaml.Unmarshal(data, cfg)
 }
 

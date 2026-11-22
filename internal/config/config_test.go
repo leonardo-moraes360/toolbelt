@@ -3,22 +3,17 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
+	"sync"
 	"testing"
+
+	"gopkg.in/yaml.v3"
 )
 
 func TestDefaultConfig(t *testing.T) {
 	cfg := DefaultConfig()
 
-	if cfg.Defaults.Timeout != "30s" {
-		t.Errorf("Default timeout = %q, want %q", cfg.Defaults.Timeout, "30s")
-	}
-	if cfg.Defaults.Sandbox != false {
-		t.Error("Default sandbox should be false")
-	}
-	if cfg.Sandbox.CPULimit != 100 {
-		t.Errorf("Default CPU limit = %d, want %d", cfg.Sandbox.CPULimit, 100)
-	}
 	if cfg.Bench.Repetitions != 5 {
 		t.Errorf("Default repetitions = %d, want %d", cfg.Bench.Repetitions, 5)
 	}
@@ -175,7 +170,7 @@ func TestSaveAndLoad(t *testing.T) {
 	configPath := filepath.Join(tmpDir, "config.yaml")
 
 	cfg := DefaultConfig()
-	cfg.Defaults.Timeout = "60s"
+	cfg.Bench.Timeout = "60s"
 	cfg.Bench.Repetitions = 10
 
 	if err := Save(cfg, configPath); err != nil {
@@ -187,8 +182,8 @@ func TestSaveAndLoad(t *testing.T) {
 		t.Fatalf("loadFromFile failed: %v", err)
 	}
 
-	if loaded.Defaults.Timeout != "60s" {
-		t.Errorf("Loaded timeout = %q, want %q", loaded.Defaults.Timeout, "60s")
+	if loaded.Bench.Timeout != "60s" {
+		t.Errorf("Loaded timeout = %q, want %q", loaded.Bench.Timeout, "60s")
 	}
 	if loaded.Bench.Repetitions != 10 {
 		t.Errorf("Loaded repetitions = %d, want %d", loaded.Bench.Repetitions, 10)
@@ -236,22 +231,22 @@ func TestLocalOverridesGlobal(t *testing.T) {
 	globalDir := filepath.Join(tmpDir, "global")
 	os.MkdirAll(globalDir, 0o755)
 	globalCfg := DefaultConfig()
-	globalCfg.Defaults.Timeout = "30s"
+	globalCfg.Bench.Timeout = "30s"
 	globalCfg.Bench.Repetitions = 5
 	Save(globalCfg, filepath.Join(globalDir, "config.yaml"))
 
 	localDir := filepath.Join(tmpDir, "local")
 	os.MkdirAll(localDir, 0o755)
 	localCfg := DefaultConfig()
-	localCfg.Defaults.Timeout = "60s"
+	localCfg.Bench.Timeout = "60s"
 	Save(localCfg, filepath.Join(localDir, "config.yaml"))
 
 	cfg := DefaultConfig()
 	loadFromFile(filepath.Join(globalDir, "config.yaml"), cfg)
 	loadFromFile(filepath.Join(localDir, "config.yaml"), cfg)
 
-	if cfg.Defaults.Timeout != "60s" {
-		t.Errorf("Local should override global, got timeout = %q", cfg.Defaults.Timeout)
+	if cfg.Bench.Timeout != "60s" {
+		t.Errorf("Local should override global, got timeout = %q", cfg.Bench.Timeout)
 	}
 }
 
@@ -333,5 +328,57 @@ func TestVaultConfigValidate(t *testing.T) {
 		if c.Validate() == nil {
 			t.Errorf("%s: accepted", name)
 		}
+	}
+}
+
+func TestUnknownKeysWarnedNotFatal(t *testing.T) {
+	var buf strings.Builder
+	old := warnOut
+	warnOut = &buf
+	t.Cleanup(func() { warnOut = old; warnedFiles = sync.Map{} })
+	warnedFiles = sync.Map{}
+
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	body := "defaults:\n  sandbox: true\ngraph:\n  auto_index: true\n  index_on_change: false\nverify:\n  checks:\n    - name: a\n      cmd: b\n      bogus: 1\nlogging:\n  level: info\n"
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg := DefaultConfig()
+	if err := loadFromFile(path, cfg); err != nil {
+		t.Fatalf("unknown keys must not fail: %v", err)
+	}
+	if cfg.Graph.IndexOnChange {
+		t.Error("known key was not applied")
+	}
+	if err := loadFromFile(path, DefaultConfig()); err != nil {
+		t.Fatal(err)
+	}
+	got := buf.String()
+	for _, want := range []string{
+		"unknown config key defaults (ignored)",
+		"unknown config key graph.auto_index (ignored)",
+		"unknown config key verify.checks.bogus (ignored)",
+		"unknown config key logging (ignored)",
+	} {
+		if strings.Count(got, want) != 1 {
+			t.Errorf("want exactly one %q in:\n%s", want, got)
+		}
+	}
+	if strings.Contains(got, "index_on_change") {
+		t.Errorf("known key reported:\n%s", got)
+	}
+}
+
+func TestDefaultConfigHasNoUnknownKeys(t *testing.T) {
+	data, err := yaml.Marshal(DefaultConfig())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc yaml.Node
+	if err := yaml.Unmarshal(data, &doc); err != nil {
+		t.Fatal(err)
+	}
+	if got := unknownKeys(doc.Content[0], reflect.TypeOf(Config{}), ""); len(got) != 0 {
+		t.Errorf("a written config warns about itself: %v", got)
 	}
 }

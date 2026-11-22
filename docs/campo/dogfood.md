@@ -57,7 +57,7 @@ Bootstrap from scratch in a worktree (`config.yaml`/`agent_docs.yaml`/`invariant
 
 | # | Command | Expected | Got | Sev. |
 |---|---------|----------|-----|------|
-| 1 | `tb init` | `lint_cmd` only if the binary is on PATH | **still open** in v0.0.5: writes `golangci-lint run` without `golangci-lint` on PATH; reverted to `go vet ./...` by hand | medium |
+| 1 | `tb init` | `lint_cmd` only if the binary is on PATH | **still open** in v0.0.5: writes `golangci-lint run` without `golangci-lint` on PATH; reverted to `go vet ./...` by hand. **Fixed in b73010e** (`detectGoLintCmd` checks PATH, falls back to `go vet ./...`; `TestDetectLintCmd_GolangciMissingFromPath` covers it) | medium |
 | 3 | `tb verify run` | — | **fixed**: 1 iteration (~15s), `PASS` | — |
 | 7 | `tb init` / `tb mem init` | versionable files with default mode | **still open**: `config.yaml`, `agent_docs.yaml`, `invariants.yaml` created `0600` | low |
 | 17 | `tb init` inside a `git worktree` | local state patterns ignored by git | writes to `.git/worktrees/<wt>/info/exclude`, which git does not read (only `$GIT_COMMON_DIR/info/exclude`); here `.gitignore` masks it, but in a repo without `.gitignore` local state shows up in `git status` | medium |
