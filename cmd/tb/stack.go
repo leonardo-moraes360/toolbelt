@@ -59,7 +59,7 @@ func init() {
 	stackCmd.Flags().String("typecheck-cmd", "", "verify: typecheck command (empty + explicit flag or --no-typecheck to skip)")
 	stackCmd.Flags().Bool("no-typecheck", false, "verify: skips typecheck_cmd")
 	stackCmd.Flags().StringArray("check", nil, "verify: named check name=cmd (repeatable; adds one or overrides its cmd)")
-	stackCmd.Flags().StringArray("no-check", nil, "verify: skips the named check (repeatable)")
+	addSkipCheckFlags(stackCmd, "verify: ")
 	stackCmd.Flags().Bool("no-checks", false, "verify: skips every verify.checks entry")
 	addCoverageFlags(stackCmd, "verify: ")
 	stackCmd.Flags().Bool("dry-run", false, "verify: shows the plan (cmds/dir) without executing")

@@ -50,9 +50,18 @@ func init() {
 	verifyRunCmd.Flags().String("typecheck-cmd", "", "typecheck command (empty + explicit flag or --no-typecheck to skip)")
 	verifyRunCmd.Flags().Bool("no-typecheck", false, "skips typecheck_cmd (config)")
 	verifyRunCmd.Flags().StringArray("check", nil, "named check name=cmd (repeatable; adds one or overrides its cmd)")
-	verifyRunCmd.Flags().StringArray("no-check", nil, "skips the named check (repeatable)")
+	addSkipCheckFlags(verifyRunCmd, "")
 	verifyRunCmd.Flags().Bool("no-checks", false, "skips every verify.checks entry")
 	addCoverageFlags(verifyRunCmd, "")
+}
+
+// addSkipCheckFlags registers --skip-check (repeatable) and its hidden
+// deprecated spelling --no-check, kept until 2.0 because it sat one letter
+// away from the boolean --no-checks.
+func addSkipCheckFlags(c *cobra.Command, prefix string) {
+	c.Flags().StringArray("skip-check", nil, prefix+"skips the named check (repeatable)")
+	c.Flags().StringArray("no-check", nil, prefix+"skips the named check (repeatable)")
+	_ = c.Flags().MarkDeprecated("no-check", "use --skip-check")
 }
 
 // addCoverageFlags registers the coverage ruler's flags (R4) on tb verify
@@ -147,7 +156,9 @@ func verifyFlagOverrides(cmd *cobra.Command) (*verify.FlagOverrides, error) {
 	o.NoLint, _ = flags.GetBool("no-lint")
 	o.NoTypecheck, _ = flags.GetBool("no-typecheck")
 	o.NoChecks, _ = flags.GetBool("no-checks")
-	o.SkipChecks, _ = flags.GetStringArray("no-check")
+	o.SkipChecks, _ = flags.GetStringArray("skip-check")
+	legacySkip, _ := flags.GetStringArray("no-check")
+	o.SkipChecks = append(o.SkipChecks, legacySkip...)
 	specs, _ := flags.GetStringArray("check")
 	checks, err := parseCheckFlags(specs)
 	if err != nil {

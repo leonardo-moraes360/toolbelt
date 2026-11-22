@@ -189,7 +189,7 @@ func applyCheckOverrides(cfg *Config, o *FlagOverrides) error {
 	for _, name := range o.SkipChecks {
 		i := slices.IndexFunc(cfg.Checks, func(c config.VerifyCheck) bool { return c.Name == name })
 		if i < 0 {
-			return &UsageError{Msg: fmt.Sprintf("--no-check %q: no such check", name)}
+			return &UsageError{Msg: fmt.Sprintf("--skip-check %q: no such check", name)}
 		}
 		cfg.Checks = slices.Delete(cfg.Checks, i, i+1)
 	}
