@@ -104,7 +104,7 @@ var watchdogAlertsCmd = &cobra.Command{
 			return err
 		}
 		if jsonOutput {
-			return emitJSONIndent(envelope.Watchdog, alerts)
+			return emitJSONIndent(envelope.WatchdogAlerts, alerts)
 		}
 		if len(alerts) == 0 {
 			fmt.Println("No alerts.")

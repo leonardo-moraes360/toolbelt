@@ -2400,9 +2400,9 @@ Every JSON document `tb` prints on stdout with `--json`, and every MCP tool resu
 | `workspace/1.0` | `tb workspace *` (a list is `{"v", "workspaces": [...]}`) |
 | `merge/1.0` | `tb merge`, `tb_merge` |
 
-Experimental commands stamp `board/1.0`, `router/1.0`, `router-status/1.0` and `watchdog/1.0` by the same rule (not frozen; `tb watchdog alerts` is `{"v", "alerts": [...]}`); the bus, egm, vault, red, blue, lab and bench outputs are not stamped yet. Envelopes that already carried a `v` keep it at their own version (`bus/0.1`, `bus-wake/0.1`, `bus-discover/0.1`, `router-task/0.1`, `egm-source-drift/0.2`, `egm-draft/0.1`, `egm-brainstorm/0.1`).
+Experimental commands stamp `board/1.0`, `router/1.0`, `router-status/1.0`, `watchdog/1.0` and `watchdog-alerts/1.0` by the same rule (not frozen; `tb watchdog alerts` and `tb_watchdog_alerts` are `{"v", "alerts": [...]}`; `tb_router_status` is `router-status/1.0`); the bus, egm, vault, red, blue, lab and bench outputs are not stamped yet. Envelopes that already carried a `v` keep it at their own version (`bus/0.1`, `bus-wake/0.1`, `bus-discover/0.1`, `router-task/0.1`, `egm-source-drift/0.2`, `egm-draft/0.1`, `egm-brainstorm/0.1`).
 
-On-disk files use an integer `version` instead: `.toolbelt/graph.json` (derived cache: a file without `version` or with another one is discarded and rebuilt by the next `tb graph index`, or reported `stale: true` over MCP) and `.toolbelt/tickets/TKT-*.yaml` (optional `version: 1`, absent means 1; a newer version is refused, never rewritten).
+On-disk files use an integer `version` instead: `.toolbelt/graph.json` (derived cache: a file without `version` or with another one is discarded and rebuilt by the next `tb graph index`, or reported `stale: true` over MCP) and `.toolbelt/tickets/TKT-*.yaml` (optional `version: 1`, absent means 1; a newer version is refused, never rewritten: because tickets are loaded together, one ticket with a newer version makes every ticket command that scans the directory fail, with an error naming the file and its version, until `tb` is upgraded).
 
 ## Errors and Usage
 
@@ -2424,9 +2424,9 @@ The table is stable (1.x may add codes, never change a meaning).
 | 2 | Usage error or refusal before any work: bad flag or argument, unknown subcommand, missing required flag, invalid `--ruler`/`--check` (`tb verify run`, `tb stack`), egm/vault refusal reasons |
 | 3 | `tb egm`: the verdict does not allow the operation (`receipt` is refused unless `PASS`/`PASS_PARTIAL`) |
 | 124 | `tb sandbox run`: the child hit `--timeout` (with `--json` too; the document has `timed_out: true`) |
-| 127 | A configured command was not found or is not executable: `tb verify run` (`test_cmd` / `build_cmd` / `typecheck_cmd` / `lint_cmd` / a named check / `hidden_test_cmd`; with `--json` it emits the `verify.Result` envelope with an `error` field) and the `tb sandbox run` command |
+| 127 | A configured command was not found or is not executable: `tb verify run` (`test_cmd` / `build_cmd` / `typecheck_cmd` / `lint_cmd` / a named check / `hidden_test_cmd`; with `--json` it emits the `verify.Result` envelope with an `error` field) and the `tb sandbox run` command (not found, or not executable; the `error/1.0` body has `reason: "command_not_found"`, the same for a bare name and a path) |
 | 130 | Interrupted by SIGINT/SIGTERM (`tb mcp`; `tb sandbox run` when canceled) |
-| child | `tb sandbox run` exits with the child's non-zero code, with or without `--json` (a child killed by a signal counts as 1) |
+| child | `tb sandbox run` exits with the child's non-zero code, with or without `--json` (a child killed by signal `n` exits `128+n`, and the document has `signal`, e.g. `"SIGKILL"`) |
 | max | `tb stack` exits with the highest exit code among its steps |
 
 When the configured verify command does not exist/is not executable, verify fails immediately (no retries) and the `tb` process exits **127**.

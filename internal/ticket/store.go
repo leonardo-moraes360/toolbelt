@@ -233,7 +233,7 @@ func (s *Store) read(id string) (Ticket, error) {
 		return Ticket{}, fmt.Errorf("ticket %s unreadable: %w", id, err)
 	}
 	if t.Version > FormatVersion {
-		return Ticket{}, fmt.Errorf("ticket %s unreadable: format version %d is newer than this tb understands (%d); upgrade tb", id, t.Version, FormatVersion)
+		return Ticket{}, fmt.Errorf("ticket %s unreadable: %s has format version %d, newer than this tb understands (%d); upgrade tb", id, s.Path(id), t.Version, FormatVersion)
 	}
 	if t.ID != id {
 		return Ticket{}, fmt.Errorf("ticket %s unreadable: id %q in YAML differs from file name %q", id, t.ID, id)

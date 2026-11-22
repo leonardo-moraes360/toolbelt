@@ -85,7 +85,6 @@ changing refs, unless --allow-sensitive is used (dry-run only reports).`,
 				if jerr := emitJSONIndent(envelope.Merge, res); jerr != nil {
 					return jerr
 				}
-				err = alreadyReported(err)
 			} else {
 				printMergeTable(res)
 			}

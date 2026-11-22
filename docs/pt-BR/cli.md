@@ -2425,9 +2425,9 @@ Todo documento JSON que o `tb` imprime no stdout com `--json`, e todo corpo de r
 | `workspace/1.0` | `tb workspace *` (uma lista é `{"v", "workspaces": [...]}`) |
 | `merge/1.0` | `tb merge`, `tb_merge` |
 
-Os comandos experimentais carimbam `board/1.0`, `router/1.0`, `router-status/1.0` e `watchdog/1.0` pela mesma regra (não congelados; `tb watchdog alerts` é `{"v", "alerts": [...]}`); as saídas de bus, egm, vault, red, blue, lab e bench ainda não são carimbadas. Envelopes que já tinham `v` o mantêm na própria versão (`bus/0.1`, `bus-wake/0.1`, `bus-discover/0.1`, `router-task/0.1`, `egm-source-drift/0.2`, `egm-draft/0.1`, `egm-brainstorm/0.1`).
+Os comandos experimentais carimbam `board/1.0`, `router/1.0`, `router-status/1.0`, `watchdog/1.0` e `watchdog-alerts/1.0` pela mesma regra (não congelados; `tb watchdog alerts` e `tb_watchdog_alerts` são `{"v", "alerts": [...]}`; `tb_router_status` é `router-status/1.0`); as saídas de bus, egm, vault, red, blue, lab e bench ainda não são carimbadas. Envelopes que já tinham `v` o mantêm na própria versão (`bus/0.1`, `bus-wake/0.1`, `bus-discover/0.1`, `router-task/0.1`, `egm-source-drift/0.2`, `egm-draft/0.1`, `egm-brainstorm/0.1`).
 
-Arquivos em disco usam um `version` inteiro: `.toolbelt/graph.json` (cache derivado: um arquivo sem `version` ou com outra é descartado e reconstruído pelo próximo `tb graph index`, ou aparece como `stale: true` via MCP) e `.toolbelt/tickets/TKT-*.yaml` (`version: 1` opcional, ausente vale 1; uma versão mais nova é recusada, nunca reescrita).
+Arquivos em disco usam um `version` inteiro: `.toolbelt/graph.json` (cache derivado: um arquivo sem `version` ou com outra é descartado e reconstruído pelo próximo `tb graph index`, ou aparece como `stale: true` via MCP) e `.toolbelt/tickets/TKT-*.yaml` (`version: 1` opcional, ausente vale 1; uma versão mais nova é recusada, nunca reescrita: como os tickets são carregados juntos, um ticket com versão mais nova faz todo comando de ticket que varre o diretório falhar, com um erro que nomeia o arquivo e a versão, até o `tb` ser atualizado).
 
 ## Erros e Usage
 
@@ -2449,9 +2449,9 @@ A tabela é estável (a 1.x pode acrescentar códigos, nunca mudar um significad
 | 2 | Erro de uso ou recusa antes de qualquer trabalho: flag ou argumento inválido, subcomando desconhecido, flag obrigatória ausente, `--ruler`/`--check` inválido (`tb verify run`, `tb stack`), motivos de recusa do egm/vault |
 | 3 | `tb egm`: o veredito não permite a operação (`receipt` é recusado sem `PASS`/`PASS_PARTIAL`) |
 | 124 | `tb sandbox run`: o filho estourou `--timeout` (também com `--json`; o documento tem `timed_out: true`) |
-| 127 | Comando configurado não encontrado ou não executável: `tb verify run` (`test_cmd` / `build_cmd` / `typecheck_cmd` / `lint_cmd` / um check nomeado / `hidden_test_cmd`; com `--json` emite o envelope `verify.Result` com campo `error`) e o comando do `tb sandbox run` |
+| 127 | Comando configurado não encontrado ou não executável: `tb verify run` (`test_cmd` / `build_cmd` / `typecheck_cmd` / `lint_cmd` / um check nomeado / `hidden_test_cmd`; com `--json` emite o envelope `verify.Result` com campo `error`) e o comando do `tb sandbox run` (não encontrado ou não executável; o corpo `error/1.0` tem `reason: "command_not_found"`, igual para nome simples e caminho) |
 | 130 | Interrompido por SIGINT/SIGTERM (`tb mcp`; `tb sandbox run` quando cancelado) |
-| do filho | `tb sandbox run` sai com o código não zero do filho, com ou sem `--json` (filho morto por sinal conta como 1) |
+| do filho | `tb sandbox run` sai com o código não zero do filho, com ou sem `--json` (filho morto pelo sinal `n` sai com `128+n`, e o documento tem `signal`, ex.: `"SIGKILL"`) |
 | max | `tb stack` sai com o maior exit code entre os seus passos |
 
 Quando o comando configurado no verify não existe/não é executável, o verify falha imediatamente (sem retries) e o processo `tb` sai **127**.

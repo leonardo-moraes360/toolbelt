@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/leonardo-moraes360/toolbelt/internal/envelope"
@@ -102,5 +103,42 @@ func TestCallStampsKindAndErrorBody(t *testing.T) {
 	}
 	if body.V != envelope.Error || body.Reason != "tool_not_found" || body.ExitCode != 2 {
 		t.Fatalf("body = %+v", body)
+	}
+}
+
+// Every tb_* tool is stamped, or is on this list because it belongs to an
+// experimental family not stamped yet or carries its own versioned envelope.
+var unstampedTools = []string{"tb_bus_", "tb_egm_", "tb_vault_", "tb_red_", "tb_blue_", "tb_sec_", "tb_echo", "tb_env"}
+
+func TestEveryToolIsStampedOrAllowlisted(t *testing.T) {
+	for _, tool := range Default().List() {
+		if _, ok := envelope.ToolKinds[tool.Name]; ok {
+			continue
+		}
+		listed := false
+		for _, p := range unstampedTools {
+			if tool.Name == p || (strings.HasSuffix(p, "_") && strings.HasPrefix(tool.Name, p)) {
+				listed = true
+			}
+		}
+		if !listed {
+			t.Errorf("%s is neither in envelope.ToolKinds nor on the unstamped allowlist", tool.Name)
+		}
+	}
+}
+
+func TestToolErrorReasons(t *testing.T) {
+	r := New()
+	for msg, want := range map[string]string{
+		"vectors_disabled: off": "vectors_disabled",
+		"git: boom":             "error",
+		"plain":                 "error",
+	} {
+		r.Register(&Tool{Name: "t", Handler: func(context.Context, map[string]any) (any, error) { return nil, errors.New(msg) }})
+		res, _ := r.Call(context.Background(), "t", nil)
+		var body envelope.ErrorBody
+		if err := json.Unmarshal([]byte(res.Content[0].Text), &body); err != nil || body.Reason != want {
+			t.Errorf("%q: reason %q, want %q (%v)", msg, body.Reason, want, err)
+		}
 	}
 }

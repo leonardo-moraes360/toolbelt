@@ -110,7 +110,7 @@ type Result struct {
 const FormatVersion = 1
 
 type Ticket struct {
-	Version      int           `yaml:"version,omitempty" json:"version,omitempty"`
+	Version      int           `yaml:"version,omitempty" json:"-"`
 	ID           string        `yaml:"id" json:"id"`
 	Title        string        `yaml:"title" json:"title"`
 	Description  string        `yaml:"description,omitempty" json:"description,omitempty"`

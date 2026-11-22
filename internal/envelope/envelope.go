@@ -9,6 +9,7 @@ package envelope
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"regexp"
 )
@@ -44,53 +45,56 @@ const (
 	Merge        = "merge/1.0"
 
 	// Experimental kinds (not frozen).
-	Board        = "board/1.0"
-	Router       = "router/1.0"
-	RouterStatus = "router-status/1.0"
-	Watchdog     = "watchdog/1.0"
+	Board          = "board/1.0"
+	Router         = "router/1.0"
+	RouterStatus   = "router-status/1.0"
+	Watchdog       = "watchdog/1.0"
+	WatchdogAlerts = "watchdog-alerts/1.0"
 )
 
 // ToolKinds maps an MCP tool to the kind of its result body. The registry
 // stamps successful results from this table, so the MCP body matches the CLI's.
 var ToolKinds = map[string]string{
-	"tb_version":       Version,
-	"tb_run":           SandboxRun,
-	"tb_mem_add":       Mem,
-	"tb_mem_edit":      Mem,
-	"tb_mem_retire":    Mem,
-	"tb_mem_init":      Mem,
-	"tb_mem_list":      Mem,
-	"tb_mem_show":      Mem,
-	"tb_mem_search":    Mem,
-	"tb_mem_check":     Mem,
-	"tb_verify_run":    Verify,
-	"tb_review":        Review,
-	"tb_drift":         Drift,
-	"tb_guard_check":   Guard,
-	"tb_stack":         Stack,
-	"tb_graph_search":  GraphSearch,
-	"tb_graph_callers": GraphCallers,
-	"tb_graph_deps":    GraphDeps,
-	"tb_graph_impact":  GraphImpact,
-	"tb_graph_explain": GraphExplain,
-	"tb_graph_path":    GraphPath,
-	"tb_graph_index":   GraphIndex,
-	"tb_ticket_list":   TicketList,
-	"tb_ticket_show":   Ticket,
-	"tb_ticket_create": Ticket,
-	"tb_merge":         Merge,
-	"tb_board":         Board,
+	"tb_version":         Version,
+	"tb_run":             SandboxRun,
+	"tb_mem_add":         Mem,
+	"tb_mem_edit":        Mem,
+	"tb_mem_retire":      Mem,
+	"tb_mem_init":        Mem,
+	"tb_mem_list":        Mem,
+	"tb_mem_show":        Mem,
+	"tb_mem_search":      Mem,
+	"tb_mem_check":       Mem,
+	"tb_verify_run":      Verify,
+	"tb_review":          Review,
+	"tb_drift":           Drift,
+	"tb_guard_check":     Guard,
+	"tb_stack":           Stack,
+	"tb_graph_search":    GraphSearch,
+	"tb_graph_callers":   GraphCallers,
+	"tb_graph_deps":      GraphDeps,
+	"tb_graph_impact":    GraphImpact,
+	"tb_graph_explain":   GraphExplain,
+	"tb_graph_path":      GraphPath,
+	"tb_graph_index":     GraphIndex,
+	"tb_ticket_list":     TicketList,
+	"tb_ticket_show":     Ticket,
+	"tb_ticket_create":   Ticket,
+	"tb_merge":           Merge,
+	"tb_board":           Board,
+	"tb_router_status":   RouterStatus,
+	"tb_watchdog_alerts": WatchdogAlerts,
 }
 
 // listKeys names the field that holds a payload that is a JSON array, since
 // an array has no room for "v": the envelope wraps it.
 var listKeys = map[string]string{
-	Mem:        "invariants",
-	TicketList: "tickets",
-	Workspace:  "workspaces",
-	Board:      "items",
-	Watchdog:   "alerts",
-	Router:     "items",
+	Mem:            "invariants",
+	TicketList:     "tickets",
+	Workspace:      "workspaces",
+	Board:          "items",
+	WatchdogAlerts: "alerts",
+	Router:         "items",
 }
 
 var kindPattern = regexp.MustCompile(`^[a-z-]+/\d+\.\d+$`)
@@ -154,4 +158,40 @@ type ErrorBody struct {
 // NewError builds an error/1.0 body.
 func NewError(msg, reason string, exitCode int) ErrorBody {
 	return ErrorBody{V: Error, Error: msg, Reason: reason, ExitCode: exitCode}
+}
+
+// ReasonError attaches a machine-readable reason to an error; ReasonOf finds
+// it through wrapping.
+type ReasonError struct {
+	Reason string
+	Err    error
+}
+
+func (e *ReasonError) Error() string { return e.Err.Error() }
+func (e *ReasonError) Unwrap() error { return e.Err }
+
+// knownReasons are the "code: message" prefixes that are reasons, as opposed
+// to a package name ("git: ...") that merely looks like one.
+var knownReasons = map[string]bool{
+	"vectors_disabled": true, "vectors_stale": true, "vectors_invalid": true, "vectors_too_many": true,
+	"vectors_root": true, "model_path": true, "model_mismatch": true, "model_unsupported": true,
+	"model_load": true, "embed_unavailable": true, "embed_cpu_unsupported": true, "embed_unsandboxed": true,
+	"embed_protocol": true, "embed_crashed": true, "embed_timeout": true, "config_untrusted": true,
+	"prompt_cli_only": true, "receipt_tampered": true, "receipt_stale": true, "receipt_mismatch": true,
+	"receipt_incomplete": true, "secret_files": true, "router_tasks": true, "notify_unsupported": true,
+}
+
+var reasonPrefix = regexp.MustCompile(`^([a-z][a-z0-9_]*)(?::|$)`)
+
+// ReasonOf is the reason of an error/1.0 body: a ReasonError's, else a known
+// "code:" prefix of the message, else "error".
+func ReasonOf(err error) string {
+	var re *ReasonError
+	if errors.As(err, &re) && re.Reason != "" {
+		return re.Reason
+	}
+	if m := reasonPrefix.FindStringSubmatch(err.Error()); len(m) == 2 && knownReasons[m[1]] {
+		return m[1]
+	}
+	return "error"
 }

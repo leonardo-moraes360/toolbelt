@@ -3,6 +3,8 @@ package main
 import (
 	"strings"
 	"testing"
+
+	"github.com/spf13/cobra"
 )
 
 // TestExitCodeTable has one case per row of the stable exit-code table in
@@ -33,6 +35,9 @@ func TestExitCodeTable(t *testing.T) {
 		{"sandbox timeout json", []string{"--json", "sandbox", "run", "--allow-unsandboxed", "--timeout", "300ms", "--", "sleep", "5"}, 124},
 		{"sandbox child code", []string{"sandbox", "run", "--allow-unsandboxed", "--", "sh", "-c", "exit 7"}, 7},
 		{"sandbox child code json", []string{"--json", "sandbox", "run", "--allow-unsandboxed", "--", "sh", "-c", "exit 7"}, 7},
+		{"sandbox child killed by signal", []string{"sandbox", "run", "--allow-unsandboxed", "--", "sh", "-c", "kill -9 $$"}, 137},
+		{"sandbox command not executable", []string{"sandbox", "run", "--allow-unsandboxed", "./go.mod"}, 127},
+		{"sandbox absolute path not found", []string{"sandbox", "run", "--allow-unsandboxed", "/nonexistent/tb-xyz"}, 127},
 		{"sandbox command not found", []string{"sandbox", "run", "--allow-unsandboxed", "tb-no-such-binary-xyz"}, 127},
 	}
 	for _, tc := range cases {
@@ -58,3 +63,53 @@ func TestSandboxJSONTimedOut(t *testing.T) {
 		t.Fatalf("timed_out not true: %s", out)
 	}
 }
+
+func TestSandboxJSONSignalName(t *testing.T) {
+	if testing.Short() {
+		t.Skip()
+	}
+	bin := buildTB(t)
+	out, code := runTBJSON(t, bin, t.TempDir(), nil, "--json", "sandbox", "run", "--allow-unsandboxed", "--", "sh", "-c", "kill -9 $$")
+	if code != 137 || !strings.Contains(string(out), `"signal":"SIGKILL"`) {
+		t.Fatalf("exit %d: %s", code, out)
+	}
+}
+
+// Every command with its own PersistentPreRunE must mark the run as started,
+// or a runtime error under it would exit 2.
+func TestEveryPreRunMarksRunStarted(t *testing.T) {
+	t.Chdir(t.TempDir())
+	var walk func(c *cobra.Command)
+	walk = func(c *cobra.Command) {
+		if c.PersistentPreRunE != nil {
+			runStarted = false
+			probe := &cobra.Command{Use: "version"}
+			if err := c.PersistentPreRunE(probe, nil); err != nil {
+				t.Fatalf("%s: %v", c.CommandPath(), err)
+			}
+			if !runStarted {
+				t.Errorf("%s: PersistentPreRunE does not call markRunStarted", c.CommandPath())
+			}
+		}
+		for _, sub := range c.Commands() {
+			walk(sub)
+		}
+	}
+	walk(rootCmd)
+	runStarted = false
+}
+
+func TestIsRequiredFlagErrorIsAnchored(t *testing.T) {
+	for _, msg := range []string{`required flag(s) "x" not set`, "if any flags in the group [a b] are set none of the others can be", "at least one of the flags in the group [a b] is required"} {
+		if !isRequiredFlagError(errString(msg)) {
+			t.Errorf("%q should be a usage error", msg)
+		}
+	}
+	if isRequiredFlagError(errString("git: all flags in the group [x] failed")) {
+		t.Error("an unanchored mention must not match")
+	}
+}
+
+type errString string
+
+func (e errString) Error() string { return string(e) }

@@ -196,14 +196,10 @@ var memCheckCmd = &cobra.Command{
 			ids = append(ids, inv.ID)
 		}
 		rep, err := s.Check(sha, ids, all)
-		printed := false
 		if rep != nil && jsonOutput {
-			printed = emitJSON(envelope.Mem, rep) == nil
+			_ = emitJSON(envelope.Mem, rep)
 		}
 		if err != nil {
-			if printed {
-				return alreadyReported(err)
-			}
 			return err
 		}
 		if jsonOutput {

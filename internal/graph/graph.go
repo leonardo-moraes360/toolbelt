@@ -67,7 +67,7 @@ type Edge struct {
 // IndexVersion is the integer version of graph.json. graph.json is a derived
 // cache: a file with another version (or none, as before 1.0) is discarded and
 // the next index run rebuilds it, never an error.
-const IndexVersion = 1
+const IndexVersion = 2
 
 type Index struct {
 	Version     int    `json:"version"`

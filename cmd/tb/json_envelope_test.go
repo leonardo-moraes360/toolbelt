@@ -154,3 +154,52 @@ func TestJSONErrorBody(t *testing.T) {
 		}
 	}
 }
+
+// oneDocument asserts stdout holds exactly one JSON document.
+func oneDocument(t *testing.T, label string, out []byte) map[string]json.RawMessage {
+	t.Helper()
+	dec := json.NewDecoder(bytes.NewReader(out))
+	var doc map[string]json.RawMessage
+	if err := dec.Decode(&doc); err != nil {
+		t.Fatalf("%s: stdout is not a JSON document: %v\n%s", label, err, out)
+	}
+	if dec.More() {
+		t.Fatalf("%s: stdout holds more than one document:\n%s", label, out)
+	}
+	return doc
+}
+
+// A command that prints its result and then fails (blocking drift/review)
+// keeps stdout to that one document.
+func TestJSONResultThenErrorIsOneDocument(t *testing.T) {
+	if testing.Short() {
+		t.Skip()
+	}
+	bin := buildTB(t)
+	dir := envelopeRepo(t)
+	if err := os.WriteFile(filepath.Join(dir, "rd.md"), []byte("---\ntitle: t\nscope:\n  - zzz.txt\n---\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, args := range [][]string{
+		{"drift", "--ticket", "rd.md", "--base", "HEAD~1", "--head", "HEAD"},
+		{"review", "rd.md", "--base", "HEAD~1", "--head", "HEAD"},
+	} {
+		out, code := runTBJSON(t, bin, dir, nil, append([]string{"--json"}, args...)...)
+		if code != 1 {
+			t.Errorf("tb %v: exit %d, want 1", args, code)
+		}
+		doc := oneDocument(t, args[0], out)
+		if _, isErr := doc["error"]; isErr {
+			t.Errorf("tb %v: stdout is the error body, want the result document: %s", args, out)
+		}
+	}
+
+	// With --output the result went to the file, so stdout carries the error body.
+	out, code := runTBJSON(t, bin, dir, nil, "--json", "drift", "--ticket", "rd.md", "--base", "HEAD~1", "--head", "HEAD", "--output", filepath.Join(t.TempDir(), "d.json"))
+	if code != 1 {
+		t.Errorf("--output: exit %d, want 1", code)
+	}
+	if doc := oneDocument(t, "drift --output", out); string(doc["v"]) != `"error/1.0"` {
+		t.Errorf("--output: stdout = %s", out)
+	}
+}

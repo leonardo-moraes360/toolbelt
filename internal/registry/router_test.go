@@ -64,13 +64,18 @@ func checkRouterTools(t *testing.T, dir string) {
 		t.Fatalf("status: %s", text)
 	}
 	_, text = callTool(t, "tb_watchdog_alerts", map[string]any{"cwd": dir})
-	var all []map[string]any
-	if err := json.Unmarshal([]byte(text), &all); err != nil || len(all) != 2 {
+	var all struct {
+		V      string           `json:"v"`
+		Alerts []map[string]any `json:"alerts"`
+	}
+	if err := json.Unmarshal([]byte(text), &all); err != nil || len(all.Alerts) != 2 || all.V != "watchdog-alerts/1.0" {
 		t.Fatalf("alerts: %s", text)
 	}
 	_, text = callTool(t, "tb_watchdog_alerts", map[string]any{"cwd": dir, "since": "30m", "kind": "worker_crash"})
-	var some []map[string]any
-	if err := json.Unmarshal([]byte(text), &some); err != nil || len(some) != 1 || some[0]["action"] != "retry" {
+	var some struct {
+		Alerts []map[string]any `json:"alerts"`
+	}
+	if err := json.Unmarshal([]byte(text), &some); err != nil || len(some.Alerts) != 1 || some.Alerts[0]["action"] != "retry" {
 		t.Fatalf("alerts filtrados: %s", text)
 	}
 	res, _ := callTool(t, "tb_watchdog_alerts", map[string]any{"cwd": dir, "since": "xyz"})

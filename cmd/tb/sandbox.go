@@ -1,12 +1,12 @@
 package main
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
+	"os/signal"
 	"runtime"
+	"syscall"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -40,9 +40,11 @@ var sandboxRunCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		res, err := sb.Run(context.Background(), args[0], args[1:]...)
+		ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
+		defer stop()
+		res, err := sb.Run(ctx, args[0], args[1:]...)
 		if err != nil {
-			if errors.Is(err, exec.ErrNotFound) {
+			if errors.Is(err, sandbox.ErrCommand) {
 				return &exitCodeError{code: exitNotFound, err: err}
 			}
 			return err
@@ -62,14 +64,16 @@ var sandboxRunCmd = &cobra.Command{
 }
 
 // sandboxExitCode is the code tb sandbox run exits with: 124 when the child
-// hit --timeout, 130 when interrupted, otherwise the child's own code. A child
-// killed by a signal has no code of its own and counts as 1.
+// hit --timeout, 130 when interrupted, 128+n when the child died of signal n,
+// otherwise the child's own code.
 func sandboxExitCode(res *sandbox.Result) int {
 	switch {
 	case res.TimedOut:
 		return exitTimeout
 	case res.Canceled:
 		return exitInterrupt
+	case res.SignalNum > 0:
+		return 128 + res.SignalNum
 	case res.ExitCode < 0:
 		return exitFail
 	}

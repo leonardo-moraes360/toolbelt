@@ -2,6 +2,7 @@ package envelope
 
 import (
 	"encoding/json"
+	"errors"
 	"testing"
 )
 
@@ -55,5 +56,17 @@ func TestNewErrorShape(t *testing.T) {
 	b, _ := json.Marshal(NewError("boom", "usage", 2))
 	if string(b) != `{"v":"error/1.0","error":"boom","reason":"usage","exit_code":2}` {
 		t.Fatalf("got %s", b)
+	}
+}
+
+func TestReasonOf(t *testing.T) {
+	if got := ReasonOf(&ReasonError{Reason: "x_y", Err: errors.New("boom")}); got != "x_y" {
+		t.Fatalf("typed reason: %s", got)
+	}
+	if got := ReasonOf(errors.New("model_path: bad")); got != "model_path" {
+		t.Fatalf("known prefix: %s", got)
+	}
+	if got := ReasonOf(errors.New("graph: bad")); got != "error" {
+		t.Fatalf("package prefix: %s", got)
 	}
 }

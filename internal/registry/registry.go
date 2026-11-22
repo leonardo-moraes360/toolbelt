@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"regexp"
 	"sort"
 
 	"github.com/leonardo-moraes360/toolbelt/internal/envelope"
@@ -91,13 +90,13 @@ func (r *Registry) Call(ctx context.Context, name string, args map[string]any) (
 
 	result, err := tool.Handler(ctx, args)
 	if err != nil {
-		return errorResult(err.Error(), errorReason(err.Error()), 1), nil
+		return errorResult(err.Error(), envelope.ReasonOf(err), 1), nil
 	}
 
 	if kind, ok := envelope.ToolKinds[name]; ok {
 		stamped, serr := stampResult(kind, result)
 		if serr != nil {
-			return nil, serr
+			return errorResult(serr.Error(), "error", 1), nil
 		}
 		result = stamped
 	}
@@ -123,17 +122,6 @@ func stampResult(kind string, result any) (any, error) {
 func errorResult(msg, reason string, exitCode int) *ToolResult {
 	b, _ := json.MarshalIndent(envelope.NewError(msg, reason, exitCode), "", "  ")
 	return &ToolResult{Content: []ContentBlock{{Type: "text", Text: string(b)}}, IsError: true}
-}
-
-var reasonPrefix = regexp.MustCompile(`^([a-z][a-z0-9_]*):`)
-
-// errorReason is the machine-readable reason: the "reason_code:" prefix some
-// tool errors already carry (prompt_cli_only, ...), otherwise "error".
-func errorReason(msg string) string {
-	if m := reasonPrefix.FindStringSubmatch(msg); m != nil {
-		return m[1]
-	}
-	return "error"
 }
 
 func formatResult(result any) (string, error) {
