@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Release workflow: the pinned zig archive is downloaded to `$RUNNER_TEMP`, not the checkout, so GoReleaser no longer refuses a dirty tree (the `v1.0.0-rc.1` tag failed before publishing anything)
+
 ## [1.0.0-rc.1] - 2026-11-22
 
 ### Changed
