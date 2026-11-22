@@ -92,7 +92,7 @@ tb  (implemented today)
 ├── board        Ticket board (list|watch|pause|resume|drain)          ✓ Phase 3
 ├── router       Foreground scheduler (run|status|config)           ✓ Phase 3
 ├── watchdog     Worker alerts and control (status|alerts|kill)       ✓ Phase 3
-├── merge        Merges done tickets (fail|last_wins)                     ✓ Phase 3
+├── merge        Merges done tickets (fail|last_wins|semantic|prompt)     ✓ Phase 3
 └── bus          Agent bus (channel|invite|join|send|recv|claim|complete|heartbeat|watchdog|log|run|discover)  ✓ B1–B3
 
 tb  (planned)
@@ -1868,6 +1868,9 @@ worktree temporária destacada e só então avança o branch alvo.
 tb merge TKT-001 TKT-002
 tb merge --dry-run TKT-001 TKT-002
 tb merge --strategy last_wins TKT-001 TKT-002
+tb merge --strategy semantic TKT-001 TKT-002
+tb merge --strategy prompt TKT-001 TKT-002
+tb merge --strategy prompt --resolutions 3f2a9c1d5b7e4a60 TKT-001 TKT-002
 tb merge --into integracao TKT-001 TKT-002
 tb merge --output changes.patch TKT-001 TKT-002
 tb merge --force TKT-001
@@ -1878,7 +1881,8 @@ tb merge --allow-sensitive TKT-001
 
 | Flag | Descrição |
 |------|-----------|
-| `--strategy fail\|last_wins` | Conflito (padrão `fail`) |
+| `--strategy fail\|last_wins\|semantic\|prompt` | Conflito (padrão `fail`) |
+| `--resolutions <id>` | Só `prompt`: reaplica o recibo de uma proposta anterior em vez de chamar o agente |
 | `--dry-run` | Integra no worktree temporário, reporta e descarta |
 | `--into <branch>` | Branch alvo (padrão: branch atual) |
 | `--output <arquivo.patch>` | Escreve o diff `alvo..integrado` sem mover refs |
@@ -1895,7 +1899,12 @@ ticket precisa estar `done` com `head_commit`.
 |------------|---------------|
 | `fail` (padrão) | Aborta no primeiro conflito, lista arquivos/tickets e **não altera nenhuma ref** |
 | `last_wins` | No arquivo em conflito, mantém o arquivo **inteiro** do ticket mais recente (não mescla hunks) e registra a resolução |
-| `prompt` / `semantic` | **Não implementadas** (erro explícito) |
+| `semantic` | Resolve os hunks que o git deixou em conflito com regras determinísticas e relata cada um (ver abaixo); se algum hunk ficar sem resolução, age como `fail` |
+| `prompt` | Roda `semantic` e depois um agente one-shot em sandbox nos hunks restantes; **duas etapas**: a proposta grava um recibo e nunca move uma ref, `--resolutions` o aplica |
+
+**`semantic`** (spec: [merge-strategies](specs/merge-strategies.md)): para cada arquivo não mesclado o tb lê os estágios do índice e roda `git merge-file --diff3` (sem atributos, sem merge driver), depois tenta duas regras por região em conflito: `disjoint` (os dois lados editam linhas disjuntas da base: as duas edições se aplicam) e `go_imports` (imports diferentes num mesmo bloco `import (...)` de Go: a união, menos os specs que um lado removeu, ordenada por caminho). Um arquivo resolvido não pode ter linha de marcador de conflito que as entradas não tinham, e um arquivo Go que fazia parse antes precisa continuar fazendo (`parse_failed`). Nunca resolvidos, seja qual for a flag: conflitos binário (`binary`), symlink, gitlink, delete/modify (`delete_modify`), add/add (`add_add`), modo (`mode`) e em caminho sensível (`sensitive`, mesmo com `--allow-sensitive`), e arquivos acima de `merge.semantic.max_file_bytes` (`too_large`). Edições sobrepostas dão `overlap`; região acima de `merge.semantic.max_region_lines` dá `region_too_large`. Quando todos os conflitos resolvem, aplica numa chamada, como `fail`/`last_wins` (`--dry-run`, `--output` e o gate de sensíveis inalterados). JSON: `conflicts[].resolution` é `semantic`, `reason` e `hunks` (`region`, `ours_lines`, `theirs_lines`, `rule` ou `reason`) dizem como ou por que não; `files[].status` é `semantic`; `resolutions[]` traz uma entrada por região resolvida com `rule` e o sha256 das linhas de base, ours, theirs e resultado; `result_tree` é a árvore integrada.
+
+**`prompt`**: depois do `semantic`, as regiões restantes vão ao agente do egm (`egm.agent_cmd` e as demais chaves de agente, lidas só da config do usuário; não há segunda config de agente), uma execução em sandbox por arquivo: o mesmo Landlock, subreaper, `HOME` descartável e perfil de vendor do `tb egm --engine llm`, workdir vazio somente leitura, prompt no stdin. Sem Landlock recusa (`no_landlock`) e nunca recua; sem `egm.agent_cmd` a proposta falha com `agent_unavailable`. O agente não toca o disco: devolve um objeto JSON `{nonce, regions:[{id,text}]}` (ou `{nonce, refuse}`) e o tb costura os textos nas regiões em conflito. As respostas são validadas (`agent_protocol` nonce/IDs/codificação, `agent_oversized`, `agent_markers`, `parse_failed`, `agent_secret`, `agent_refused`, `agent_novel`). Nunca vão ao agente: caminhos sensíveis, caminhos da deny-list (`secret_path`) e arquivos cujas regiões ou contexto casam um padrão de segredo (`secret_in_context`); o tb recusa em vez de redigir. Linhas resolvidas que não existem em base, ours nem theirs são relatadas como `novel_lines` (o teto é `merge.prompt.max_novel_lines`, sem valor por padrão). Falhas transitórias (`timeout`, `missing_output`, `exit_<n>`) são repetidas (`merge.prompt.attempts`); `tools_used`, `escaped_process`, `unattributed_orphan`, `sandbox_error` e execução interrompida ou acima do orçamento abortam o merge inteiro sem recibo. A proposta imprime e devolve `receipt` (`id`, `path`) e `result_tree`, qualquer que seja o `--dry-run`. O recibo é um JSON 0600 em `$XDG_STATE_HOME/toolbelt/merge/<hash do repo>/` (nunca no repositório; o ID são os 16 primeiros hex do sha256) com os tickets, a identidade do agente, os registros de execução (sem stderr, sem ambiente), as resoluções com o texto e a árvore resultante; leia com `cat`/`jq`, recibos com mais de 30 dias são varridos. `--resolutions <id>` reintegra, reaplica cada região do agente sem iniciar nenhum agente e falha antes de mover uma ref com `receipt_tampered` (bytes alterados), `receipt_stale` (alvo, SHA inicial ou tickets mudaram: refaça a proposta), `receipt_mismatch` (hashes de entrada de uma região ou a árvore resultante diferem) ou `receipt_incomplete` (a proposta deixou conflitos). Orçamentos (só config do usuário, seção `merge:`): `merge.semantic.max_region_lines` (2000), `max_file_bytes` (1 MiB); `merge.prompt.max_files` (10), `context_lines` (20), `max_prompt_bytes` (256 KiB, acima disso `prompt_budget`), `timeout_per_file` (5m), `max_total` (20m), `attempts` (2), `max_stdout_bytes` (1 MiB), `max_novel_lines`. Um `.toolbelt/config.yaml` do repositório que defina `merge.*` ou as chaves de agente do egm é ignorado com aviso `config_untrusted`. O MCP `tb_merge` aceita `semantic` e recusa `prompt` com `prompt_cli_only`.
 
 **Atomicidade:** o merge nunca toca o branch alvo durante a integração. O
 avanço usa compare-and-swap (`git update-ref refs/heads/X novo antigo`) e só
@@ -1936,6 +1945,13 @@ tb merge TKT-002 TKT-003
 # FILE     TICKETS          STATUS
 # a.txt    TKT-002,TKT-003  conflict
 # Error: merge conflict: 1 file(s) in conflict; no ref was changed (use --strategy last_wins to resolve)
+tb merge --strategy semantic --dry-run TKT-004 TKT-005
+# merge TKT-004 TKT-005 -> main (semantic) [dry-run]
+# FILE      TICKETS          STATUS
+# shared.go TKT-004,TKT-005  semantic
+# conflict: shared.go (TKT-005, commit 1a2b3c4d; also: TKT-004) - resolved by semantic (go_imports)
+# result: 9c8b7a6f5e4d3c2b1a0f9e8d7c6b5a4f3e2d1c0b (start 356c934e)
+# result tree: 0f1e2d3c4b5a69788796a5b4c3d2e1f001122334
 ```
 
 ---
@@ -2114,7 +2130,7 @@ Transporte unix/tcp e flags `--socket`/`--port`/`--tls-*` são planejados; hoje 
 | `tb_board` | `tb board` | `action=list\|pause\|resume\|drain`, `strategy`, `status`, `worker` |
 | `tb_router_status` | `tb router status` | só leitura de `state.json` |
 | `tb_watchdog_alerts` | `tb watchdog alerts` | `since`, `kind`, `limit` (integer) |
-| `tb_merge` | `tb merge` | `ids` (array), `strategy`, `into`, `force`, `allow_sensitive` (padrão `false`); **dry-run por padrão** — só altera refs com `apply=true` |
+| `tb_merge` | `tb merge` | `ids` (array), `strategy` (`fail`, `last_wins`, `semantic`; `prompt` é recusada com `prompt_cli_only`), `into`, `force`, `allow_sensitive` (padrão `false`); **dry-run por padrão** — só altera refs com `apply=true` |
 | `tb_bus_join` / `tb_bus_send` / `tb_bus_recv` / `tb_bus_claim` / `tb_bus_complete` / `tb_bus_heartbeat` / `tb_bus_status` | `tb bus …` | identidade presa à conexão após `tb_bus_join` (`channel`, `invite`, `name` + Agent Card); `payload`/`result` como objeto; `tb_bus_complete` exige o `epoch` inteiro; o `tb mcp` manda heartbeat das sessões ligadas em segundo plano; sem tool de watchdog; `wait` string (máx. 25s); criar canal/convite **não** existe via MCP; `tb mcp --bus-as <channel>/<name>` liga a conexão a uma sessão CLI (usado por `tb bus run`) |
 | `tb_graph_search` / `tb_graph_callers` / `tb_graph_deps` / `tb_graph_impact` / `tb_graph_explain` / `tb_graph_path` / `tb_graph_index` | `tb graph …` | chamada requer `TB_GRAPH=on`; `depth`/`limit`/`max_depth` integer; `transitive` boolean; `explain` usa `node`, `path` usa `from`/`to`; `mode` no `tb_graph_search` e `vectors` no `tb_graph_index` (veja o [índice vetorial](#índice-vetorial)) |
 

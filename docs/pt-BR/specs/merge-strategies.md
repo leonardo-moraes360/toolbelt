@@ -2,7 +2,7 @@
 
 # Estratégias `semantic` e `prompt` do `tb merge` — spec
 
-Status: **rascunho**. Nada aqui está implementado. Fecha o item do roadmap do README "`tb merge` `prompt` / `semantic` strategies".
+Status: **Fases A (`semantic`) e B (`prompt`) implementadas**; a Fase C segue em aberto. Fecha o item do roadmap do README "`tb merge` `prompt` / `semantic` strategies".
 
 ## Visão geral
 
@@ -262,6 +262,26 @@ Elas mudam o modelo de confiança; a spec escolhe um padrão para cada uma.
 4. **Linhas novas**: só relatar (padrão) versus um `max_novel_lines: 0` padrão, que limita o agente a escolher e ordenar linhas existentes.
 5. **Reusar a config de agente do egm** (padrão) versus um `merge.agent_cmd` separado.
 6. **`--verify` antes de avançar** (Fase C, opt-in, build sem sandbox) versus nunca rodar comandos do repositório a partir do merge.
+
+## Decisões resolvidas
+
+O usuário aceitou o padrão proposto para cada DECISÃO DO USUÁRIO acima:
+
+1. **`prompt` em duas etapas.** A proposta grava um recibo fora do repositório e nunca move uma ref; `--resolutions <id>` o reaplica depois de checar o SHA inicial, os heads dos tickets, os hashes de entrada dos hunks e a árvore resultante.
+2. **`semantic` aplica numa chamada** quando todo hunk é resolvido por `disjoint` ou `go_imports`.
+3. **MCP** aceita `semantic` (dry-run, salvo `apply:true`) e recusa `prompt` com `prompt_cli_only`.
+4. **Linhas novas** são relatadas, não recusadas (`merge.prompt.max_novel_lines` fica sem valor por padrão).
+5. **O agente** é o agente do egm: `egm.agent_cmd` só da config do usuário; não existe `merge.agent_cmd`.
+6. **`--verify`** é Fase C, não implementado agora; o merge nunca roda comandos do repositório.
+
+Notas de implementação (onde difere do texto acima):
+
+- `result_tree` só aparece em `semantic` e `prompt`, não sempre que `result_sha` existe, para o JSON de `fail` e `last_wins` continuar idêntico byte a byte (G5, critério 1).
+- `go_imports` ordena só os specs da região em conflito, não o bloco de imports inteiro.
+- `ours_lines` e `theirs_lines` vêm de uma busca progressiva do texto da região no arquivo do estágio; são exatos quando o texto da região é único no arquivo.
+- O apply do `prompt` não precisa de `egm.agent_cmd`: nunca inicia um agente. Só a proposta falha com `agent_unavailable`.
+- A resposta do agente pode vir dentro de um bloco de código Markdown; o tb remove um bloco antes de fazer o parse.
+- `stdout_overflow` é uma falha transitória de execução (repetida como `timeout`).
 
 ## Questões em aberto
 

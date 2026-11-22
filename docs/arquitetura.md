@@ -857,7 +857,7 @@ tb board list --status pending,running
 # Monitor workers (active subscriptions, alert counts)
 tb watchdog status
 
-# Merge results (strategies: fail | last_wins)
+# Merge results (strategies: fail | last_wins | semantic | prompt)
 tb merge TKT-001 TKT-002
 ```
 

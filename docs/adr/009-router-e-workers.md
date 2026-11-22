@@ -258,7 +258,7 @@ inside the fail-closed sandbox), direct delivery (subscription with TTL and a
 per-worker limit; base on the dependency's commit), `tb watchdog` (alerts
 `worker_slow`, `worker_stuck`, `worker_crash`, `worker_killed`, `queue_growing`,
 `global_timeout`, `ticket_canceled`, `multi_dep_base`, `agent_escaped`, `board_unreadable`; runs in the router loop, no auto-scaling) and `tb merge`
-(`fail` and `last_wins` strategies, atomic via compare-and-swap).
+(`fail`, `last_wins`, `semantic` and `prompt` strategies, atomic via compare-and-swap).
 
 Router hardening: single instance per repository (exclusive lock
 `.toolbelt/router/lock`), worktree integrity check before committing (git with
@@ -280,7 +280,7 @@ the router does **not enforce** it — use `tb drift`/`tb review`/`tb guard` (or
 
 Differences from the design above: no `start`/`stop` daemon; configuration in
 the `router:` section of `.toolbelt/config.yaml` (no `router.yaml`); merge
-`prompt`/`semantic` are **not implemented**; `resource_high` and
+`semantic` and `prompt` are implemented ([spec](../specs/merge-strategies.md): `prompt` never moves a ref in the call that asks the agent, a reviewed receipt is replayed by a second call, and the router still never calls merge); `resource_high` and
 `watchdog scale` **do not exist**.
 
 Still hypotheses, **not measured** with the toolbelt benchmark: ~40% input-token

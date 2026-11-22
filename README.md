@@ -244,7 +244,7 @@ tb bus recv --channel feature-x --as grok-1 --wait 20s
 - [x] Direct delivery — follow-ups go straight to the owning worker
 - [x] `tb ticket` / `tb board` — work ticket management
 - [x] `tb router` / `tb watchdog` — delegation control and health
-- [x] `tb merge` — aggregation of worker results (`fail` | `last_wins`)
+- [x] `tb merge` — aggregation of worker results (`fail` | `last_wins` | `semantic` | `prompt`)
 - [x] Optional vector index ([spec](docs/specs/vector-index.md), [ADR-018](docs/adr/018-cgo-componentes-nativos.md)): V0 (cgo release, vendored llama.cpp, C/C++ quality gate), V1 (`tb graph index --vectors`, `tb graph search --mode semantic|hybrid`) and V2 (MCP `mode`/`vectors`, warm embedding child, recall evaluation) done; recall@10 on 44 intent queries over this repository (all-MiniLM-L6-v2 Q8_0): lexical 0.273, semantic 0.670, hybrid 0.568 ([dogfood](docs/campo/dogfood.md) #45)
 - [x] Graphify: in-house reimplementation ([ADR-014](docs/adr/014-graphify-reimplementacao.md)) — `tb graph explain`/`path`
 - [x] `tb graph search` with BM25 ranking (title/path/package, camelCase/`snake_case` splitting, multi-term)
@@ -253,7 +253,7 @@ tb bus recv --channel feature-x --as grok-1 --wait 20s
 - [ ] `tb egm` next phases: Phase C (`draft`, `brainstorm`, symbol-level drift); Phase B (`drift-report` and `bootstrap`, [spec](docs/specs/egm-drift-bootstrap.md)) is implemented, LLM parts included; Phase A.2 (CI as the trust boundary, [spec](docs/specs/egm-trust.md)) is implemented; R0 item 8 open
 - [ ] Optional Rust components for local inference
 - [ ] Additional rulers for `tb verify`
-- [ ] `tb merge` `prompt` / `semantic` strategies
+- [x] `tb merge` `semantic` (deterministic hunk rules) and `prompt` (sandboxed agent, two-step receipt) strategies ([spec](docs/specs/merge-strategies.md)); `--verify` before advancing stays open (Phase C)
 
 ### Multi-vendor bus (`tb bus`, [ADR-013](docs/adr/013-barramento-multi-vendor.md))
 - [x] B0 — `bus/0.1` spec: envelope, Agent Card and invite ([docs/bus-protocolo.md](docs/bus-protocolo.md))
@@ -314,6 +314,6 @@ This project is in **Phase 3 (in progress)**: besides verify/guard/mem/graph/rev
 | `tb board` | ✅ | RUNNING/READY/BLOCKED/DONE/FAILED board; `pause`/`resume`/`drain`/`watch` (MCP `tb_board`) |
 | `tb router` | ✅ | Foreground scheduler (`run`/`status`/`config`) with direct delivery; fail-closed sandbox (`--allow-unsandboxed`) |
 | `tb watchdog` | ✅ | Worker alerts and control (`status`/`alerts`/`kill`); runs inside the router loop |
-| `tb merge` | ✅ | Atomically merges `done` tickets; `fail` (default) or `last_wins` (MCP `tb_merge`); `prompt`/`semantic` not implemented |
+| `tb merge` | ✅ | Atomically merges `done` tickets; `fail` (default), `last_wins`, `semantic` or `prompt` (MCP `tb_merge` takes all but `prompt`) |
 | `tb bus` | 🟡 | Local bus between agents (ADR-013): `channel`/`invite`/`join`/`send`/`recv`/`claim`/`complete`/`heartbeat`/`watchdog`/`log` over `.toolbelt/bus/bus.db`; lease with epoch fencing (B2); `tb bus run` wakes the agent (`exec`/`harness`/`notify` adapters); `tb bus discover` catalogs local agents |
 | `tb mcp` | ✅ | Stateless MCP server (stdio); 54 tools in v0.0.10: mem/verify/review/drift/guard/stack, vault (`tb_vault_*`), graph (`search`/`callers`/`deps`/`impact`/`explain`/`path`/`index`; requires `TB_GRAPH=on`), ticket/board/router/watchdog/merge and bus (`tb_bus_join`/`send`/`recv`/`claim`/`complete`/`heartbeat`/`status`); `--bus-as` binds the connection to a bus session |

@@ -2,7 +2,7 @@
 
 # `tb merge` strategies `semantic` and `prompt` — spec
 
-Status: **draft**. Nothing here is implemented. It closes the README roadmap item "`tb merge` `prompt` / `semantic` strategies".
+Status: **Phases A (`semantic`) and B (`prompt`) implemented**; Phase C is open. It closes the README roadmap item "`tb merge` `prompt` / `semantic` strategies".
 
 ## Overview
 
@@ -262,6 +262,26 @@ These change the trust model; the spec picks a default for each.
 4. **Novel lines**: report only (default) versus a default `max_novel_lines: 0`, which limits the agent to choosing and ordering existing lines.
 5. **Reuse the egm agent config** (default) versus a separate `merge.agent_cmd`.
 6. **`--verify` before advancing** (Phase C, opt-in, unsandboxed build) versus never running repository commands from merge.
+
+## Resolved decisions
+
+The user accepted the proposed default of each USER DECISION above:
+
+1. **`prompt` is two-step.** The proposal writes a receipt outside the repository and never moves a ref; `--resolutions <id>` replays it after checking the start SHA, ticket heads, hunk input hashes and result tree.
+2. **`semantic` applies in one call** when every hunk resolves by `disjoint` or `go_imports`.
+3. **MCP** allows `semantic` (dry-run unless `apply:true`) and refuses `prompt` with `prompt_cli_only`.
+4. **Novel lines** are reported, not refused (`merge.prompt.max_novel_lines` is unset by default).
+5. **The agent** is the egm agent: `egm.agent_cmd` from the user config only; there is no `merge.agent_cmd`.
+6. **`--verify`** is Phase C, not implemented now; merge never runs repository commands.
+
+Implementation notes (where it differs from the text above):
+
+- `result_tree` is reported only by `semantic` and `prompt`, not whenever `result_sha` is set, so the `fail` and `last_wins` JSON stays byte-identical (G5, criterion 1).
+- `go_imports` sorts the specs of the conflict region only, not the whole import block.
+- `ours_lines` and `theirs_lines` are found by a forward search of the region text in the stage file; they are exact when the region text is unique in the file.
+- A `prompt` apply does not need `egm.agent_cmd`: it never starts an agent. Only the proposal fails with `agent_unavailable`.
+- The agent answer may be wrapped in a Markdown code fence; tb strips one fence before parsing.
+- `stdout_overflow` is a transient run failure (retried like `timeout`).
 
 ## Open questions
 

@@ -258,7 +258,7 @@ execução dentro do sandbox fail-closed), entrega direta (subscription com TTL 
 limite por worker; base no commit da dependência), `tb watchdog` (alertas
 `worker_slow`, `worker_stuck`, `worker_crash`, `worker_killed`, `queue_growing`,
 `global_timeout`, `ticket_canceled`, `multi_dep_base`, `agent_escaped`, `board_unreadable`; roda no loop do router, sem auto-scaling) e `tb merge`
-(estratégias `fail` e `last_wins`, atômico via compare-and-swap).
+(estratégias `fail`, `last_wins`, `semantic` e `prompt`, atômico via compare-and-swap).
 
 Endurecimento do router: instância única por repositório (lock exclusivo
 `.toolbelt/router/lock`), verificação de integridade do worktree antes do commit
@@ -280,7 +280,7 @@ router **não o impõe** — use `tb drift`/`tb review`/`tb guard` (ou
 
 Diferenças em relação ao desenho acima: sem daemon `start`/`stop`; configuração
 na seção `router:` de `.toolbelt/config.yaml` (sem `router.yaml`);
-`prompt`/`semantic` do merge **não implementados**; `resource_high` e
+`semantic` e `prompt` do merge estão implementados ([spec](../specs/merge-strategies.md): o `prompt` nunca move uma ref na chamada que consulta o agente, um recibo revisado é reaplicado por uma segunda chamada, e o router continua sem chamar o merge); `resource_high` e
 `watchdog scale` **não existem**.
 
 Ainda hipóteses, **não medidas** com o benchmark do toolbelt: redução de ~40%
