@@ -93,6 +93,12 @@ type repoEgm struct {
 	Bootstrap *struct {
 		MaxBytes *int64 `yaml:"max_bytes"`
 	} `yaml:"bootstrap"`
+	Brainstorm *struct {
+		MaxBytes *int64 `yaml:"max_bytes"`
+	} `yaml:"brainstorm"`
+	Draft *struct {
+		MaxBytes *int64 `yaml:"max_bytes"`
+	} `yaml:"draft"`
 }
 
 // ApplyRepoConfig overlays the repository's egm: section on the user config
@@ -180,6 +186,12 @@ func (s *Settings) applyLimits(r *repoEgm) {
 	}
 	if r.Bootstrap != nil {
 		lowerInt64(s, "bootstrap.max_bytes", &s.Bootstrap.MaxBytes, r.Bootstrap.MaxBytes)
+	}
+	if r.Brainstorm != nil {
+		lowerInt64(s, "brainstorm.max_bytes", &s.Brainstorm.MaxBytes, r.Brainstorm.MaxBytes)
+	}
+	if r.Draft != nil {
+		lowerInt64(s, "draft.max_bytes", &s.Draft.MaxBytes, r.Draft.MaxBytes)
 	}
 	if r.TimeoutPerReviewer != nil {
 		cur, _ := time.ParseDuration(s.TimeoutPerReviewer)
