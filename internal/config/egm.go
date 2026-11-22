@@ -42,6 +42,8 @@ type EgmConfig struct {
 	CI                  EgmCI             `yaml:"ci"`
 	Drift               EgmDrift          `yaml:"drift"`
 	Bootstrap           EgmBootstrap      `yaml:"bootstrap"`
+	Brainstorm          EgmBrainstorm     `yaml:"brainstorm"`
+	Draft               EgmDraft          `yaml:"draft"`
 	Receipt             EgmReceipt        `yaml:"receipt"`
 }
 
@@ -51,10 +53,25 @@ type EgmBootstrap struct {
 	MaxBytes int64 `yaml:"max_bytes" json:"max_bytes"`
 }
 
+// EgmBrainstorm tunes tb egm brainstorm (docs/specs/egm-phase-c.md, R4).
+type EgmBrainstorm struct {
+	// MaxBytes bounds the concept brief body. Limit key: the repository can only lower it.
+	MaxBytes int64 `yaml:"max_bytes" json:"max_bytes"`
+}
+
+// EgmDraft tunes tb egm draft (docs/specs/egm-phase-c.md, R9).
+type EgmDraft struct {
+	// MaxBytes bounds the draft body. Limit key: the repository can only lower it.
+	MaxBytes int64 `yaml:"max_bytes" json:"max_bytes"`
+}
+
 // EgmReceipt tunes the receipt writer (B3). User-only: a CI pinned to an
-// older tb must be upgraded before receipts move to version 2.
+// older tb must be upgraded before receipts move to version 2 or 3.
 type EgmReceipt struct {
 	WriteV2 bool `yaml:"write_v2,omitempty" json:"write_v2,omitempty"`
+	// WriteV3 writes version 3 (v2 plus symbol hashes, C5); it implies the
+	// v2 commit.
+	WriteV3 bool `yaml:"write_v3,omitempty" json:"write_v3,omitempty"`
 }
 
 // EgmDrift tunes source drift (docs/specs/egm-drift-bootstrap.md, B1).
@@ -107,6 +124,8 @@ func DefaultEgmConfig() EgmConfig {
 		CI:                 EgmCI{MaxDocs: 5},
 		Drift:              EgmDrift{CI: "warn", MaxDocs: 5},
 		Bootstrap:          EgmBootstrap{MaxBytes: 32 << 10},
+		Brainstorm:         EgmBrainstorm{MaxBytes: 16 << 10},
+		Draft:              EgmDraft{MaxBytes: 32 << 10},
 	}
 }
 
@@ -130,6 +149,8 @@ func (e *EgmConfig) Validate() error {
 		{e.CI.MaxDocs < 1, "egm.ci.max_docs must be >= 1"},
 		{e.Drift.MaxDocs < 1, "egm.drift.max_docs must be >= 1"},
 		{e.Bootstrap.MaxBytes < 1, "egm.bootstrap.max_bytes must be >= 1"},
+		{e.Brainstorm.MaxBytes < 1, "egm.brainstorm.max_bytes must be >= 1"},
+		{e.Draft.MaxBytes < 1, "egm.draft.max_bytes must be >= 1"},
 		{e.MaxParallel < 1, "egm.max_parallel must be >= 1"},
 		{e.MaxSourceBytes < 1 || e.MaxPacketBytes < 1 || e.MaxStdoutBytes < 1, "egm.max_*_bytes must be >= 1"},
 	}

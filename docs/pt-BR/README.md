@@ -250,9 +250,9 @@ tb bus recv --channel feature-x --as grok-1 --wait 20s
 - [x] `tb graph search` com ranking BM25 (título/path/pacote, quebra de camelCase/`snake_case`, multi-termo)
 - [x] Vault Markdown compatível com Obsidian, Fase A (`tb vault`, [ADR-016](adr/016-vault-fase-a.md), [spec](specs/vault.md)): notas com frontmatter e wikilinks, `new`/`list`/`show`/`search`/`links`/`backlinks`/`check`, tools MCP, `tb stack vault`, nós no grafo; Q4 (fixture dourada conferida no Obsidian real) aberta
 - [x] Reimplementação do Elephant-Goldfish Model, Fase A (`tb egm`, [ADR-015](adr/015-egm-nativo.md) aceito): spike R0; engines determinística e `llm`, árbitro, gate no `tb stack` (`status --at`) e tools MCP
-- [ ] Próximas fases do `tb egm`: Fase C (`draft`, `brainstorm`, drift por símbolo); a Fase B (`drift-report` e `bootstrap`, [spec](specs/egm-drift-bootstrap.md)) está implementada, partes com LLM incluídas; a Fase A.2 (CI como fronteira de confiança, [spec](specs/egm-trust.md)) está implementada; item 8 do R0 em aberto
+- [ ] Próximas fases do `tb egm`: a Fase C ([spec](specs/egm-phase-c.md)) está parcial: `brainstorm`, `draft` e `draft --update` estão implementados, o drift por símbolo (C4–C5) e as linhas do grafo (C6) não; a Fase B (`drift-report` e `bootstrap`, [spec](specs/egm-drift-bootstrap.md)) está implementada, partes com LLM incluídas; a Fase A.2 (CI como fronteira de confiança, [spec](specs/egm-trust.md)) está implementada; item 8 do R0 em aberto
 - [ ] Componentes opcionais em Rust para inferência local
-- [ ] Rulers adicionais para `tb verify`
+- [x] Rulers adicionais para `tb verify` ([spec](specs/verify-rulers.md)): typecheck, checks nomeados, config do ref base, régua de coverage
 - [ ] `tb merge` estratégias `prompt` / `semantic`
 
 ### Barramento multi-vendor (`tb bus`, [ADR-013](adr/013-barramento-multi-vendor.md))
@@ -304,7 +304,7 @@ Este projeto está na **Fase 3 (em andamento)**: além de verify/guard/mem/graph
 | `tb bench compare` | ✅ | Compara dois benchmarks |
 | `tb sandbox` | ✅ | Worktrees + Landlock (Linux) (`check`/`run`) |
 | `tb guard` | ✅ | Check anti-trapaça em diff (default estrito / exit ≠ 0 em `SeverityError`; `--warn-only` opt-out; `--strict` deprecated) |
-| `tb verify` | ✅ | Rulers `tests` + `visual` (`tb verify run`; `--build-cmd`/`--lint-cmd`/`--no-build`/`--no-lint`/`--dry-run`; suíte oculta via `--hidden-test-cmd` ou detecção de toolchain em `tests/hidden/` — N/A se inaplicável; cache de build/lint na execução; `reason`/`error` no JSON; `--base`/`--head` rodam no worktree do head; fail-fast se o comando não existe/não é executável; `protected_paths` custom do `guard.yaml` não abortam o loop — exceção de Scope via `--ticket`) |
+| `tb verify` | ✅ | Rulers `tests` + `coverage` + `visual` (`tb verify run`; lista em `--ruler`, desconhecida → exit 2; régua `coverage`: `--coverage-cmd`/`--coverage-pattern`/`--min-coverage`, piso do `.toolbelt/thresholds.yaml` do ref base; `--build-cmd`/`--lint-cmd`/`--no-build`/`--no-lint`/`--dry-run`; etapas de gate build → typecheck (`--typecheck-cmd`/`--no-typecheck`) → lint → checks nomeados (`verify.checks`, `--check name=cmd`/`--no-check`/`--no-checks`); `verify.*` lido do ref base, guard `verify_config_changed`; suíte oculta via `--hidden-test-cmd` ou detecção de toolchain em `tests/hidden/` — N/A se inaplicável; cache de build/lint na execução; `reason`/`error` no JSON; `--base`/`--head` rodam no worktree do head; fail-fast se o comando não existe/não é executável; `protected_paths` custom do `guard.yaml` não abortam o loop — exceção de Scope via `--ticket`) |
 | `tb mem` | ✅ | Invariantes (`add`/`list`/`show`/`edit`/`retire`/`search`/`check`/`init`; `--ref` ADR; soft-retire + `--all`) |
 | `tb graph` | ✅ | Grafo sob demanda multi-linguagem + frameworks + docs (ADR-011); `javascript` cobre TypeScript (`ts`/`tsx`); `search` com ranking BM25, `callers`/`deps`/`impact`, `explain`/`path` (ADR-014); índice vetorial opt-in via `index --vectors` e `search --mode semantic|hybrid` (também no MCP) |
 | `tb review` | ✅ | Revisão fresh-context contra ticket/`rd.md` local (sem GitHub); `--approved-sha` |

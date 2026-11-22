@@ -17,10 +17,13 @@ import (
 
 const (
 	// receiptVersion is written by default; receiptVersionCommit (with the
-	// advisory commit) only under egm.receipt.write_v2 (B3). Readers accept both.
-	receiptVersion       = 1
-	receiptVersionCommit = 2
-	receiptDir           = ".toolbelt/egm/receipts"
+	// advisory commit) only under egm.receipt.write_v2 (B3) and
+	// receiptVersionSymbols (v2 plus symbol hashes) only under
+	// egm.receipt.write_v3 (C5). Readers accept all three.
+	receiptVersion        = 1
+	receiptVersionCommit  = 2
+	receiptVersionSymbols = 3
+	receiptDir            = ".toolbelt/egm/receipts"
 
 	ClaimArbiterWithdrawn = "arbiter_withdrawn"
 	ClaimDeclined         = "declined"
@@ -37,6 +40,20 @@ type Receipt struct {
 	Doc       string            `json:"doc"`
 	DocSHA256 string            `json:"doc_sha256"`
 	Sources   map[string]string `json:"sources"`
+	// Symbols (version 3) maps "path#Name" to the sha256 of the symbol's raw
+	// bytes. Present, possibly empty, in v3; absent otherwise.
+	Symbols map[string]string `json:"symbols,omitempty"`
+	Version int               `json:"version"`
+}
+
+// receiptV3 is Receipt's v3 encoding: symbols always present, in key order.
+type receiptV3 struct {
+	Claims    []Claim           `json:"claims"`
+	Commit    string            `json:"commit"`
+	Doc       string            `json:"doc"`
+	DocSHA256 string            `json:"doc_sha256"`
+	Sources   map[string]string `json:"sources"`
+	Symbols   map[string]string `json:"symbols"`
 	Version   int               `json:"version"`
 }
 
@@ -57,7 +74,15 @@ func ReceiptPath(rel string) string { return path.Join(receiptDir, Slug(rel)+".j
 // Encode is the receipt's committed bytes: sorted keys, two-space indent and
 // a trailing newline.
 func (r *Receipt) Encode() []byte {
-	b, _ := json.MarshalIndent(r, "", "  ")
+	var v any = r
+	if r.Version == receiptVersionSymbols {
+		sym := r.Symbols
+		if sym == nil {
+			sym = map[string]string{}
+		}
+		v = &receiptV3{Claims: r.Claims, Commit: r.Commit, Doc: r.Doc, DocSHA256: r.DocSHA256, Sources: r.Sources, Symbols: sym, Version: r.Version}
+	}
+	b, _ := json.MarshalIndent(v, "", "  ")
 	return append(b, '\n')
 }
 
@@ -105,14 +130,27 @@ func WriteReceipt(ctx context.Context, o *Options) (*Outcome, error) {
 	if err != nil {
 		return nil, err
 	}
-	if s.set.Receipt.WriteV2 {
-		rc.Version, rc.Commit = receiptVersionCommit, head
-	}
+	s.setVersion(rc, head)
 	rel := ReceiptPath(s.rel)
 	if err := writeReceiptFile(s.repo.Root, rel, rc.Encode()); err != nil {
 		return nil, err
 	}
 	return &Outcome{Report: rep, ExitCode: ExitOK, Receipt: rel, Message: "wrote " + rel}, nil
+}
+
+// setVersion applies the user-only write_v2 / write_v3 keys (v3 implies the
+// v2 commit).
+func (s *snapshot) setVersion(rc *Receipt, head string) {
+	switch {
+	case s.set.Receipt.WriteV3:
+		rc.Version, rc.Commit = receiptVersionSymbols, head
+		rc.Symbols = map[string]string{}
+		for k, v := range s.symbols {
+			rc.Symbols[k] = v
+		}
+	case s.set.Receipt.WriteV2:
+		rc.Version, rc.Commit = receiptVersionCommit, head
+	}
 }
 
 // committedAtHead refuses when the document or an included source differs

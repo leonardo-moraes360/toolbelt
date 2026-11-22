@@ -13,7 +13,7 @@ import (
 // baseline's paths, so the review packet budget never decides drift.
 
 const (
-	DriftVersion = "egm-source-drift/0.1"
+	DriftVersion = "egm-source-drift/0.2"
 
 	DriftFresh         = "fresh"
 	DriftNoBaseline    = "no_baseline"
@@ -21,6 +21,10 @@ const (
 	DriftDrifted       = "drifted"
 	DriftSourceMissing = "source_missing"
 	DriftUnreadable    = "unreadable"
+	// Symbol statuses (C5): a symbol-scoped source is compared by the
+	// symbols its document cites, not by the file.
+	DriftSymbolChanged = "symbol_changed"
+	DriftSymbolMissing = "symbol_missing"
 
 	BaselineReceipt = "receipt"
 	BaselineState   = "state"
@@ -42,12 +46,27 @@ const (
 
 // driftRank orders statuses by severity.
 var driftRank = map[string]int{
-	DriftNoBaseline: 0, DriftFresh: 1, DriftSourcesDiffer: 2, DriftDrifted: 3, DriftSourceMissing: 4, DriftUnreadable: 5,
+	DriftNoBaseline: 0, DriftFresh: 1, DriftSourcesDiffer: 2, DriftSymbolChanged: 3, DriftDrifted: 4,
+	DriftSymbolMissing: 5, DriftSourceMissing: 6, DriftUnreadable: 7,
 }
 
 // MissingSource is a baseline path that no longer resolves.
 type MissingSource struct {
 	Path   string `json:"path"`
+	Reason string `json:"reason"`
+}
+
+// SymbolRef names a cited symbol.
+type SymbolRef struct {
+	Path   string `json:"path"`
+	Symbol string `json:"symbol"`
+}
+
+// MissingSymbol is a baseline symbol that no longer resolves; Reason is
+// deleted, ambiguous, unparsed or too_large.
+type MissingSymbol struct {
+	Path   string `json:"path"`
+	Symbol string `json:"symbol"`
 	Reason string `json:"reason"`
 }
 
@@ -59,7 +78,13 @@ type DriftDoc struct {
 	Changed  []string        `json:"changed"`
 	Missing  []MissingSource `json:"missing"`
 	Added    []string        `json:"added"`
-	Reason   string          `json:"reason,omitempty"`
+	// SymbolsChanged and SymbolsMissing are the symbol-scoped sources' drift;
+	// OutsideSymbols lists symbol-scoped files that changed while every
+	// cited symbol did not (informative, not drift, C5).
+	SymbolsChanged []SymbolRef     `json:"symbols_changed"`
+	SymbolsMissing []MissingSymbol `json:"symbols_missing"`
+	OutsideSymbols []string        `json:"outside_symbols"`
+	Reason         string          `json:"reason,omitempty"`
 	// Findings and LLM come from the drift goldfish (--engine llm, B3):
 	// reported only, never stored as review lineages.
 	Findings []Finding `json:"findings,omitempty"`
@@ -210,18 +235,19 @@ func gatedAt(ctx context.Context, repo *Repo, oid string, globs []string) ([]str
 type baseline struct {
 	kind    string
 	sources map[string]string
+	symbols map[string]string // nil: no symbol baseline, every source is file-scoped
 }
 
 // driftOf compares rel at oid with its baseline: the receipt at oid, or
 // (withState) a converged local round for the same document bytes.
 func driftOf(ctx context.Context, repo *Repo, set *Settings, oid, rel string, withState bool) (DriftDoc, error) {
-	dd := DriftDoc{Doc: rel, Baseline: BaselineNone, Changed: []string{}, Missing: []MissingSource{}, Added: []string{}}
+	dd := newDriftDoc(rel, BaselineNone)
 	text, docSHA, ok, err := docAt(ctx, repo, set, oid, rel)
 	if err != nil || !ok {
 		dd.Status, dd.Reason = DriftUnreadable, "document unreadable"
 		return dd, err
 	}
-	base, code, err := baselineOf(ctx, repo, oid, rel, text, docSHA, withState)
+	base, code, err := baselineOf(ctx, repo, set, oid, rel, text, docSHA, withState)
 	switch {
 	case err != nil:
 		return dd, err
@@ -233,7 +259,7 @@ func driftOf(ctx context.Context, repo *Repo, set *Settings, oid, rel string, wi
 		return dd, nil
 	}
 	dd.Baseline = base.kind
-	if err := compareSources(ctx, repo, set, oid, rel, text, base.sources, &dd); err != nil {
+	if err := compareSources(ctx, repo, set, oid, rel, text, base.sources, base.symbols, &dd); err != nil {
 		return dd, err
 	}
 	return dd, nil
@@ -256,7 +282,7 @@ func docAt(ctx context.Context, repo *Repo, set *Settings, oid, rel string) (tex
 
 // baselineOf: the committed receipt at oid when it certifies these
 // document bytes, else a converged state round for them.
-func baselineOf(ctx context.Context, repo *Repo, oid, rel, text, docSHA string, withState bool) (*baseline, string, error) {
+func baselineOf(ctx context.Context, repo *Repo, set *Settings, oid, rel, text, docSHA string, withState bool) (*baseline, string, error) {
 	rc, code, err := readReceiptAt(ctx, repo, oid, rel, docLines(text))
 	if err != nil {
 		return nil, "", err
@@ -265,21 +291,24 @@ func baselineOf(ctx context.Context, repo *Repo, oid, rel, text, docSHA string, 
 		return nil, code, nil
 	}
 	if rc != nil && rc.DocSHA256 == docSHA {
-		return &baseline{kind: BaselineReceipt, sources: rc.Sources}, "", nil
+		if !rc.symbolsFit(text, set) {
+			return nil, "receipt_invalid", nil
+		}
+		return &baseline{kind: BaselineReceipt, sources: rc.Sources, symbols: rc.Symbols}, "", nil
 	}
 	if !withState {
 		return nil, "", nil
 	}
-	if src := convergedRound(repo, rel, docSHA); src != nil {
-		return &baseline{kind: BaselineState, sources: src}, "", nil
+	if r := convergedRound(repo, rel, docSHA); r != nil {
+		return &baseline{kind: BaselineState, sources: r.Sources, symbols: r.Symbols}, "", nil
 	}
 	return nil, "", nil
 }
 
-// convergedRound returns the sources of the latest round over docSHA whose
-// content and policy have a PASS or PASS_PARTIAL verdict (the rounds a
-// receipt could have been written from).
-func convergedRound(repo *Repo, rel, docSHA string) map[string]string {
+// convergedRound returns the latest round over docSHA whose content and
+// policy have a PASS or PASS_PARTIAL verdict (the rounds a receipt could
+// have been written from).
+func convergedRound(repo *Repo, rel, docSHA string) *Round {
 	dir, err := StateDir(repo.ID, Slug(rel))
 	if err != nil {
 		return nil
@@ -294,7 +323,7 @@ func convergedRound(repo *Repo, rel, docSHA string) map[string]string {
 			continue
 		}
 		if v, _ := Verdict(st, r.Content, r.PolicySHA); v == VerdictPass || v == VerdictPassPartial {
-			return r.Sources
+			return r
 		}
 	}
 	return nil
@@ -305,13 +334,14 @@ func docLines(text string) int { return len(ParseDoc(text, nil).Lines) }
 
 // compareSources hashes each baseline path at oid (no size limit) and
 // collects the R7 sources that are new.
-func compareSources(ctx context.Context, repo *Repo, set *Settings, oid, rel, text string, base map[string]string, dd *DriftDoc) error {
+func compareSources(ctx context.Context, repo *Repo, set *Settings, oid, rel, text string, base, syms map[string]string, dd *DriftDoc) error {
 	paths := make([]string, 0, len(base))
 	for p := range base {
 		paths = append(paths, p)
 	}
 	sort.Strings(paths)
-	if err := hashBaseline(ctx, repo, set, oid, rel, paths, base, dd); err != nil {
+	sc := symbolScopes(rel, text, set, syms)
+	if err := hashBaseline(ctx, repo, set, oid, rel, paths, base, sc, dd); err != nil {
 		return err
 	}
 	added, err := addedSources(ctx, repo, set, oid, rel, text, base)
@@ -352,7 +382,7 @@ func addedSources(ctx context.Context, repo *Repo, set *Settings, oid, rel, text
 	return added, nil
 }
 
-func hashBaseline(ctx context.Context, repo *Repo, set *Settings, oid, rel string, paths []string, base map[string]string, dd *DriftDoc) error {
+func hashBaseline(ctx context.Context, repo *Repo, set *Settings, oid, rel string, paths []string, base map[string]string, sc symScopes, dd *DriftDoc) error {
 	var lookup []string
 	for _, p := range paths {
 		if denied(p, rel, set.DocGlobs) {
@@ -385,7 +415,7 @@ func hashBaseline(ctx context.Context, repo *Repo, set *Settings, oid, rel strin
 		case !regularMode(m):
 			dd.Missing = append(dd.Missing, MissingSource{Path: p, Reason: "not_regular"})
 		default:
-			if err := hashOne(ctx, repo, oid, p, base[p], dd); err != nil {
+			if err := hashOne(ctx, repo, set, oid, p, base[p], sc, dd); err != nil {
 				return err
 			}
 		}
@@ -393,19 +423,23 @@ func hashBaseline(ctx context.Context, repo *Repo, set *Settings, oid, rel strin
 	return nil
 }
 
-func hashOne(ctx context.Context, repo *Repo, oid, p, want string, dd *DriftDoc) error {
+func hashOne(ctx context.Context, repo *Repo, set *Settings, oid, p, want string, sc symScopes, dd *DriftDoc) error {
 	b, err := repo.CatFileBlob(ctx, oid, p, maxDriftBlobBytes)
 	var e *Error
 	switch {
 	case errors.As(err, &e) && e.Reason == "blob_too_large":
-		dd.Changed = append(dd.Changed, p) // cannot match a baseline hash
-		return nil
+		b = nil // cannot match a baseline hash
 	case err != nil:
 		return err
 	}
-	if sha256Hex(b) != want {
-		dd.Changed = append(dd.Changed, p)
+	if b != nil && sha256Hex(b) == want {
+		return nil
 	}
+	if cited := sc[p]; len(cited) > 0 {
+		compareSymbols(p, b, set.MaxSourceBytes, cited, dd)
+		return nil
+	}
+	dd.Changed = append(dd.Changed, p)
 	return nil
 }
 
@@ -434,8 +468,12 @@ func driftStatus(dd *DriftDoc) string {
 	switch {
 	case len(dd.Missing) > 0:
 		return DriftSourceMissing
+	case len(dd.SymbolsMissing) > 0:
+		return DriftSymbolMissing
 	case len(dd.Changed) > 0:
 		return DriftDrifted
+	case len(dd.SymbolsChanged) > 0:
+		return DriftSymbolChanged
 	case len(dd.Added) > 0:
 		return DriftSourcesDiffer
 	}
@@ -444,5 +482,16 @@ func driftStatus(dd *DriftDoc) string {
 
 // Drifted reports whether a status means the sources moved.
 func Drifted(status string) bool {
-	return status == DriftDrifted || status == DriftSourceMissing || status == DriftSourcesDiffer
+	switch status {
+	case DriftDrifted, DriftSourceMissing, DriftSourcesDiffer, DriftSymbolChanged, DriftSymbolMissing:
+		return true
+	}
+	return false
+}
+
+func newDriftDoc(doc, base string) DriftDoc {
+	return DriftDoc{
+		Doc: doc, Baseline: base, Changed: []string{}, Missing: []MissingSource{}, Added: []string{},
+		SymbolsChanged: []SymbolRef{}, SymbolsMissing: []MissingSymbol{}, OutsideSymbols: []string{},
+	}
 }

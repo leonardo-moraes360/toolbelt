@@ -85,7 +85,7 @@ tb  (implemented today)
 ├── sandbox      Execution with Landlock isolation (check|run)
 ├── stack        Stacks verification operations (verify/review/drift/guard/vault/egm/seccheck), not branches
 ├── vault        Markdown vault of notes (new|list|show|search|links|backlinks|check)
-├── verify       Adversarial verification (run; rulers tests|visual)
+├── verify       Adversarial verification (run; rulers tests|coverage|visual)
 ├── workspace    Isolated workspaces via git worktree (create|list|remove; alias: ws)
 ├── version      Shows the toolbelt version (also: tb --version)
 ├── ticket       Work tickets (create|list|show|cancel|retry)       ✓ Phase 3
@@ -650,6 +650,15 @@ Flags:
   --lint-cmd <cmd>       verify: lint command (empty + explicit flag or --no-lint to skip)
   --no-build             verify: skips build_cmd
   --no-lint              verify: skips lint_cmd
+  --ruler <list>         verify: comma-separated rulers (tests, coverage; visual is refused here)
+  --coverage-cmd <cmd>   verify: coverage command
+  --coverage-pattern <re> verify: regexp with one capture group for the coverage percentage
+  --min-coverage <n>     verify: coverage floor in [0, 100] (only raises the base threshold)
+  --typecheck-cmd <cmd>  verify: typecheck command (gate step after build)
+  --no-typecheck         verify: skips typecheck_cmd
+  --check <name=cmd>     verify: adds or overrides a named check (repeatable)
+  --no-check <name>      verify: skips one named check (repeatable)
+  --no-checks            verify: skips every named check
   --dry-run              verify: shows the plan (cmds/dir) without executing
   --max-iter <n>         verify: max iterations
   --timeout <duration>   verify: timeout (default: 10m)
@@ -679,6 +688,7 @@ tb stack review drift --base HEAD~1 --head HEAD --ticket rd.md
 tb stack verify guard --test-cmd "true" --max-iter 1
 tb stack guard drift review --jobs 1
 tb stack verify --test-cmd "pnpm test" --no-build --no-lint --max-iter 1
+tb stack verify --typecheck-cmd "pnpm exec tsc --noEmit" --check "audit=pnpm audit" --max-iter 1
 tb stack verify --dry-run --test-cmd "go test ./..."
 tb stack verify --test-cmd "true" --env APP_ENV --pass-env GITHUB_TOKEN
 ```
@@ -1000,15 +1010,25 @@ tb egm status docs/specs/x.md [--strict]  # 0 PASS, 1 FAIL, 3 IN_PROGRESS/STALE/
 tb egm status docs/specs/x.md --at HEAD   # gate mode: document, sources and config from the commit
 tb egm receipt docs/specs/x.md            # writes .toolbelt/egm/receipts/<slug>.json (needs PASS or PASS_PARTIAL)
 tb egm drift-report [doc...] [--at REV]   # source drift against the receipt: 0 fresh/no_baseline, 1 drift, 2 error
+tb egm drift-report --json                # v egm-source-drift/0.2: adds symbols_changed, symbols_missing, outside_symbols
 tb egm drift-report --engine llm          # plus one drift goldfish per drifted doc (egm.drift.max_docs); findings reported, exit unchanged
 tb egm bootstrap docs/specs/new.md --from internal/x/   # new skeleton wired to the code (never overwrites, never commits); refusals exit 2: usage, bootstrap_exists, bootstrap_path, bootstrap_sources
 tb egm bootstrap docs/specs/new.md --from internal/x/ --engine llm   # a goldfish drafts the body; also bootstrap_injection, bootstrap_invalid, bootstrap_not_run, tools_unverifiable, agent_unavailable
+tb egm brainstorm --brief rd.md [--from internal/x/] [--out notes/ideas.md]   # concept brief via one goldfish; not gated, written outside the tree by default (0600); exit 2: usage, brief_path, brief_secret, brief_injection, brainstorm_gated, brainstorm_exists, brainstorm_invalid, brainstorm_injection, agent_unavailable, tools_unverifiable
+tb egm draft docs/specs/new.md --brief rd.md --from internal/x/ --body body.md   # new spec or ADR from an elephant-written body (no agent); never overwrites, never commits, no review state; exit 2: usage, draft_exists, draft_path, draft_sources, draft_injection, draft_invalid, brief_*
+tb egm draft docs/specs/new.md --brief rd.md --from internal/x/ --engine llm      # a goldfish writes the body; also draft_not_run, tools_unverifiable, agent_unavailable
+tb egm draft docs/specs/x.md --update --brief rd.md --engine llm   # proposal for an existing document under the state directory plus a diff; the document is never edited
 tb egm review docs/specs/x.md --restart   # new cycle after a cap (needs an edit)
 ```
+
+- **`brainstorm` and `draft` ([Phase C spec](specs/egm-phase-c.md), C1–C3):** both run only in the sandboxed goldfish runner (`egm.agent_cmd`, tools verifiably off) or, for `draft --body`, not at all; the generated text is cleaned (HTML comments, level-1 headings, early `Status:` lines), injection-scanned and written only if it passes. A brief (`--brief`, a regular file without symlinks, at most `egm.max_source_bytes`) with a secret-like value or injection-like text is refused before any agent runs. A concept brief lands in `$XDG_STATE_HOME/tb/egm/<repo-id>/briefs/` unless `--out` names a new file that is not an `egm.doc_globs` path; a draft may use one as `--brief` but never cites it. `draft` gives exactly one of `--body` and `--engine llm`, assembles the required sections (a missing one keeps `TODO`) and `## Sources` of the accepted `--from` files, and refuses a body that cites anything else or holds a secret-like value (`draft_secret`; `--update --engine llm` refuses a document with one too). The target must match `egm.doc_globs` or the repository's extra gated globs, for a new draft and for `--update` alike. It writes no state, round or receipt: the draft reaches `PASS` only through `tb egm review`. `--update` takes no `--from`, keeps the document's title, status and `## Sources`, and the proposal must resolve to the same R7 sources. Limits: `egm.brainstorm.max_bytes` (16 KiB) and `egm.draft.max_bytes` (32 KiB), lowered only by the repository config.
 
 - **Flags:** `review` and `loop next` take `--engine auto|llm|deterministic`, `--reviewers a,b` and `--dry-run`; `review` takes `--restart`; `status` takes `--strict` and `--at <rev>`. Every command accepts `--json`.
 - **Gate mode (`--at`):** the document, the sources (mode from `ls-tree`, bytes from `cat-file blob`; a source behind a versioned symlink is excluded) and the repository config come from the commit, never from the worktree. The repository is found from the current directory, and the document path is resolved lexically against it, so a missing or symlinked directory in the worktree changes nothing. A tracked source counts even when it matches `.gitignore`, in both modes. The `content` of a committed, unchanged worktree is the same in both modes. A source with a `.gitattributes` filter is not detected (`filtered_source` is a declared limitation).
 - **Receipt (`receipt`):** writes `.toolbelt/egm/receipts/<slug>.json`, to commit with the document: the document and source hashes plus the claims, which are the lineages at `major` or above that the arbiter withdrew (and nothing reopened since), that were declined, or that were force-settled. Each claim carries `lines` in the current document; a scope without lines falls back to its heading's section. The bytes are deterministic (sorted keys, trailing newline). It is refused (exit 3, nothing written) unless the verdict is `PASS` or `PASS_PARTIAL`, refused with exit 2 `receipt_uncommitted` when the document or an included source differs from `HEAD` (commit them first; CI recomputes the hashes from the commit), and refused with exit 2 `receipt_path_untrusted` when a component of the path is a symlink or not a directory. The CI mode that checks receipts comes in a later slice ([egm trust](specs/egm-trust.md)).
+- **Symbol citations (`path.go#Name`, `path.go#Recv.Name`):** a Go source may be cited with a symbol fragment, as a link or a backtick span; `L10`-style anchors stay file-level. Review checks each cited symbol on the snapshot's bytes with a pure parser (no graph, no LLM, also under `--engine deterministic`): a missing name is a `major` `refs` finding, an ambiguous one (`init`, `_`, or declared twice) a `major` `symbol_ambiguous`, and a file that does not parse one nit. The symbol's range starts at its declaration, doc comment excluded, and is hashed as raw bytes. Rounds record the hashes as `symbols`.
+- **Receipt v3 (`egm.receipt.write_v3: true`, user-only):** v2 plus `symbols` (`"path#Name"` to sha256, possibly empty); readers accept 1, 2 and 3, and CI recomputes each symbol hash at head (a mismatch is `receipt_stale`; a key the document never cites is `receipt_invalid`).
+- **Symbol drift (`drift-report`, `egm-source-drift/0.2`):** a source cited **only** through symbols is compared by those symbols: `symbol_changed` or `symbol_missing` (reason `deleted`, `ambiguous`, `unparsed`, `too_large`) exit 1, while a change elsewhere in the file is listed in `outside_symbols` and the document stays `fresh`. A path also cited plainly, and any v1/v2 receipt or round without `symbols`, stays file-scoped. Severity: `unreadable` > `source_missing` > `symbol_missing` > `drifted` > `symbol_changed` > `sources_differ` > `fresh` > `no_baseline`. `ci_source_drift` and the local `sources_changed` warning follow the same rule.
 - **MCP:** `tb_egm_status` (`cwd`, `doc`, `at`, `strict`), `tb_egm_receipt` (`cwd`, `doc`) and `tb_egm_resolve` (`cwd`, `doc` and the resolve flags as `fix`, `decline`, `force_settle`, `reason`, `contest`, `evidence`). `cwd` must be absolute. `review` and `loop next` take minutes and stay CLI-only.
 - **Auth (claude):** with `ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN` listed in `egm.env.pass` and set, the key reaches the goldfish through the env and no credential file is checked or copied (the CI setup); note that a developer who lists `ANTHROPIC_API_KEY` in `egm.env.pass` and exports it locally is billed on that key instead of their claude login; otherwise the `claudeAiOauth` entry of `~/.claude/.credentials.json` is copied after the `expiresAt` precheck.
 - **Config:** read from the user config (`~/.config/toolbelt/config.yaml`, `egm:` section) or from `-c`, never from the merged config. The repository's `.toolbelt/config.yaml` can only harden it: execution keys (`agent_cmd`, `env`, …) are ignored with `config_untrusted`, limits only go down, policy only goes up.
@@ -1053,13 +1073,21 @@ Runs the generator→discriminator loop with pluggable rulers.
 tb verify run [flags]
 
 Flags:
-  --ruler <type>           Ruler: tests|visual (default: tests)
+  --ruler <list>           Comma-separated rulers (default: tests): tests, coverage, visual; visual cannot be combined; unknown name → exit 2
+  --coverage-cmd <cmd>     Coverage command (verify.coverage_cmd; default with go.mod: go test -coverprofile)
+  --coverage-pattern <re>  Regexp with one capture group; its last match in the coverage command's output is the percentage (verify.coverage_pattern; required with a non-Go coverage_cmd)
+  --min-coverage <n>       Coverage floor in [0, 100]; only raises the base ref's .toolbelt/thresholds.yaml
   --test-cmd <cmd>         Visible tests command (default: verify.test_cmd; `tb init` detects go/npm/pnpm/yarn/pytest/cargo/make and also build_cmd/lint_cmd)
   --hidden-test-cmd <cmd>  Hidden tests command (verify.hidden_test_cmd; runs even without tests/hidden/; if the dir exists and the cmd is empty: detects the toolchain or marks N/A)
   --build-cmd <cmd>        Build command (default: verify.build_cmd; empty + explicit flag or --no-build to skip)
   --lint-cmd <cmd>         Lint command (default: verify.lint_cmd; empty + explicit flag or --no-lint to skip)
   --no-build               Skips build_cmd (config and default)
   --no-lint                Skips lint_cmd (config and default)
+  --typecheck-cmd <cmd>    Typecheck command (default: verify.typecheck_cmd; gate step after build, before lint)
+  --no-typecheck           Skips typecheck_cmd (config and flag)
+  --check <name=cmd>       Adds or overrides a named check (repeatable; name [a-z0-9-]{1,32})
+  --no-check <name>        Skips one named check (repeatable)
+  --no-checks              Skips every named check (verify.checks)
   --dry-run                Shows the plan (cmds and directory) without executing
   --max-iter <n>           Maximum iterations (default: 3)
   --timeout <dur>          Timeout (default: 10m)
@@ -1106,16 +1134,28 @@ When `AGENTS.md`/`CLAUDE.md` exist, init writes `.toolbelt/agent_docs.yaml` with
 “use/run/prefer …”). Long code fences (e.g. ` ```go `) are ignored so they
 do not pollute the hints.
 
-When there are clear markers, init also fills `verify.build_cmd` and
-`verify.lint_cmd` conservatively:
+When there are clear markers, init also fills `verify.build_cmd`,
+`verify.typecheck_cmd` and `verify.lint_cmd` conservatively (a tool is written only
+when it resolves on `PATH` or through the package manager):
 
-| Toolchain | `build_cmd` | `lint_cmd` |
-|-----------|-------------|------------|
-| `go.mod` | `go build ./...` | `.golangci.y*ml`/`.toml` → `golangci-lint run` if the binary is on PATH, else `go vet ./...`; no config → `make lint` target |
-| `package.json` | `build` script, else `typecheck`/`type-check` → `npm run …` / `pnpm run …` / `yarn …` | `lint` script → analogous |
-| `Cargo.toml` | `cargo build` | `cargo clippy` |
-| Python (`pyproject`/`uv.lock`/…) | (empty) | `[tool.ruff]`/`ruff.toml` → `ruff check .` (or `uv run …`); else mypy |
-| only `Makefile` | `build` target → `make build` | `lint` target → `make lint` |
+| Toolchain | `build_cmd` | `typecheck_cmd` | `lint_cmd` |
+|-----------|-------------|-----------------|------------|
+| `go.mod` | `go build ./...` | (none: the build type-checks) | `.golangci.y*ml`/`.toml` → `golangci-lint run` if the binary is on PATH, else `go vet ./...`; no config → `make lint` target |
+| `package.json` | `build` script → `npm run …` / `pnpm run …` / `yarn …` | `typecheck`/`type-check` script → `<pm> run …`; else `tsconfig.json` + local `node_modules/.bin/tsc` → `npm exec -- tsc --noEmit` / `pnpm exec tsc --noEmit` / `yarn tsc --noEmit` / `bunx tsc --noEmit` | `lint` script → analogous |
+| `Cargo.toml` | `cargo build` | (none: the build type-checks) | `cargo clippy` |
+| Python (`pyproject`/`uv.lock`/…) | (empty) | mypy (`[tool.mypy]`, `mypy.ini`, `.mypy.ini`, `setup.cfg [mypy]`) or pyright (`[tool.pyright]`, `pyrightconfig.json`) configured and on PATH or in `.venv/bin` → `mypy .` / `pyright` (`uv run …` with `uv.lock`; `.venv/bin/mypy .` / `.venv/bin/pyright` when only in `.venv/bin`) | `[tool.ruff]`/`ruff.toml` → `ruff check .` (or `uv run …`); mypy is no longer a lint fallback |
+| only `Makefile` | `build` target → `make build` | (none) | `lint` target → `make lint` |
+
+Re-running `tb init` on a new config therefore writes a Node `typecheck` script as
+`typecheck_cmd` (it used to be `build_cmd`) and no longer writes mypy as the Python
+lint. An existing `build_cmd` that is a typecheck script keeps working as a build
+until you move it.
+
+Named checks are suggested, never added silently: `govulncheck ./...` (Go, when
+`govulncheck` is on PATH) and `cargo clippy --all-targets -- -D warnings` (Rust, when
+`cargo clippy -V` works). `tb init --write-checks` writes them into
+`verify.checks` of a new `config.yaml`; otherwise init logs each suggestion and,
+with `--json`, lists them in `suggested_checks`.
 
 Missing script/config → field omitted. Without a detected `test_cmd`, verify
 does not invent `go test` (configure by hand or add a script/marker).
@@ -1178,10 +1218,63 @@ when the manifest lists the task's own file.
 # .toolbelt/config.yaml
 verify:
   build_cmd: "pnpm --filter @pkg build"
+  typecheck_cmd: "pnpm exec tsc --noEmit"
   lint_cmd: "pnpm --filter @pkg lint"
   test_cmd: "pnpm --filter @pkg test"
+  coverage_cmd: "pnpm exec vitest run --coverage"
+  coverage_pattern: 'All files\s*\|\s*[\d.]+\s*\|\s*[\d.]+\s*\|\s*[\d.]+\s*\|\s*([\d.]+)'
   hidden_test_cmd: "pnpm --filter @pkg test:hidden"
+  checks:
+    - name: audit              # [a-z0-9-]{1,32}, unique
+      cmd: "pnpm audit --prod"
 ```
+
+**Steps of the `tests` ruler.** Each iteration runs, in order: build → typecheck →
+lint → named checks → visible tests → hidden tests. Build, typecheck, lint and each
+check are **gate steps**: they run once per verify run (cached across iterations),
+and a failure ends verify with `ESCALATE` (the failure is deterministic for the
+agent's loop), with the excerpt in `reason`. Checks run in the order of
+`verify.checks`; exit 0 passes, anything else fails the check; a missing executable
+fails fast with exit 127. `--check name=cmd` adds or overrides one check,
+`--no-check name` skips one and `--no-checks` skips all. A scan that needs the
+network (e.g. `govulncheck`) belongs in CI, or is skipped locally with `--no-check`.
+
+New JSON keys, all `omitempty` (a run with today's config and flags prints the same
+keys as before): `typecheck_ran`, `typecheck_passed`, `checks`
+(`[{name, passed, reason}]`), `config_source` (`none`, only without a base file), `warnings`,
+`overrides` and `skip_kind`. `overrides` lists, sorted, every verify key a flag or MCP
+argument set to a value other than the trusted config's (base/global/`-c`), e.g.
+`test_cmd`, and every skip toggle that disabled a configured step (`no_typecheck`,
+`skip_checks:govulncheck`, `no_checks`; an added or replaced check is `checks:<name>`).
+Text mode (also `tb stack`) prints the warnings and `Warning: overrides applied: …` on
+stderr.
+
+**Verify's commands come from the base ref.** The `verify:` section is read from
+`git show <base>:.toolbelt/config.yaml`, merged over the global config and the
+defaults (with `-c`, only that file; see below), never from the working tree, so the change under test cannot
+rewrite its own gate (e.g. `test_cmd: true`). Flags and MCP arguments still
+override, since they come from the caller. Guard compares the `verify:` section at
+base and head: a difference is an error finding `verify_config_changed` that aborts
+verify like a protected-path hit, listing the changed keys; other sections of the
+file stay unrestricted. A symlinked config at base or head is compared by its target
+text: any change is a `verify_config_changed` finding (`verify`; it cannot be parsed).
+A malformed file at base is the warning finding `verify_config_unreadable` (guard and
+`-c` runs keep working; verify without `-c` aborts on it). `--base` is chosen by the caller, so **CI must pin the base**
+(the PR's merge base); verify warns (`base resolves to head`) when the base SHA equals
+the resolved head SHA.
+
+Config layers for verify (R0): with `-c`, only the `-c` file and the defaults (the
+repository config is not read, as before). Without `-c`: defaults < global config <
+`.toolbelt/config.yaml` as committed at the base ref. The working-tree file is never
+read, for `verify:` and for `env:` (`allow`/`pass`), so a change cannot pass secrets
+to its own tests. When the working tree's `verify:`/`env:` keys differ from the base
+file's, verify warns, e.g. `ignored .toolbelt/config.yaml keys that differ from the base ref:
+verify.test_cmd (verify reads the base ref)` (the file at the repository top level, also
+when run from a subdirectory). `config_source` is omitted
+in the normal case and is `"none"` when the base ref has no file (global config and
+defaults only) or commits it as a symlink, which is not followed (warning
+`symlinked .toolbelt/config.yaml at the base ref is not followed; using the global config`).
+A malformed file at the base ref aborts verify without `-c`. A malformed global or `-c` config aborts verify.
 
 ```bash
 tb verify run --test-cmd "pnpm test" --hidden-test-cmd "pnpm test:hidden"
@@ -1189,6 +1282,9 @@ tb verify run --test-cmd "pnpm test" --hidden-test-cmd "pnpm test:hidden"
 tb verify run --test-cmd "pnpm test" --no-build --no-lint
 tb verify run --build-cmd "pnpm build" --lint-cmd "pnpm lint" --test-cmd "pnpm test"
 tb verify run --dry-run --test-cmd "go test ./..."
+tb verify run --typecheck-cmd "pnpm exec tsc --noEmit" --test-cmd "pnpm test"
+tb verify run --check "vuln=govulncheck ./..." --no-check clippy
+tb verify run --no-typecheck --no-checks
 ```
 
 Ruler `visual` ([docs/verificacao-visual.md](verificacao-visual.md)): headless capture + pixel diff;
@@ -1202,6 +1298,11 @@ tb verify run
 tb verify run --test-cmd "go test ./..." --hidden-test-cmd "go test ./tests/hidden/..."
 tb verify run --test-cmd "true" --no-build --no-lint --max-iter 1
 tb verify run --dry-run --build-cmd "go build ./..." --test-cmd "go test ./..."
+
+# Coverage ruler (threshold from the base ref's .toolbelt/thresholds.yaml)
+tb verify run --ruler coverage
+tb verify run --ruler tests,coverage --min-coverage 80
+tb verify run --ruler coverage --coverage-cmd "pytest --cov" --coverage-pattern 'TOTAL.*\s(\d+(?:\.\d+)?)%'
 
 # Visual verification (threshold is a 0–1 fraction, not an integer percentage)
 tb verify run --ruler visual --threshold 0.95
@@ -1217,7 +1318,46 @@ tb verify run --ruler visual --skip-unavailable
 | Ruler | Metric | Default Threshold | Specific Cheating |
 |-------|--------|-------------------|-------------------|
 | `visual` | Pixel similarity | 0.95 | Reference edits |
-| `tests` | Pass on hidden tests | 100% | Test modification |
+| `tests` | Gate steps (build → typecheck → lint → named checks) pass, then visible and hidden tests pass | 100% | Test modification; rewriting `verify.*` commands (blocked: read from base, `verify_config_changed`) |
+| `coverage` | Coverage percentage (statements for Go, whatever the tool reports otherwise) | `coverage.min_percent` in base `.toolbelt/thresholds.yaml` | Lowering the threshold (read from base) |
+
+`--ruler` takes a comma-separated list. An unknown name fails before anything runs
+with exit **2** (`invalid ruler "x": …`); it used to run `tests` silently. `visual`
+cannot be combined with another ruler yet. `--ruler tests,coverage` runs both with
+one guard, one ref resolution and one head worktree; the verdict is the worst of the two.
+
+**The `coverage` ruler.** It runs the coverage command in the head worktree and reads
+one total percentage:
+
+- **Go** (default when `go.mod` exists and `coverage_cmd` is empty): `go test -coverprofile=<tmp> ./...`;
+  the total is statement-weighted, with blocks deduplicated (a block repeated by
+  `-coverpkg` counts as covered if any copy ran), like `go tool cover -func`.
+- **Generic:** `verify.coverage_cmd` plus `verify.coverage_pattern`, a regexp with exactly
+  one capture group; the **last** match in the output is the percentage and must be a
+  number in [0, 100]. A `coverage_cmd` without `coverage_pattern` fails with its own
+  reason (`coverage: coverage_cmd set but no coverage_pattern to read its output`); an
+  output with no match fails with `coverage: pattern did not match`.
+- **Threshold:** `coverage.min_percent` in `.toolbelt/thresholds.yaml` read **from the
+  base ref only** (never the working tree), so a change cannot lower its own floor.
+  Schema: `version: 1`, `coverage: {min_percent: <0–100>}`; unknown keys, a bad value, a
+  malformed file or a symlink abort verify instead of meaning "no threshold".
+  `--min-coverage` (MCP `min_coverage`) can only **raise** it: the effective floor is
+  `max(base, flag)`, reported as `threshold_source: "base"` or `"flag"`.
+- **Trust:** the coverage command runs as the same user as the code under test, so a
+  test can tamper with its own coverage output; the threshold is a floor, not proof. Prefer
+  an anchored, generic pattern (e.g. `(?m)^TOTAL\s.*\s(\d+)%$`) over a loose one. For Go,
+  the profile is accepted only for files of the module's packages (`go list ./...`) that
+  exist in the head worktree (`coverage: profile names unknown file <key>`); negative
+  counts and inconsistent statement counts fail. The Go default is decided by `go.mod`
+  at the **base** commit.
+- **Verdicts:** no threshold anywhere → `SKIPPED` / `not_applicable` (it does not demote
+  a combined `PASS`); a threshold but no coverage command for the repository → `FAIL`
+  (`coverage: threshold set but no coverage_cmd for this repository`); below the
+  threshold → `FAIL` (not `ESCALATE`: the agent can add tests); otherwise `PASS`.
+- **JSON:** `coverage: {percent, threshold, threshold_source, cmd, metric}` and
+  `metrics.coverage_percent`. With several rulers the output is
+  `{verdict, rulers: {tests: …, coverage: …}}`. Flag or MCP overrides of
+  `coverage_cmd`, `coverage_pattern` or `min_coverage` appear in `overrides`.
 
 > Ruler `review`, flag `--discriminator-only`, and invocations like `tb verify <task-id>` **do not exist** — use `tb verify run` and `tb review` separately.
 
@@ -1975,11 +2115,11 @@ Unix/tcp transport and `--socket`/`--port`/`--tls-*` flags are planned; today on
 | `tb_env` | — | cwd/os/arch |
 | `tb_run` | — | `sh -c` with timeout inside the Landlock sandbox (see [MCP `tb_run` sandbox](#mcp-tb_run-sandbox)); filtered env; `env`/`pass_env` args (arrays); `cwd` must be inside the repository |
 | `tb_mem_add` / `tb_mem_list` / `tb_mem_show` / `tb_mem_edit` / `tb_mem_retire` / `tb_mem_search` / `tb_mem_check` / `tb_mem_init` | `tb mem …` | optional `cwd` arg; `ref`/`all` (boolean; legacy strings ok) where applicable |
-| `tb_verify_run` | `tb verify run` | `ruler=tests\|visual`; args mirror flags + `env`/`pass_env` |
+| `tb_verify_run` | `tb verify run` | `ruler` (comma list: `tests`, `coverage`, `visual`); args mirror flags + `env`/`pass_env`, including `coverage_cmd`, `coverage_pattern`, `min_coverage` (number), `typecheck_cmd`, `no_typecheck` (boolean), `checks` (array of `{name, cmd}`), `skip_checks` (array of names), `no_checks` (boolean) |
 | `tb_review` | `tb review` | ticket/base/head/approved_sha/require_approved_sha/reviewers/standards |
 | `tb_drift` | `tb drift` | returns `{drift, has_drift, pinned_approval}` (`checked` explicit) |
 | `tb_guard_check` | `tb guard check` | `base`/`head` or `range=A..B`; `strict_fail` by default on SeverityError; `warn_only=true` opt-out; `strict` deprecated (boolean) |
-| `tb_stack` | `tb stack` | `ops` (array, includes `egm`, always moved to the end), `base`/`head`, `fail_fast` (boolean), `jobs` (integer), `approved_sha`/`approved_base`/`require_approved_sha`, `env`/`pass_env`, `egm_docs` (array), `strict` (boolean), `egm_mode` (`local`/`ci`), `egm_config` (absolute path, required by `ci`), `egm_allow_offline` (boolean); returns aggregated JSON with `warn` |
+| `tb_stack` | `tb stack` | `ops` (array, includes `egm`, always moved to the end), `base`/`head`, `fail_fast` (boolean), `jobs` (integer), `approved_sha`/`approved_base`/`require_approved_sha`, `env`/`pass_env`, `egm_docs` (array), `strict` (boolean), `egm_mode` (`local`/`ci`), `egm_config` (absolute path, required by `ci`), `egm_allow_offline` (boolean); verify fields `ruler` (`visual` refused), `coverage_cmd`, `coverage_pattern`, `min_coverage`, `typecheck_cmd`, `no_typecheck`, `checks`, `skip_checks`, `no_checks`; returns aggregated JSON with `warn` |
 | `tb_egm_status` / `tb_egm_resolve` / `tb_egm_receipt` | `tb egm status` / `tb egm resolve` / `tb egm receipt` | `cwd` (absolute) and `doc`; status takes `at`/`strict`, resolve takes `fix`/`decline` (arrays), `force_settle`/`reason`, `contest`/`evidence`; returns `{report, exit_code}` (receipt adds `receipt`, the written path) |
 | `tb_vault_list` / `tb_vault_show` / `tb_vault_search` / `tb_vault_links` / `tb_vault_backlinks` / `tb_vault_check` / `tb_vault_new` | `tb vault …` | `cwd` (absolute); `note` for show/links/backlinks, `query`/`limit` for search, `type`/`tag`/`source` for list; new takes `title`, `confidence` (required), `type`, `tags`, `dir`, `body` and always writes `source: inferred`; note text comes back inside `data` |
 | `tb_ticket_list` / `tb_ticket_show` | `tb ticket list` / `tb ticket show` | `status`, `deps` / `id`; optional arg `cwd` |
@@ -2003,11 +2143,13 @@ tb init [flags]
 Flags:
   --global         Initializes global configuration (~/.config/toolbelt)
   --write-agents   Seeds a minimal AGENTS.md if missing (never overwrites)
+  --write-checks   Writes the suggested verify.checks (govulncheck, clippy) into a new config.yaml
   --json           JSON output (global flag)
 ```
 
 With `--json`, emits a payload with `path`, detected `test_cmd` / `build_cmd` / `lint_cmd`
-(when present), optional `warning`, and `agents` (`seeded`, `sources`, …).
+(when present), optional `warning`, `agents` (`seeded`, `sources`, …) and, when checks
+were suggested but not written, `suggested_checks`.
 
 Toolchain detection details and `verify.*` population are in the `tb verify` section.
 
@@ -2239,7 +2381,8 @@ The current CLI does not use a stable table of codes 2–7. In practice:
 |------|---------|
 | 0 | Success (`PASS`/`SKIPPED` in verify; guard without `SeverityError` or with `--warn-only`) |
 | ≠0 (typically 1) | Parse/domain error, `FAIL`/`ESCALATE` in verify, `SeverityError` in guard, unknown subcommand |
-| 127 | `tb verify run`: `test_cmd` / `build_cmd` / `lint_cmd` / `hidden_test_cmd` not found (or not executable / `ErrNotFound`); with `--json` emits the `verify.Result` envelope with an `error` field |
+| 2 | `tb verify run`: invalid `--ruler` (unknown name, or `visual` combined with another ruler); nothing runs |
+| 127 | `tb verify run`: `test_cmd` / `build_cmd` / `typecheck_cmd` / `lint_cmd` / a named check / `hidden_test_cmd` not found (or not executable / `ErrNotFound`); with `--json` emits the `verify.Result` envelope with an `error` field |
 | child exit | `tb sandbox run` propagates the process exit code when ≠ 0 and without timeout |
 
 When the configured verify command does not exist/is not executable, verify fails immediately (no retries) and the `tb` process exits **127**.
