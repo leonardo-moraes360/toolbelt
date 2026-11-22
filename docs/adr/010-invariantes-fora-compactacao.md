@@ -4,7 +4,7 @@
 
 ## Status
 
-proposed
+accepted (shipped: `tb mem`, `.toolbelt/invariants.yaml`, fail-closed `tb mem check`; hybrid compaction is still open)
 
 ## Context
 

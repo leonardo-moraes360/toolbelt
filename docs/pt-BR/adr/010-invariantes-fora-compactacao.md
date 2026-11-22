@@ -4,7 +4,7 @@
 
 ## Status
 
-proposed
+accepted (entregue: `tb mem`, `.toolbelt/invariants.yaml`, `tb mem check` fail-closed; a compactação híbrida segue em aberto)
 
 ## Contexto
 

@@ -4,7 +4,7 @@
 
 ## Status
 
-proposed (2026-11-20). Partially supersedes [ADR-006](006-inspiracoes-graphify-obsidian.md) (decision items 1 and 2, "own TUI") and [ADR-003](003-sqlite-fts5-grafo.md) ("Vault → SQLite Sync") for Phase A. Spec: [`docs/specs/vault.md`](../specs/vault.md).
+proposed (2026-11-20); experimental in 1.0. Partially supersedes [ADR-006](006-inspiracoes-graphify-obsidian.md) (decision items 1 and 2, "own TUI") and [ADR-003](003-sqlite-fts5-grafo.md) ("Vault → SQLite Sync") for Phase A. Spec: [`docs/specs/vault.md`](../specs/vault.md).
 
 ## Context
 

@@ -4,7 +4,7 @@
 
 ## Status
 
-proposed (2026-11-20). Substitui em parte a [ADR-006](006-inspiracoes-graphify-obsidian.md) (itens 1 e 2 da decisão, "TUI própria") e a [ADR-003](003-sqlite-fts5-grafo.md) ("Sincronização vault → SQLite") na Fase A. Spec: [`docs/specs/vault.md`](../specs/vault.md).
+proposed (2026-11-20); experimental na 1.0. Substitui em parte a [ADR-006](006-inspiracoes-graphify-obsidian.md) (itens 1 e 2 da decisão, "TUI própria") e a [ADR-003](003-sqlite-fts5-grafo.md) ("Sincronização vault → SQLite") na Fase A. Spec: [`docs/specs/vault.md`](../specs/vault.md).
 
 ## Contexto
 

@@ -21,22 +21,22 @@ Each ADR follows this format:
 |-----|-------|--------|
 | [001](001-go-vs-rust.md) | Go as the primary language | accepted |
 | [002](002-mcp-a2a-protocolos.md) | MCP + A2A as communication protocols | accepted (A2A part superseded by [ADR-020](020-agent-hierarchy-a2a.md)) |
-| [003](003-sqlite-fts5-grafo.md) | SQLite + FTS5 as graph and memory index | accepted |
-| [004](004-sandbox-isolamento.md) | Sandbox with bubblewrap + Landlock + seccomp | accepted |
+| [003](003-sqlite-fts5-grafo.md) | SQLite + FTS5 as graph and memory index | accepted (index superseded by `graph.json` + BM25; SQLite only in `bus.db`) |
+| [004](004-sandbox-isolamento.md) | Sandbox with bubblewrap + Landlock + seccomp | accepted (Landlock + seccomp implemented; bubblewrap not built) |
 | [005](005-anti-trapaca.md) | Anti-cheat strategy | accepted |
 | [006](006-inspiracoes-graphify-obsidian.md) | Inspirations: Graphify and Obsidian | accepted |
 | [007](007-inspiracao-elephant-goldfish.md) | Inspiration: Elephant-Goldfish Model | accepted |
 | [008](008-verificacao-adversarial.md) | Adversarial verification (generator vs discriminator) | accepted |
-| [009](009-router-e-workers.md) | Router and Workers pattern for delegation | proposed |
-| [010](010-invariantes-fora-compactacao.md) | Invariants pinned outside compaction | proposed |
+| [009](009-router-e-workers.md) | Router and Workers pattern for delegation | proposed (experimental in 1.0) |
+| [010](010-invariantes-fora-compactacao.md) | Invariants pinned outside compaction | accepted |
 | [011](011-grafo-sob-demanda.md) | On-demand code graph with A/B | accepted |
 | [012](../decisions/012-cli-framework-cobra.md) | CLI framework: cobra | accepted |
-| [013](013-barramento-multi-vendor.md) | Local multi-vendor agent bus (`tb bus`) | proposed (B0/B1 and part of B3 implemented) |
+| [013](013-barramento-multi-vendor.md) | Local multi-vendor agent bus (`tb bus`) | proposed (B0–B5 implemented; experimental in 1.0) |
 | [014](014-graphify-reimplementacao.md) | Graphify: reimplement, don't integrate | accepted |
 | [015](015-egm-nativo.md) | Native reimplementation of the Elephant-Goldfish Model (`tb egm`) | accepted |
-| [016](016-vault-fase-a.md) | Markdown vault, Phase A: the vault is the only store | proposed |
-| [017](017-appsec-red-blue-labs.md) | Native AppSec red/blue capabilities and isolated labs (`tb red` / `tb blue` / `tb lab`) | proposed |
-| [018](018-cgo-componentes-nativos.md) | cgo for native components, starting with vendored llama.cpp, under a C/C++ quality gate | proposed |
+| [016](016-vault-fase-a.md) | Markdown vault, Phase A: the vault is the only store | proposed (experimental in 1.0) |
+| [017](017-appsec-red-blue-labs.md) | Native AppSec red/blue capabilities and isolated labs (`tb red` / `tb blue` / `tb lab`) | proposed (experimental in 1.0) |
+| [018](018-cgo-componentes-nativos.md) | cgo for native components, starting with vendored llama.cpp, under a C/C++ quality gate | accepted |
 | [019](019-cpu-v3-embedding.md) | AVX2/FMA kernels for the embedding child, guarded at run time | accepted |
 | [020](020-agent-hierarchy-a2a.md) | Agent hierarchy as delegation trees on the local bus; A2A stays an envelope shape, with no network in `tb` | accepted |
 
