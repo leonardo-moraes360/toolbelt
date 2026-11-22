@@ -162,6 +162,19 @@ type VerifyConfig struct {
 	HiddenTestCmd string `yaml:"hidden_test_cmd"`
 	BuildCmd      string `yaml:"build_cmd,omitempty"`
 	LintCmd       string `yaml:"lint_cmd,omitempty"`
+	// TypecheckCmd and Checks are gate steps of the tests ruler
+	// (docs/specs/verify-rulers.md R2, R3).
+	TypecheckCmd string        `yaml:"typecheck_cmd,omitempty"`
+	Checks       []VerifyCheck `yaml:"checks,omitempty"`
+	// CoverageCmd and CoveragePattern feed the coverage ruler (R4).
+	CoverageCmd     string `yaml:"coverage_cmd,omitempty"`
+	CoveragePattern string `yaml:"coverage_pattern,omitempty"`
+}
+
+// VerifyCheck is a named extra gate: exit 0 passes.
+type VerifyCheck struct {
+	Name string `yaml:"name"`
+	Cmd  string `yaml:"cmd"`
 }
 
 type ReviewConfig struct {
@@ -468,54 +481,8 @@ func Init(dir string) error {
 
 // InitDetailed is like Init but also returns toolchain detection details (PATH warnings).
 func InitDetailed(dir string) (DetectedCmd, error) {
-	var detected DetectedCmd
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return detected, fmt.Errorf("creating config dir: %w", err)
-	}
-
-	subdirs := []string{"vault", "logs", "bench"}
-	for _, sub := range subdirs {
-		subpath := filepath.Join(dir, sub)
-		if err := os.MkdirAll(subpath, 0o755); err != nil {
-			return detected, fmt.Errorf("creating %s dir: %w", sub, err)
-		}
-	}
-
-	configPath := filepath.Join(dir, DefaultConfigFile)
-	if _, err := os.Stat(configPath); !errors.Is(err, os.ErrNotExist) {
-		return detected, nil
-	}
-
-	cfg := DefaultConfig()
-	// Left out so a repository config written by init never sets user-only
-	// keys (which would draw config_untrusted warnings); defaults apply.
-	cfg.Graph.Vector, cfg.Graph.Embed = GraphVectorConfig{}, GraphEmbedConfig{}
-	detected = applyDetectedVerifyCmds(cfg, dir)
-	if err := Save(cfg, configPath); err != nil {
-		return detected, fmt.Errorf("saving default config: %w", err)
-	}
-
-	return detected, nil
-}
-
-func applyDetectedVerifyCmds(cfg *Config, dir string) DetectedCmd {
-	var detected DetectedCmd
-	root, ok := projectRootForInit(dir)
-	if !ok {
-		return detected
-	}
-	detected = DetectTestCmdDetailed(root)
-	cfg.Verify.TestCmd = detected.Cmd
-	if cmd := DetectBuildCmd(root); cmd != "" {
-		cfg.Verify.BuildCmd = cmd
-	}
-	if cmd := DetectLintCmd(root); cmd != "" {
-		cfg.Verify.LintCmd = cmd
-	}
-	if detected.Cmd == "" && detected.Warning == "" {
-		detected.Warning = "no test toolchain detected; verify.test_cmd left empty (does not use go test without go.mod)"
-	}
-	return detected
+	res, err := InitWithOptions(dir, InitOptions{})
+	return res.Test, err
 }
 
 // Exists: dir is the full path (e.g. /project/.toolbelt).
