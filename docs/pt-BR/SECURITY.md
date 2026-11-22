@@ -6,10 +6,10 @@
 
 | Versão | Suportada |
 | ------ | --------- |
-| 0.0.5 (última) | Sim |
-| < 0.0.5 | Não |
+| 1.0.x | Sim |
+| < 1.0 | Não |
 
-O projeto é pré-1.0: correções de segurança saem na versão mais recente. Veja como verificar um release em [docs/pt-BR/release.md](release.md).
+Depois da 1.0, a última minor da série 1.x é suportada; correções de segurança saem nela e em nenhuma minor anterior. Release candidates (`-rc.N`) não são suportados. Veja como verificar um release em [docs/pt-BR/release.md](release.md).
 
 ## Reportando Vulnerabilidades
 
@@ -48,7 +48,7 @@ Estes tempos são metas, não garantias. Vulnerabilidades complexas podem levar 
 
 Vulnerabilidades relacionadas a:
 
-- **Escape de sandbox**: qualquer forma de sair do isolamento do sandbox (hoje Landlock, fail-closed; bubblewrap/seccomp previstos no [ADR-004](adr/004-sandbox-isolamento.md))
+- **Escape de sandbox**: qualquer forma de sair do isolamento do sandbox (Landlock para o filesystem, fail-closed, mais um filtro seccomp de rede para o filho de embedding, veja [ADR-004](adr/004-sandbox-isolamento.md) e [ADR-018](adr/018-cgo-componentes-nativos.md); bubblewrap não está implementado)
 - **Bypass de guardrails**: contornar proteções anti-trapaça ou limites de capacidade
 - **Escalação de privilégios**: agente obtendo permissões além do seu role
 - **Exfiltração de dados**: vazamento de secrets ou dados protegidos
