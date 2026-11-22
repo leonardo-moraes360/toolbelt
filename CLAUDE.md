@@ -11,7 +11,7 @@ tb mem check            # invariants intact (fail-closed)
 TB_GRAPH=on tb graph index
 ```
 
-The `toolbelt` MCP server (`.mcp.json`) exposes `tb_*` with `TB_GRAPH=on` (54 tools in v0.0.10).
+The `toolbelt` MCP server (`.mcp.json`) exposes `tb_*` with `TB_GRAPH=on` (54 tools; the exact list is the MCP `tools/list`).
 
 ## Map
 
@@ -43,6 +43,6 @@ Friction/bugs in `tb` found while using it here go in `docs/campo/dogfood.md` + 
 
 ## Local notes
 
-- `golangci-lint` is not on this machine's PATH: `verify.lint_cmd` uses `go vet ./...` (`tb init` still writes `golangci-lint run`; dogfood #1). CI runs golangci-lint.
-- `cosign` and `gh attestation` unavailable: release verification relies on sha256 + cert SAN/issuer/commit.
+- `golangci-lint` is on this machine's PATH (`~/go/bin`); run `golangci-lint run` before pushing, as CI does. `verify.lint_cmd` in `.toolbelt/config.yaml` stays `go vet ./...`.
+- `cosign` is not installed and `gh` has no `attestation` command: release verification relies on sha256 + cert SAN/issuer/commit.
 - In a `git worktree`, `tb init` writes the exclude into the worktree's gitdir, which git ignores (dogfood #17); `.gitignore` covers local state.

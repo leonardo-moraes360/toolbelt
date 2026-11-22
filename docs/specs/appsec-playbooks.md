@@ -2,11 +2,11 @@
 
 # Spec: AppSec red/blue playbooks (`tb red` / `tb blue`)
 
-Author: toolbelt · Status: proposed (not implemented) · Date: 2026-11-20 · Decision: [ADR-017](../adr/017-appsec-red-blue-labs.md) · Companion: [red/blue labs](red-blue-labs.md)
+Author: toolbelt · Status: Phase 1 implemented (`tb red`, `tb blue`, `tb stack seccheck`, MCP tools; experimental in 1.0) · Date: 2026-11-20 · Decision: [ADR-017](../adr/017-appsec-red-blue-labs.md) · Companion: [red/blue labs](red-blue-labs.md)
 
 ## Overview
 
-`tb red` and `tb blue` give the agent native, owned AppSec methodology: a **red** corpus (offensive — how a vulnerability class manifests and is surfaced in code or a running service) and a **blue** corpus (defensive — detection, hardening, incident response). Content is authored in-repo in `tb`'s voice, scoped to software security, with no runtime dependency on any external corpus. Playbooks are indexed into the existing SQLite + FTS5 graph and served — compact in search, budgeted on load — over the CLI and MCP.
+`tb red` and `tb blue` give the agent native, owned AppSec methodology: a **red** corpus (offensive — how a vulnerability class manifests and is surfaced in code or a running service) and a **blue** corpus (defensive — detection, hardening, incident response). Content is authored in-repo in `tb`'s voice, scoped to software security, with no runtime dependency on any external corpus. Playbooks are indexed into the existing graph (`graph.json`, BM25) and served — compact in search, budgeted on load — over the CLI and MCP.
 
 Crucially, a playbook is not inert prose: a blue playbook can emit **runnable checks** in `tb`'s existing verification mechanisms, so hardening becomes something the project keeps enforcing.
 
@@ -161,8 +161,8 @@ Read tools are `readOnlyHint: true, openWorldHint: false`. `tb_blue_apply` mutat
 
 Implemented in `internal/secplay` with CLI `tb red` / `tb blue` and the six MCP tools. Three design points were resolved against the codebase as built; they refine the sections above:
 
-- **Index.** The repo "graph" is a JSON store (`graph.json`) with in-memory BM25, not SQLite/FTS5. The corpus is small, so Phase 1 ships a self-contained engine (embedded corpus, own compact ranker, own section slicer, own token estimator `≈ runes/4`) rather than writing into `graph.json`. Wiring playbook nodes + a `mirror` edge into the graph (so `tb graph path` links them) is **Phase 2**.
-- **Runnable checks.** `guard` is hardcoded Go and `verify` is four command strings — neither hosts a list of named checks. So blue checks live in a dedicated, versioned **`.toolbelt/secchecks.yaml`** written by `tb blue apply` and run by **`tb blue check`** (a grep/regex scanner). Acceptance A4's "a subsequent `tb guard`/`tb stack` runs them" becomes `tb blue check` for Phase 1; a `tb stack` seccheck op is **Phase 2**.
+- **Index.** The repo "graph" is a JSON store (`graph.json`) with in-memory BM25, not SQLite/FTS5. The corpus is small, so Phase 1 ships a self-contained engine (embedded corpus, own compact ranker, own section slicer, own token estimator `≈ runes/4`) rather than writing into `graph.json`. Playbook nodes and a `mirror` edge are wired into the graph when it is indexed (`internal/secplay/graphsource.go`), so `tb graph path` links them.
+- **Runnable checks.** `guard` is hardcoded Go and `verify` is four command strings — neither hosts a list of named checks. So blue checks live in a dedicated, versioned **`.toolbelt/secchecks.yaml`** written by `tb blue apply` and run by **`tb blue check`** (a grep/regex scanner). Acceptance A4's "a subsequent `tb guard`/`tb stack` runs them" becomes `tb blue check` for Phase 1; `tb stack seccheck` (`OpSecCheck` in `internal/stack/stack.go`) runs them as a stack op.
 - **Corpus location.** Authored and **embedded** at `internal/secplay/corpus/{red,blue}/<class>.md` via `go:embed` — owned, shipped in the binary, and outside `docs/` (no pt-BR mirror burden).
 
 **Shipped corpus (core, 10 pairs):** sql-injection, xss, ssrf, ssti, xxe, idor, rce, insecure-deserialization, jwt, oauth. Blue checks ship for all but the two logic-only classes (idor, oauth). **Deferred:** SIEM rule formats (Sigma/KQL/YARA) and the rest of the taxonomy.

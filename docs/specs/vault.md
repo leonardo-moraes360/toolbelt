@@ -2,7 +2,7 @@
 
 # Spec: Obsidian-compatible Markdown vault, Phase A (`tb vault`)
 
-Author: toolbelt · Status: Draft (round 3: refreshed against main, fresh-context review applied, Q1 resolved by [ADR-016](../adr/016-vault-fase-a.md); Q4 open); implementation slices 1 (mdparse), 2 (read-only vault), 3 (write, search, MCP, versioning) and 4 (graph) done · Date: 2026-11-20 · Decision: [ADR-016](../adr/016-vault-fase-a.md) · Originating decisions: [ADR-006](../adr/006-inspiracoes-graphify-obsidian.md), [ADR-003](../adr/003-sqlite-fts5-grafo.md) · Related: [ADR-010](../adr/010-invariantes-fora-compactacao.md), [ADR-011](../adr/011-grafo-sob-demanda.md)
+Author: toolbelt · Status: Phase A implemented, experimental in 1.0 (round 3: refreshed against main, fresh-context review applied, Q1 resolved by [ADR-016](../adr/016-vault-fase-a.md); Q4 open); implementation slices 1 (mdparse), 2 (read-only vault), 3 (write, search, MCP, versioning) and 4 (graph) done · Date: 2026-11-20 · Decision: [ADR-016](../adr/016-vault-fase-a.md) · Originating decisions: [ADR-006](../adr/006-inspiracoes-graphify-obsidian.md), [ADR-003](../adr/003-sqlite-fts5-grafo.md) · Related: [ADR-010](../adr/010-invariantes-fora-compactacao.md), [ADR-011](../adr/011-grafo-sob-demanda.md)
 
 ## Overview
 
@@ -62,7 +62,7 @@ Phase A is deliberately small and **diverges** from accepted parts of ADR-006 an
 
 ## Non-Goals
 
-- Replacing or mirroring invariants in the vault. Invariants are a structured file outside compaction (ADR-010, still `proposed`), with a fail-closed check in `tb mem check`; a human-editable vault offers neither.
+- Replacing or mirroring invariants in the vault. Invariants are a structured file outside compaction (ADR-010, accepted), with a fail-closed check in `tb mem check`; a human-editable vault offers neither.
 - SQLite/FTS5 index (ADR-003). Deferred until the performance NFR fails. Without an index, ADR-006's "bidirectional sync" question does not exist in Phase A.
 - `tb md` TUI, `tb md --obsidian`, watcher. `vault.sync_on_change` was removed.
 - Inline tags (`#tag` in the body), Dataview, Canvas, Obsidian plugins, `.obsidian/` as configuration read by tb.

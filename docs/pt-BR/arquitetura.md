@@ -4,60 +4,57 @@
 
 ## Visão Geral
 
-O `toolbelt` é um conjunto de ferramentas para agentes de código com IA, unificadas sob um único binário (`tb`) e protocolo. O objetivo é fornecer um ambiente seguro, eficiente e auditável para que agentes autônomos executem tarefas de desenvolvimento.
+O `toolbelt` é um conjunto de ferramentas para agentes de código com IA, unificadas sob um único binário (`tb`) e protocolo. O objetivo é fornecer um ambiente seguro, eficiente e verificável para que agentes autônomos executem tarefas de desenvolvimento.
 
 ```mermaid
 graph TB
     subgraph "Interface Humana"
         CLI[tb CLI]
-        OBS[Obsidian]
+        OBS[Obsidian ou qualquer editor]
     end
 
     subgraph "Camada de Protocolos"
-        MCP[MCP Server]
-        BUS[tb bus - bus/0.1, formato A2A]
-        RPC[JSON-RPC 2.0]
+        MCP[MCP Server - stdio]
+        BUS[tb bus - bus/0.1, A2A-shaped]
     end
 
     subgraph "Núcleo"
-        ORCH[Orquestrador]
-        MEM[Gerenciador de Memória]
-        CTX[Montador de Contexto]
-        GRAPH[Motor de Grafo]
-        SANDBOX[Sandbox Manager]
+        ROUTER[Router, Board, Watchdog, Merge]
+        MEM[tb mem<br/>invariantes]
+        GRAPH[Graph Engine<br/>busca BM25]
+        VERIFY[Verify, Guard, Review,<br/>Drift, Stack]
+        SANDBOX[Sandbox<br/>Landlock + seccomp]
     end
 
     subgraph "Armazenamento"
-        VAULT[Vault Markdown<br/>fonte de verdade]
-        SQLITE[(SQLite + FTS5<br/>índice derivado)]
-        AUDIT[Log de Auditoria<br/>append-only]
+        VAULT[Vault Markdown<br/>lido sob demanda]
+        GJSON[(graph.json<br/>índice derivado)]
+        BUSDB[(bus.db<br/>SQLite, só o bus)]
+        INV[invariants.yaml]
     end
 
     subgraph "Execução"
-        PROC[Gerenciador de Processos]
-        WORK[Worktrees Git]
-        ISO[Isolamento<br/>bubblewrap+Landlock]
+        WORK[Git Worktrees]
     end
 
-    CLI --> ORCH
+    CLI --> ROUTER
+    CLI --> VERIFY
+    CLI --> GRAPH
     OBS --> VAULT
-    MCP --> ORCH
-    BUS --> ORCH
+    MCP --> ROUTER
+    MCP --> VERIFY
+    MCP --> GRAPH
+    MCP --> BUS
 
-    ORCH --> MEM
-    ORCH --> CTX
-    ORCH --> SANDBOX
-    ORCH --> PROC
-
-    MEM --> VAULT
-    MEM --> GRAPH
-    GRAPH --> SQLITE
-    VAULT -.->|sync| SQLITE
-
+    ROUTER --> SANDBOX
+    ROUTER --> BUS
+    ROUTER --> WORK
+    MEM --> INV
+    VERIFY --> MEM
+    GRAPH --> GJSON
+    VAULT -.->|lido sob demanda| GRAPH
+    BUS --> BUSDB
     SANDBOX --> WORK
-    SANDBOX --> ISO
-
-    ORCH --> AUDIT
 ```
 
 ---
@@ -87,19 +84,20 @@ graph LR
 
 | Camada | Tecnologia | Responsabilidade |
 |--------|------------|------------------|
-| Filesystem | bubblewrap | Monta apenas diretórios permitidos; bind-mount read-only para testes |
-| Syscalls | seccomp | Lista de syscalls permitidos por perfil de tarefa |
-| Filesystem (runtime) | Landlock | Restrições de acesso mesmo para processos filhos |
-| Recursos | cgroups v2 | Limites de CPU, RAM, tempo de execução |
-| Rede | netns/bubblewrap | Negada por padrão; whitelist explícita |
+| Filesystem | Landlock | Restringe leitura e escrita do filho (e de seus descendentes) ao worktree, a um `TMPDIR`/`HOME` privado e aos caminhos permitidos. **Falha fechada**: sem Landlock, `tb sandbox run`, `tb router run` e `tb_run` se recusam a rodar, a menos que `--allow-unsandboxed` / `sandbox.allow_unsandboxed` esteja ligado |
+| Rede | seccomp | Filtro, instalado pelo trampolim do Landlock (Linux amd64/arm64), que faz `socket(2)`, `socketpair(2)` e `io_uring` falharem com `EPERM`. É uma opção do sandbox (`DenyNetwork`), usada pelo filho de embedding do `tb graph index --vectors`; `tb sandbox run`, workers do router e `tb_run` não restringem a rede |
+| Ambiente | allowlist | O filho recebe só variáveis da allowlist; nomes que parecem segredo (`*TOKEN*`, `SECRET`, `KEY`, `PASSWORD`) são bloqueados, a menos que `--pass-env` os nomeie |
+| Processos | grupo de processos, subreaper, `PDEATHSIG` | Timeout ou cancelamento mata o grupo inteiro; o router varre descendentes que escaparam dele |
+
+**Não construído, e fora do plano da 1.0:** bubblewrap (mount namespaces), cgroups v2 (limites de CPU/RAM), network namespaces e whitelist de rede por host. O `tb` limita tempo (`--timeout`), não CPU nem memória.
 
 ### 1.3 Snapshot e Rollback
 
-Antes de cada tarefa:
-1. `git stash --include-untracked` ou commit temporário
-2. Hash do estado salvo no log de auditoria
-3. Execução da tarefa no sandbox
-4. Em caso de falha ou violação: `git reset --hard` + `git clean -fdx`
+O `tb` não faz snapshot, stash nem `git reset --hard` automáticos em torno de uma tarefa. Os mecanismos que existem:
+
+1. **Worktrees**: cada worker do router, e o `tb workspace create`, recebe seu próprio git worktree em `.toolbelt/workspaces/`; descartar o trabalho é remover o worktree.
+2. **Resultado do ticket**: um ticket registra `base_commit`, `head_commit` e a branch; `tb drift` e `tb review` comparam o diff com eles.
+3. **`tb merge`**: aplica tickets `done` de forma atômica (`fail`, `last_wins`, `semantic`, `prompt`) e deixa um recibo; um merge recusado não move nenhuma ref.
 
 ---
 
@@ -110,9 +108,11 @@ Antes de cada tarefa:
 | Aspecto | Memória | Contexto |
 |---------|---------|----------|
 | **Definição** | Armazenamento persistente de fatos, decisões, sumários e grafo | O que é montado na janela do modelo para uma tarefa específica |
-| **Persistência** | Permanente (vault Markdown + SQLite) | Efêmera (dura uma requisição) |
+| **Persistência** | Permanente (vault Markdown, `graph.json`, `invariants.yaml`) | Efêmera (dura uma requisição) |
 | **Tamanho** | Ilimitado (cresce com o projeto) | Limitado pelo orçamento de tokens |
 | **Formato** | Markdown + frontmatter + grafo | Texto serializado para o prompt |
+
+> **Status:** o lado da memória existe como `tb mem` (invariantes em `.toolbelt/invariants.yaml`), o vault ([§3.1](#31-vault-markdown-fonte-de-verdade)) e o grafo. Não há montador de contexto nem orçamento de tokens no `tb` (§2.1 e §2.2 descrevem a visão do design): o agente monta o próprio contexto consultando `tb_mem_list` e `tb_graph_*`, e o router entrega ao worker um arquivo de ticket.
 
 ### 2.1 Tipos de Contexto
 
@@ -157,140 +157,63 @@ O **Montador de Contexto** recebe um orçamento de tokens e prioriza informaçõ
 
 ---
 
-## 3. Armazenamento: Vault Markdown + SQLite/FTS5
+## 3. Armazenamento: Vault Markdown e o Índice Derivado do Grafo
 
 ### 3.1 Vault Markdown (Fonte de Verdade)
 
-Inspirado no Obsidian, a memória é um vault de arquivos Markdown:
+Inspirado no Obsidian, as notas de longo prazo são arquivos Markdown que humanos editam em qualquer editor ([spec](specs/vault.md), [ADR-016](adr/016-vault-fase-a.md)). O `tb vault` lê o disco a cada comando: não há watcher, sincronização nem índice persistente para notas. Este é o estado que o `tb` mantém num repositório:
 
 ```
-.tb/
-├── vault/
-│   ├── facts/
-│   │   ├── projeto-estrutura.md
-│   │   └── decisoes-arquitetura.md
-│   ├── agents/
-│   │   ├── agent-001-log.md
-│   │   └── agent-002-log.md
-│   ├── summaries/
-│   │   └── sprint-2024-01.md
-│   └── code/
-│       ├── modules/
-│       │   └── auth-module.md
-│       └── functions/
-│           └── parse-config.md
-├── index.db          # SQLite derivado
-└── audit.log         # Log append-only
+.toolbelt/
+├── config.yaml          # configuração local (tb init)
+├── agent_docs.yaml      # dicas de AGENTS.md/CLAUDE.md registradas pelo tb init
+├── invariants.yaml      # tb mem: invariantes fora da compactação
+├── guard.yaml           # opcional: paths protegidos extras (lido da ref base)
+├── thresholds.yaml      # opcional: piso de cobertura (lido da ref base)
+├── screens.yaml         # opcional: manifesto do ruler visual
+├── secchecks.yaml       # tb blue apply: checagens de segurança registradas
+├── vault/               # notas Markdown com frontmatter e [[wikilinks]]
+├── graph.json           # índice derivado do grafo (tb graph index)
+├── graph.vec            # índice vetorial opcional (tb graph index --vectors)
+├── tickets/             # TKT-*.yaml (tb ticket)
+├── board.yaml           # controle do board: pause, resume, drain
+├── router/              # state.json, alerts.jsonl, logs/ (tb router)
+├── workspaces/          # git worktrees dos tickets em execução
+├── bus/bus.db           # store SQLite do barramento local
+└── egm/receipts/        # recibos EGM versionados
 ```
 
-Cada arquivo usa:
-- **Frontmatter YAML**: metadados estruturados (tipo, tags, data, proveniência)
-- **Wikilinks**: `[[outro-arquivo]]` para relacionamentos
-- **Tags**: `#decision`, `#fact`, `#inferred`
-- **Backlinks**: calculados automaticamente
+O estado privado (sessões do bus, estado do EGM, recibos de merge, estado de labs) fica fora do repositório, sob `$XDG_STATE_HOME`; veja as specs.
 
-Exemplo de arquivo:
+Cada nota usa:
+- **Frontmatter YAML**: `type` (`fact`, `decision`, `context`, `log`), `tags`, `source` (`manual`, `extracted`, `inferred`), `confidence`
+- **Wikilinks**: `[[outra-nota]]`, resolvidos pelo `tb vault`; links quebrados e ambíguos fazem o `tb vault check` falhar
+- **Backlinks**: calculados sob demanda (`tb vault backlinks`)
 
-```markdown
----
-type: fact
-tags: [architecture, database]
-created: 2026-01-15T10:30:00Z
-source: extracted
-confidence: high
----
+### 3.2 Índice do Grafo: `graph.json` e BM25
 
-# Decisão: SQLite para Armazenamento
+O grafo é um índice **derivado** do código e dos docs, reconstruído sob demanda, não um banco de dados. `tb graph index` escreve `.toolbelt/graph.json`:
 
-O projeto usa SQLite como banco de dados principal.
-
-## Justificativa
-- Simplicidade de deploy (arquivo único)
-- Performance excelente para leitura
-- FTS5 para busca full-text
-
-## Relacionamentos
-- Implementado em: [[database-module]]
-- Decidido em: [[adr-003-sqlite-fts5]]
-- Afeta: [[config-schema]], [[migration-system]]
+```json
+{
+  "root": "/path/to/repo",
+  "nodes": [{"id": "...", "type": "function", "path": "...", "title": "...", "package": "...", "source": "extracted", "confidence": 0.9}],
+  "edges": [{"source_id": "...", "target_id": "...", "type": "calls", "source": "extracted", "confidence": 0.9}],
+  "fingerprint": "...",
+  "built_at": "..."
+}
 ```
 
-### 3.2 SQLite + FTS5 (Índice Derivado)
+- Tipos de nó: `file`, `function`, `package`, `class`, `section`, `component`, `hook`, `route`, `playbook` (e nós `note`/`tag` do vault). Tipos de aresta: `imports`, `calls`, `defines`, `links`, `tagged`, `mentions`, `renders`, `template`, `mirror`.
+- A **busca** é BM25 sobre título, path e pacote, com divisão de camelCase e `snake_case` e consultas de vários termos. Não há SQL nem índice FTS5.
+- **Defasagem**: o índice carrega uma impressão digital da árvore. A CLI reindexa quando ele está defasado; via MCP as consultas nunca reindexam e informam `stale: true`, então o agente chama `tb_graph_index` e repete. `tb graph rebuild` reconstrói tudo do zero.
+- **Vetores opcionais**: `tb graph index --vectors` também escreve `graph.vec` (embeddings de um filho llama.cpp vendorizado, [ADR-018](adr/018-cgo-componentes-nativos.md)), usado por `tb graph search --mode semantic|hybrid`.
 
-O SQLite é um **índice derivado**, reconstruído a partir do vault e do código:
+O SQLite existe no `tb` apenas como store do barramento local (`.toolbelt/bus/bus.db`). O índice SQLite + FTS5 com tabelas `nodes`/`edges` que o [ADR-003](adr/003-sqlite-fts5-grafo.md) propôs nunca foi construído: foi superado pelo `graph.json` ([ADR-011](adr/011-grafo-sob-demanda.md), [ADR-014](adr/014-graphify-reimplementacao.md)).
 
-```sql
--- Nós do grafo
-CREATE TABLE nodes (
-    id TEXT PRIMARY KEY,
-    type TEXT NOT NULL,           -- 'file', 'function', 'class', 'fact', 'decision'
-    path TEXT,                    -- caminho no vault ou no código
-    title TEXT,
-    content TEXT,
-    source TEXT NOT NULL,         -- 'vault', 'code', 'inferred'
-    confidence REAL DEFAULT 1.0,  -- 0.0-1.0 para dados inferidos
-    created_at TEXT,
-    updated_at TEXT,
-    metadata JSON
-);
+### 3.3 Vault e Grafo
 
--- Índice full-text
-CREATE VIRTUAL TABLE nodes_fts USING fts5(
-    title, content,
-    content='nodes',
-    content_rowid='rowid'
-);
-
--- Arestas do grafo
-CREATE TABLE edges (
-    id INTEGER PRIMARY KEY,
-    source_id TEXT NOT NULL,
-    target_id TEXT NOT NULL,
-    type TEXT NOT NULL,           -- 'calls', 'imports', 'references', 'implements', 'links_to'
-    source TEXT NOT NULL,         -- 'extracted', 'inferred', 'manual'
-    confidence REAL DEFAULT 1.0,
-    metadata JSON,
-    FOREIGN KEY (source_id) REFERENCES nodes(id),
-    FOREIGN KEY (target_id) REFERENCES nodes(id)
-);
-
--- Índices para queries rápidas
-CREATE INDEX idx_edges_source ON edges(source_id);
-CREATE INDEX idx_edges_target ON edges(target_id);
-CREATE INDEX idx_edges_type ON edges(type);
-CREATE INDEX idx_nodes_type ON nodes(type);
-CREATE INDEX idx_nodes_path ON nodes(path);
-
--- Views úteis
-CREATE VIEW callers AS
-SELECT e.source_id as caller, e.target_id as callee, e.confidence
-FROM edges e WHERE e.type = 'calls';
-
-CREATE VIEW dependencies AS
-SELECT e.source_id as dependent, e.target_id as dependency, e.confidence
-FROM edges e WHERE e.type = 'imports';
-```
-
-### 3.3 Sincronização Vault → SQLite
-
-A direção de sync é **unidirecional**: vault → SQLite.
-
-```mermaid
-sequenceDiagram
-    participant V as Vault Markdown
-    participant W as Watcher
-    participant P as Parser
-    participant S as SQLite
-
-    V->>W: Arquivo modificado
-    W->>P: Parse YAML + Markdown
-    P->>P: Extrai wikilinks e tags
-    P->>S: UPSERT node
-    P->>S: REPLACE edges para este node
-    S->>S: Atualiza FTS5
-```
-
-**Resolução de conflitos**: o vault sempre vence. Se o SQLite divergir (corrupção, edição manual), o comando `tb graph rebuild` reconstrói tudo.
+O vault alimenta o grafo em um só sentido, quando o grafo é indexado: com `vault.graph` ligado (padrão), notas viram nós `note:<path>`, títulos viram nós `section`, wikilinks resolvidos viram arestas `links` e tags viram nós `tag:<tag>`. O vault é lido sem seguir symlinks. Nada escreve de volta no vault e nada o observa; se o `graph.json` estiver defasado, `tb graph index` lê o vault de novo.
 
 ### 3.4 Indexação de Código com Proveniência
 
@@ -304,20 +227,11 @@ graph LR
     EXT --> NODES[Nós: funções, classes, módulos]
     EXT --> EDGES[Arestas: calls, imports]
 
-    NODES --> |source='extracted'| DB[(SQLite)]
+    NODES --> |source='extracted'| DB[(graph.json)]
     EDGES --> |source='extracted'| DB
-
-    subgraph "Opcional: Inferência Semântica"
-        AST --> LLM[Modelo de Linguagem]
-        LLM --> INF[Relações Inferidas]
-        INF --> |source='inferred', confidence < 1.0| DB
-    end
 ```
 
-**Proveniência de arestas**:
-- `extracted`: derivado diretamente do AST (alta confiança)
-- `inferred`: deduzido por LLM ou heurísticas (confiança variável)
-- `manual`: inserido por humano via vault
+**Proveniência de arestas**: toda aresta que o indexador emite hoje tem `source: extracted` e `confidence` abaixo de 1,0 onde o extrator é heurístico (extratores regex, chamadas resolvidas de forma branda). O valor `inferred` é reservado para relações que um modelo de linguagem proporia; não existe etapa de inferência. Uma nota do vault carrega o `source` e o `confidence` do próprio frontmatter (`manual`, `extracted` ou `inferred`).
 
 ### 3.5 Queries para Agentes
 
@@ -357,185 +271,53 @@ Isso reduz drasticamente o número de tokens consumidos em leitura de arquivos.
 
 | Ameaça | Mitigação |
 |--------|-----------|
-| Escape do sandbox | Múltiplas camadas (bubblewrap + Landlock + seccomp) |
-| Acesso a secrets | Variáveis injetadas apenas para ferramentas autorizadas; nunca no prompt |
-| Modificação de testes | Arquivos de teste read-only + hash verificado |
-| Exfiltração de dados | Rede negada por padrão; whitelist explícita |
-| Escalação de privilégios | Capacidades mínimas; tokens de capability por ação |
-| Reward hacking | Implementador ≠ avaliador; detecção de padrões suspeitos |
+| Escape do sandbox | Regras de filesystem do Landlock (falha fechada) e o filtro seccomp de rede para o filho de embedding; kill do grupo de processos no timeout |
+| Acesso a segredos | Allowlist de ambiente do filho; variáveis com cara de segredo bloqueadas, a menos que `--pass-env`; redação de segredos na saída do vault e do MCP, em prompts do EGM e na entrada de embedding do grafo |
+| Modificação de testes | Paths protegidos do `tb guard` (`tests/hidden/*`, `.toolbelt/thresholds.yaml`, `.toolbelt/guard.yaml`, ...) lidos da ref **base**, mais a suíte oculta do `tb verify` |
+| Exfiltração de dados | O próprio `tb` é só local e nunca chama o GitHub nem serviço remoto; um filho em sandbox alcança a rede, a menos que a opção `DenyNetwork` esteja ligada (só o filho de embedding a liga) |
+| Escalação de privilégio | O `tb` roda como o usuário, nunca pede root e nunca alarga um sandbox por conta própria; `--allow-unsandboxed` é um opt-in explícito |
+| Reward hacking | Implementador ≠ revisor (`tb review` em contexto fresco), varredura anti-trapaça do `tb guard`, `tb drift` |
 
-### 4.2 Permissões por Capacidade
+### 4.2 Permissões
 
-Cada role tem um conjunto de capacidades:
+Não há papéis por capacidade. O que existe:
 
-```yaml
-roles:
-  worker:
-    capabilities:
-      - read:code
-      - write:code
-      - run:tests
-      - query:graph
-    denied:
-      - write:tests
-      - delete:*
-      - network:*
+- **Por execução**: as regras Landlock da §1.2 (worktree leitura-escrita, caminhos do sistema somente leitura).
+- **Por ticket**: o mandato (`scope`, `forbidden`, `permissions`) é checado depois do fato por `tb guard`, `tb review` e `tb drift`; em tarefas do router e do bus o worker roda confinado ao seu worktree.
+- **No barramento**: o papel (`router`, `supervisor`, `worker`, `reviewer`) é fixado pelo convite que o humano criou, e o broker impõe o que cada papel pode fazer ([bus-protocolo.md](bus-protocolo.md)).
 
-  supervisor:
-    capabilities:
-      - read:*
-      - write:code
-      - approve:worker_changes
-      - query:graph
-    denied:
-      - delete:*
-      - network:external
+### 4.3 Tokens de Capacidade: removidos
 
-  planner:
-    capabilities:
-      - read:*
-      - write:plans
-      - spawn:supervisor
-      - query:graph
-      - network:internal
-```
-
-### 4.3 Tokens de Capacidade para Ações Destrutivas
-
-Ações perigosas requerem tokens de capacidade explícitos:
-
-```go
-type CapabilityToken struct {
-    Action    string    // "delete:file", "network:external"
-    Resource  string    // caminho ou padrão
-    GrantedBy string    // quem aprovou
-    ExpiresAt time.Time
-    Hash      string    // assinatura para verificação
-}
-```
-
-O fluxo:
-1. Agente solicita ação destrutiva
-2. Sistema gera token pendente
-3. Humano (ou supervisor autorizado) aprova
-4. Token é assinado e tem validade curta
-5. Ação executa apresentando o token
+Tokens de capacidade (`CapabilityToken`), filas de aprovação e arquivos de papéis em `.tb/roles/` faziam parte do design original. O [ADR-020](adr/020-agent-hierarchy-a2a.md) removeu o `tb agent` e, com ele, esse modelo: uma ação destrutiva é decisão do humano, tomada ao rodar um comando, não um token que um agente solicita.
 
 ### 4.4 Handling de Secrets
 
-```mermaid
-sequenceDiagram
-    participant A as Agente
-    participant O as Orquestrador
-    participant S as Secret Store
-    participant T as Ferramenta
-
-    A->>O: Preciso chamar API externa
-    O->>O: Verifica capacidade do agente
-    O->>S: Solicita secret para "api_externa"
-    S->>O: Secret (criptografado)
-    O->>T: Executa ferramenta com secret injetado
-    T->>T: Usa secret internamente
-    T->>O: Resultado (sem secret)
-    O->>A: Resultado sanitizado
-```
-
-Secrets nunca aparecem:
-- No prompt do modelo
-- Nos logs
-- Na memória do vault
-- Nas respostas ao agente
+O `tb` não guarda nem injeta segredos. O ambiente do filho é montado a partir de uma allowlist (`--env NOME` adiciona uma variável; `--pass-env NOME` é o opt-in explícito para uma que parece segredo). O `tb mem add` guarda a invariante como digitada; a saída do `tb mem` é redigida (`internal/mem/redact.go`). Texto que sai do processo (prompts do EGM, entrada de embedding de vetores) é redigido com os padrões de `internal/secrets`, e o texto de notas impresso por `tb vault --json` e `tb_vault_*` com `mem.SecretPatterns()` mais os padrões próprios do vault (`internal/vault/redact.go`).
 
 ---
 
 ## 5. Scripts e Processos
 
-### 5.1 Comandos `tb run` e `tb proc`
+### 5.1 `tb run` e `tb proc`: planejados, não implementados
+
+`tb run` e `tb proc` não estão na CLI, e `tb run --sandbox --allow-net` não existe. O que roda um comando hoje:
 
 ```bash
-# Execução única com timeout
-tb run --timeout 30s "go test ./..."
-
-# Processo de longa duração com logs
-tb proc start --name "dev-server" --log /tmp/dev.log "npm run dev"
-tb proc list
-tb proc logs dev-server --follow
-tb proc stop dev-server
-
-# Execução em sandbox
-tb run --sandbox --allow-net "localhost:8080" "curl localhost:8080/health"
+# Roda um comando sob Landlock, com timeout
+tb sandbox run --timeout 30s -- go test ./...
 ```
+
+O `tb_run` do MCP faz o mesmo para agentes (veja [cli.md](cli.md#mcp-tb_run-sandbox)). Supervisionar processos de longa duração (`tb proc start|list|logs|stop`) continua no roadmap do README.
 
 ### 5.2 Gerenciamento de Processos
 
-```mermaid
-stateDiagram-v2
-    [*] --> Pending: tb proc start
-    Pending --> Running: processo inicia
-    Running --> Completed: exit 0
-    Running --> Failed: exit != 0
-    Running --> Timeout: tempo excedido
-    Running --> Killed: tb proc stop
-    Timeout --> Killed: SIGTERM → SIGKILL
-    Failed --> [*]
-    Completed --> [*]
-    Killed --> [*]
-```
-
-Características:
-- **Logs estruturados**: stdout/stderr com timestamps
-- **Cascading kill**: processo pai morto mata filhos (via cgroups)
-- **Timeout hierárquico**: warn → SIGTERM → grace period → SIGKILL
-- **Resource limits**: CPU/RAM por processo via cgroups
+O router e o `tb bus run` iniciam cada worker em seu próprio grupo de processos. Um timeout ou `tb watchdog kill` encerra o grupo inteiro (SIGKILL), e o router reporta como órfãos os descendentes que escaparam dele. Não há limite de CPU ou memória por processo (sem cgroups).
 
 ---
 
-## 6. Roles e Personas
+## 6. Roles e Personas: removidos
 
-### 6.1 Definição em YAML + Markdown
-
-```yaml
-# .tb/roles/worker-backend.yaml
-name: worker-backend
-description: Implementa código backend em Go
-model: claude-sonnet-4-20250514
-temperature: 0.3
-
-capabilities:
-  - read:code
-  - write:code:backend/**
-  - run:tests:backend/**
-  - query:graph
-
-tools:
-  - tb:run
-  - tb:graph:search
-  - tb:graph:callers
-  - tb:graph:deps
-  - git:diff
-  - git:commit
-
-context:
-  include:
-    - .tb/vault/facts/go-conventions.md
-    - .tb/vault/facts/project-structure.md
-  budget_tokens: 8000
-
-persona: |
-  Você é um desenvolvedor backend especializado em Go.
-  Siga as convenções do projeto definidas em go-conventions.md.
-  Sempre consulte o grafo antes de ler arquivos diretamente.
-  Escreva testes para código novo.
-```
-
-### 6.2 Ferramentas por Role
-
-| Role | Ferramentas Permitidas |
-|------|----------------------|
-| `planner` | `tb:graph:*`, `tb:mem:*`, `tb:agent:spawn` |
-| `supervisor` | `tb:graph:*`, `tb:mem:*`, `tb:proc:*`, `tb:agent:review` |
-| `worker` | `tb:run`, `tb:graph:search,callers,deps`, `git:diff,commit` |
-| `evaluator` | `tb:run` (read-only), `tb:bench:run`, `tb:graph:search` |
+`.tb/roles/*.yaml`, capacidades e listas de ferramentas por role, e `tb:agent:spawn` saíram com o `tb agent` ([ADR-020](adr/020-agent-hierarchy-a2a.md)). A persona de um worker é o que o humano configurar no próprio agente. O `tb` sabe duas coisas de um agente: seu papel no barramento, fixado pelo convite (`router`, `supervisor`, `worker`, `reviewer`), e seu Agent Card, as capacidades que ele declara ao entrar ([bus-protocolo.md](bus-protocolo.md)).
 
 ---
 
@@ -574,43 +356,14 @@ graph TB
 
 ### 8.2 Fluxo de Contexto
 
-Cada nível recebe apenas o contexto necessário:
-
-```mermaid
-sequenceDiagram
-    participant H as Humano
-    participant P as Planner
-    participant S as Supervisor
-    participant W as Worker
-
-    H->>P: Tarefa de alto nível
-    P->>P: Query grafo, analisa escopo
-    P->>S: Subtarefa + contexto relevante
-    S->>S: Refina, divide em unidades
-    S->>W: Unidade de trabalho + contexto mínimo
-    W->>W: Implementa
-    W->>S: Resultado
-    S->>S: Review, integra
-    S->>P: Subtarefa concluída
-    P->>H: Tarefa concluída
-```
+O contexto que um worker do router recebe é o seu ticket: o mandato (escopo, paths proibidos), os critérios de aceitação e o timeout, como um arquivo apontado por `TB_TICKET_FILE`, no seu próprio worktree. Não há planner que repasse contexto por uma hierarquia; a sequência que o design original desenhou (humano, planner, supervisor, worker) é a visão, não a implementação.
 
 ### 8.3 Ciclo de Vida do Agente
 
-```mermaid
-stateDiagram-v2
-    [*] --> Created: spawn
-    Created --> Initializing: setup sandbox
-    Initializing --> Ready: contexto montado
-    Ready --> Working: recebe tarefa
-    Working --> Ready: tarefa concluída
-    Working --> Blocked: aguarda aprovação
-    Blocked --> Working: aprovado
-    Working --> Failed: erro/timeout
-    Ready --> Terminated: idle timeout
-    Failed --> Terminated: cleanup
-    Terminated --> [*]
-```
+O `tb` não gerencia o ciclo de vida de um agente (sem spawn, timeout ocioso ou estado de aprovação). Ele acompanha duas coisas:
+
+- o **ticket**: `pending` → `running` → `done` | `failed` (ou `canceled`; `tb ticket retry` volta a `pending`);
+- o **claim no bus** de uma thread: um lease com heartbeat e fencing por epoch, `held` → `released` | `expired` ([bus-lease.md](bus-lease.md)).
 
 ### 8.4 Orçamentos
 
@@ -685,11 +438,11 @@ graph TB
 **Implementação via `tb review`**:
 
 ```bash
-# Revisar documento com 3 goldfish
-tb review docs/design-auth.md --reviewers 3 --standards security,clarity
+# Revisar um diff contra um ticket local com 3 goldfish distintos
+tb review --ticket rd.md --reviewers 3 --standards scope,quality,acceptance
 
-# Revisar PR com revisores especializados
-tb review pr:42 --roles "security-reviewer,api-reviewer,test-reviewer"
+# Revisar um documento de design até a revisão convergir
+tb egm review docs/design-auth.md
 ```
 
 O isolamento de contexto é **obrigatório**: se o sistema não conseguir criar contextos frescos, a revisão falha ao invés de prosseguir com contexto contaminado.
@@ -766,18 +519,15 @@ ticket:
     scope: ["src/handlers/auth.go", "src/services/auth.go"]
     permissions: [read, write]
     forbidden: ["src/database/*", "tests/hidden/*"]
-  context:
-    files: ["docs/specs/auth.md"]
-    symbols: ["User", "Session", "validateCredentials"]
   acceptance:
-    criteria: "Testes em tests/auth_test.go passam"
+    criteria: ["Testes em tests/auth_test.go passam"]
     timeout: "10m"
   dependencies: []
 ```
 
 **Benefícios**:
 
-- **Contexto mínimo**: cada worker recebe ~80% menos contexto que abordagem monolítica
+- **Contexto mínimo**: um worker recebe o seu ticket, não a conversa inteira (a economia não é medida; veja [ADR-009](adr/009-router-e-workers.md))
 - **Paralelização**: tickets independentes executam simultaneamente
 - **Isolamento de falha**: erro em um worker não polui contexto dos outros
 - **Cache-read**: workers aproveitam cache de tokens via contextos repetidos
@@ -839,57 +589,49 @@ Veja [ADR-009](adr/009-router-e-workers.md) para detalhes de design.
 
 ### 9.1 Princípios
 
-1. **Separação implementador/avaliador**: quem implementa nunca avalia seu próprio código
-2. **Imutabilidade de testes**: arquivos de benchmark são read-only e hash-verificados
-3. **Auditoria completa**: todas as ações são logadas
-4. **Detecção de anomalias**: padrões suspeitos disparam alertas
+1. **Separação implementador/avaliador**: quem implementa nunca avalia o próprio código
+2. **Imutabilidade dos testes**: paths protegidos são checados contra a ref base, nunca contra o diff em revisão
+3. **Resultados rastreáveis**: tickets, recibos de merge, recibos EGM e o log de mensagens do bus registram quem fez o quê (não há um log de auditoria único, veja §9.3)
+4. **Detecção de anomalias**: o `tb guard` sinaliza padrões suspeitos no diff, e o `tb watchdog` sinaliza workers lentos ou travados
 
 ### 9.2 Proteção de Arquivos de Teste
 
 ```bash
-# Antes da tarefa
-tb guard snapshot --paths "tests/**" "benchmarks/**"
+# Compara um intervalo com os paths protegidos e a varredura anti-trapaça
+tb guard check main..HEAD
 
-# Durante execução
-# - Arquivos montados read-only no sandbox
-# - Qualquer tentativa de escrita: EACCES
-
-# Após tarefa
-tb guard verify --snapshot-id <id>
-# Verifica hashes; se diferir → falha + alerta
+# O loop do verify roda a mesma checagem primeiro, depois o ruler de testes
+# (suíte oculta de tests/hidden/ quando presente)
+tb verify run --base main --head HEAD
 ```
 
-### 9.3 Log de Auditoria
+O `tb guard check` lê `protected_paths` de `.toolbelt/guard.yaml` na ref **base** e os mescla com os padrões (veja §12.4). Não existem os subcomandos `tb guard snapshot` nem `tb guard verify`, nem mounts somente leitura dos arquivos de teste: a proteção é uma checagem sobre o diff, não uma barreira de filesystem.
 
-```json
-{
-  "timestamp": "2026-01-15T10:30:00.123Z",
-  "agent_id": "worker-001",
-  "action": "file:write",
-  "resource": "src/parser.go",
-  "hash_before": "sha256:abc123...",
-  "hash_after": "sha256:def456...",
-  "approved_by": "supervisor-001",
-  "capability_token": "tok_xyz789"
-}
-```
+### 9.3 Log de Auditoria: não implementado
 
-Características:
-- Append-only (mesmo root não pode editar entradas antigas)
-- Assinado com hash encadeado (tamper-evident)
-- Rotacionado por tamanho/tempo
+Não há `audit.log`, registro por ação, token de capacidade nem cadeia de hashes. O que existe, cada um com seu escopo:
+
+| Registro | Onde | Conteúdo |
+|----------|------|----------|
+| Log de mensagens do bus | `.toolbelt/bus/bus.db` (`tb bus log`) | toda mensagem de um canal, com seu envelope |
+| Resultado do ticket | `.toolbelt/tickets/TKT-*.yaml` | status, worker, commit base/head, exit code, tentativas |
+| Estado e logs do router | `.toolbelt/router/` | `state.json`, `alerts.jsonl`, logs por worker |
+| Recibo de merge | diretório de estado privado | o que um merge `prompt` pediu e o que aplicou |
+| Recibo EGM | `.toolbelt/egm/receipts/` | afirmações do autor versionadas, certificadas pelo loop de revisão |
+| Relatório do verify | `tb verify run --json` | resultado por gate e por ruler |
 
 ### 9.4 Detecção de Reward Hacking
 
-Padrões monitorados:
+O que o `tb guard check` detecta hoje:
 
 | Padrão | Indicador | Ação |
 |--------|-----------|------|
-| Testes deletados | Arquivo de teste removido ou vazio | Bloqueia + alerta |
-| Skip de testes | `t.Skip()` adicionado | Requer justificativa |
-| Outputs hardcoded | Strings literais que correspondem a expected values | Flag para review |
-| Cobertura artificial | Testes que não exercitam código | Análise de mutação |
-| Retry excessivo | Muitas tentativas até passar | Log + limite |
+| Testes deletados | Um arquivo de teste é removido | `SeverityError`, exit ≠ 0 |
+| Path protegido editado | O diff toca um path protegido | `SeverityError`, exit ≠ 0 |
+| Skips de teste | `t.Skip()`, `it.skip`, `describe.skip`, `test.skip`, `xit`, `.only` | aviso |
+| Asserções triviais | ex.: `expect(true).toBe(true)` | `SeverityError` |
+
+Não implementado: detecção de saídas hardcoded, análise de mutação contra cobertura artificial e nota de abuso de retentativas. O `tb verify run` limita seu loop a 3 iterações e termina em `ESCALATE`.
 
 ---
 
@@ -920,7 +662,7 @@ graph LR
 
 ### 10.2 MCP (Model Context Protocol)
 
-O `tb` funciona como **servidor MCP**, expondo ferramentas. O JSON abaixo é ilustrativo (`tb_run` não existe); a lista real (54 tools com `TB_GRAPH=on` na v0.0.10) está em [cli.md](cli.md).
+O `tb` funciona como **servidor MCP**, expondo ferramentas. O JSON abaixo é abreviado e ilustrativo (`tb_run` existe, um `sh -c` em sandbox, mas com outros parâmetros); os schemas reais vêm de `tools/list` e a lista (54 tools com `TB_GRAPH=on`) está em [cli.md](cli.md).
 
 ```json
 {
@@ -969,7 +711,7 @@ Para comunicação entre agentes na hierarquia:
 
 > **Decisão ([ADR-020](adr/020-agent-hierarchy-a2a.md)):** o A2A não é um transporte no `tb`. O envelope local `bus/0.1` tem o formato A2A, e o `tb` não tem servidor, cliente, socket nem HTTP A2A. Um agente A2A remoto só participa por uma ponte que o humano escreve e roda fora do `tb`, admitida como agente comum do barramento, com convite e papel próprios.
 
-> **Implementado (v0.0.5):** o transporte local agente ↔ agente é o barramento `tb bus` ([ADR-013](adr/013-barramento-multi-vendor.md)), com envelope JSON-RPC `bus/0.1` especificado em [bus-protocolo.md](bus-protocolo.md) sobre um store SQLite (`.toolbelt/bus/bus.db`), não Unix socket. O exemplo abaixo é ilustrativo.
+> **Implementado:** o transporte local agente ↔ agente é o barramento `tb bus` ([ADR-013](adr/013-barramento-multi-vendor.md)), com envelope JSON-RPC `bus/0.1` especificado em [bus-protocolo.md](bus-protocolo.md) sobre um store SQLite (`.toolbelt/bus/bus.db`), não Unix socket. O exemplo abaixo é ilustrativo.
 
 ```json
 {
@@ -1013,14 +755,14 @@ Veja [docs/pt-BR/benchmark.md](benchmark.md) para detalhes completos.
 
 ### Resumo de KPIs
 
-| KPI | Descrição | Meta |
-|-----|-----------|------|
-| `pass@1` | Taxa de sucesso na primeira tentativa | > 70% |
-| `tokens_per_task` | Tokens consumidos por tarefa | < baseline |
-| `wall_time` | Tempo total de execução | < baseline |
-| `tool_calls` | Número de chamadas de ferramentas | < baseline |
-| `rework_rate` | Taxa de retrabalho | < 20% |
-| `guard_violations` | Violações de segurança bloqueadas | 0 não-bloqueadas |
+| KPI | Descrição | Meta | `tb bench` |
+|-----|-----------|------|------------|
+| `pass@1` | Taxa de sucesso na primeira tentativa | > 70% | medido |
+| `tokens_per_task` | Tokens consumidos por tarefa | < baseline | medido quando o agente reporta tokens |
+| `wall_time` | Tempo total de execução | < baseline | medido (por tarefa) |
+| `tool_calls` | Número de chamadas de ferramentas | < baseline | medido quando o agente as reporta |
+| `rework_rate` | Taxa de retrabalho | < 20% | não implementado |
+| `guard_violations` | Violações de segurança bloqueadas | 0 não-bloqueadas | não implementado como KPI (o `tb guard` em si funciona) |
 
 ---
 
@@ -1079,7 +821,9 @@ Cada ruler define:
 
 ### 12.3 Sandbox do Discriminador
 
-O discriminador opera em isolamento total:
+> **Esboço de design, não configuração:** o `tb verify` não lê um bloco `discriminator`. Ele roda os comandos dos gates e os rulers no worktree do head (`--base`/`--head`), com a allowlist de ambiente do filho da §1.2.
+
+O design prevê que o discriminador opere em isolamento total:
 
 ```yaml
 discriminator:
@@ -1150,6 +894,8 @@ Trapaça causa **FAIL imediato**, mesmo se a métrica principal passar:
 
 ### 12.6 Política de Iteração e Escalação
 
+> **Parcialmente implementado:** `tb verify run` itera até 3 vezes (`MaxIterations`) e pode terminar em `ESCALATE`; as chaves YAML abaixo (`on_pass`, `notify_generator`, `block_merge`) são um esboço, não configuração.
+
 ```yaml
 verification:
   max_iterations: 3
@@ -1174,6 +920,8 @@ verification:
 ```
 
 ### 12.7 Relatório do Discriminador
+
+> **Esboço:** o relatório real é o JSON de `tb verify run --json` (veja [cli.md](cli.md)); os campos abaixo (`per_screen`, `accepted_deviations`, `design_system_followups`) não existem.
 
 ```yaml
 report:
@@ -1227,15 +975,11 @@ report:
 
 ### 13.3 Persistência do Estado do Agente
 
-- Onde persistir o estado de agentes entre sessões?
-- Formato: JSON, SQLite, ou no próprio vault?
-- Como lidar com agentes órfãos?
+- **Respondida.** O `tb` não persiste estado de agente. O bus guarda o que é compartilhado (mensagens, convites, sessões, claims) em `.toolbelt/bus/bus.db`; a memória própria de um agente é assunto do seu fornecedor. Órfãos são tratados pelo lease do claim (expiração, fencing por epoch) e pela varredura de órfãos do router, não por um store de estado ([ADR-013](adr/013-barramento-multi-vendor.md), [ADR-020](adr/020-agent-hierarchy-a2a.md)).
 
 ### 13.4 Escalabilidade da Hierarquia
 
-- Quantos workers por supervisor?
-- Quantos supervisors por planner?
-- Como balancear carga?
+- **Respondida pelo [ADR-020](adr/020-agent-hierarchy-a2a.md).** Não há planners nem supervisors para contar: o router agenda tickets sobre um número configurável de workers, e uma árvore de delegação no bus tem profundidade e fan-out limitados ([specs/agent-hierarchy.md](specs/agent-hierarchy.md)). O balanceamento de carga é a fila do router; os ganhos de escala ainda não foram medidos ([ADR-009](adr/009-router-e-workers.md)).
 
 ### 13.5 Versionamento do Vault
 
@@ -1258,7 +1002,7 @@ Veja a documentação completa em [docs/pt-BR/pesquisa/](pesquisa/):
 
 | Módulo | Proposta | ADR/Status |
 |--------|----------|------------|
-| **mem/ctx** | Arquivo de invariantes fixado fora da compactação; compactação híbrida (extração mecânica + resumo LLM) | [ADR-010](adr/010-invariantes-fora-compactacao.md) (proposed; invariantes em `tb mem` implementadas, compactação híbrida pendente) |
+| **mem/ctx** | Arquivo de invariantes fixado fora da compactação; compactação híbrida (extração mecânica + resumo LLM) | [ADR-010](adr/010-invariantes-fora-compactacao.md) (accepted; invariantes em `tb mem` implementadas, compactação híbrida pendente) |
 | **mem/ctx** | AGENTS.md como contexto local padrão; memória bitemporal com invalidação de fatos | parcial: `tb init` lê/`--write-agents` semeia `AGENTS.md`/`CLAUDE.md` (nunca sobrescreve); `tb ctx` ainda pendente |
 | **grafo** | `tb graph` sob demanda com A/B por tipo de tarefa; priorizar skills humanas | [ADR-011](adr/011-grafo-sob-demanda.md) (accepted) |
 | **verify** | Suíte held-out composta que o gerador nunca vê; gap visível/oculto como KPI | pendente |
@@ -1294,7 +1038,5 @@ Veja os ADRs para detalhes:
 - [Graphify](https://github.com/Graphify-Labs/graphify)
 - [Obsidian](https://obsidian.md/)
 - [Elephant-Goldfish Model](https://github.com/google/elephant-goldfish-model)
-- [bubblewrap](https://github.com/containers/bubblewrap)
 - [Landlock](https://landlock.io/)
 - [tree-sitter](https://tree-sitter.github.io/)
-- [Bubble Tea](https://github.com/charmbracelet/bubbletea)

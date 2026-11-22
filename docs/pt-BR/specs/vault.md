@@ -2,7 +2,7 @@
 
 # Spec: Vault Markdown compatível com Obsidian, Fase A (`tb vault`)
 
-Autor: toolbelt · Status: Rascunho (rodada 3: atualizada contra a main, revisão em contexto novo aplicada, Q1 resolvida pela [ADR-016](../adr/016-vault-fase-a.md); Q4 aberta); fatias 1 (mdparse), 2 (vault só leitura), 3 (escrita, busca, MCP, versionamento) e 4 (grafo) de implementação feitas · Data: 2026-11-20 · Decisão: [ADR-016](../adr/016-vault-fase-a.md) · Decisões de origem: [ADR-006](../adr/006-inspiracoes-graphify-obsidian.md), [ADR-003](../adr/003-sqlite-fts5-grafo.md) · Relacionadas: [ADR-010](../adr/010-invariantes-fora-compactacao.md), [ADR-011](../adr/011-grafo-sob-demanda.md)
+Autor: toolbelt · Status: Fase A implementada, experimental na 1.0 (rodada 3: atualizada contra a main, revisão em contexto novo aplicada, Q1 resolvida pela [ADR-016](../adr/016-vault-fase-a.md); Q4 aberta); fatias 1 (mdparse), 2 (vault só leitura), 3 (escrita, busca, MCP, versionamento) e 4 (grafo) de implementação feitas · Data: 2026-11-20 · Decisão: [ADR-016](../adr/016-vault-fase-a.md) · Decisões de origem: [ADR-006](../adr/006-inspiracoes-graphify-obsidian.md), [ADR-003](../adr/003-sqlite-fts5-grafo.md) · Relacionadas: [ADR-010](../adr/010-invariantes-fora-compactacao.md), [ADR-011](../adr/011-grafo-sob-demanda.md)
 
 ## Visão geral
 
@@ -62,7 +62,7 @@ A Fase A é deliberadamente pequena e **diverge** de partes aceitas do ADR-006 e
 
 ## Não-objetivos
 
-- Substituir ou espelhar as invariantes no vault. As invariantes são um arquivo estruturado, fora da compactação (ADR-010, ainda `proposed`), com checagem fail-closed em `tb mem check`; um vault editável por humanos não oferece isso.
+- Substituir ou espelhar as invariantes no vault. As invariantes são um arquivo estruturado, fora da compactação (ADR-010, accepted), com checagem fail-closed em `tb mem check`; um vault editável por humanos não oferece isso.
 - Índice SQLite/FTS5 (ADR-003). Fica para quando o NFR de desempenho falhar. Sem índice, a questão "sync bidirecional" do ADR-006 deixa de existir na Fase A.
 - TUI `tb md`, `tb md --obsidian`, watcher. `vault.sync_on_change` foi removida.
 - Tags inline (`#tag` no corpo), Dataview, Canvas, plugins do Obsidian, `.obsidian/` como configuração lida pelo tb.

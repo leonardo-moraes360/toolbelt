@@ -8,7 +8,7 @@
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg" alt="License"></a>
-  <a href="https://go.dev/"><img src="https://img.shields.io/badge/Go-1.22+-00ADD8?logo=go&logoColor=white" alt="Go Version"></a>
+  <a href="https://go.dev/"><img src="https://img.shields.io/badge/Go-1.27+-00ADD8?logo=go&logoColor=white" alt="Go Version"></a>
   <a href="docs/arquitetura.md"><img src="https://img.shields.io/badge/Status-Phase%203%20in%20progress-yellow" alt="Status"></a>
   <a href="https://github.com/leonardo-moraes360/toolbelt/actions"><img src="https://github.com/leonardo-moraes360/toolbelt/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="https://modelcontextprotocol.io/"><img src="https://img.shields.io/badge/Protocol-MCP-purple" alt="MCP"></a>
@@ -25,8 +25,8 @@
 | Goal | How toolbelt helps |
 |------|-------------------|
 | **Save tokens** | Queryable knowledge graph avoids grepping files; context assembled under a token budget; compact memory with summaries and extracted facts |
-| **Improve accuracy** | Isolated sandbox with bubblewrap+Landlock; capability-based permissions; anti-cheat protections; separation between implementer and evaluator |
-| **Increase speed** | Parallel execution with goroutines; delegation through `tb router` and the `tb bus` roles (router, supervisor, worker, reviewer); fast graph search with FTS5 |
+| **Improve accuracy** | Landlock filesystem isolation (fail-closed); seccomp network filter for the embedding child; allowlisted child environment; anti-cheat protections; separation between implementer and evaluator |
+| **Increase speed** | Parallel execution with goroutines; delegation through `tb router` and the `tb bus` roles (router, supervisor, worker, reviewer); BM25-ranked graph search |
 
 ## 🏗️ Architecture
 
@@ -50,7 +50,7 @@
 ┌─────────────────────────────────────────────────────────────────┐
 │                           Core                                  │
 │  ┌────────────┐  ┌────────────┐  ┌────────────┐  ┌───────────┐  │
-│  │Orchestrator│  │  Memory    │  │  Context   │  │   Graph   │  │
+│  │   Router   │  │  Memory    │  │  Verify    │  │   Graph   │  │
 │  └────────────┘  └────────────┘  └────────────┘  └───────────┘  │
 └─────────────────────────────────────────────────────────────────┘
         │
@@ -58,8 +58,8 @@
 ┌─────────────────────────────────────────────────────────────────┐
 │                      Storage                                    │
 │  ┌─────────────────────┐    ┌─────────────────────────────────┐ │
-│  │ Markdown Vault      │───▶│ SQLite + FTS5 (derived index)   │ │
-│  │ (source of truth)   │    │ + edge tables                   │ │
+│  │ Markdown Vault      │───▶│ graph.json (derived, BM25)      │ │
+│  │ (read on demand)    │    │ bus.db (SQLite, bus only)       │ │
 │  └─────────────────────┘    └─────────────────────────────────┘ │
 └─────────────────────────────────────────────────────────────────┘
         │
@@ -67,8 +67,8 @@
 ┌─────────────────────────────────────────────────────────────────┐
 │                        Execution                                │
 │  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────────┐  │
-│  │ Worktrees   │  │ bubblewrap  │  │ cgroups (CPU/RAM/time)  │  │
-│  │ Git         │  │ +Landlock   │  │                         │  │
+│  │ Worktrees   │  │ Landlock    │  │ seccomp (embed: no net)│  │
+│  │ Git         │  │ (files)     │  │                         │  │
 │  └─────────────┘  └─────────────┘  └─────────────────────────┘  │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -84,7 +84,7 @@ Public landing: [https://leonardo-moraes360.github.io/toolbelt/](https://leonard
 | Document | Description |
 |----------|-------------|
 | [docs/arquitetura.md](docs/arquitetura.md) | Detailed architecture with Mermaid diagrams |
-| [docs/cli.md](docs/cli.md) | `tb` command tree (implemented + planned) |
+| [docs/cli.md](docs/cli.md) | `tb` command tree (implemented commands, with stability tier) |
 | [docs/bus-protocolo.md](docs/bus-protocolo.md) · [docs/bus-harness.md](docs/bus-harness.md) | Local `tb bus` (`bus/0.1` protocol and `tb bus run` harness) |
 | [docs/benchmark.md](docs/benchmark.md) | KPIs and evaluation methodology |
 | [docs/site.md](docs/site.md) | Landing page and GitHub Pages deploy |
@@ -236,6 +236,10 @@ tb bus recv --channel feature-x --as grok-1 --wait 20s
 - [x] Landing page in [`site/`](site/) + GitHub Pages ([docs/site.md](docs/site.md) · [live site](https://leonardo-moraes360.github.io/toolbelt/))
 - [x] Agent hierarchy / A2A / `tb md`: decided in [ADR-020](docs/adr/020-agent-hierarchy-a2a.md). A2A is the A2A-shaped `bus/0.1` envelope on the local bus, with no HTTP or socket in `tb` (a bridge is an ordinary bus agent the human runs); the hierarchy is `tb router` + the bus roles; `tb md` and `tb agent` are dropped. B5 below (delegation trees) is built
 
+### Planned (not implemented) and dropped
+- Planned: `tb run` and `tb proc` (run and supervise commands; today use `tb sandbox run`), `tb serve` (today `tb mcp` over stdio), and EGM Phase C item C6 (deferred after 1.0).
+- Dropped: `tb agent` and `tb md` ([ADR-020](docs/adr/020-agent-hierarchy-a2a.md)). Not built and not planned: bubblewrap, cgroups, a SQLite/FTS5 code index.
+
 ### Input for the next phase (field study)
 - Field study of `tb` across 20 public repositories (reports in [`docs/campo/`](docs/campo/) + improvement synthesis in [`docs/campo/SINTESE.md`](docs/campo/SINTESE.md)), as prioritized input for upcoming product PRs.
 
@@ -290,7 +294,7 @@ See the ADRs for details:
 
 ## 📊 Project Status
 
-This project is in **Phase 3 (in progress)**: besides verify/guard/mem/graph/review/drift/MCP and a benchmark harness, it now has tickets, board, router/workers, watchdog, merge and the local `tb bus` (B0/B1 and part of B3 of [ADR-013](docs/adr/013-barramento-multi-vendor.md)) (scaling gains not yet measured — see [ADR-009](docs/adr/009-router-e-workers.md)). The full architecture is documented in [docs/arquitetura.md](docs/arquitetura.md).
+This project is in **Phase 3 (in progress)**: besides verify/guard/mem/graph/review/drift/MCP and a benchmark harness, it now has tickets, board, router/workers, watchdog, merge and the local `tb bus` (B0–B5 of [ADR-013](docs/adr/013-barramento-multi-vendor.md) and [ADR-020](docs/adr/020-agent-hierarchy-a2a.md)) (scaling gains not yet measured — see [ADR-009](docs/adr/009-router-e-workers.md)). The full architecture is documented in [docs/arquitetura.md](docs/arquitetura.md).
 
 ### Implemented Commands
 
@@ -317,4 +321,4 @@ This project is in **Phase 3 (in progress)**: besides verify/guard/mem/graph/rev
 | `tb watchdog` | ✅ | Worker alerts and control (`status`/`alerts`/`kill`); runs inside the router loop |
 | `tb merge` | ✅ | Atomically merges `done` tickets; `fail` (default), `last_wins`, `semantic` or `prompt` (MCP `tb_merge` takes all but `prompt`) |
 | `tb bus` | 🟡 | Local bus between agents (ADR-013): `channel`/`invite`/`join`/`send`/`recv`/`claim`/`complete`/`heartbeat`/`watchdog`/`log` over `.toolbelt/bus/bus.db`; lease with epoch fencing (B2); `tb bus run` wakes the agent (`exec`/`harness`/`notify` adapters); `tb bus discover` catalogs local agents |
-| `tb mcp` | ✅ | Stateless MCP server (stdio); 54 tools in v0.0.10: mem/verify/review/drift/guard/stack, vault (`tb_vault_*`), graph (`search`/`callers`/`deps`/`impact`/`explain`/`path`/`index`; requires `TB_GRAPH=on`), ticket/board/router/watchdog/merge and bus (`tb_bus_join`/`send`/`recv`/`claim`/`complete`/`heartbeat`/`status`); `--bus-as` binds the connection to a bus session |
+| `tb mcp` | ✅ | Stateless MCP server (stdio); 54 tools: mem/verify/review/drift/guard/stack, vault (`tb_vault_*`), graph (`search`/`callers`/`deps`/`impact`/`explain`/`path`/`index`; requires `TB_GRAPH=on`), ticket/board/router/watchdog/merge and bus (`tb_bus_join`/`send`/`recv`/`claim`/`complete`/`heartbeat`/`status`), and red/blue playbooks (`tb_red_*`, `tb_blue_*`, `tb_sec_pair`); `--bus-as` binds the connection to a bus session |
