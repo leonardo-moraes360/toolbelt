@@ -35,7 +35,7 @@ func prepareSemantic(r runner, opts *Options, strategy Strategy, prep []prepared
 	closeFn := func() {}
 	switch {
 	case strategy == StrategyPrompt && rc != nil:
-		rv.replay = &replay{rc: rc, used: map[string]bool{}}
+		rv.replay = &replay{rc: rc, used: map[string]bool{}, maxNovel: user.Merge.Prompt.MaxNovelLines}
 		rv.hook = rv.replay.hook
 	case strategy == StrategyPrompt:
 		ag, closeAgent, err := openAgent(opts, user)

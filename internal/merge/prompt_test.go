@@ -418,7 +418,7 @@ func TestPromptNovelLines(t *testing.T) {
 
 func TestBuildPromptShape(t *testing.T) {
 	a := &agentEnv{cfg: config.DefaultMergeConfig().Prompt, titles: map[string]string{"TKT-001": "first\nline"}, order: []string{"TKT-001"}}
-	rg := &region{ID: 1, Base: []string{"b\n"}, Ours: []string{"o\n"}, Theirs: []string{"t\n"}, OursRange: [2]int{2, 2}}
+	rg := &region{ID: 1, Base: []string{"b\n"}, Ours: []string{"o\n"}, Theirs: []string{"t\n"}, OursRange: [2]int{2, 2}, OursExact: true}
 	st := &fileState{path: "a.txt"}
 	st.stages[1].data = []byte("c1\no\nc2\n")
 	prompt, nonce, reason := a.buildPrompt(st, []*region{rg})
@@ -455,5 +455,56 @@ func TestSweepReceipts(t *testing.T) {
 	}
 	if _, err := os.Stat(fresh); err != nil {
 		t.Fatal("fresh receipt removed")
+	}
+}
+
+// A region whose place in ours is not certain is sent without context lines.
+func TestBuildPromptNoContextWhenNotUnique(t *testing.T) {
+	a := &agentEnv{cfg: config.DefaultMergeConfig().Prompt}
+	rg := &region{ID: 1, Base: []string{"b\n"}, Ours: []string{"o\n"}, Theirs: []string{"t\n"}, OursRange: [2]int{2, 2}}
+	st := &fileState{path: "a.txt"}
+	st.stages[1].data = []byte("c1\no\nc2\n")
+	prompt, nonce, reason := a.buildPrompt(st, []*region{rg})
+	if reason != "" {
+		t.Fatal(reason)
+	}
+	for _, want := range []string{"CONTEXT_BEFORE>>>\n<<<END-" + nonce, "CONTEXT_AFTER>>>\n<<<END-" + nonce} {
+		if !strings.Contains(prompt, want) {
+			t.Errorf("prompt lacks %q:\n%s", want, prompt)
+		}
+	}
+	if strings.Contains(prompt, "c1\n") || strings.Contains(prompt, "c2\n") {
+		t.Fatalf("context leaked:\n%s", prompt)
+	}
+}
+
+// The agent text may only contain secret-like strings that ours or theirs already hold.
+func TestValidateTextSecretSets(t *testing.T) {
+	const known = "API_KEY=abcdef123456\n"
+	rg := &region{Ours: []string{known}, Theirs: []string{"x\n"}}
+	if r := validateText(rg, known); r != "" {
+		t.Fatalf("existing secret: %q", r)
+	}
+	if r := validateText(rg, known+"OTHER_KEY=zzzzzz999999\n"); r != "agent_secret" {
+		t.Fatalf("new secret next to an old one: %q", r)
+	}
+	if r := validateText(&region{Ours: []string{"a\n"}, Theirs: []string{"b\n"}}, known); r != "agent_secret" {
+		t.Fatalf("secret from nowhere: %q", r)
+	}
+}
+
+// An apply enforces max_novel_lines of the current user config on the receipt text.
+func TestPromptApplyEnforcesMaxNovelLines(t *testing.T) {
+	needLandlock(t)
+	dir := conflictRepo(t)
+	res, err := propose(t, dir, userCfg(t, fakeAgent(t, answerAll(`merged\\n`)), ""), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	start := git(t, dir, "rev-parse", "main")
+	_, err = propose(t, dir, userCfg(t, "", "merge:\n  prompt:\n    max_novel_lines: 0\n"), func(o *Options) { o.Resolutions = res.Receipt.ID })
+	var me *Error
+	if !errors.As(err, &me) || me.Reason != "agent_novel" || git(t, dir, "rev-parse", "main") != start {
+		t.Fatalf("err %v", err)
 	}
 }

@@ -282,6 +282,7 @@ Implementation notes (where it differs from the text above):
 - A `prompt` apply does not need `egm.agent_cmd`: it never starts an agent. Only the proposal fails with `agent_unavailable`.
 - The agent answer may be wrapped in a Markdown code fence; tb strips one fence before parsing.
 - `stdout_overflow` is a transient run failure (retried like `timeout`).
+- `--resolutions` re-checks each receipt text against the current `merge.prompt.max_novel_lines` and refuses (`agent_novel`) when it is over, so lowering the ceiling after a proposal blocks the apply.
 
 ## Open questions
 

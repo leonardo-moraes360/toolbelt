@@ -179,12 +179,17 @@ func (a *agentEnv) buildPrompt(st *fileState, ur []*region) (prompt, nonce, reas
 	block("FILE", st.path+"\n")
 	n := a.cfg.ContextLines
 	for _, rg := range ur {
-		start, end := rg.OursRange[0], rg.OursRange[1]
-		block(fmt.Sprintf("REGION %d CONTEXT_BEFORE", rg.ID), joinLines(oursLines[max(0, start-1-n):max(0, min(start-1, len(oursLines)))]))
+		var before, after string // no context when the region's place is not certain
+		if rg.OursExact {
+			start, end := rg.OursRange[0], rg.OursRange[1]
+			before = joinLines(oursLines[max(0, start-1-n):max(0, min(start-1, len(oursLines)))])
+			after = joinLines(oursLines[min(len(oursLines), max(0, end)):min(len(oursLines), max(0, end)+n)])
+		}
+		block(fmt.Sprintf("REGION %d CONTEXT_BEFORE", rg.ID), before)
 		block(fmt.Sprintf("REGION %d BASE", rg.ID), joinLines(rg.Base))
 		block(fmt.Sprintf("REGION %d OURS", rg.ID), joinLines(rg.Ours))
 		block(fmt.Sprintf("REGION %d THEIRS", rg.ID), joinLines(rg.Theirs))
-		block(fmt.Sprintf("REGION %d CONTEXT_AFTER", rg.ID), joinLines(oursLines[min(len(oursLines), max(0, end)):min(len(oursLines), max(0, end)+n)]))
+		block(fmt.Sprintf("REGION %d CONTEXT_AFTER", rg.ID), after)
 	}
 	if _, found := secrets.Redact(untrusted.String()); found {
 		return "", "", reasonSecretInContext
@@ -333,11 +338,15 @@ func validateText(rg *region, text string) string {
 	if len(text) > 4*(len(joinLines(rg.Ours))+len(joinLines(rg.Theirs)))+4096 {
 		return reasonAgentOversized
 	}
-	if _, found := secrets.Redact(text); found {
-		_, inOurs := secrets.Redact(joinLines(rg.Ours))
-		_, inTheirs := secrets.Redact(joinLines(rg.Theirs))
-		if !inOurs && !inTheirs {
-			return reasonAgentSecret
+	if got := secrets.Matches(text); len(got) > 0 {
+		known := map[string]bool{}
+		for _, m := range secrets.Matches(joinLines(rg.Ours) + "\x00" + joinLines(rg.Theirs)) {
+			known[m] = true
+		}
+		for _, m := range got {
+			if !known[m] {
+				return reasonAgentSecret
+			}
 		}
 	}
 	return ""
@@ -363,8 +372,9 @@ func countNovel(rg *region, lines []string) int {
 // replayHook is the apply step: the agent is never started; each region the
 // rules left takes its text from the receipt, bound by the input hashes.
 type replay struct {
-	rc   *Receipt
-	used map[string]bool
+	rc       *Receipt
+	used     map[string]bool
+	maxNovel *int // merge.prompt.max_novel_lines of the current user config
 }
 
 func replayKey(file, commit string, region int) string {
@@ -387,6 +397,9 @@ func (rp *replay) hook(_ *resolver, pc *pickCtx, files []*fileState) error {
 			rp.used[replayKey(st.path, pc.commit, rg.ID)] = true
 			st.texts[rg.ID], st.rules[rg.ID] = textLines(ent.Text), ruleAgent
 			st.novel[rg.ID] = countNovel(rg, st.texts[rg.ID])
+			if rp.maxNovel != nil && st.novel[rg.ID] > *rp.maxNovel {
+				return reasonErr(reasonAgentNovel, "the receipt text for %s region %d has %d novel lines, over merge.prompt.max_novel_lines (%d)", st.path, rg.ID, st.novel[rg.ID], *rp.maxNovel)
+			}
 		}
 	}
 	return nil

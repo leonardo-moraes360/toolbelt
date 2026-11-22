@@ -282,6 +282,7 @@ Notas de implementação (onde difere do texto acima):
 - O apply do `prompt` não precisa de `egm.agent_cmd`: nunca inicia um agente. Só a proposta falha com `agent_unavailable`.
 - A resposta do agente pode vir dentro de um bloco de código Markdown; o tb remove um bloco antes de fazer o parse.
 - `stdout_overflow` é uma falha transitória de execução (repetida como `timeout`).
+- `--resolutions` reverifica o texto de cada região do recibo contra o `merge.prompt.max_novel_lines` atual e recusa (`agent_novel`) se estiver acima; baixar o teto depois da proposta bloqueia a aplicação.
 
 ## Questões em aberto
 
