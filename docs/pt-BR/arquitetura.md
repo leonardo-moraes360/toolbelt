@@ -204,7 +204,7 @@ O grafo é um índice **derivado** do código e dos docs, reconstruído sob dema
 }
 ```
 
-- Tipos de nó: `file`, `function`, `package`, `class`, `section`, `component`, `hook`, `route`, `playbook` (e nós `note`/`tag` do vault). Tipos de aresta: `imports`, `calls`, `defines`, `links`, `mentions`, `renders`, `template`, `mirror`.
+- Tipos de nó: `file`, `function`, `package`, `class`, `section`, `component`, `hook`, `route`, `playbook` (e nós `note`/`tag` do vault). Tipos de aresta: `imports`, `calls`, `defines`, `links`, `tagged`, `mentions`, `renders`, `template`, `mirror`.
 - A **busca** é BM25 sobre título, path e pacote, com divisão de camelCase e `snake_case` e consultas de vários termos. Não há SQL nem índice FTS5.
 - **Defasagem**: o índice carrega uma impressão digital da árvore. A CLI reindexa quando ele está defasado; via MCP as consultas nunca reindexam e informam `stale: true`, então o agente chama `tb_graph_index` e repete. `tb graph rebuild` reconstrói tudo do zero.
 - **Vetores opcionais**: `tb graph index --vectors` também escreve `graph.vec` (embeddings de um filho llama.cpp vendorizado, [ADR-018](adr/018-cgo-componentes-nativos.md)), usado por `tb graph search --mode semantic|hybrid`.
@@ -271,7 +271,7 @@ Isso reduz drasticamente o número de tokens consumidos em leitura de arquivos.
 
 | Ameaça | Mitigação |
 |--------|-----------|
-| Escape do sandbox | Regras de filesystem do Landlock (falha fechada) e o filtro seccomp de rede onde é usado; kill do grupo de processos no timeout |
+| Escape do sandbox | Regras de filesystem do Landlock (falha fechada) e o filtro seccomp de rede para o filho de embedding; kill do grupo de processos no timeout |
 | Acesso a segredos | Allowlist de ambiente do filho; variáveis com cara de segredo bloqueadas, a menos que `--pass-env`; redação de segredos na saída do vault e do MCP, em prompts do EGM e na entrada de embedding do grafo |
 | Modificação de testes | Paths protegidos do `tb guard` (`tests/hidden/*`, `.toolbelt/thresholds.yaml`, `.toolbelt/guard.yaml`, ...) lidos da ref **base**, mais a suíte oculta do `tb verify` |
 | Exfiltração de dados | O próprio `tb` é só local e nunca chama o GitHub nem serviço remoto; um filho em sandbox alcança a rede, a menos que a opção `DenyNetwork` esteja ligada (só o filho de embedding a liga) |
@@ -292,7 +292,7 @@ Tokens de capacidade (`CapabilityToken`), filas de aprovação e arquivos de pap
 
 ### 4.4 Handling de Secrets
 
-O `tb` não guarda nem injeta segredos. O ambiente do filho é montado a partir de uma allowlist (`--env NOME` adiciona uma variável; `--pass-env NOME` é o opt-in explícito para uma que parece segredo). O `tb mem add` recusa uma invariante que contenha padrão de segredo. Texto que sai do processo (prompts do EGM, entrada de embedding de vetores) e o texto de notas impresso por `tb vault --json` e `tb_vault_*` é redigido com os padrões compartilhados de `internal/secrets`.
+O `tb` não guarda nem injeta segredos. O ambiente do filho é montado a partir de uma allowlist (`--env NOME` adiciona uma variável; `--pass-env NOME` é o opt-in explícito para uma que parece segredo). O `tb mem add` guarda a invariante como digitada; a saída do `tb mem` é redigida (`internal/mem/redact.go`). Texto que sai do processo (prompts do EGM, entrada de embedding de vetores) é redigido com os padrões de `internal/secrets`, e o texto de notas impresso por `tb vault --json` e `tb_vault_*` com `mem.SecretPatterns()` mais os padrões próprios do vault (`internal/vault/redact.go`).
 
 ---
 

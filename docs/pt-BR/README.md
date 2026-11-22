@@ -25,7 +25,7 @@
 | Objetivo | Como o toolbelt ajuda |
 |----------|----------------------|
 | **Economizar tokens** | Grafo de conhecimento queryável evita grep em arquivos; contexto montado sob orçamento de tokens; memória compacta com sumários e fatos extraídos |
-| **Melhorar a acurácia** | Sandbox isolado com Landlock e filtro seccomp de rede (falha fechada); ambiente do filho por allowlist; proteções contra trapaça; separação entre implementador e avaliador |
+| **Melhorar a acurácia** | Isolamento de filesystem com Landlock (falha fechada); filtro seccomp de rede para o filho de embedding; ambiente do filho por allowlist; proteções contra trapaça; separação entre implementador e avaliador |
 | **Aumentar a velocidade** | Execução paralela com goroutines; delegação pelo `tb router` e pelos papéis do `tb bus` (router, supervisor, worker, reviewer); busca em grafo com ranking BM25 |
 
 ## 🏗️ Arquitetura
@@ -67,7 +67,7 @@
 ┌─────────────────────────────────────────────────────────────────┐
 │                        Execução                                 │
 │  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────────┐  │
-│  │ Worktrees   │  │ Landlock    │  │ seccomp (rede negada)   │  │
+│  │ Worktrees   │  │ Landlock    │  │ seccomp (embed: s/ rede)│  │
 │  │ Git         │  │ (arquivos)  │  │                         │  │
 │  └─────────────┘  └─────────────┘  └─────────────────────────┘  │
 └─────────────────────────────────────────────────────────────────┘
@@ -321,4 +321,4 @@ Este projeto está na **Fase 3 (em andamento)**: além de verify/guard/mem/graph
 | `tb watchdog` | ✅ | Alertas e controle dos workers (`status`/`alerts`/`kill`); roda dentro do loop do router |
 | `tb merge` | ✅ | Integra tickets `done` de forma atômica; `fail` (padrão), `last_wins`, `semantic` ou `prompt` (o MCP `tb_merge` aceita todas menos `prompt`) |
 | `tb bus` | 🟡 | Barramento local entre agentes (ADR-013): `channel`/`invite`/`join`/`send`/`recv`/`claim`/`complete`/`heartbeat`/`watchdog`/`log` sobre `.toolbelt/bus/bus.db`; lease com fencing por epoch (B2); `tb bus run` acorda o agente (adapters `exec`/`harness`/`notify`); `tb bus discover` cataloga os agentes locais |
-| `tb mcp` | ✅ | Servidor MCP stateless (stdio); 54 tools: mem/verify/review/drift/guard/stack, vault (`tb_vault_*`), graph (`search`/`callers`/`deps`/`impact`/`explain`/`path`/`index`; exige `TB_GRAPH=on`), ticket/board/router/watchdog/merge e bus (`tb_bus_join`/`send`/`recv`/`claim`/`complete`/`heartbeat`/`status`); `--bus-as` prende a conexão a uma sessão do bus |
+| `tb mcp` | ✅ | Servidor MCP stateless (stdio); 54 tools: mem/verify/review/drift/guard/stack, vault (`tb_vault_*`), graph (`search`/`callers`/`deps`/`impact`/`explain`/`path`/`index`; exige `TB_GRAPH=on`), ticket/board/router/watchdog/merge e bus (`tb_bus_join`/`send`/`recv`/`claim`/`complete`/`heartbeat`/`status`) e playbooks red/blue (`tb_red_*`, `tb_blue_*`, `tb_sec_pair`); `--bus-as` prende a conexão a uma sessão do bus |

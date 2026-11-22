@@ -204,7 +204,7 @@ The graph is a **derived** index of the code and docs, rebuilt on demand, not a 
 }
 ```
 
-- Node types: `file`, `function`, `package`, `class`, `section`, `component`, `hook`, `route`, `playbook` (and vault `note`/`tag` nodes). Edge types: `imports`, `calls`, `defines`, `links`, `mentions`, `renders`, `template`, `mirror`.
+- Node types: `file`, `function`, `package`, `class`, `section`, `component`, `hook`, `route`, `playbook` (and vault `note`/`tag` nodes). Edge types: `imports`, `calls`, `defines`, `links`, `tagged`, `mentions`, `renders`, `template`, `mirror`.
 - **Search** is BM25 over title, path and package, with camelCase and `snake_case` splitting and multi-term queries. There is no SQL and no FTS5 index.
 - **Staleness**: the index carries a fingerprint of the tree. The CLI reindexes when it is stale; over MCP the queries never reindex and report `stale: true`, so the agent calls `tb_graph_index` and repeats. `tb graph rebuild` rebuilds everything from scratch.
 - **Optional vectors**: `tb graph index --vectors` also writes `graph.vec` (embeddings from a vendored llama.cpp child, [ADR-018](adr/018-cgo-componentes-nativos.md)), used by `tb graph search --mode semantic|hybrid`.
@@ -271,7 +271,7 @@ This drastically reduces the number of tokens consumed reading files.
 
 | Threat | Mitigation |
 |--------|------------|
-| Sandbox escape | Landlock filesystem rules (fail-closed) and the seccomp network filter where used; process-group kill on timeout |
+| Sandbox escape | Landlock filesystem rules (fail-closed) and the seccomp network filter for the embedding child; process-group kill on timeout |
 | Secret access | Child environment allowlist; secret-looking variables blocked unless `--pass-env`; redaction of secrets in vault and MCP output, EGM prompts and graph embedding input |
 | Test modification | `tb guard` protected paths (`tests/hidden/*`, `.toolbelt/thresholds.yaml`, `.toolbelt/guard.yaml`, ...) read from the **base** ref, plus the hidden suite of `tb verify` |
 | Data exfiltration | `tb` itself is local-only and never calls GitHub or any remote service; a sandboxed child can reach the network unless the sandbox option `DenyNetwork` is set (only the embedding child sets it) |
@@ -292,7 +292,7 @@ Capability tokens (`CapabilityToken`), approval queues and role files under `.tb
 
 ### 4.4 Secret Handling
 
-`tb` does not hold or inject secrets. The child environment is built from an allowlist (`--env NAME` adds a variable; `--pass-env NAME` is the explicit opt-in for one that looks like a secret). `tb mem add` refuses an invariant that contains a secret pattern. Text that leaves the process (EGM prompts, vector embedding input) and note text printed by `tb vault --json` and `tb_vault_*` is redacted with the shared patterns of `internal/secrets`.
+`tb` does not hold or inject secrets. The child environment is built from an allowlist (`--env NAME` adds a variable; `--pass-env NAME` is the explicit opt-in for one that looks like a secret). `tb mem add` stores an invariant as typed; `tb mem` output is redacted (`internal/mem/redact.go`). Text that leaves the process (EGM prompts, vector embedding input) is redacted with the patterns of `internal/secrets`, and note text printed by `tb vault --json` and `tb_vault_*` with `mem.SecretPatterns()` plus the vault's own patterns (`internal/vault/redact.go`).
 
 ---
 

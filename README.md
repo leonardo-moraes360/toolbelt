@@ -25,7 +25,7 @@
 | Goal | How toolbelt helps |
 |------|-------------------|
 | **Save tokens** | Queryable knowledge graph avoids grepping files; context assembled under a token budget; compact memory with summaries and extracted facts |
-| **Improve accuracy** | Isolated sandbox with Landlock and a seccomp network filter (fail-closed); allowlisted child environment; anti-cheat protections; separation between implementer and evaluator |
+| **Improve accuracy** | Landlock filesystem isolation (fail-closed); seccomp network filter for the embedding child; allowlisted child environment; anti-cheat protections; separation between implementer and evaluator |
 | **Increase speed** | Parallel execution with goroutines; delegation through `tb router` and the `tb bus` roles (router, supervisor, worker, reviewer); BM25-ranked graph search |
 
 ## 🏗️ Architecture
@@ -67,7 +67,7 @@
 ┌─────────────────────────────────────────────────────────────────┐
 │                        Execution                                │
 │  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────────┐  │
-│  │ Worktrees   │  │ Landlock    │  │ seccomp (net denied)    │  │
+│  │ Worktrees   │  │ Landlock    │  │ seccomp (embed: no net)│  │
 │  │ Git         │  │ (files)     │  │                         │  │
 │  └─────────────┘  └─────────────┘  └─────────────────────────┘  │
 └─────────────────────────────────────────────────────────────────┘
@@ -321,4 +321,4 @@ This project is in **Phase 3 (in progress)**: besides verify/guard/mem/graph/rev
 | `tb watchdog` | ✅ | Worker alerts and control (`status`/`alerts`/`kill`); runs inside the router loop |
 | `tb merge` | ✅ | Atomically merges `done` tickets; `fail` (default), `last_wins`, `semantic` or `prompt` (MCP `tb_merge` takes all but `prompt`) |
 | `tb bus` | 🟡 | Local bus between agents (ADR-013): `channel`/`invite`/`join`/`send`/`recv`/`claim`/`complete`/`heartbeat`/`watchdog`/`log` over `.toolbelt/bus/bus.db`; lease with epoch fencing (B2); `tb bus run` wakes the agent (`exec`/`harness`/`notify` adapters); `tb bus discover` catalogs local agents |
-| `tb mcp` | ✅ | Stateless MCP server (stdio); 54 tools: mem/verify/review/drift/guard/stack, vault (`tb_vault_*`), graph (`search`/`callers`/`deps`/`impact`/`explain`/`path`/`index`; requires `TB_GRAPH=on`), ticket/board/router/watchdog/merge and bus (`tb_bus_join`/`send`/`recv`/`claim`/`complete`/`heartbeat`/`status`); `--bus-as` binds the connection to a bus session |
+| `tb mcp` | ✅ | Stateless MCP server (stdio); 54 tools: mem/verify/review/drift/guard/stack, vault (`tb_vault_*`), graph (`search`/`callers`/`deps`/`impact`/`explain`/`path`/`index`; requires `TB_GRAPH=on`), ticket/board/router/watchdog/merge and bus (`tb_bus_join`/`send`/`recv`/`claim`/`complete`/`heartbeat`/`status`), and red/blue playbooks (`tb_red_*`, `tb_blue_*`, `tb_sec_pair`); `--bus-as` binds the connection to a bus session |

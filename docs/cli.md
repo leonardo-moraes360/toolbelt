@@ -2,7 +2,7 @@
 
 # `tb` Command Tree
 
-This document describes the toolbelt CLI: **implemented** commands (mirrored from `tb --help`) and nothing else: planned commands (`tb run`, `tb proc`, `tb serve`) are listed in the [README roadmap](../README.md), and `tb md` and `tb agent` are dropped. On divergence, the Cobra CLI is the source of truth.
+This document describes the toolbelt CLI: **implemented** commands (mirrored from `tb --help`); planned items are marked inline, planned commands (`tb run`, `tb proc`, `tb serve`) are listed in the [README roadmap](../README.md), and `tb md` and `tb agent` are dropped. On divergence, the Cobra CLI is the source of truth.
 
 ## Local-first: no GitHub
 

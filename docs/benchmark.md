@@ -239,6 +239,8 @@ reviewer_agreement = (findings from 2+ reviewers) / (total unique findings)
 
 ## Comparison: Graph-First vs Grep-First
 
+> **Not implemented:** this is an experiment proposal; `tb bench compare` reports only success, time and tokens.
+
 A specific benchmark variant compares search approaches:
 
 ### Graph-First (Experimental)
@@ -270,6 +272,8 @@ A specific benchmark variant compares search approaches:
 ---
 
 ## Comparison: Fresh-Context vs Same-Context Review
+
+> **Not implemented:** this is an experiment proposal; no command measures these review metrics.
 
 A specific benchmark variant compares review approaches:
 

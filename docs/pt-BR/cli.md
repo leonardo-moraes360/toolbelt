@@ -2,7 +2,7 @@
 
 # Árvore de Comandos do `tb`
 
-Este documento descreve a CLI do toolbelt: comandos **implementados** (espelham `tb --help`) e nada além disso: comandos planejados (`tb run`, `tb proc`, `tb serve`) ficam no [roadmap do README](README.md), e `tb md` e `tb agent` saíram. Em caso de divergência, a CLI Cobra é a fonte da verdade.
+Este documento descreve a CLI do toolbelt: comandos **implementados** (espelham `tb --help`); itens planejados são marcados no texto, comandos planejados (`tb run`, `tb proc`, `tb serve`) ficam no [roadmap do README](README.md), e `tb md` e `tb agent` saíram. Em caso de divergência, a CLI Cobra é a fonte da verdade.
 
 ## Local-first: sem GitHub
 
