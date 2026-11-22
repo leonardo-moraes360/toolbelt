@@ -164,7 +164,7 @@ func BuildFromRootOpts(root string, opts *BuildOptions) (*Index, error) {
 	if err != nil {
 		return nil, err
 	}
-	idx := &Index{Root: abs}
+	idx := &Index{Version: IndexVersion, Root: abs}
 	nodes := map[string]Node{}
 	var edges []Edge
 	skip := map[string]bool{}

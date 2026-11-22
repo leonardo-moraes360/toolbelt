@@ -105,7 +105,12 @@ type Result struct {
 	BusEpoch int64  `yaml:"bus_epoch,omitempty" json:"bus_epoch,omitempty"`
 }
 
+// FormatVersion is the version of the ticket YAML written by this tb. A file
+// without `version` is version 1. A newer version is refused, never rewritten.
+const FormatVersion = 1
+
 type Ticket struct {
+	Version      int           `yaml:"version,omitempty" json:"version,omitempty"`
 	ID           string        `yaml:"id" json:"id"`
 	Title        string        `yaml:"title" json:"title"`
 	Description  string        `yaml:"description,omitempty" json:"description,omitempty"`

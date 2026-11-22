@@ -64,7 +64,13 @@ type Edge struct {
 	Confidence float64  `json:"confidence"`
 }
 
+// IndexVersion is the integer version of graph.json. graph.json is a derived
+// cache: a file with another version (or none, as before 1.0) is discarded and
+// the next index run rebuilds it, never an error.
+const IndexVersion = 1
+
 type Index struct {
+	Version     int    `json:"version"`
 	Root        string `json:"root"`
 	Nodes       []Node `json:"nodes"`
 	Edges       []Edge `json:"edges"`
@@ -119,6 +125,11 @@ func (s *Store) Load() error {
 	var idx Index
 	if err := json.Unmarshal(data, &idx); err != nil {
 		return err
+	}
+	if idx.Version != IndexVersion {
+		// An empty index has no fingerprint, so it reads as stale.
+		s.index = &Index{}
+		return nil
 	}
 	s.index = &idx
 	return nil

@@ -232,6 +232,9 @@ func (s *Store) read(id string) (Ticket, error) {
 	if err := yaml.Unmarshal(data, &t); err != nil {
 		return Ticket{}, fmt.Errorf("ticket %s unreadable: %w", id, err)
 	}
+	if t.Version > FormatVersion {
+		return Ticket{}, fmt.Errorf("ticket %s unreadable: format version %d is newer than this tb understands (%d); upgrade tb", id, t.Version, FormatVersion)
+	}
 	if t.ID != id {
 		return Ticket{}, fmt.Errorf("ticket %s unreadable: id %q in YAML differs from file name %q", id, t.ID, id)
 	}
@@ -267,6 +270,7 @@ func (s *Store) loadAll() ([]Ticket, error) {
 }
 
 func (s *Store) write(t *Ticket) error {
+	t.Version = FormatVersion
 	data, err := yaml.Marshal(t)
 	if err != nil {
 		return err
