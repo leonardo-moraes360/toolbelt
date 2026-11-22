@@ -28,7 +28,7 @@ type RevokeResult struct {
 
 // selectMessageByID is a single literal (placeholders only, values go in
 // args); TestSelectMessageByID keeps its columns in sync with selectMessage.
-const selectMessageByID = `SELECT seq, id, channel, sender, recipient, thread, type, causation_id, idempotency_key, ttl, payload, created_at FROM messages WHERE channel = ? AND id = ?`
+const selectMessageByID = `SELECT seq, id, channel, sender, recipient, thread, type, causation_id, idempotency_key, ttl, payload, created_at, parent FROM messages WHERE channel = ? AND id = ?`
 
 var reasonRe = regexp.MustCompile(`^[a-z][a-z_]{0,31}$`)
 
@@ -44,8 +44,7 @@ func migrateV2(tx *sql.Tx) error {
 			return fmt.Errorf("migrating bus schema v2 -> v3: %w", err)
 		}
 	}
-	_, err := tx.Exec(setSchemaVersion)
-	return err
+	return nil
 }
 
 // ClaimConfined claims like ClaimThread and stores ConfinementMarker. It is

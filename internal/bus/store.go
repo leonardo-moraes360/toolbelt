@@ -19,11 +19,11 @@ import (
 )
 
 // SchemaVersion is stored in PRAGMA user_version.
-const SchemaVersion = 3
+const SchemaVersion = 4
 
 // Literal so the query is static; TestSchemaVersionPragma keeps it in sync
 // with SchemaVersion.
-const setSchemaVersion = `PRAGMA user_version = 3`
+const setSchemaVersion = `PRAGMA user_version = 4`
 
 // ErrInvalidInvite is the generic answer for a missing, used, expired or
 // other-channel invite (deliberately does not reveal which).
@@ -74,7 +74,8 @@ CREATE TABLE messages (
 	ttl             TEXT,
 	expires_at      INTEGER,
 	payload         TEXT NOT NULL,
-	created_at      INTEGER NOT NULL
+	created_at      INTEGER NOT NULL,
+	parent          TEXT
 );
 CREATE UNIQUE INDEX messages_idem ON messages(channel, sender, idempotency_key) WHERE idempotency_key IS NOT NULL;
 CREATE INDEX messages_channel_seq ON messages(channel, seq);
@@ -94,7 +95,7 @@ CREATE TABLE claims (
 	confinement  TEXT,
 	PRIMARY KEY (channel, thread)
 );
-`
+` + linksSchema
 
 // Store is persisted at <root>/.toolbelt/bus/bus.db.
 type Store struct {
@@ -179,22 +180,33 @@ func (s *Store) migrate() error {
 		if err := tx.QueryRow(`PRAGMA user_version`).Scan(&v); err != nil {
 			return fmt.Errorf("reading schema version: %w", err)
 		}
-		switch v {
-		case SchemaVersion:
+		switch {
+		case v == SchemaVersion:
 			return nil
-		case 0:
+		case v == 0:
 			if _, err := tx.Exec(schema); err != nil {
 				return fmt.Errorf("creating schema: %w", err)
 			}
 			_, err := tx.Exec(setSchemaVersion)
 			return err
-		case 1:
-			if err := migrateV1(tx, s.nowNS()); err != nil {
+		case v > 0 && v < SchemaVersion:
+			// One-way chain in a single IMMEDIATE transaction: a failed step
+			// rolls back and leaves the old version untouched.
+			if v == 1 {
+				if err := migrateV1(tx, s.nowNS()); err != nil {
+					return err
+				}
+			}
+			if v <= 2 {
+				if err := migrateV2(tx); err != nil {
+					return err
+				}
+			}
+			if err := migrateV3(tx); err != nil {
 				return err
 			}
-			return migrateV2(tx)
-		case 2:
-			return migrateV2(tx)
+			_, err := tx.Exec(setSchemaVersion)
+			return err
 		default:
 			return fmt.Errorf("unknown bus schema v%d (this tb supports v%d)", v, SchemaVersion)
 		}
@@ -607,6 +619,7 @@ type AgentInfo struct {
 type SendInput struct {
 	To             string
 	Thread         string
+	Parent         string // task.assign only; see checkParent
 	Type           Type
 	CausationID    string
 	IdempotencyKey string
@@ -639,11 +652,20 @@ func (s *Store) Send(m Member, in *SendInput) (SendResult, error) {
 				return err
 			}
 		}
-		msg, err := insertMessage(tx, m.Channel, m.ID(), strings.TrimSpace(in.To), in.Thread, in.Type,
+		link, err := checkParent(tx, m, in, now)
+		if err != nil {
+			return err
+		}
+		msg, err := insertMessage(tx, m.Channel, m.ID(), strings.TrimSpace(in.To), in.Thread, in.Parent, in.Type,
 			in.CausationID, in.IdempotencyKey, in.TTL, v.ttl, v.payload, now)
 		res = SendResult{Message: msg}
 		if err != nil {
 			return err
+		}
+		if link != nil {
+			if err := insertLink(tx, m.Channel, in.Thread, in.Parent, link.depth, msg.ID, now); err != nil {
+				return err
+			}
 		}
 		return touch(tx, m, now)
 	})
@@ -671,7 +693,10 @@ func validateSend(m Member, in *SendInput) (validSend, error) {
 	if v.kind, v.target, err = ParseTarget(in.To); err != nil {
 		return v, err
 	}
-	for _, r := range [][2]string{{"thread", in.Thread}, {"idempotency_key", in.IdempotencyKey}, {"causation_id", in.CausationID}} {
+	if err := validateParentShape(in); err != nil {
+		return v, err
+	}
+	for _, r := range [][2]string{{"thread", in.Thread}, {"parent", in.Parent}, {"idempotency_key", in.IdempotencyKey}, {"causation_id", in.CausationID}} {
 		if err := validRef(r[0], r[1]); err != nil {
 			return v, err
 		}
@@ -712,7 +737,7 @@ func requireAgent(tx *sql.Tx, channel, name string) error {
 	return nil
 }
 
-func insertMessage(tx *sql.Tx, channel, from, to, thread string, typ Type, causation, idem, ttlText string, ttl time.Duration, payload []byte, now int64) (Message, error) {
+func insertMessage(tx *sql.Tx, channel, from, to, thread, parent string, typ Type, causation, idem, ttlText string, ttl time.Duration, payload []byte, now int64) (Message, error) {
 	id, err := NewULID(fromNS(now))
 	if err != nil {
 		return Message{}, err
@@ -721,9 +746,9 @@ func insertMessage(tx *sql.Tx, channel, from, to, thread string, typ Type, causa
 	if ttl > 0 {
 		exp = sql.NullInt64{Int64: now + int64(ttl), Valid: true}
 	}
-	r, err := tx.Exec(`INSERT INTO messages(id, channel, sender, recipient, thread, type, causation_id, idempotency_key, ttl, expires_at, payload, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		id, channel, from, to, nullStr(thread), string(typ), nullStr(causation), nullStr(idem), nullStr(ttlText), exp, string(payload), now)
+	r, err := tx.Exec(`INSERT INTO messages(id, channel, sender, recipient, thread, type, causation_id, idempotency_key, ttl, expires_at, payload, created_at, parent)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		id, channel, from, to, nullStr(thread), string(typ), nullStr(causation), nullStr(idem), nullStr(ttlText), exp, string(payload), now, nullStr(parent))
 	if err != nil {
 		return Message{}, err
 	}
@@ -732,33 +757,34 @@ func insertMessage(tx *sql.Tx, channel, from, to, thread string, typ Type, causa
 		return Message{}, err
 	}
 	return Message{
-		ID: id, Seq: seq, V: Version, Channel: channel, From: from, To: to, Thread: thread, Type: typ,
+		ID: id, Seq: seq, V: Version, Channel: channel, From: from, To: to, Thread: thread, Parent: parent, Type: typ,
 		CausationID: causation, IdempotencyKey: idem, TTL: ttlText, Payload: payload, CreatedAt: fromNS(now),
 	}, nil
 }
 
 func nullStr(s string) sql.NullString { return sql.NullString{String: s, Valid: s != ""} }
 
-const selectMessage = `SELECT seq, id, channel, sender, recipient, thread, type, causation_id, idempotency_key, ttl, payload, created_at FROM messages`
+const selectMessage = `SELECT seq, id, channel, sender, recipient, thread, type, causation_id, idempotency_key, ttl, payload, created_at, parent FROM messages`
 
 // Full queries as constants: placeholders only, values go in args.
 const (
 	selectIdempotent = selectMessage + ` WHERE channel = ? AND sender = ? AND idempotency_key = ?`
-	selectInbox      = `SELECT seq, id, channel, sender, recipient, thread, type, causation_id, idempotency_key, ttl, payload, created_at FROM messages WHERE channel = ? AND seq > ? AND sender <> ? AND (recipient = ? OR recipient = ? OR substr(recipient, 1, 6) = 'topic:') AND (expires_at IS NULL OR expires_at > ?) ORDER BY seq LIMIT ?`
+	selectInbox      = `SELECT seq, id, channel, sender, recipient, thread, type, causation_id, idempotency_key, ttl, payload, created_at, parent FROM messages WHERE channel = ? AND seq > ? AND sender <> ? AND (recipient = ? OR recipient = ? OR substr(recipient, 1, 6) = 'topic:') AND (expires_at IS NULL OR expires_at > ?) ORDER BY seq LIMIT ?`
 )
 
 type rowScanner interface{ Scan(dest ...any) error }
 
 func scanMessage(r rowScanner) (Message, error) {
 	var m Message
-	var thread, causation, idem, ttl sql.NullString
+	var thread, causation, idem, ttl, parent sql.NullString
 	var payload string
 	var created int64
-	if err := r.Scan(&m.Seq, &m.ID, &m.Channel, &m.From, &m.To, &thread, &m.Type, &causation, &idem, &ttl, &payload, &created); err != nil {
+	if err := r.Scan(&m.Seq, &m.ID, &m.Channel, &m.From, &m.To, &thread, &m.Type, &causation, &idem, &ttl, &payload, &created, &parent); err != nil {
 		return Message{}, err
 	}
 	m.V = Version
 	m.Thread, m.CausationID, m.IdempotencyKey, m.TTL = thread.String, causation.String, idem.String, ttl.String
+	m.Parent = parent.String
 	m.Payload = json.RawMessage(payload)
 	m.CreatedAt = fromNS(created)
 	return m, nil
