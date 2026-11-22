@@ -22,7 +22,14 @@ func openBusStore() (*bus.Store, error) {
 	return bus.Open(ticket.FindRoot(cwd))
 }
 
-// busMember authenticates --channel/--as against the CLI session.
+// busClientLocks keeps the client locks of this one-shot process referenced
+// (an unreferenced lock's file is closed by the GC); the kernel drops them at exit.
+var busClientLocks []func()
+
+// busMember authenticates --channel/--as against the CLI session. Every
+// caller mutates (send, recv advancing the cursor, claim, complete,
+// heartbeat) except recv --peek, so it takes the identity's client lock for the whole command
+// and refuses with session_in_use while another client serves the identity.
 func busMember(cmd *cobra.Command) (*bus.Store, bus.Member, error) {
 	channel, _ := cmd.Flags().GetString("channel")
 	as, _ := cmd.Flags().GetString("as")
@@ -32,6 +39,16 @@ func busMember(cmd *cobra.Command) (*bus.Store, bus.Member, error) {
 	s, err := openBusStore()
 	if err != nil {
 		return nil, bus.Member{}, err
+	}
+	// recv --peek reads without moving the cursor, and the notify
+	// notification tells humans to run it while the GUI client holds the lock.
+	if peek, _ := cmd.Flags().GetBool("peek"); !peek {
+		release, err := bus.LockClient(s.Root(), channel, as, "tb bus "+cmd.Name())
+		if err != nil {
+			_ = s.Close()
+			return nil, bus.Member{}, err
+		}
+		busClientLocks = append(busClientLocks, release)
 	}
 	m, err := s.LoadMember(channel, as)
 	if err != nil {
@@ -116,7 +133,7 @@ var busChannelCreateCmd = &cobra.Command{
 			return printBusJSON(map[string]any{"channel": ch, "invite": inv})
 		}
 		fmt.Printf("channel: %s  owner: %s  lease: %s\n", ch.Name, ch.Owner, ch.Lease)
-		fmt.Printf("owner invite: %s (role %s, single-use, expires %s)\n", inv.Code, inv.Role, inv.ExpiresAt.Format("15:04:05Z07:00"))
+		fmt.Printf("owner invite: %s (role %s, single-use, expires %s)\n", inv.Code, inv.Role, inv.ExpiresAt.Local().Format(time.RFC3339))
 		return nil
 	},
 }
@@ -177,7 +194,11 @@ var busChannelShowCmd = &cobra.Command{
 			fmt.Printf("agent:%s\trole=%s\talive=%t\tlast_seen=%s\n", a.Name, a.Role, a.Alive, a.LastSeen.Format(time.RFC3339))
 		}
 		for _, c := range st.Claims {
-			fmt.Printf("claim %s\towner=%s\tepoch=%d\t%s\n", c.Thread, c.Owner, c.Epoch, c.State)
+			outcome := "-"
+			if c.Outcome != nil {
+				outcome = *c.Outcome
+			}
+			fmt.Printf("claim %s\towner=%s\tepoch=%d\t%s\toutcome=%s\n", c.Thread, c.Owner, c.Epoch, c.State, outcome)
 		}
 		return nil
 	},
@@ -237,7 +258,7 @@ var busInviteCmd = &cobra.Command{
 		if jsonOutput {
 			return printBusJSON(inv)
 		}
-		fmt.Printf("invite: %s (channel %s, role %s, single-use, expires %s)\n", inv.Code, inv.Channel, inv.Role, inv.ExpiresAt.Format("15:04:05Z07:00"))
+		fmt.Printf("invite: %s (channel %s, role %s, single-use, expires %s)\n", inv.Code, inv.Channel, inv.Role, inv.ExpiresAt.Local().Format(time.RFC3339))
 		return nil
 	},
 }
@@ -313,10 +334,35 @@ func overrideString(changed bool, dst *string, f interface {
 	}
 }
 
+// warnBusDependencies: the payload is opaque to the broker, so a task.assign
+// that names dependencies is not ordered by the bus (tb router orders by
+// ticket dependencies).
+func warnBusDependencies(typ bus.Type, payload []byte) {
+	if typ != bus.TypeTaskAssign || len(payload) == 0 {
+		return
+	}
+	var obj map[string]json.RawMessage
+	if json.Unmarshal(payload, &obj) != nil {
+		return
+	}
+	for _, k := range []string{"deps", "dependencies"} {
+		if _, ok := obj[k]; ok {
+			fmt.Fprintf(os.Stderr, "warning: the bus does not enforce %q in a task.assign payload (the payload is opaque to the broker); order dependent work with tb router and ticket dependencies, or send the next task when the first completes\n", k)
+			return
+		}
+	}
+}
+
 var busSendCmd = &cobra.Command{
 	Use:   "send",
 	Short: "Publishes a bus/0.1 message",
-	Args:  cobra.NoArgs,
+	Long: `Publishes a bus/0.1 message.
+
+The payload is opaque to the broker: the bus never reads, validates or orders
+by it. A task.assign payload with "deps" or "dependencies" is not enforced
+(a warning is printed); dependency order between tasks is tb router's job,
+from ticket dependencies.`,
+	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		f := cmd.Flags()
 		to, _ := f.GetString("to")
@@ -331,6 +377,7 @@ var busSendCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		warnBusDependencies(bus.Type(typ), payload)
 		s, m, err := busMember(cmd)
 		if err != nil {
 			return err

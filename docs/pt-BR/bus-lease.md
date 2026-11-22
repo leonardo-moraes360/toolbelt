@@ -76,7 +76,7 @@ No B1 um claim nunca expira. Se o dono de um thread trava, perde a sessão ou s�
   - O harness nunca faz claim nem complete por conta própria.
 - **R7, servidor MCP:** o `tb mcp` manda heartbeat, num timer de fundo, para toda sessão do barramento ligada à conexão stdio enquanto ela estiver aberta. Agentes com `wake: manual` ou `notify` mantêm o lease sem gastar tokens; fechar o cliente encerra os heartbeats.
 - **R8, status:**
-  - `tb bus channel show C` passa a mostrar os agentes (nome, papel, vivo, `last_seen`) e os claims abertos (thread, dono, epoch, seguro ou expirado).
+  - `tb bus channel show C` passa a mostrar os agentes (nome, papel, vivo, `last_seen`) e os claims abertos (thread, dono, epoch, `state` seguro, expirado, liberado ou revogado, e `outcome`: nulo enquanto seguro, `expired` depois que o watchdog liberou, `revoked` quando um supervisor encerrou, `taken_over` quando outro agente assumiu; nulo enquanto seguro ou só expirado, pois um claim expirado volta a seguro no próximo heartbeat do dono; claims completados saem da lista de abertos e não são listados).
   - A tool MCP `tb_bus_status` devolve o mesmo para o canal de quem chama.
 
   Nenhum dos dois devolve Agent Cards (o campo `session` é um handle de retomada do vendor), tokens nem payloads.

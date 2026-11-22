@@ -179,6 +179,7 @@ var knownReasons = map[string]bool{
 	"embed_protocol": true, "embed_crashed": true, "embed_timeout": true, "config_untrusted": true,
 	"prompt_cli_only": true, "receipt_tampered": true, "receipt_stale": true, "receipt_mismatch": true,
 	"receipt_incomplete": true, "secret_files": true, "router_tasks": true, "notify_unsupported": true,
+	"session_in_use": true,
 }
 
 var reasonPrefix = regexp.MustCompile(`^([a-z][a-z0-9_]*)(?::|$)`)

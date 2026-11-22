@@ -3,6 +3,7 @@ package version
 import (
 	"encoding/json"
 	"runtime"
+	"runtime/debug"
 	"strings"
 	"testing"
 )
@@ -69,5 +70,45 @@ func TestInfo_JSON(t *testing.T) {
 
 	if decoded.Version != info.Version {
 		t.Errorf("Decoded version = %q, want %q", decoded.Version, info.Version)
+	}
+}
+
+func TestApplyBuildInfo(t *testing.T) {
+	saveV, saveC, saveB, saveM := Version, Commit, BuildTime, Modified
+	t.Cleanup(func() { Version, Commit, BuildTime, Modified = saveV, saveC, saveB, saveM })
+	bi := &debug.BuildInfo{
+		Main: debug.Module{Version: "v1.2.3"},
+		Settings: []debug.BuildSetting{
+			{Key: "vcs.revision", Value: "abc123"},
+			{Key: "vcs.time", Value: "2026-11-22T10:00:00Z"},
+			{Key: "vcs.modified", Value: "true"},
+		},
+	}
+	Version, Commit, BuildTime, Modified = "dev", "unknown", "unknown", false
+	applyBuildInfo(bi)
+	if Version != "1.2.3" || Commit != "abc123" || BuildTime != "2026-11-22T10:00:00Z" || !Modified {
+		t.Fatalf("fallback: %q %q %q %v", Version, Commit, BuildTime, Modified)
+	}
+	if got := Get().String(); !strings.Contains(got, "abc123 (modified)") {
+		t.Errorf("String() = %q", got)
+	}
+
+	Version, Commit, BuildTime, Modified = "9.9.9", "ldflag", "ldtime", false
+	applyBuildInfo(bi)
+	if Version != "9.9.9" || Commit != "ldflag" || BuildTime != "ldtime" {
+		t.Fatalf("ldflags must win: %q %q %q", Version, Commit, BuildTime)
+	}
+
+	Version = "dev"
+	applyBuildInfo(&debug.BuildInfo{Main: debug.Module{Version: "(devel)"}})
+	if Version != "dev" {
+		t.Fatalf("(devel) must not replace dev: %q", Version)
+	}
+}
+
+func TestInfoJSONHasModified(t *testing.T) {
+	b, err := json.Marshal(Get())
+	if err != nil || !strings.Contains(string(b), `"modified":`) {
+		t.Fatalf("%s %v", b, err)
 	}
 }

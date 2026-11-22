@@ -473,6 +473,18 @@ func (s *Store) Join(channel, code string, card *AgentCard, wantRole Role) (Sess
 			return Session{}, err
 		}
 	}
+	// A re-join rotates the token of a live identity: refuse while a client
+	// holds it, and keep the lock until the new token is committed.
+	release, err := LockClient(s.root, channel, card.Name, "tb bus join")
+	if err != nil {
+		return Session{}, err
+	}
+	defer release()
+	releaseH, err := LockHarness(s.root, channel, card.Name)
+	if err != nil {
+		return Session{}, err
+	}
+	defer releaseH()
 	token, err := newToken()
 	if err != nil {
 		return Session{}, err

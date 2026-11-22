@@ -127,7 +127,7 @@ The wake packet `messages` list stops at 20 items, so the text cannot be built f
 ### Agent Card and warnings
 
 - `wake: notify` already exists as a card value.
-- When the wake file says `adapter: notify` and the agent's card says another `wake`, both `--check` and the opening of `tb bus run` print `warning: wake_mismatch (card says harness, wake file says notify)` to stderr and go on with exit 0. The card is informational for the channel; the wake file rules.
+- When the wake file says `adapter: notify` and the agent's card says another `wake`, both `--check` and the opening of `tb bus run` print `warning: wake_mismatch (card says harness, wake file says notify)` to stderr and go on with exit 0. The card is informational for the channel; the wake file rules. The warning also says how to fix it: either make the card say `notify` (stop `tb bus run`, `tb bus invite <channel> --role <role> --name <name>`, then `tb bus join <channel> --invite <code> --name <name> --wake notify`) or change `adapter` in the wake file, whose path it prints.
 - Warnings come from a new `Warnings()` call next to `Check()`; the CLI prints them for both.
 
 ## Part 2: `tb bus discover`

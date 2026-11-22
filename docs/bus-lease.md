@@ -76,7 +76,7 @@ In B1 a claim never expires. If the owner of a thread crashes, loses its session
   - The harness never claims or completes on its own.
 - **R7, MCP server:** `tb mcp` heartbeats, on a background timer, every bus session bound to its stdio connection while the connection is open. Agents with `wake: manual` or `notify` therefore keep their leases without spending tokens; closing the client ends the heartbeats.
 - **R8, status:**
-  - `tb bus channel show C` adds the agents (name, role, alive, `last_seen`) and the open claims (thread, owner, epoch, held or expired).
+  - `tb bus channel show C` adds the agents (name, role, alive, `last_seen`) and the open claims (thread, owner, epoch, `state` held, expired, released or revoked, and `outcome`: null while held, `expired` once the watchdog released it, `revoked` when a supervisor closed it, `taken_over` when another agent took it over; null while held or merely expired, since an expired claim reverts to held on the owner's next heartbeat; completed claims leave the open list and are not listed).
   - The MCP tool `tb_bus_status` returns the same for the caller's channel.
 
   Neither returns Agent Cards (the `session` field is a vendor resume handle), tokens or payloads.

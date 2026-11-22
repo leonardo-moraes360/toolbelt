@@ -4,11 +4,13 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -267,8 +269,8 @@ func TestBusGUIOnboardingBusAs(t *testing.T) {
 		{"channel": "fx", "invite": workerCode, "name": "claude-main", "cwd": dir},
 		{"channel": "fx", "invite": workerCode, "name": "other", "cwd": dir},
 	} {
-		if out, isErr := c.call("tb_bus_join", args); !isErr {
-			t.Fatalf("tb_bus_join on a bound connection succeeded: %s", out)
+		if out, isErr := c.call("tb_bus_join", args); !isErr || !strings.Contains(out, "already in channel") {
+			t.Fatalf("tb_bus_join on a bound connection must answer \"already in channel\": %v %s", isErr, out)
 		}
 	}
 	after, err := os.ReadFile(filepath.Join(agentDir, "token"))
@@ -330,6 +332,11 @@ func TestBusRunNotifyWakeMismatchCLI(t *testing.T) {
 	}
 	if n := strings.Count(stderr.String(), "warning: wake_mismatch (card says manual, wake file says notify)"); n != 1 {
 		t.Fatalf("stderr:\n%s", stderr.String())
+	}
+	for _, fix := range []string{"tb bus invite fx --role supervisor --name claude-main", "tb bus join fx --invite <code> --name claude-main --wake notify", "change adapter in " + cfg} {
+		if !strings.Contains(stderr.String(), fix) {
+			t.Fatalf("wake_mismatch does not say how to fix it (%q missing):\n%s", fix, stderr.String())
+		}
 	}
 }
 
@@ -395,4 +402,198 @@ func TestBusCLIDelegationTree(t *testing.T) {
 	if !strings.Contains(stderr.String(), "warning: TKT-001 completed with 1 open children (TKT-001/api)") {
 		t.Fatalf("stderr: %q", stderr.String())
 	}
+}
+
+// One live client per bus identity: a second `tb mcp --bus-as`, a `tb bus run`
+// and a re-join with a bound invite are all refused while the first is up.
+func TestBusIdentityHeldByOneClient(t *testing.T) {
+	tbBin := buildTB(t)
+	dir := t.TempDir()
+	busCLISetup(t, tbBin, dir)
+	first := exec.Command(tbBin, "mcp", "--bus-as", "fx/claude-main", "--bus-root", dir)
+	first.Dir = dir
+	in, err := first.StdinPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	outPipe, err := first.StdoutPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := first.Start(); err != nil {
+		t.Fatal(err)
+	}
+	c := &mcpClient{t: t, in: in, out: bufio.NewReader(outPipe)}
+	c.must("tb_bus_recv", map[string]any{})
+	pid := fmt.Sprintf("pid %d", first.Process.Pid)
+
+	refused := func(name string, cmd *exec.Cmd) {
+		t.Helper()
+		cmd.Dir = dir
+		var stderr strings.Builder
+		cmd.Stderr = &stderr
+		err := cmd.Run()
+		var ee *exec.ExitError
+		if !errors.As(err, &ee) {
+			t.Fatalf("%s: want an exit error, got %v", name, err)
+		}
+		if ee.ExitCode() != 2 {
+			t.Fatalf("%s: exit %d, want 2\n%s", name, ee.ExitCode(), stderr.String())
+		}
+		if !strings.Contains(stderr.String(), "session_in_use") || !strings.Contains(stderr.String(), pid) {
+			t.Fatalf("%s: stderr must name session_in_use and %q:\n%s", name, pid, stderr.String())
+		}
+	}
+	refused("second mcp", exec.Command(tbBin, "mcp", "--bus-as", "fx/claude-main", "--bus-root", dir))
+	refused("one-shot send", exec.Command(tbBin, "bus", "send", "--channel", "fx", "--as", "claude-main", "--to", "topic:x", "--type", "query"))
+	// recv --peek reads without moving the cursor: allowed while a client holds the identity.
+	runBus(t, tbBin, dir, "recv", "--channel", "fx", "--as", "claude-main", "--peek")
+	refused("one-shot recv", exec.Command(tbBin, "bus", "recv", "--channel", "fx", "--as", "claude-main"))
+	var inv struct{ Code string }
+	unmarshalOut(t, runBus(t, tbBin, dir, "invite", "fx", "--role", "supervisor", "--name", "claude-main"), &inv)
+	refused("re-join", exec.Command(tbBin, "bus", "join", "fx", "--invite", inv.Code, "--name", "claude-main"))
+
+	// A crashed holder leaves the identity free.
+	_ = first.Process.Kill()
+	_ = first.Wait()
+	second := startMCP(t, tbBin, dir, "--bus-as", "fx/claude-main", "--bus-root", dir)
+	second.must("tb_bus_recv", map[string]any{})
+}
+
+func runBusErr(tbBin, dir string, args ...string) (stdout, stderr string, err error) {
+	cmd := exec.Command(tbBin, append([]string{"--json", "bus"}, args...)...)
+	cmd.Dir = dir
+	var so, se strings.Builder
+	cmd.Stdout, cmd.Stderr = &so, &se
+	err = cmd.Run()
+	return so.String(), se.String(), err
+}
+
+// 17 sends with one idempotency key store one message; the second answers duplicate.
+func TestBusSendIdempotencyKeyCLI(t *testing.T) {
+	tbBin := buildTB(t)
+	dir := t.TempDir()
+	busCLISetup(t, tbBin, dir)
+	send := func() (dup bool) {
+		var out struct {
+			Duplicate bool `json:"duplicate"`
+		}
+		unmarshalOut(t, runBus(t, tbBin, dir, "send", "--channel", "fx", "--as", "claude-main",
+			"--to", "topic:board", "--type", "query", "--idempotency-key", "k-17", "--payload", `{"n":17}`), &out)
+		return out.Duplicate
+	}
+	if send() {
+		t.Fatal("first send reported duplicate")
+	}
+	if !send() {
+		t.Fatal("second send with the same key must be a duplicate")
+	}
+	var msgs []json.RawMessage
+	unmarshalOut(t, runBus(t, tbBin, dir, "log", "fx"), &msgs)
+	n := 0
+	for _, m := range msgs {
+		if strings.Contains(string(m), `"n":17`) || strings.Contains(string(m), `"n": 17`) {
+			n++
+		}
+	}
+	if n != 1 {
+		t.Fatalf("stored %d messages for one idempotency key, want 1", n)
+	}
+}
+
+func TestBusSendToAgentNotInChannelCLI(t *testing.T) {
+	tbBin := buildTB(t)
+	dir := t.TempDir()
+	busCLISetup(t, tbBin, dir)
+	_, stderr, err := runBusErr(tbBin, dir, "send", "--channel", "fx", "--as", "claude-main", "--to", "agent:ghost", "--type", "query")
+	if err == nil || !strings.Contains(stderr, "ghost") || !strings.Contains(stderr, "is not in channel") {
+		t.Fatalf("want an error naming ghost: %v\n%s", err, stderr)
+	}
+}
+
+func TestBusSendWarnsOnUnenforcedDependenciesCLI(t *testing.T) {
+	tbBin := buildTB(t)
+	dir := t.TempDir()
+	busCLISetup(t, tbBin, dir)
+	for _, key := range []string{"deps", "dependencies"} {
+		_, stderr, err := runBusErr(tbBin, dir, "send", "--channel", "fx", "--as", "claude-main",
+			"--to", "role:worker", "--type", "task.assign", "--thread", "T-"+key, "--payload", `{"`+key+`":["T-0"]}`)
+		if err != nil {
+			t.Fatalf("send: %v\n%s", err, stderr)
+		}
+		if !strings.Contains(stderr, "warning: the bus does not enforce") {
+			t.Fatalf("%s: no warning:\n%s", key, stderr)
+		}
+	}
+	_, stderr, err := runBusErr(tbBin, dir, "send", "--channel", "fx", "--as", "claude-main",
+		"--to", "role:worker", "--type", "task.assign", "--thread", "T-plain", "--payload", `{"ticket":"TKT-1"}`)
+	if err != nil || strings.Contains(stderr, "warning") {
+		t.Fatalf("plain payload: %v\n%s", err, stderr)
+	}
+}
+
+func TestBusInviteExpiryPrintsDateCLI(t *testing.T) {
+	tbBin := buildTB(t)
+	dir := t.TempDir()
+	busCLISetup(t, tbBin, dir)
+	cmd := exec.Command(tbBin, "bus", "invite", "fx", "--role", "worker")
+	cmd.Dir = dir
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !regexp.MustCompile(`expires \d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}`).Match(out) {
+		t.Fatalf("expiry without a date: %s", out)
+	}
+}
+
+// Notify onboarding (docs/bus-notify-discover.md): the GUI client's
+// `tb mcp --bus-as` runs next to `tb bus run` with adapter notify; two
+// harnesses for one agent are still refused.
+func TestBusNotifyHarnessAlongsideMCPClient(t *testing.T) {
+	tbBin := buildTB(t)
+	dir := t.TempDir()
+	busCLISetup(t, tbBin, dir)
+	cfg := filepath.Join(t.TempDir(), "wake.yaml")
+	if err := os.WriteFile(cfg, []byte("adapter: notify\nnotify:\n  backend: terminal\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	run := exec.Command(tbBin, "bus", "run", "--channel", "fx", "--as", "claude-main", "--config", cfg)
+	run.Dir = dir
+	var runErr strings.Builder
+	run.Stderr = &runErr
+	if err := run.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = run.Process.Kill(); _ = run.Wait() })
+	holderPID := fmt.Sprintf("pid %d", run.Process.Pid)
+
+	// --check takes no lock: it reports the holder once the harness is up.
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		check := exec.Command(tbBin, "bus", "run", "--channel", "fx", "--as", "claude-main", "--config", cfg, "--check")
+		check.Dir = dir
+		var ce strings.Builder
+		check.Stderr = &ce
+		if err := check.Run(); err != nil {
+			t.Fatalf("--check must not fail on a holder: %v\n%s", err, ce.String())
+		}
+		if strings.Contains(ce.String(), "warning: session_in_use") && strings.Contains(ce.String(), holderPID) {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("first harness never took its lock\n%s", runErr.String())
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	second := exec.Command(tbBin, "bus", "run", "--channel", "fx", "--as", "claude-main", "--config", cfg)
+	second.Dir = dir
+	var se strings.Builder
+	second.Stderr = &se
+	if err := second.Run(); err == nil || !strings.Contains(se.String(), "session_in_use") || !strings.Contains(se.String(), holderPID) {
+		t.Fatalf("second harness: %v\n%s", err, se.String())
+	}
+
+	c := startMCP(t, tbBin, dir, "--bus-as", "fx/claude-main", "--bus-root", dir)
+	c.must("tb_bus_recv", map[string]any{})
 }
