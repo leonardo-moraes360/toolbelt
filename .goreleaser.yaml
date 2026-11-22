@@ -125,6 +125,8 @@ release:
   github:
     owner: leonardo-moraes360
     name: toolbelt
+  # auto: a tag with a prerelease suffix (-rc.N) is published as a GitHub
+  # prerelease, which GitHub never marks as the latest release.
   prerelease: auto
   # Published as a draft: the native smoke matrix (release.yml) runs on the
   # draft's assets and only then makes the release public (ADR-018).
