@@ -186,7 +186,7 @@ Nada é escrito quando aborta.
 - Abrir linhagens de revisão a partir de findings de drift, ou recertificar automaticamente.
 - Fazer bootstrap de vários documentos de uma vez, ou escolher os arquivos sozinho.
 - Tools MCP para os comandos novos.
-- `draft` e `brainstorm`, drift por símbolo e os outros itens da Fase C.
+- `draft` e `brainstorm`, drift por símbolo e os outros itens da Fase C ([spec da Fase C](egm-phase-c.md); `brainstorm` e `draft` estão implementados).
 
 ## Docs a atualizar com a implementação
 

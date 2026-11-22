@@ -121,7 +121,7 @@ tb only calls git in phases 1 and 3, never while a goldfish is running (R3).
 
 ### Requirements
 
-**R0: spike.** This requirement blocks R1, R2, R3, R4, R4b and R5, and the move of ADR-015 to `accepted`. R4c and R4d do not depend on the spike. R18 to R27 were revised with the R0 data ([dogfood #31–#33](../campo/dogfood.md)). Convergence was measured twice and neither run converged within its budget; Phase A accepts that (see Open Questions), so only item 8 still blocks ADR-015 from `accepted`.
+**R0: spike.** This requirement blocks R1, R2, R3, R4, R4b and R5 (item 8 excepted, see below). R4c and R4d do not depend on the spike. R18 to R27 were revised with the R0 data ([dogfood #31–#33](../campo/dogfood.md)). Convergence was measured twice and neither run converged within its budget; Phase A accepts that (see Open Questions), item 8 is a known open gap, tracked here, that no longer blocks ADR-015: it was accepted on 2026-11-19 with item 8 open.
 
 A prototype in `bench/egm-spike/` must prove that `claude -p`:
 1. runs in `sandbox.New` with the packet as a read-only workdir, private `TMPDIR`, disposable HOME, minimal env (R4b) and minimal `PATH`;
