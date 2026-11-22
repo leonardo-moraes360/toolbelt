@@ -4,60 +4,57 @@
 
 ## Overview
 
-`toolbelt` is a set of tools for AI coding agents, unified under a single binary (`tb`) and protocol. The goal is to provide a safe, efficient, and auditable environment for autonomous agents to run development tasks.
+`toolbelt` is a set of tools for AI coding agents, unified under a single binary (`tb`) and protocol. The goal is to provide a safe, efficient, and verifiable environment for autonomous agents to run development tasks.
 
 ```mermaid
 graph TB
     subgraph "Human Interface"
         CLI[tb CLI]
-        OBS[Obsidian]
+        OBS[Obsidian or any editor]
     end
 
     subgraph "Protocol Layer"
-        MCP[MCP Server]
+        MCP[MCP Server - stdio]
         BUS[tb bus - bus/0.1, A2A-shaped]
-        RPC[JSON-RPC 2.0]
     end
 
     subgraph "Core"
-        ORCH[Orchestrator]
-        MEM[Memory Manager]
-        CTX[Context Assembler]
-        GRAPH[Graph Engine]
-        SANDBOX[Sandbox Manager]
+        ROUTER[Router, Board, Watchdog, Merge]
+        MEM[tb mem<br/>invariants]
+        GRAPH[Graph Engine<br/>BM25 search]
+        VERIFY[Verify, Guard, Review,<br/>Drift, Stack]
+        SANDBOX[Sandbox<br/>Landlock + seccomp]
     end
 
     subgraph "Storage"
-        VAULT[Markdown Vault<br/>source of truth]
-        SQLITE[(SQLite + FTS5<br/>derived index)]
-        AUDIT[Audit Log<br/>append-only]
+        VAULT[Markdown Vault<br/>read on demand]
+        GJSON[(graph.json<br/>derived index)]
+        BUSDB[(bus.db<br/>SQLite, bus only)]
+        INV[invariants.yaml]
     end
 
     subgraph "Execution"
-        PROC[Process Manager]
         WORK[Git Worktrees]
-        ISO[Isolation<br/>bubblewrap+Landlock]
     end
 
-    CLI --> ORCH
+    CLI --> ROUTER
+    CLI --> VERIFY
+    CLI --> GRAPH
     OBS --> VAULT
-    MCP --> ORCH
-    BUS --> ORCH
+    MCP --> ROUTER
+    MCP --> VERIFY
+    MCP --> GRAPH
+    MCP --> BUS
 
-    ORCH --> MEM
-    ORCH --> CTX
-    ORCH --> SANDBOX
-    ORCH --> PROC
-
-    MEM --> VAULT
-    MEM --> GRAPH
-    GRAPH --> SQLITE
-    VAULT -.->|sync| SQLITE
-
+    ROUTER --> SANDBOX
+    ROUTER --> BUS
+    ROUTER --> WORK
+    MEM --> INV
+    VERIFY --> MEM
+    GRAPH --> GJSON
+    VAULT -.->|read on demand| GRAPH
+    BUS --> BUSDB
     SANDBOX --> WORK
-    SANDBOX --> ISO
-
-    ORCH --> AUDIT
 ```
 
 ---
@@ -87,19 +84,20 @@ graph LR
 
 | Layer | Technology | Responsibility |
 |-------|------------|----------------|
-| Filesystem | bubblewrap | Mounts only allowed directories; read-only bind-mount for tests |
-| Syscalls | seccomp | Allowed syscall list per task profile |
-| Filesystem (runtime) | Landlock | Access restrictions even for child processes |
-| Resources | cgroups v2 | CPU, RAM, and execution-time limits |
-| Network | netns/bubblewrap | Denied by default; explicit whitelist |
+| Filesystem | Landlock | Restricts reads and writes of the child (and its descendants) to the worktree, a private `TMPDIR`/`HOME` and the allowed paths. **Fail-closed**: without Landlock, `tb sandbox run`, `tb router run` and `tb_run` refuse to run unless `--allow-unsandboxed` / `sandbox.allow_unsandboxed` is set |
+| Network | seccomp | A filter, installed by the Landlock trampoline (Linux amd64/arm64), that makes `socket(2)`, `socketpair(2)` and `io_uring` fail with `EPERM`. It is an option of the sandbox (`DenyNetwork`), used for the embedding child of `tb graph index --vectors`; `tb sandbox run`, router workers and `tb_run` do not restrict the network |
+| Environment | allowlist | The child gets only allowlisted variables; secret-looking names (`*TOKEN*`, `SECRET`, `KEY`, `PASSWORD`) are blocked unless `--pass-env` names them |
+| Processes | process group, subreaper, `PDEATHSIG` | A timeout or cancel kills the whole group; the router sweeps descendants that escaped it |
+
+**Not built, and not planned for 1.0:** bubblewrap (mount namespaces), cgroups v2 (CPU/RAM limits), network namespaces and a per-host network whitelist. `tb` limits time (`--timeout`), not CPU or memory.
 
 ### 1.3 Snapshot and Rollback
 
-Before each task:
-1. `git stash --include-untracked` or a temporary commit
-2. State hash saved in the audit log
-3. Task execution in the sandbox
-4. On failure or violation: `git reset --hard` + `git clean -fdx`
+`tb` has no automatic snapshot, stash or `git reset --hard` around a task. The mechanisms that exist:
+
+1. **Worktrees**: each router worker, and `tb workspace create`, gets its own git worktree under `.toolbelt/workspaces/`; discarding the work is removing the worktree.
+2. **Ticket results**: a ticket records `base_commit`, `head_commit` and the branch; `tb drift` and `tb review` compare the diff to them.
+3. **`tb merge`**: applies `done` tickets atomically (`fail`, `last_wins`, `semantic`, `prompt`) and leaves a receipt; a refused merge moves no ref.
 
 ---
 
@@ -110,9 +108,11 @@ Before each task:
 | Aspect | Memory | Context |
 |--------|--------|---------|
 | **Definition** | Persistent storage of facts, decisions, summaries, and the graph | What is assembled into the model window for a specific task |
-| **Persistence** | Permanent (Markdown vault + SQLite) | Ephemeral (lasts one request) |
+| **Persistence** | Permanent (Markdown vault, `graph.json`, `invariants.yaml`) | Ephemeral (lasts one request) |
 | **Size** | Unlimited (grows with the project) | Limited by the token budget |
 | **Format** | Markdown + frontmatter + graph | Text serialized for the prompt |
+
+> **Status:** the memory side exists as `tb mem` (invariants in `.toolbelt/invariants.yaml`), the vault ([§3.1](#31-markdown-vault-source-of-truth)) and the graph. There is no context assembler and no token budget in `tb` (§2.1 and §2.2 describe the design vision): an agent builds its own context by querying `tb_mem_list` and `tb_graph_*`, and the router hands a worker one ticket file.
 
 ### 2.1 Context Types
 
@@ -157,140 +157,63 @@ The **Context Assembler** receives a token budget and prioritizes the most relev
 
 ---
 
-## 3. Storage: Markdown Vault + SQLite/FTS5
+## 3. Storage: Markdown Vault and the Derived Graph Index
 
 ### 3.1 Markdown Vault (Source of Truth)
 
-Inspired by Obsidian, memory is a vault of Markdown files:
+Inspired by Obsidian, long-term notes are Markdown files that humans edit in any editor ([spec](specs/vault.md), [ADR-016](adr/016-vault-fase-a.md)). `tb vault` reads them from disk on every command: there is no watcher, no sync and no persistent index for notes. This is the state `tb` keeps in a repository:
 
 ```
-.tb/
-├── vault/
-│   ├── facts/
-│   │   ├── projeto-estrutura.md
-│   │   └── decisoes-arquitetura.md
-│   ├── agents/
-│   │   ├── agent-001-log.md
-│   │   └── agent-002-log.md
-│   ├── summaries/
-│   │   └── sprint-2024-01.md
-│   └── code/
-│       ├── modules/
-│       │   └── auth-module.md
-│       └── functions/
-│           └── parse-config.md
-├── index.db          # derived SQLite
-└── audit.log         # Log append-only
+.toolbelt/
+├── config.yaml          # local configuration (tb init)
+├── agent_docs.yaml      # AGENTS.md/CLAUDE.md hints recorded by tb init
+├── invariants.yaml      # tb mem: invariants outside compaction
+├── guard.yaml           # optional: extra protected paths (read from the base ref)
+├── thresholds.yaml      # optional: coverage floor (read from the base ref)
+├── screens.yaml         # optional: visual ruler manifest
+├── secchecks.yaml       # tb blue apply: registered security checks
+├── vault/               # Markdown notes with frontmatter and [[wikilinks]]
+├── graph.json           # derived graph index (tb graph index)
+├── graph.vec            # optional vector index (tb graph index --vectors)
+├── tickets/             # TKT-*.yaml (tb ticket)
+├── board.yaml           # board control: pause, resume, drain
+├── router/              # state.json, alerts.jsonl, logs/ (tb router)
+├── workspaces/          # git worktrees of running tickets
+├── bus/bus.db           # SQLite store of the local bus
+└── egm/receipts/        # committed EGM receipts
 ```
 
-Each file uses:
-- **YAML frontmatter**: structured metadata (type, tags, date, provenance)
-- **Wikilinks**: `[[other-file]]` for relationships
-- **Tags**: `#decision`, `#fact`, `#inferred`
-- **Backlinks**: calculated automatically
+Private state (bus sessions, EGM state, merge receipts, lab state) lives outside the repository under `$XDG_STATE_HOME`; see the specs.
 
-Example file:
+Each note uses:
+- **YAML frontmatter**: `type` (`fact`, `decision`, `context`, `log`), `tags`, `source` (`manual`, `extracted`, `inferred`), `confidence`
+- **Wikilinks**: `[[other-note]]`, resolved by `tb vault`; broken and ambiguous links fail `tb vault check`
+- **Backlinks**: computed on demand (`tb vault backlinks`)
 
-```markdown
----
-type: fact
-tags: [architecture, database]
-created: 2026-01-15T10:30:00Z
-source: extracted
-confidence: high
----
+### 3.2 Graph Index: `graph.json` and BM25
 
-# Decision: SQLite for Storage
+The graph is a **derived** index of the code and docs, rebuilt on demand, not a database. `tb graph index` writes `.toolbelt/graph.json`:
 
-The project uses SQLite as its main database.
-
-## Rationale
-- Simple deploy (single file)
-- Excellent read performance
-- FTS5 for full-text search
-
-## Relationships
-- Implemented in: [[database-module]]
-- Decided in: [[adr-003-sqlite-fts5]]
-- Affects: [[config-schema]], [[migration-system]]
+```json
+{
+  "root": "/path/to/repo",
+  "nodes": [{"id": "...", "type": "function", "path": "...", "title": "...", "package": "...", "source": "extracted", "confidence": 0.9}],
+  "edges": [{"source_id": "...", "target_id": "...", "type": "calls", "source": "extracted", "confidence": 0.9}],
+  "fingerprint": "...",
+  "built_at": "..."
+}
 ```
 
-### 3.2 SQLite + FTS5 (Derived Index)
+- Node types: `file`, `function`, `package`, `class`, `section`, `component`, `hook`, `route`, `playbook` (and vault `note`/`tag` nodes). Edge types: `imports`, `calls`, `defines`, `links`, `mentions`, `renders`, `template`, `mirror`.
+- **Search** is BM25 over title, path and package, with camelCase and `snake_case` splitting and multi-term queries. There is no SQL and no FTS5 index.
+- **Staleness**: the index carries a fingerprint of the tree. The CLI reindexes when it is stale; over MCP the queries never reindex and report `stale: true`, so the agent calls `tb_graph_index` and repeats. `tb graph rebuild` rebuilds everything from scratch.
+- **Optional vectors**: `tb graph index --vectors` also writes `graph.vec` (embeddings from a vendored llama.cpp child, [ADR-018](adr/018-cgo-componentes-nativos.md)), used by `tb graph search --mode semantic|hybrid`.
 
-SQLite is a **derived index**, rebuilt from the vault and the code:
+SQLite exists in `tb` only as the store of the local bus (`.toolbelt/bus/bus.db`). The SQLite + FTS5 index with `nodes`/`edges` tables that [ADR-003](adr/003-sqlite-fts5-grafo.md) proposed was never built: it was superseded by `graph.json` ([ADR-011](adr/011-grafo-sob-demanda.md), [ADR-014](adr/014-graphify-reimplementacao.md)).
 
-```sql
--- Graph nodes
-CREATE TABLE nodes (
-    id TEXT PRIMARY KEY,
-    type TEXT NOT NULL,           -- 'file', 'function', 'class', 'fact', 'decision'
-    path TEXT,                    -- path in the vault or in code
-    title TEXT,
-    content TEXT,
-    source TEXT NOT NULL,         -- 'vault', 'code', 'inferred'
-    confidence REAL DEFAULT 1.0,  -- 0.0-1.0 for inferred data
-    created_at TEXT,
-    updated_at TEXT,
-    metadata JSON
-);
+### 3.3 Vault and Graph
 
--- Full-text index
-CREATE VIRTUAL TABLE nodes_fts USING fts5(
-    title, content,
-    content='nodes',
-    content_rowid='rowid'
-);
-
--- Graph edges
-CREATE TABLE edges (
-    id INTEGER PRIMARY KEY,
-    source_id TEXT NOT NULL,
-    target_id TEXT NOT NULL,
-    type TEXT NOT NULL,           -- 'calls', 'imports', 'references', 'implements', 'links_to'
-    source TEXT NOT NULL,         -- 'extracted', 'inferred', 'manual'
-    confidence REAL DEFAULT 1.0,
-    metadata JSON,
-    FOREIGN KEY (source_id) REFERENCES nodes(id),
-    FOREIGN KEY (target_id) REFERENCES nodes(id)
-);
-
--- Indexes for fast queries
-CREATE INDEX idx_edges_source ON edges(source_id);
-CREATE INDEX idx_edges_target ON edges(target_id);
-CREATE INDEX idx_edges_type ON edges(type);
-CREATE INDEX idx_nodes_type ON nodes(type);
-CREATE INDEX idx_nodes_path ON nodes(path);
-
--- Useful views
-CREATE VIEW callers AS
-SELECT e.source_id as caller, e.target_id as callee, e.confidence
-FROM edges e WHERE e.type = 'calls';
-
-CREATE VIEW dependencies AS
-SELECT e.source_id as dependent, e.target_id as dependency, e.confidence
-FROM edges e WHERE e.type = 'imports';
-```
-
-### 3.3 Vault → SQLite Sync
-
-The sync direction is **unidirectional**: vault → SQLite.
-
-```mermaid
-sequenceDiagram
-    participant V as Vault Markdown
-    participant W as Watcher
-    participant P as Parser
-    participant S as SQLite
-
-    V->>W: File modified
-    W->>P: Parse YAML + Markdown
-    P->>P: Extract wikilinks and tags
-    P->>S: UPSERT node
-    P->>S: REPLACE edges for this node
-    S->>S: Update FTS5
-```
-
-**Conflict resolution**: the vault always wins. If SQLite diverges (corruption, manual edit), the `tb graph rebuild` command rebuilds everything.
+The vault feeds the graph in one direction, when the graph is indexed: with `vault.graph` on (default), notes become `note:<path>` nodes, headings become `section` nodes, resolved wikilinks become `links` edges and tags become `tag:<tag>` nodes. The vault is read without following symlinks. Nothing writes back to the vault and nothing watches it; if `graph.json` is stale, `tb graph index` reads the vault again.
 
 ### 3.4 Code Indexing with Provenance
 
@@ -304,20 +227,11 @@ graph LR
     EXT --> NODES[Nodes: functions, classes, modules]
     EXT --> EDGES[Edges: calls, imports]
 
-    NODES --> |source='extracted'| DB[(SQLite)]
+    NODES --> |source='extracted'| DB[(graph.json)]
     EDGES --> |source='extracted'| DB
-
-    subgraph "Optional: Semantic Inference"
-        AST --> LLM[Language Model]
-        LLM --> INF[Inferred Relations]
-        INF --> |source='inferred', confidence < 1.0| DB
-    end
 ```
 
-**Edge provenance**:
-- `extracted`: derived directly from the AST (high confidence)
-- `inferred`: deduced by LLM or heuristics (variable confidence)
-- `manual`: inserted by a human via the vault
+**Edge provenance**: every edge the indexer emits today has `source: extracted` and a `confidence` below 1.0 where the extractor is heuristic (regex extractors, soft-resolved calls). The `inferred` value is reserved for relations a language model would propose; no inference step exists. A vault note carries the `source` and `confidence` of its own frontmatter (`manual`, `extracted` or `inferred`).
 
 ### 3.5 Queries for Agents
 
@@ -357,185 +271,53 @@ This drastically reduces the number of tokens consumed reading files.
 
 | Threat | Mitigation |
 |--------|------------|
-| Sandbox escape | Multiple layers (bubblewrap + Landlock + seccomp) |
-| Secret access | Variables injected only for authorized tools; never in the prompt |
-| Test modification | Read-only test files + verified hash |
-| Data exfiltration | Network denied by default; explicit whitelist |
-| Privilege escalation | Minimal capabilities; capability tokens per action |
-| Reward hacking | Implementer ≠ evaluator; suspicious-pattern detection |
+| Sandbox escape | Landlock filesystem rules (fail-closed) and the seccomp network filter where used; process-group kill on timeout |
+| Secret access | Child environment allowlist; secret-looking variables blocked unless `--pass-env`; redaction of secrets in vault and MCP output, EGM prompts and graph embedding input |
+| Test modification | `tb guard` protected paths (`tests/hidden/*`, `.toolbelt/thresholds.yaml`, `.toolbelt/guard.yaml`, ...) read from the **base** ref, plus the hidden suite of `tb verify` |
+| Data exfiltration | `tb` itself is local-only and never calls GitHub or any remote service; a sandboxed child can reach the network unless the sandbox option `DenyNetwork` is set (only the embedding child sets it) |
+| Privilege escalation | `tb` runs as the user, never asks for root and never widens a sandbox on its own; `--allow-unsandboxed` is an explicit opt-in |
+| Reward hacking | Implementer ≠ reviewer (fresh-context `tb review`), `tb guard` anti-cheat scan, `tb drift` |
 
-### 4.2 Permissions by Capability
+### 4.2 Permissions
 
-Each role has a set of capabilities:
+There are no capability roles. What exists:
 
-```yaml
-roles:
-  worker:
-    capabilities:
-      - read:code
-      - write:code
-      - run:tests
-      - query:graph
-    denied:
-      - write:tests
-      - delete:*
-      - network:*
+- **Per run**: the Landlock rules of §1.2 (worktree read-write, system paths read-only).
+- **Per ticket**: the mandate (`scope`, `forbidden`, `permissions`) is checked after the fact by `tb guard`, `tb review` and `tb drift`; for router and bus tasks the worker runs confined to its worktree.
+- **On the bus**: the role (`router`, `supervisor`, `worker`, `reviewer`) is fixed by the invite the human created, and the broker enforces what each role may do ([bus-protocolo.md](bus-protocolo.md)).
 
-  supervisor:
-    capabilities:
-      - read:*
-      - write:code
-      - approve:worker_changes
-      - query:graph
-    denied:
-      - delete:*
-      - network:external
+### 4.3 Capability Tokens: dropped
 
-  planner:
-    capabilities:
-      - read:*
-      - write:plans
-      - spawn:supervisor
-      - query:graph
-      - network:internal
-```
-
-### 4.3 Capability Tokens for Destructive Actions
-
-Dangerous actions require explicit capability tokens:
-
-```go
-type CapabilityToken struct {
-    Action    string    // "delete:file", "network:external"
-    Resource  string    // path or pattern
-    GrantedBy string    // who approved
-    ExpiresAt time.Time
-    Hash      string    // signature for verification
-}
-```
-
-The flow:
-1. Agent requests a destructive action
-2. System generates a pending token
-3. Human (or authorized supervisor) approves
-4. Token is signed and has a short validity
-5. Action executes presenting the token
+Capability tokens (`CapabilityToken`), approval queues and role files under `.tb/roles/` were part of the original design. [ADR-020](adr/020-agent-hierarchy-a2a.md) dropped `tb agent` and with it this model: a destructive action is the human's decision, taken by running a command, not a token an agent requests.
 
 ### 4.4 Secret Handling
 
-```mermaid
-sequenceDiagram
-    participant A as Agent
-    participant O as Orchestrator
-    participant S as Secret Store
-    participant T as Tool
-
-    A->>O: Need to call external API
-    O->>O: Check agent capability
-    O->>S: Request secret for "external_api"
-    S->>O: Secret (encrypted)
-    O->>T: Run tool with injected secret
-    T->>T: Use secret internally
-    T->>O: Result (no secret)
-    O->>A: Sanitized result
-```
-
-Secrets never appear:
-- In the model prompt
-- In logs
-- In vault memory
-- In responses to the agent
+`tb` does not hold or inject secrets. The child environment is built from an allowlist (`--env NAME` adds a variable; `--pass-env NAME` is the explicit opt-in for one that looks like a secret). `tb mem add` refuses an invariant that contains a secret pattern. Text that leaves the process (EGM prompts, vector embedding input) and note text printed by `tb vault --json` and `tb_vault_*` is redacted with the shared patterns of `internal/secrets`.
 
 ---
 
 ## 5. Scripts and Processes
 
-### 5.1 `tb run` and `tb proc` Commands
+### 5.1 `tb run` and `tb proc`: planned, not implemented
+
+`tb run` and `tb proc` are not in the CLI, and `tb run --sandbox --allow-net` does not exist. What runs a command today:
 
 ```bash
-# One-shot run with timeout
-tb run --timeout 30s "go test ./..."
-
-# Long-running process with logs
-tb proc start --name "dev-server" --log /tmp/dev.log "npm run dev"
-tb proc list
-tb proc logs dev-server --follow
-tb proc stop dev-server
-
-# Sandboxed run
-tb run --sandbox --allow-net "localhost:8080" "curl localhost:8080/health"
+# Run a command under Landlock, with a timeout
+tb sandbox run --timeout 30s -- go test ./...
 ```
+
+MCP `tb_run` does the same for agents (see [cli.md](cli.md#mcp-tb_run-sandbox)). Supervising long-running processes (`tb proc start|list|logs|stop`) stays on the roadmap in the README.
 
 ### 5.2 Process Management
 
-```mermaid
-stateDiagram-v2
-    [*] --> Pending: tb proc start
-    Pending --> Running: process starts
-    Running --> Completed: exit 0
-    Running --> Failed: exit != 0
-    Running --> Timeout: time exceeded
-    Running --> Killed: tb proc stop
-    Timeout --> Killed: SIGTERM → SIGKILL
-    Failed --> [*]
-    Completed --> [*]
-    Killed --> [*]
-```
-
-Characteristics:
-- **Structured logs**: stdout/stderr with timestamps
-- **Cascading kill**: killing the parent kills children (via cgroups)
-- **Hierarchical timeout**: warn → SIGTERM → grace period → SIGKILL
-- **Resource limits**: CPU/RAM per process via cgroups
+The router and `tb bus run` start each worker in its own process group. A timeout or `tb watchdog kill` ends the whole group (SIGKILL), and the router reports descendants that escaped it as orphans. There is no per-process CPU or memory limit (no cgroups).
 
 ---
 
-## 6. Roles and Personas
+## 6. Roles and Personas: dropped
 
-### 6.1 Definition in YAML + Markdown
-
-```yaml
-# .tb/roles/worker-backend.yaml
-name: worker-backend
-description: Implements Go backend code
-model: claude-sonnet-4-20250514
-temperature: 0.3
-
-capabilities:
-  - read:code
-  - write:code:backend/**
-  - run:tests:backend/**
-  - query:graph
-
-tools:
-  - tb:run
-  - tb:graph:search
-  - tb:graph:callers
-  - tb:graph:deps
-  - git:diff
-  - git:commit
-
-context:
-  include:
-    - .tb/vault/facts/go-conventions.md
-    - .tb/vault/facts/project-structure.md
-  budget_tokens: 8000
-
-persona: |
-  You are a backend developer specialized in Go.
-  Follow the project conventions defined in go-conventions.md.
-  Always query the graph before reading files directly.
-  Write tests for new code.
-```
-
-### 6.2 Tools by Role
-
-| Role | Allowed Tools |
-|------|---------------|
-| `planner` | `tb:graph:*`, `tb:mem:*`, `tb:agent:spawn` |
-| `supervisor` | `tb:graph:*`, `tb:mem:*`, `tb:proc:*`, `tb:agent:review` |
-| `worker` | `tb:run`, `tb:graph:search,callers,deps`, `git:diff,commit` |
-| `evaluator` | `tb:run` (read-only), `tb:bench:run`, `tb:graph:search` |
+`.tb/roles/*.yaml`, per-role capabilities and tool lists, and `tb:agent:spawn` were dropped with `tb agent` ([ADR-020](adr/020-agent-hierarchy-a2a.md)). A worker's persona is whatever the human configures in the agent itself. `tb` knows two things about an agent: its bus role, fixed by the invite (`router`, `supervisor`, `worker`, `reviewer`), and its Agent Card, the capabilities it declares when it joins ([bus-protocolo.md](bus-protocolo.md)).
 
 ---
 
@@ -574,43 +356,14 @@ graph TB
 
 ### 8.2 Context Flow
 
-Each level receives only the necessary context:
-
-```mermaid
-sequenceDiagram
-    participant H as Human
-    participant P as Planner
-    participant S as Supervisor
-    participant W as Worker
-
-    H->>P: High-level task
-    P->>P: Query graph, analyze scope
-    P->>S: Subtask + relevant context
-    S->>S: Refine, split into units
-    S->>W: Work unit + minimal context
-    W->>W: Implement
-    W->>S: Result
-    S->>S: Review, integrate
-    S->>P: Subtask done
-    P->>H: Task done
-```
+The context a router worker receives is its ticket: the mandate (scope, forbidden paths), the acceptance criteria and the timeout, as a file named by `TB_TICKET_FILE`, in its own worktree. There is no planner that passes context down a hierarchy; the sequence the original design drew (human, planner, supervisor, worker) is the vision, not the implementation.
 
 ### 8.3 Agent Lifecycle
 
-```mermaid
-stateDiagram-v2
-    [*] --> Created: spawn
-    Created --> Initializing: setup sandbox
-    Initializing --> Ready: context assembled
-    Ready --> Working: receives task
-    Working --> Ready: task done
-    Working --> Blocked: awaits approval
-    Blocked --> Working: approved
-    Working --> Failed: erro/timeout
-    Ready --> Terminated: idle timeout
-    Failed --> Terminated: cleanup
-    Terminated --> [*]
-```
+`tb` does not manage an agent's lifecycle (no spawn, idle timeout or approval state). It tracks two things:
+
+- the **ticket**: `pending` → `running` → `done` | `failed` (or `canceled`; `tb ticket retry` goes back to `pending`);
+- the **bus claim** of a thread: a lease with heartbeat and epoch fencing, `held` → `released` | `expired` ([bus-lease.md](bus-lease.md)).
 
 ### 8.4 Budgets
 
@@ -685,11 +438,11 @@ graph TB
 **Implementation via `tb review`**:
 
 ```bash
-# Review a document with 3 goldfish
-tb review docs/design-auth.md --reviewers 3 --standards security,clarity
+# Review a diff against a local ticket with 3 distinct goldfish
+tb review --ticket rd.md --reviewers 3 --standards scope,quality,acceptance
 
-# Review a PR with specialized reviewers
-tb review pr:42 --roles "security-reviewer,api-reviewer,test-reviewer"
+# Review a design document until the review converges
+tb egm review docs/design-auth.md
 ```
 
 Context isolation is **mandatory**: if the system cannot create fresh contexts, the review fails instead of proceeding with contaminated context.
@@ -766,18 +519,15 @@ ticket:
     scope: ["src/handlers/auth.go", "src/services/auth.go"]
     permissions: [read, write]
     forbidden: ["src/database/*", "tests/hidden/*"]
-  context:
-    files: ["docs/specs/auth.md"]
-    symbols: ["User", "Session", "validateCredentials"]
   acceptance:
-    criteria: "Tests in tests/auth_test.go pass"
+    criteria: ["Tests in tests/auth_test.go pass"]
     timeout: "10m"
   dependencies: []
 ```
 
 **Benefits**:
 
-- **Minimal context**: each worker receives ~80% less context than a monolithic approach
+- **Minimal context**: a worker receives its ticket, not the whole conversation (the saving is not measured; see [ADR-009](adr/009-router-e-workers.md))
 - **Parallelization**: independent tickets run simultaneously
 - **Failure isolation**: an error in one worker does not pollute others' context
 - **Cache-read**: workers reuse token cache via repeated contexts
@@ -841,56 +591,48 @@ See [ADR-009](adr/009-router-e-workers.md) for design details.
 ### 9.1 Principles
 
 1. **Implementer/evaluator separation**: whoever implements never evaluates their own code
-2. **Test immutability**: benchmark files are read-only and hash-verified
-3. **Full audit**: all actions are logged
-4. **Anomaly detection**: suspicious patterns trigger alerts
+2. **Test immutability**: protected paths are checked against the base ref, never against the diff under review
+3. **Traceable results**: tickets, merge receipts, EGM receipts and the bus message log record who did what (there is no single audit log, see §9.3)
+4. **Anomaly detection**: `tb guard` flags suspicious patterns in the diff, and `tb watchdog` flags slow or stuck workers
 
 ### 9.2 Test File Protection
 
 ```bash
-# Before the task
-tb guard snapshot --paths "tests/**" "benchmarks/**"
+# Compare a range against the protected paths and the anti-cheat scan
+tb guard check main..HEAD
 
-# During execution
-# - Files mounted read-only in the sandbox
-# - Any write attempt: EACCES
-
-# After the task
-tb guard verify --snapshot-id <id>
-# Checks hashes; on mismatch → fail + alert
+# The verify loop runs the same check first, then the tests ruler
+# (hidden suite from tests/hidden/ when present)
+tb verify run --base main --head HEAD
 ```
 
-### 9.3 Audit Log
+`tb guard check` reads `protected_paths` from `.toolbelt/guard.yaml` on the **base** ref and merges them with the defaults (see §12.4). There are no `tb guard snapshot` or `tb guard verify` subcommands, and no read-only mounts of test files: protection is a check on the diff, not a filesystem barrier.
 
-```json
-{
-  "timestamp": "2026-01-15T10:30:00.123Z",
-  "agent_id": "worker-001",
-  "action": "file:write",
-  "resource": "src/parser.go",
-  "hash_before": "sha256:abc123...",
-  "hash_after": "sha256:def456...",
-  "approved_by": "supervisor-001",
-  "capability_token": "tok_xyz789"
-}
-```
+### 9.3 Audit Log: not implemented
 
-Characteristics:
-- Append-only (even root cannot edit old entries)
-- Signed with a chained hash (tamper-evident)
-- Rotated by size/time
+There is no `audit.log`, no per-action record, no capability token and no hash chain. What exists, each with its own scope:
+
+| Record | Where | Content |
+|--------|-------|---------|
+| Bus message log | `.toolbelt/bus/bus.db` (`tb bus log`) | every message of a channel, with its envelope |
+| Ticket result | `.toolbelt/tickets/TKT-*.yaml` | status, worker, base/head commit, exit code, attempts |
+| Router state and logs | `.toolbelt/router/` | `state.json`, `alerts.jsonl`, per-worker logs |
+| Merge receipt | private state dir | what a `prompt` merge was asked and what it applied |
+| EGM receipt | `.toolbelt/egm/receipts/` | committed claims of the author, certified by the review loop |
+| Verify report | `tb verify run --json` | per-gate and per-ruler outcome |
 
 ### 9.4 Reward Hacking Detection
 
-Monitored patterns:
+What `tb guard check` detects today:
 
 | Pattern | Indicator | Action |
 |---------|-----------|--------|
-| Deleted tests | Test file removed or emptied | Block + alert |
-| Test skips | `t.Skip()` added | Requires justification |
-| Hardcoded outputs | Literal strings matching expected values | Flag for review |
-| Artificial coverage | Tests that do not exercise code | Mutation analysis |
-| Excessive retry | Many attempts until pass | Log + limit |
+| Deleted tests | A test file is removed | `SeverityError`, exit ≠ 0 |
+| Protected path edited | Diff touches a protected path | `SeverityError`, exit ≠ 0 |
+| Test skips | `t.Skip()`, `it.skip`, `describe.skip`, `test.skip`, `xit`, `.only` | warning |
+| Trivial assertions | e.g. `expect(true).toBe(true)` | `SeverityError` |
+
+Not implemented: detecting hardcoded outputs, mutation analysis for artificial coverage, and a retry-abuse score. `tb verify run` caps its loop at 3 iterations and ends in `ESCALATE`.
 
 ---
 
@@ -921,7 +663,7 @@ graph LR
 
 ### 10.2 MCP (Model Context Protocol)
 
-`tb` acts as an **MCP server**, exposing tools. The JSON below is illustrative (`tb_run` does not exist); the real list (54 tools with `TB_GRAPH=on` in v0.0.10) is in [cli.md](cli.md).
+`tb` acts as an **MCP server**, exposing tools. The JSON below is abbreviated and illustrative (`tb_run` exists, a sandboxed `sh -c`, but with other parameters); the real schemas come from `tools/list` and the list (54 tools with `TB_GRAPH=on`) is in [cli.md](cli.md).
 
 ```json
 {
@@ -970,7 +712,7 @@ For communication between agents in the hierarchy:
 
 > **Decision ([ADR-020](adr/020-agent-hierarchy-a2a.md)):** A2A is not a transport in `tb`. The local `bus/0.1` envelope is A2A-shaped, and `tb` has no A2A server, client, socket or HTTP. A remote A2A agent can take part only through a bridge the human writes and runs outside `tb`, admitted as an ordinary bus agent with its own invite and role.
 
-> **Implemented (v0.0.5):** local agent ↔ agent transport is the `tb bus` bus ([ADR-013](adr/013-barramento-multi-vendor.md)), with the `bus/0.1` JSON-RPC envelope specified in [bus-protocolo.md](bus-protocolo.md) over a SQLite store (`.toolbelt/bus/bus.db`), not a Unix socket. The example below is illustrative.
+> **Implemented:** local agent ↔ agent transport is the `tb bus` bus ([ADR-013](adr/013-barramento-multi-vendor.md)), with the `bus/0.1` JSON-RPC envelope specified in [bus-protocolo.md](bus-protocolo.md) over a SQLite store (`.toolbelt/bus/bus.db`), not a Unix socket. The example below is illustrative.
 
 ```json
 {
@@ -1014,14 +756,14 @@ See [docs/benchmark.md](benchmark.md) for full details.
 
 ### KPI Summary
 
-| KPI | Description | Goal |
-|-----|-------------|------|
-| `pass@1` | First-attempt success rate | > 70% |
-| `tokens_per_task` | Tokens consumed per task | < baseline |
-| `wall_time` | Total execution time | < baseline |
-| `tool_calls` | Number of tool calls | < baseline |
-| `rework_rate` | Rework rate | < 20% |
-| `guard_violations` | Blocked security violations | 0 unblocked |
+| KPI | Description | Goal | `tb bench` |
+|-----|-------------|------|------------|
+| `pass@1` | First-attempt success rate | > 70% | measured |
+| `tokens_per_task` | Tokens consumed per task | < baseline | measured when the agent reports tokens |
+| `wall_time` | Total execution time | < baseline | measured (per task) |
+| `tool_calls` | Number of tool calls | < baseline | measured when the agent reports them |
+| `rework_rate` | Rework rate | < 20% | not implemented |
+| `guard_violations` | Blocked security violations | 0 unblocked | not implemented as a KPI (`tb guard` itself works) |
 
 ---
 
@@ -1080,7 +822,9 @@ Each ruler defines:
 
 ### 12.3 Discriminator Sandbox
 
-The discriminator operates in total isolation:
+> **Design sketch, not configuration:** `tb verify` reads no `discriminator` block. It runs the gate commands and the rulers in the head worktree (`--base`/`--head`), with the child environment allowlist of §1.2.
+
+The design calls for the discriminator to operate in total isolation:
 
 ```yaml
 discriminator:
@@ -1151,6 +895,8 @@ Cheating causes an **immediate FAIL**, even if the primary metric passes:
 
 ### 12.6 Iteration and Escalation Policy
 
+> **Partly implemented:** `tb verify run` iterates up to 3 times (`MaxIterations`) and can end in `ESCALATE`; the YAML keys below (`on_pass`, `notify_generator`, `block_merge`) are a sketch, not configuration.
+
 ```yaml
 verification:
   max_iterations: 3
@@ -1175,6 +921,8 @@ verification:
 ```
 
 ### 12.7 Discriminator Report
+
+> **Sketch:** the real report is the JSON of `tb verify run --json` (see [cli.md](cli.md)); the fields below (`per_screen`, `accepted_deviations`, `design_system_followups`) do not exist.
 
 ```yaml
 report:
@@ -1228,15 +976,11 @@ report:
 
 ### 13.3 Agent State Persistence
 
-- Where to persist agent state between sessions?
-- Format: JSON, SQLite, or in the vault itself?
-- How to handle orphan agents?
+- **Answered.** `tb` persists no agent state. The bus keeps what is shared (messages, invites, sessions, claims) in `.toolbelt/bus/bus.db`; an agent's own memory is its vendor's business. Orphans are handled by the claim lease (expiry, epoch fencing) and the router's orphan sweep, not by a state store ([ADR-013](adr/013-barramento-multi-vendor.md), [ADR-020](adr/020-agent-hierarchy-a2a.md)).
 
 ### 13.4 Hierarchy Scalability
 
-- How many workers per supervisor?
-- How many supervisors per planner?
-- How to balance load?
+- **Answered by [ADR-020](adr/020-agent-hierarchy-a2a.md).** There are no planners or supervisors to count: the router schedules tickets over a configurable number of workers, and a delegation tree on the bus has a bounded depth and fan-out ([specs/agent-hierarchy.md](specs/agent-hierarchy.md)). Load balancing is the router's queue; scaling gains are still not measured ([ADR-009](adr/009-router-e-workers.md)).
 
 ### 13.5 Vault Versioning
 
@@ -1259,7 +1003,7 @@ See the full documentation in [docs/pesquisa/](pesquisa/):
 
 | Module | Proposal | ADR/Status |
 |--------|----------|------------|
-| **mem/ctx** | Invariants file pinned outside compaction; hybrid compaction (mechanical extraction + LLM summary) | [ADR-010](adr/010-invariantes-fora-compactacao.md) (proposed; invariants in `tb mem` implemented, hybrid compaction pending) |
+| **mem/ctx** | Invariants file pinned outside compaction; hybrid compaction (mechanical extraction + LLM summary) | [ADR-010](adr/010-invariantes-fora-compactacao.md) (accepted; invariants in `tb mem` implemented, hybrid compaction pending) |
 | **mem/ctx** | AGENTS.md as default local context; bitemporal memory with fact invalidation | partial: `tb init` reads/`--write-agents` seeds `AGENTS.md`/`CLAUDE.md` (never overwrites); `tb ctx` still pending |
 | **graph** | On-demand `tb graph` with A/B by task type; prioritize human skills | [ADR-011](adr/011-grafo-sob-demanda.md) (accepted) |
 | **verify** | Held-out suite the generator never sees; visible/hidden gap as KPI | pending |
@@ -1295,7 +1039,5 @@ See the ADRs for details:
 - [Graphify](https://github.com/Graphify-Labs/graphify)
 - [Obsidian](https://obsidian.md/)
 - [Elephant-Goldfish Model](https://github.com/google/elephant-goldfish-model)
-- [bubblewrap](https://github.com/containers/bubblewrap)
 - [Landlock](https://landlock.io/)
 - [tree-sitter](https://tree-sitter.github.io/)
-- [Bubble Tea](https://github.com/charmbracelet/bubbletea)
