@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0-rc.3] - 2026-11-22
+
+### Fixed
+- Release workflow: the static-initializer strace gate compares the native build with a cgo-enabled untagged build (as `ci.yml` does), so the Go runtime's own cgo start-up (`x_cgo_init` reads `/proc/self/maps` through `pthread_getattr_np`) is on both sides, and it keeps a syscall's first path argument instead of a result buffer such as `readlinkat`'s. The `v1.0.0-rc.2` tag stopped at this gate before publishing
+
 ## [1.0.0-rc.2] - 2026-11-22
 
 ### Fixed
