@@ -202,7 +202,10 @@ func TestParseRulers(t *testing.T) {
 		{" tests , tests ", []string{"tests"}, false},
 		{"visual", []string{"visual"}, false},
 		{"foo", nil, true},
-		{"coverage", nil, true},
+		{"coverage", []string{"coverage"}, false},
+		{"coverage,tests", []string{"tests", "coverage"}, false},
+		{"tests,coverage,tests", []string{"tests", "coverage"}, false},
+		{"coverage,visual", nil, true},
 		{"tests,", nil, true},
 		{"visual,tests", nil, true},
 		{"tests,visual", nil, true},
@@ -219,7 +222,7 @@ func TestParseRulers(t *testing.T) {
 			t.Errorf("%q: got=%v err=%v", c.in, got, err)
 		}
 	}
-	if _, err := ParseRulers("foo"); err == nil || err.Error() != `invalid ruler "foo": tests or visual` {
+	if _, err := ParseRulers("foo"); err == nil || err.Error() != `invalid ruler "foo": tests, coverage or visual` {
 		t.Fatalf("message=%v", err)
 	}
 }

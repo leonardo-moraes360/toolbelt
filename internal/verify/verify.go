@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/leonardo-moraes360/toolbelt/internal/config"
 	"github.com/leonardo-moraes360/toolbelt/internal/execenv"
@@ -50,6 +51,12 @@ type Config struct {
 	// TypecheckCmd and Checks are gate steps after build (R2, R3).
 	TypecheckCmd string
 	Checks       []config.VerifyCheck
+	// CoverageCmd and CoveragePattern feed the coverage ruler (R4); empty
+	// CoverageCmd means the Go default when go.mod exists. MinCoverage is the
+	// caller's floor, which can only raise the base ref's threshold.
+	CoverageCmd     string
+	CoveragePattern string
+	MinCoverage     *float64
 	// TrustedConfig enables R0 in Run/RunRulers: verify's commands and env
 	// allow/pass come from this config (-c alone, or the global config under
 	// the repository file committed at the base ref; never the working tree),
@@ -147,7 +154,7 @@ func DefaultConfig(repo string) Config {
 // Run runs the tests ruler alone; its payload and errors are those of
 // RunRulers(ctx, cfg, []string{"tests"}).
 func Run(ctx context.Context, cfg *Config) (*Result, error) {
-	ctx, st, cleanup, err := prepareRun(ctx, cfg)
+	ctx, st, cleanup, err := prepareRun(ctx, cfg, false)
 	if err != nil {
 		return nil, err
 	}
@@ -447,6 +454,13 @@ func setFailure(res *Result, step, reason string) {
 const failReasonMax = 1024
 
 func failReason(step, output string) string {
+	if rest, ok := strings.CutPrefix(output, timeoutMarker); ok {
+		head, tail, _ := strings.Cut(rest, "\n")
+		if tail = strings.TrimSpace(stripANSI(tail)); tail != "" {
+			return head + ": " + excerpt(tail, failReasonMax)
+		}
+		return head
+	}
 	out := strings.TrimSpace(stripANSI(output))
 	if out == "" {
 		return step + " failed"
@@ -454,16 +468,66 @@ func failReason(step, output string) string {
 	return step + " failed: " + excerpt(out, failReasonMax)
 }
 
+const (
+	// cmdWaitDelay bounds how long Wait blocks on output pipes held open by
+	// orphaned children once the command was killed.
+	cmdWaitDelay = 5 * time.Second
+	// maxCapturedOutput caps what is kept of a command's output (the tail).
+	maxCapturedOutput = 4 << 20
+
+	timeoutMarker = "\x00timeout\x00"
+)
+
+// tailBuffer keeps the last max bytes written to it.
+type tailBuffer struct {
+	max     int
+	buf     []byte
+	dropped bool
+}
+
+func (t *tailBuffer) Write(p []byte) (int, error) {
+	n := len(p)
+	if len(p) >= t.max {
+		p = p[len(p)-t.max:]
+		t.buf = t.buf[:0]
+		t.dropped = true
+	}
+	if over := len(t.buf) + len(p) - t.max; over > 0 {
+		t.buf = append(t.buf[:0], t.buf[over:]...)
+		t.dropped = true
+	}
+	t.buf = append(t.buf, p...)
+	return n, nil
+}
+
+func (t *tailBuffer) String() string {
+	s := string(t.buf)
+	if t.dropped {
+		// The cut may split a rune.
+		for s != "" && !utf8.RuneStart(s[0]) {
+			s = s[1:]
+		}
+	}
+	return s
+}
+
 func runConfiguredCmd(ctx context.Context, cfg *Config, command, configKey string) (ok bool, output string, err error) {
-	ctx, cancel := context.WithTimeout(ctx, cfg.Timeout)
+	runCtx, cancel := context.WithTimeout(ctx, cfg.Timeout)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "sh", "-c", command) //nolint:gosec // operator-configured ruler
+	cmd := exec.CommandContext(runCtx, "sh", "-c", command) //nolint:gosec // operator-configured ruler
 	cmd.Dir = cfg.RepoDir
 	cmd.Env = withNoColor(execenv.Environ(execenv.Options{Allow: cfg.EnvAllow, Pass: cfg.EnvPass}))
-	out, runErr := cmd.CombinedOutput()
-	output = string(out)
+	setProcessGroup(cmd)
+	cmd.WaitDelay = cmdWaitDelay
+	out := &tailBuffer{max: maxCapturedOutput}
+	cmd.Stdout, cmd.Stderr = out, out
+	runErr := cmd.Run()
+	output = out.String()
 	if runErr == nil {
 		return true, output, nil
+	}
+	if runCtx.Err() == context.DeadlineExceeded && ctx.Err() == nil {
+		return false, timeoutMarker + fmt.Sprintf("%s timed out after %s", configKey, cfg.Timeout) + "\n" + output, nil
 	}
 	if isCommandMissing(runErr) {
 		return false, output, &MissingCommandError{Command: command, ConfigKey: configKey}

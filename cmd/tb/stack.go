@@ -55,12 +55,13 @@ func init() {
 	stackCmd.Flags().String("lint-cmd", "", "verify: lint command (empty + explicit flag or --no-lint to skip)")
 	stackCmd.Flags().Bool("no-build", false, "verify: skips build_cmd")
 	stackCmd.Flags().Bool("no-lint", false, "verify: skips lint_cmd")
-	stackCmd.Flags().String("ruler", "tests", "verify: rulers, comma-separated (tests; visual is refused here)")
+	stackCmd.Flags().String("ruler", "tests", "verify: rulers, comma-separated (tests|coverage; visual is refused here)")
 	stackCmd.Flags().String("typecheck-cmd", "", "verify: typecheck command (empty + explicit flag or --no-typecheck to skip)")
 	stackCmd.Flags().Bool("no-typecheck", false, "verify: skips typecheck_cmd")
 	stackCmd.Flags().StringArray("check", nil, "verify: named check name=cmd (repeatable; adds one or overrides its cmd)")
 	stackCmd.Flags().StringArray("no-check", nil, "verify: skips the named check (repeatable)")
 	stackCmd.Flags().Bool("no-checks", false, "verify: skips every verify.checks entry")
+	addCoverageFlags(stackCmd, "verify: ")
 	stackCmd.Flags().Bool("dry-run", false, "verify: shows the plan (cmds/dir) without executing")
 	stackCmd.Flags().Int("max-iter", 0, "verify: maximum iterations")
 	stackCmd.Flags().String("timeout", "10m", "verify: timeout")
@@ -147,6 +148,11 @@ func runStack(cmd *cobra.Command, args []string) error {
 		Checks:             vo.Checks,
 		SkipChecks:         vo.SkipChecks,
 		NoChecks:           vo.NoChecks,
+		CoverageCmd:        vo.CoverageCmd.Cmd,
+		CoverageCmdSet:     vo.CoverageCmd.Set,
+		CoveragePattern:    vo.CoveragePattern.Cmd,
+		CoveragePatternSet: vo.CoveragePattern.Set,
+		MinCoverage:        vo.MinCoverage,
 		DryRun:             dryRun,
 		MaxIter:            maxIter,
 		Timeout:            timeout,

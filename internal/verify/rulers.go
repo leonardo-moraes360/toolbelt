@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os/signal"
+	"slices"
 	"strings"
 	"syscall"
 
@@ -56,6 +57,9 @@ type RunState struct {
 	ConfigSource string
 	Warnings     []string
 	Overrides    []string
+	// BaseThresholds is loaded in prepareRun when coverage is selected, so a
+	// malformed file aborts before any ruler runs.
+	BaseThresholds *BaseThresholds
 }
 
 // RulerResult is one ruler's outcome. Payload is what that ruler prints on
@@ -96,6 +100,27 @@ func (m *MultiResult) Payload() any {
 	return m
 }
 
+// FirstReason is the reason of the first ruler, in ruler order, that did
+// not pass; "" when none has one.
+func (m *MultiResult) FirstReason() string {
+	for _, r := range m.Results {
+		if r.Verdict == VerdictPass || (r.Verdict == VerdictSkipped && r.SkipKind == SkipNotApplicable) {
+			continue
+		}
+		switch p := r.Payload.(type) {
+		case *Result:
+			if p.Reason != "" {
+				return p.Reason
+			}
+		case *CoverageReport:
+			if p.Reason != "" {
+				return p.Reason
+			}
+		}
+	}
+	return ""
+}
+
 func (m *MultiResult) ExitCode() int {
 	return ExitCode(m.Verdict, m.Results)
 }
@@ -114,8 +139,9 @@ func ExitCode(verdict Verdict, results []*RulerResult) int {
 	return 1
 }
 
-// ParseRulers parses --ruler: a comma list of tests|visual, deduplicated in
-// order; empty means tests; visual cannot be combined yet.
+// ParseRulers parses --ruler: a comma list of tests|coverage|visual,
+// deduplicated and run in that order (tests before coverage); empty means
+// tests; visual cannot be combined yet.
 func ParseRulers(s string) ([]string, error) {
 	if strings.TrimSpace(s) == "" {
 		return []string{RulerTests}, nil
@@ -123,8 +149,8 @@ func ParseRulers(s string) ([]string, error) {
 	var names []string
 	for _, part := range strings.Split(s, ",") {
 		name := strings.TrimSpace(part)
-		if name != RulerTests && name != RulerVisual {
-			return nil, &UsageError{Msg: fmt.Sprintf("invalid ruler %q: tests or visual", name)}
+		if name != RulerTests && name != RulerCoverage && name != RulerVisual {
+			return nil, &UsageError{Msg: fmt.Sprintf("invalid ruler %q: tests, coverage or visual", name)}
 		}
 		if !containsString(names, name) {
 			names = append(names, name)
@@ -133,8 +159,12 @@ func ParseRulers(s string) ([]string, error) {
 	if len(names) > 1 && containsString(names, RulerVisual) {
 		return nil, &UsageError{Msg: "ruler visual cannot be combined with other rulers"}
 	}
+	// R1 fixes the order: tests, then coverage.
+	slices.SortStableFunc(names, func(a, b string) int { return rulerOrder[a] - rulerOrder[b] })
 	return names, nil
 }
+
+var rulerOrder = map[string]int{RulerTests: 0, RulerCoverage: 1, RulerVisual: 2}
 
 func containsString(list []string, s string) bool {
 	for _, v := range list {
@@ -170,8 +200,11 @@ func MergeVerdicts(results []*RulerResult) (Verdict, SkipKind) {
 }
 
 func rulerFor(name string) Ruler {
-	if name == RulerVisual {
+	switch name {
+	case RulerVisual:
 		return visualRuler{}
+	case RulerCoverage:
+		return coverageRuler{}
 	}
 	return testsRuler{}
 }
@@ -187,7 +220,7 @@ func RunRulers(ctx context.Context, cfg *Config, names []string) (*MultiResult, 
 	cleanup := func() {}
 	if !(len(names) == 1 && names[0] == RulerVisual) {
 		var err error
-		ctx, st, cleanup, err = prepareRun(ctx, cfg)
+		ctx, st, cleanup, err = prepareRun(ctx, cfg, containsString(names, RulerCoverage))
 		if err != nil {
 			return nil, err
 		}
@@ -212,7 +245,7 @@ func RunRulers(ctx context.Context, cfg *Config, names []string) (*MultiResult, 
 
 // prepareRun is the shared setup: refs, R0, guard, head worktree. On a guard
 // abort no worktree is attached and WorkDir stays the repository.
-func prepareRun(ctx context.Context, cfg *Config) (context.Context, *RunState, func(), error) {
+func prepareRun(ctx context.Context, cfg *Config, wantCoverage bool) (context.Context, *RunState, func(), error) {
 	noop := func() {}
 	if cfg.MaxIterations == 0 {
 		cfg.MaxIterations = 3
@@ -232,6 +265,14 @@ func prepareRun(ctx context.Context, cfg *Config) (context.Context, *RunState, f
 	}
 	if st.GuardAborted {
 		return ctx, st, noop, nil
+	}
+	if wantCoverage {
+		th, err := LoadBaseThresholds(cfg.RepoDir, base)
+		if err != nil {
+			return ctx, nil, noop, err
+		}
+		st.BaseThresholds = &th
+		dropNoopMinCoverage(cfg, st, th)
 	}
 	hw, err := attachHeadWorkDir(cfg.RepoDir, head)
 	if err != nil {
@@ -317,4 +358,14 @@ func (visualRuler) Run(ctx context.Context, st *RunState) (*RulerResult, error) 
 		rr.ExitCode = 1
 	}
 	return rr, nil
+}
+
+// dropNoopMinCoverage unlists min_coverage when the flag does not raise the
+// threshold above the base value: it changed nothing.
+func dropNoopMinCoverage(cfg *Config, st *RunState, th BaseThresholds) {
+	if cfg.MinCoverage == nil || th.MinCoverage == nil || *cfg.MinCoverage > *th.MinCoverage {
+		return
+	}
+	cfg.AppliedOverrides = slices.DeleteFunc(slices.Clone(cfg.AppliedOverrides), func(k string) bool { return k == "min_coverage" })
+	st.Overrides = cfg.AppliedOverrides
 }

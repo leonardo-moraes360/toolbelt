@@ -64,12 +64,15 @@ func LoadVerifyConfig(repoDir, baseSHA, headSHA string, user *config.Config, exp
 		Pass:  append([]string(nil), user.Env.Pass...),
 	}
 	if explicit {
-		return rc, ValidateChecks(rc.Verify.Checks)
+		if err := ValidateChecks(rc.Verify.Checks); err != nil {
+			return rc, err
+		}
+		return rc, ValidateCoveragePattern(rc.Verify.CoveragePattern)
 	}
 	if err := gitref.Validate(baseSHA); err != nil {
 		return rc, err
 	}
-	data, found, symlink, err := readBaseRepoConfig(repoDir, baseSHA)
+	data, found, symlink, err := readBaseFile(repoDir, baseSHA, repoConfigPath)
 	if err != nil {
 		return rc, err
 	}
@@ -91,6 +94,9 @@ func LoadVerifyConfig(repoDir, baseSHA, headSHA string, user *config.Config, exp
 		rc.Source = ConfigSourceNone
 	}
 	if err := ValidateChecks(rc.Verify.Checks); err != nil {
+		return rc, err
+	}
+	if err := ValidateCoveragePattern(rc.Verify.CoveragePattern); err != nil {
 		return rc, err
 	}
 	if !symlink {
@@ -208,29 +214,6 @@ func repoToplevel(repoDir string) string {
 		return top
 	}
 	return repoDir
-}
-
-func readBaseRepoConfig(repoDir, baseRef string) (data []byte, found, symlink bool, err error) {
-	// git show reports an unknown commit as a path missing from it, so the
-	// commit is checked first: a bad base stays an error, never "none".
-	if _, err := git.Output(repoDir, "rev-parse", "--verify", "--quiet", baseRef+"^{commit}"); err != nil {
-		return nil, false, false, fmt.Errorf("base %s is not a commit: %w", baseRef, err)
-	}
-	mode, err := git.TreeMode(repoDir, baseRef, repoConfigPath)
-	if err != nil {
-		return nil, false, false, fmt.Errorf("reading %s from base %s: %w", repoConfigPath, baseRef, err)
-	}
-	if mode == git.ModeSymlink {
-		return nil, false, true, nil
-	}
-	out, err := git.Output(repoDir, "show", "--no-textconv", baseRef+":"+repoConfigPath)
-	if err == nil {
-		return out, true, false, nil
-	}
-	if isMissingPathAtRef(err) {
-		return nil, false, false, nil
-	}
-	return nil, false, false, fmt.Errorf("reading %s from base %s: %w", repoConfigPath, baseRef, err)
 }
 
 // ValidateChecks enforces R3's naming rules: [a-z0-9-]{1,32}, unique, and a

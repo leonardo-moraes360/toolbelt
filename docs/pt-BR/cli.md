@@ -85,7 +85,7 @@ tb  (implemented today)
 ├── sandbox      Execution with Landlock isolation (check|run)
 ├── stack        Stacks verification operations (verify/review/drift/guard/vault/egm/seccheck), not branches
 ├── vault        Markdown vault of notes (new|list|show|search|links|backlinks|check)
-├── verify       Adversarial verification (run; rulers tests|visual)
+├── verify       Adversarial verification (run; rulers tests|coverage|visual)
 ├── workspace    Isolated workspaces via git worktree (create|list|remove; alias: ws)
 ├── version      Shows the toolbelt version (also: tb --version)
 ├── ticket       Work tickets (create|list|show|cancel|retry)       ✓ Phase 3
@@ -758,7 +758,10 @@ Flags:
   --lint-cmd <cmd>       verify: lint command (empty + explicit flag or --no-lint to skip)
   --no-build             verify: skips build_cmd
   --no-lint              verify: skips lint_cmd
-  --ruler <list>         verify: comma-separated rulers (slice 1: tests; visual is refused here)
+  --ruler <list>         verify: comma-separated rulers (tests, coverage; visual is refused here)
+  --coverage-cmd <cmd>   verify: coverage command
+  --coverage-pattern <re> verify: regexp with one capture group for the coverage percentage
+  --min-coverage <n>     verify: coverage floor in [0, 100] (only raises the base threshold)
   --typecheck-cmd <cmd>  verify: typecheck command (gate step after build)
   --no-typecheck         verify: skips typecheck_cmd
   --check <name=cmd>     verify: adds or overrides a named check (repeatable)
@@ -1181,7 +1184,10 @@ Executa o loop gerador→discriminador com rulers plugáveis.
 tb verify run [flags]
 
 Flags:
-  --ruler <list>           Comma-separated rulers (default: tests). Slice 1: tests, visual; visual cannot be combined; unknown name → exit 2 (coverage is planned)
+  --ruler <list>           Comma-separated rulers (default: tests): tests, coverage, visual; visual cannot be combined; unknown name → exit 2
+  --coverage-cmd <cmd>     Coverage command (verify.coverage_cmd; default with go.mod: go test -coverprofile)
+  --coverage-pattern <re>  Regexp with one capture group; its last match in the coverage command's output is the percentage (verify.coverage_pattern; required with a non-Go coverage_cmd)
+  --min-coverage <n>       Coverage floor in [0, 100]; only raises the base ref's .toolbelt/thresholds.yaml
   --test-cmd <cmd>         Visible tests command (default: verify.test_cmd; `tb init` detects go/npm/pnpm/yarn/pytest/cargo/make and also build_cmd/lint_cmd)
   --hidden-test-cmd <cmd>  Hidden tests command (verify.hidden_test_cmd; runs even without tests/hidden/; if the dir exists and the cmd is empty: detects the toolchain or marks N/A)
   --build-cmd <cmd>        Build command (default: verify.build_cmd; empty + explicit flag or --no-build to skip)
@@ -1334,6 +1340,8 @@ verify:
   typecheck_cmd: "pnpm exec tsc --noEmit"
   lint_cmd: "pnpm --filter @pkg lint"
   test_cmd: "pnpm --filter @pkg test"
+  coverage_cmd: "pnpm exec vitest run --coverage"
+  coverage_pattern: 'All files\s*\|\s*[\d.]+\s*\|\s*[\d.]+\s*\|\s*[\d.]+\s*\|\s*([\d.]+)'
   hidden_test_cmd: "pnpm --filter @pkg test:hidden"
   checks:
     - name: audit              # [a-z0-9-]{1,32}, único
@@ -1413,6 +1421,11 @@ tb verify run --test-cmd "go test ./..." --hidden-test-cmd "go test ./tests/hidd
 tb verify run --test-cmd "true" --no-build --no-lint --max-iter 1
 tb verify run --dry-run --build-cmd "go build ./..." --test-cmd "go test ./..."
 
+# Régua de cobertura (threshold do .toolbelt/thresholds.yaml do ref base)
+tb verify run --ruler coverage
+tb verify run --ruler tests,coverage --min-coverage 80
+tb verify run --ruler coverage --coverage-cmd "pytest --cov" --coverage-pattern 'TOTAL.*\s(\d+(?:\.\d+)?)%'
+
 # Verificação visual (threshold é fração 0–1, não porcentagem inteira)
 tb verify run --ruler visual --threshold 0.95
 tb verify run --ruler visual --manifest .toolbelt/screens.yaml --json -o verify-result.json
@@ -1428,12 +1441,46 @@ tb verify run --ruler visual --skip-unavailable
 |-------|---------|-------------------|-------------------|
 | `visual` | Similaridade pixel | 0.95 | Edição de refs |
 | `tests` | Etapas de gate (build → typecheck → lint → checks nomeados) passam, depois testes visíveis e ocultos passam | 100% | Modificação de testes; reescrever comandos `verify.*` (bloqueado: lidos do base, `verify_config_changed`) |
-| `coverage` (planejada, R4) | Cobertura de linhas | `coverage.min_percent` no `.toolbelt/thresholds.yaml` do base | Baixar o threshold (lido do base) |
+| `coverage` | Percentual de cobertura (statements no Go, o que a ferramenta reportar nos demais) | `coverage.min_percent` no `.toolbelt/thresholds.yaml` do base | Baixar o threshold (lido do base) |
 
 `--ruler` aceita uma lista separada por vírgulas. Um nome desconhecido falha antes de
 qualquer coisa rodar, com exit **2** (`invalid ruler "x": …`); antes rodava `tests` em
-silêncio. `visual` ainda não pode ser combinada com outra régua. `coverage` não está
-nesta versão.
+silêncio. `visual` ainda não pode ser combinada com outra régua. `--ruler tests,coverage` roda as
+duas com um só guard, uma só resolução de refs e um só worktree do head; o veredito é o
+pior dos dois.
+
+**A régua `coverage`.** Roda o comando de cobertura no worktree do head e lê um
+percentual total:
+
+- **Go** (padrão quando há `go.mod` e `coverage_cmd` está vazio): `go test -coverprofile=<tmp> ./...`;
+  o total é ponderado por statements, com blocos deduplicados (um bloco repetido por
+  `-coverpkg` conta como coberto se qualquer cópia rodou), como o `go tool cover -func`.
+- **Genérico:** `verify.coverage_cmd` mais `verify.coverage_pattern`, uma regexp com
+  exatamente um grupo de captura; a **última** ocorrência na saída é o percentual e
+  deve ser um número em [0, 100]. Um `coverage_cmd` sem `coverage_pattern` falha com
+  motivo próprio (`coverage: coverage_cmd set but no coverage_pattern to read its output`);
+  uma saída sem ocorrência falha com `coverage: pattern did not match`.
+- **Threshold:** `coverage.min_percent` no `.toolbelt/thresholds.yaml` lido **só do ref
+  base** (nunca da árvore de trabalho), então uma mudança não consegue baixar o próprio
+  piso. Schema: `version: 1`, `coverage: {min_percent: <0–100>}`; chaves desconhecidas,
+  valor inválido, arquivo malformado ou symlink abortam o verify em vez de significar
+  "sem threshold". `--min-coverage` (MCP `min_coverage`) só pode **subir** o piso: o
+  piso efetivo é `max(base, flag)`, reportado como `threshold_source: "base"` ou `"flag"`.
+- **Confiança:** o comando de cobertura roda com o mesmo usuário do código testado, então
+  um teste pode adulterar a própria saída de cobertura; o limiar é um piso, não uma prova.
+  Prefira um padrão genérico e ancorado (ex.: `(?m)^TOTAL\s.*\s(\d+)%$`) a um frouxo. Em
+  Go, o perfil só é aceito para arquivos dos pacotes do módulo (`go list ./...`) que
+  existem no worktree do head (`coverage: profile names unknown file <key>`); contagens
+  negativas e contagens de statements inconsistentes falham. O padrão Go é decidido pelo
+  `go.mod` no commit **base**.
+- **Vereditos:** sem threshold em lugar nenhum → `SKIPPED` / `not_applicable` (não
+  rebaixa um `PASS` combinado); threshold mas sem comando de cobertura para o
+  repositório → `FAIL` (`coverage: threshold set but no coverage_cmd for this repository`);
+  abaixo do threshold → `FAIL` (não `ESCALATE`: o agente pode adicionar testes); senão `PASS`.
+- **JSON:** `coverage: {percent, threshold, threshold_source, cmd, metric}` e
+  `metrics.coverage_percent`. Com várias réguas a saída é
+  `{verdict, rulers: {tests: …, coverage: …}}`. Overrides por flag ou MCP de
+  `coverage_cmd`, `coverage_pattern` ou `min_coverage` aparecem em `overrides`.
 
 > Ruler `review`, flag `--discriminator-only` e invocações no estilo `tb verify <task-id>` **não existem** — use `tb verify run` e `tb review` separadamente.
 
@@ -2189,11 +2236,11 @@ Transporte unix/tcp e flags `--socket`/`--port`/`--tls-*` são planejados; hoje 
 | `tb_env` | — | cwd/os/arch |
 | `tb_run` | — | `sh -c` com timeout dentro do sandbox Landlock (ver [sandbox do `tb_run` no MCP](#sandbox-do-tb_run-no-mcp)); env filtrado; args `env`/`pass_env` (arrays); `cwd` precisa estar dentro do repositório |
 | `tb_mem_add` / `tb_mem_list` / `tb_mem_show` / `tb_mem_edit` / `tb_mem_retire` / `tb_mem_search` / `tb_mem_check` / `tb_mem_init` | `tb mem …` | arg opcional `cwd`; `ref`/`all` (boolean; strings legadas ok) onde aplicável |
-| `tb_verify_run` | `tb verify run` | `ruler` (lista separada por vírgulas: `tests`, `visual`); args espelham flags + `env`/`pass_env`, incluindo `typecheck_cmd`, `no_typecheck` (boolean), `checks` (array de `{name, cmd}`), `skip_checks` (array de nomes), `no_checks` (boolean) |
+| `tb_verify_run` | `tb verify run` | `ruler` (lista separada por vírgulas: `tests`, `coverage`, `visual`); args espelham flags + `env`/`pass_env`, incluindo `coverage_cmd`, `coverage_pattern`, `min_coverage` (número), `typecheck_cmd`, `no_typecheck` (boolean), `checks` (array de `{name, cmd}`), `skip_checks` (array de nomes), `no_checks` (boolean) |
 | `tb_review` | `tb review` | ticket/base/head/approved_sha/approved_base/require_approved_sha/reviewers/standards |
 | `tb_drift` | `tb drift` | retorna `{drift, has_drift, pinned_approval}` (`checked` explícito); `approved_sha`/`approved_base` |
 | `tb_guard_check` | `tb guard check` | `base`/`head` ou `range=A..B`; `strict_fail` por default em SeverityError; `warn_only=true` opt-out; `strict` deprecated (boolean) |
-| `tb_stack` | `tb stack` | `ops` (array, inclui `egm`, sempre movida para o fim), `base`/`head`, `fail_fast` (boolean), `jobs` (integer), `approved_sha`/`approved_base`/`require_approved_sha`, `env`/`pass_env`, `egm_docs` (array), `strict` (boolean), `egm_mode` (`local`/`ci`), `egm_config` (caminho absoluto, exigido por `ci`), `egm_allow_offline` (boolean); campos do verify `ruler` (`visual` recusada), `typecheck_cmd`, `no_typecheck`, `checks`, `skip_checks`, `no_checks`; retorna JSON agregado com `warn` |
+| `tb_stack` | `tb stack` | `ops` (array, inclui `egm`, sempre movida para o fim), `base`/`head`, `fail_fast` (boolean), `jobs` (integer), `approved_sha`/`approved_base`/`require_approved_sha`, `env`/`pass_env`, `egm_docs` (array), `strict` (boolean), `egm_mode` (`local`/`ci`), `egm_config` (caminho absoluto, exigido por `ci`), `egm_allow_offline` (boolean); campos do verify `ruler` (`visual` recusada), `coverage_cmd`, `coverage_pattern`, `min_coverage`, `typecheck_cmd`, `no_typecheck`, `checks`, `skip_checks`, `no_checks`; retorna JSON agregado com `warn` |
 | `tb_egm_status` / `tb_egm_resolve` / `tb_egm_receipt` | `tb egm status` / `tb egm resolve` / `tb egm receipt` | `cwd` (absoluto) e `doc`; status aceita `at`/`strict`, resolve aceita `fix`/`decline` (arrays), `force_settle`/`reason`, `contest`/`evidence`; retorna `{report, exit_code}` (receipt acrescenta `receipt`, o caminho gravado) |
 | `tb_vault_list` / `tb_vault_show` / `tb_vault_search` / `tb_vault_links` / `tb_vault_backlinks` / `tb_vault_check` / `tb_vault_new` | `tb vault …` | `cwd` (absoluto); `note` em show/links/backlinks, `query`/`limit` em search, `type`/`tag`/`source` em list; new recebe `title`, `confidence` (obrigatório), `type`, `tags`, `dir`, `body` e grava sempre `source: inferred`; o texto das notas volta dentro de `data` |
 | `tb_ticket_list` / `tb_ticket_show` | `tb ticket list` / `tb ticket show` | `status`, `deps` / `id`; arg opcional `cwd` |

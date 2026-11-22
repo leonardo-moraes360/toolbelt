@@ -39,7 +39,7 @@ func init() {
 	verifyRunCmd.Flags().Int("max-iter", 0, "maximum iterations")
 	verifyRunCmd.Flags().String("timeout", "10m", "timeout")
 	verifyRunCmd.Flags().StringP("output", "o", "", "JSON file")
-	verifyRunCmd.Flags().String("ruler", "tests", "rulers, comma-separated: tests|visual (visual runs alone; unknown names exit 2)")
+	verifyRunCmd.Flags().String("ruler", "tests", "rulers, comma-separated: tests|coverage|visual (visual runs alone; unknown names exit 2)")
 	verifyRunCmd.Flags().String("manifest", "", "screens manifest (.toolbelt/screens.yaml)")
 	verifyRunCmd.Flags().Float64("threshold", 0.95, "visual similarity threshold")
 	verifyRunCmd.Flags().Bool("skip-unavailable", true, "graceful skip (SKIPPED verdict) if browser/refs/screens are unavailable")
@@ -52,6 +52,15 @@ func init() {
 	verifyRunCmd.Flags().StringArray("check", nil, "named check name=cmd (repeatable; adds one or overrides its cmd)")
 	verifyRunCmd.Flags().StringArray("no-check", nil, "skips the named check (repeatable)")
 	verifyRunCmd.Flags().Bool("no-checks", false, "skips every verify.checks entry")
+	addCoverageFlags(verifyRunCmd, "")
+}
+
+// addCoverageFlags registers the coverage ruler's flags (R4) on tb verify
+// run and tb stack; prefix labels the stack's help text.
+func addCoverageFlags(c *cobra.Command, prefix string) {
+	c.Flags().String("coverage-cmd", "", prefix+"coverage command (default with go.mod: go test -coverprofile)")
+	c.Flags().String("coverage-pattern", "", prefix+"regexp with one capture group; its last match in coverage-cmd's output is the percentage")
+	c.Flags().Float64("min-coverage", 0, prefix+"coverage floor in [0, 100]; only raises the base ref's .toolbelt/thresholds.yaml")
 }
 
 func runVerify(cmd *cobra.Command, args []string) error {
@@ -122,11 +131,17 @@ func verifyFlagOverrides(cmd *cobra.Command) (*verify.FlagOverrides, error) {
 		return verify.CmdOverride{Cmd: v, Set: flags.Changed(name)}
 	}
 	o := &verify.FlagOverrides{
-		TestCmd:       str("test-cmd"),
-		HiddenTestCmd: str("hidden-test-cmd"),
-		BuildCmd:      str("build-cmd"),
-		LintCmd:       str("lint-cmd"),
-		TypecheckCmd:  str("typecheck-cmd"),
+		TestCmd:         str("test-cmd"),
+		HiddenTestCmd:   str("hidden-test-cmd"),
+		BuildCmd:        str("build-cmd"),
+		LintCmd:         str("lint-cmd"),
+		TypecheckCmd:    str("typecheck-cmd"),
+		CoverageCmd:     str("coverage-cmd"),
+		CoveragePattern: str("coverage-pattern"),
+	}
+	if flags.Changed("min-coverage") {
+		v, _ := flags.GetFloat64("min-coverage")
+		o.MinCoverage = &v
 	}
 	o.NoBuild, _ = flags.GetBool("no-build")
 	o.NoLint, _ = flags.GetBool("no-lint")
@@ -191,12 +206,35 @@ func printRulerText(rr *verify.RulerResult) {
 	switch p := rr.Payload.(type) {
 	case *verify.VisualReport:
 		printVisualReport(p)
+	case *verify.CoverageReport:
+		printCoverageSummary(p)
 	case *verify.Result:
 		if rr.ExitCode == 127 {
 			fmt.Fprintf(os.Stderr, "Error: %s\n", p.Error)
 			return
 		}
 		printTestsSummary(p)
+	}
+}
+
+func printCoverageSummary(rep *verify.CoverageReport) {
+	if rep.DryRun && rep.Plan != nil {
+		fmt.Printf("Dry-run (coverage): dir=%s\n", rep.Plan.Dir)
+		for step, cmd := range rep.Plan.Commands {
+			fmt.Printf("  %s: %s\n", step, cmd)
+		}
+		return
+	}
+	fmt.Printf("Coverage verdict: %s\n", rep.Verdict)
+	if c := rep.Coverage; c != nil {
+		if c.Percent != nil {
+			fmt.Printf("Coverage: %.2f%% (%s), threshold %.2f%% (%s)\n", *c.Percent, c.Metric, c.Threshold, c.ThresholdSource)
+		} else {
+			fmt.Printf("Coverage threshold: %.2f%% (%s)\n", c.Threshold, c.ThresholdSource)
+		}
+	}
+	if rep.Reason != "" && rep.Verdict != verify.VerdictPass {
+		fmt.Printf("Reason: %s\n", rep.Reason)
 	}
 }
 
