@@ -210,4 +210,12 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ github.ref_name }}
-        run: gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false
+        run: |
+          # A -rc.N tag stays a prerelease and is never "latest"; goreleaser
+          # (release.prerelease: auto) already flagged it, these flags keep
+          # the flag and pin latest=false through the undraft.
+          if [[ "$TAG" == *-rc.* ]]; then
+            gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false --prerelease --latest=false
+          else
+            gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false --prerelease=false --latest
+          fi

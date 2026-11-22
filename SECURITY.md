@@ -6,10 +6,10 @@
 
 | Version | Supported |
 | ------- | --------- |
-| 0.0.5 (latest) | Yes |
-| < 0.0.5 | No |
+| 1.0.x | Yes |
+| < 1.0 | No |
 
-The project is pre-1.0: security fixes ship in the latest release. See how to verify a release in [docs/release.md](docs/release.md).
+After 1.0, the latest minor of 1.x is supported; security fixes ship in it and in no older minor. Release candidates (`-rc.N`) are not supported. See how to verify a release in [docs/release.md](docs/release.md).
 
 ## Reporting Vulnerabilities
 
@@ -48,7 +48,7 @@ These times are targets, not guarantees. Complex vulnerabilities may take longer
 
 Vulnerabilities related to:
 
-- **Sandbox escape**: any way to break out of sandbox isolation (currently Landlock, fail-closed; bubblewrap/seccomp planned in [ADR-004](docs/adr/004-sandbox-isolamento.md))
+- **Sandbox escape**: any way to break out of sandbox isolation (Landlock for the filesystem, fail-closed, plus a seccomp network filter for the embedding child, see [ADR-004](docs/adr/004-sandbox-isolamento.md) and [ADR-018](docs/adr/018-cgo-componentes-nativos.md); bubblewrap is not implemented)
 - **Guardrail bypass**: circumventing anti-cheat protections or capability limits
 - **Privilege escalation**: an agent obtaining permissions beyond its role
 - **Data exfiltration**: leaking secrets or protected data
