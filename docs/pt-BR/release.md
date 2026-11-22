@@ -18,9 +18,9 @@ O workflow [`.github/workflows/release.yml`](../../.github/workflows/release.yml
 git checkout main
 git pull origin main
 
-# Exemplo: primeiro release
-git tag v0.0.1
-git push origin v0.0.1
+# Exemplo: primeiro release candidate
+git tag v1.0.0-rc.1
+git push origin v1.0.0-rc.1
 ```
 
 O push da tag dispara o workflow: as verificações do llama.cpp vendorizado e de advisories, `go test ./...` e em seguida GoReleaser (com syft + cosign), que gera:
@@ -31,7 +31,19 @@ O push da tag dispara o workflow: as verificações do llama.cpp vendorizado e d
 - assinatura keyless do checksum: `checksums.txt.sigstore.json` (cosign + OIDC)
 - atestação de proveniência SLSA (`actions/attest-build-provenance` sobre `dist/checksums.txt`)
 - changelog a partir dos commits
-- GitHub Release `v0.0.1` com a versão injetada via ldflags (`tb version` / MCP `tb_version`), criado como **draft**
+- GitHub Release `v1.0.0-rc.1` com a versão injetada via ldflags (`tb version` / MCP `tb_version`), criado como **draft**
+
+## Release candidates (1.0.0)
+
+Uma tag com sufixo `-rc.N` publica um **prerelease** do GitHub que nunca é marcado como `latest` (`release.prerelease: auto` no `.goreleaser.yaml`; o job `publish` passa `--prerelease --latest=false` para tags `-rc.*`). O fluxo, a partir da [spec da 1.0](../specs/release-1.0.md#7-release-steps):
+
+1. Crie a tag `v1.0.0-rc.1` num `main` verde. O workflow gera o **draft**.
+2. `smoke` e `floors` rodam nos assets do draft (veja abaixo); depois o `publish` o torna público como prerelease.
+3. Instale como em [Verificar um artefato baixado](#verificar-um-artefato-baixado) (sha256 + certificado do bundle) e use neste repositório durante um **soak de 7 dias** (decisão O19). Achados novos vão para o log de [dogfood](../campo/dogfood.md).
+4. Um achado `high` é corrigido no `main`, recebe a tag `v1.0.0-rc.2` (nunca reutilize uma tag) e o soak recomeça. Cada correção ganha o próximo `rc.N`.
+5. Quando os critérios de saída valerem, renomeie `[1.0.0-rc.N]` para `[1.0.0]` no changelog e crie a tag `v1.0.0` no mesmo commit do último rc, ou num descendente só de docs.
+
+As regras de estabilidade e depreciação válidas a partir da 1.0 estão na [lista de congelamento, seção 3](../specs/release-1.0.md#3-freeze-list): um item depreciado continua funcionando, oculto da ajuda e com aviso no stderr, até a 2.0.
 
 ## Artefatos nativos (ADR-018)
 
@@ -44,13 +56,13 @@ Todo binário é compilado com cgo e o llama.cpp vendorizado ([ADR-018](adr/018-
   - `smoke`: cada alvo no seu runner (ubuntu-24.04, ubuntu-24.04-arm, macos-15, macos-15-intel, windows-2025, windows-11-arm) roda `tb version` (precisa citar `llama.cpp`) e `tb __graph-embed --smoke` com o modelo de CI fixado (`.github/embed-smoke-model.txt`);
   - `floors`: linux/amd64 no `rockylinux:8` (glibc 2.28) e sob `qemu-x86_64 -cpu Nehalem` (x86-64-v2).
 
-  Depois o `publish` torna o release público. Uma falha deixa o draft: apague o draft e a tag, corrija e crie a tag do próximo patch.
+  Depois o `publish` torna o release público. Uma falha deixa o draft: apague o draft e a tag, corrija e crie a tag do próximo patch (ou do próximo `-rc.N`).
 
 ## Verificar um artefato baixado
 
 ```bash
-VERSION=v0.0.5
-ASSET=toolbelt_0.0.5_linux_amd64.tar.gz
+VERSION=v1.0.0-rc.1
+ASSET=toolbelt_1.0.0-rc.1_linux_amd64.tar.gz
 BASE="https://github.com/leonardo-moraes360/toolbelt/releases/download/${VERSION}"
 
 curl -sLO "${BASE}/${ASSET}"
