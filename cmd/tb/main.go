@@ -27,6 +27,7 @@ var (
 )
 
 func main() {
+	applyTiers(rootCmd)
 	rejectUnknownSubcommands(rootCmd)
 	if err := rootCmd.Execute(); err != nil {
 		code := exitCodeFor(err)

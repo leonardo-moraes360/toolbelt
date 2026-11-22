@@ -3,7 +3,6 @@ package registry
 import (
 	"context"
 	"fmt"
-	"path/filepath"
 
 	"github.com/leonardo-moraes360/toolbelt/internal/egm"
 )
@@ -17,12 +16,12 @@ func registerEgmTools() {
 		InputSchema: &InputSchema{
 			Type: "object",
 			Properties: map[string]Property{
-				"cwd":    {Type: "string", Description: "Absolute directory; doc resolves against it"},
+				"cwd":    {Type: "string", Description: "Absolute directory; doc resolves against it (default: the server's working directory)"},
 				"doc":    {Type: "string", Description: "Document path"},
 				"at":     {Type: "string", Description: "Gate mode: evaluates the document, sources and config at this commit"},
 				"strict": {Type: "boolean", Description: "PASS_PARTIAL gives exit_code 1", Default: false},
 			},
-			Required: []string{"cwd", "doc"},
+			Required: []string{"doc"},
 		},
 		Handler: handleEgmStatus,
 	})
@@ -32,10 +31,10 @@ func registerEgmTools() {
 		InputSchema: &InputSchema{
 			Type: "object",
 			Properties: map[string]Property{
-				"cwd": {Type: "string", Description: "Absolute directory; doc resolves against it"},
+				"cwd": {Type: "string", Description: "Absolute directory; doc resolves against it (default: the server's working directory)"},
 				"doc": {Type: "string", Description: "Document path"},
 			},
-			Required: []string{"cwd", "doc"},
+			Required: []string{"doc"},
 		},
 		Handler: handleEgmReceipt,
 	})
@@ -45,7 +44,7 @@ func registerEgmTools() {
 		InputSchema: &InputSchema{
 			Type: "object",
 			Properties: map[string]Property{
-				"cwd":          {Type: "string", Description: "Absolute directory; doc resolves against it"},
+				"cwd":          {Type: "string", Description: "Absolute directory; doc resolves against it (default: the server's working directory)"},
 				"doc":          {Type: "string", Description: "Document path"},
 				"fix":          {Type: "array", Description: "Lineages fixed by an edit (F-1, F-2)", Items: &Property{Type: "string"}},
 				"decline":      {Type: "array", Description: "nit/major lineages declined (a major is a downgrade)", Items: &Property{Type: "string"}},
@@ -54,17 +53,18 @@ func registerEgmTools() {
 				"contest":      {Type: "string", Description: "Lineage contested at the arbiter (llm engine; needs evidence)"},
 				"evidence":     {Type: "string", Description: "path:line of the contest evidence"},
 			},
-			Required: []string{"cwd", "doc"},
+			Required: []string{"doc"},
 		},
 		Handler: handleEgmResolve,
 	})
 }
 
 func egmOptions(args map[string]any) (egm.Options, error) {
-	cwd, doc := StringArg(args, "cwd"), StringArg(args, "doc")
-	if !filepath.IsAbs(cwd) {
-		return egm.Options{}, fmt.Errorf("cwd must be an absolute path")
+	cwd, err := absToolCWD(args)
+	if err != nil {
+		return egm.Options{}, err
 	}
+	doc := StringArg(args, "doc")
 	if doc == "" {
 		return egm.Options{}, fmt.Errorf("doc is required")
 	}
