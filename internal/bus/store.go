@@ -95,7 +95,7 @@ CREATE TABLE claims (
 	confinement  TEXT,
 	PRIMARY KEY (channel, thread)
 );
-` + linksSchema
+`
 
 // Store is persisted at <root>/.toolbelt/bus/bus.db.
 type Store struct {
@@ -184,7 +184,12 @@ func (s *Store) migrate() error {
 		case v == SchemaVersion:
 			return nil
 		case v == 0:
+			// Two static literals, not one concatenated string, so the
+			// statements stay plain constants (no formatted SQL).
 			if _, err := tx.Exec(schema); err != nil {
+				return fmt.Errorf("creating schema: %w", err)
+			}
+			if _, err := tx.Exec(linksSchema); err != nil {
 				return fmt.Errorf("creating schema: %w", err)
 			}
 			_, err := tx.Exec(setSchemaVersion)
