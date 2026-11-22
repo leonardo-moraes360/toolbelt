@@ -45,6 +45,15 @@ Uma tag com sufixo `-rc.N` publica um **prerelease** do GitHub que nunca é marc
 
 As regras de estabilidade e depreciação válidas a partir da 1.0 estão na [lista de congelamento, seção 3](../specs/release-1.0.md#3-freeze-list): um item depreciado continua funcionando, oculto da ajuda e com aviso no stderr, até a 2.0.
 
+## Congelamento do contrato
+
+O contrato 1.x tem um snapshot, então qualquer mudança nele aparece como diff e nunca passa despercebida:
+
+- `cmd/tb/testdata/contract/cli.json`: cada caminho de comando, suas flags (tipo, default, abreviação, hidden, deprecated), a anotação `tier` e a tabela de códigos de saída.
+- `internal/registry/testdata/contract/mcp.json`: o `tools/list` do MCP (nome, descrição, schema de entrada, annotations), o `tier` e o tipo de envelope do resultado de cada tool, e todos os kinds de `internal/envelope`.
+
+`TestCLIContract` e `TestMCPContract` rodam no `go test ./...` normal (logo no CI, inclusive no job com `-race`) e falham em qualquer diferença. Se a mudança é intencional, regenere com `go test ./cmd/tb/ -run TestCLIContract -update` e `go test ./internal/registry/ -run TestMCPContract -update` e commite o diff. Um diff numa entrada de tier `stable` é uma quebra de contrato no semver: removê-la ou alterá-la exige o [ciclo de depreciação](specs/release-1.0.md#3-freeze-list) e um release major; acrescentar é mudança minor. `TestExitCodeTableMatchesDocs` mantém a tabela de códigos de saída de `docs/cli.md` e `docs/pt-BR/cli.md` igual às constantes.
+
 ## Artefatos nativos (ADR-018)
 
 Todo binário é compilado com cgo e o llama.cpp vendorizado ([ADR-018](adr/018-cgo-componentes-nativos.md)), tag `embednative`, só CPU:

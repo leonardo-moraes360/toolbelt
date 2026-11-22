@@ -1,0 +1,2224 @@
+{
+  "commands": [
+    {
+      "path": "tb",
+      "flags": [
+        {
+          "name": "config",
+          "type": "string",
+          "default": "",
+          "shorthand": "c"
+        },
+        {
+          "name": "env",
+          "type": "stringArray",
+          "default": "[]"
+        },
+        {
+          "name": "json",
+          "type": "bool",
+          "default": "false"
+        },
+        {
+          "name": "pass-env",
+          "type": "stringArray",
+          "default": "[]"
+        },
+        {
+          "name": "verbose",
+          "type": "bool",
+          "default": "false",
+          "shorthand": "v"
+        },
+        {
+          "name": "version",
+          "type": "bool",
+          "default": "false"
+        }
+      ]
+    },
+    {
+      "path": "tb __fake-agent",
+      "hidden": true,
+      "flags": [
+        {
+          "name": "config",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "name": "prompt",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "name": "workdir",
+          "type": "string",
+          "default": ""
+        }
+      ]
+    },
+    {
+      "path": "tb __graph-embed",
+      "hidden": true,
+      "flags": [
+        {
+          "name": "model",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "name": "sha256",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "name": "smoke",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "name": "threads",
+          "type": "int",
+          "default": "2"
+        }
+      ]
+    },
+    {
+      "path": "tb bench",
+      "tier": "experimental"
+    },
+    {
+      "path": "tb bench compare",
+      "tier": "experimental",
+      "flags": [
+        {
+          "name": "after",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "name": "agent",
+          "type": "string",
+          "default": "",
+          "shorthand": "a"
+        },
+        {
+          "name": "before",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "name": "config-a",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "name": "config-b",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "name": "fake",
+          "type": "bool",
+          "default": "false"
+        },
+        {
+          "name": "fixtures-dir",
+          "type": "string",
+          "default": "bench/fixtures",
+          "shorthand": "f"
+        },
+        {
+          "name": "output",
+          "type": "string",
+          "default": "",
+          "shorthand": "o"
+        },
+        {
+          "name": "output-dir",
+          "type": "string",
+          "default": "bench/results"
+        },
+        {
+          "name": "repetitions",
+          "type": "int",
+          "default": "1",
+          "shorthand": "r"
+        },
+        {
+          "name": "task",
+          "type": "stringSlice",
+          "default": "[]"
+        },
+        {
+          "name": "tasks-dir",
+          "type": "string",
+          "default": "bench/tasks",
+          "shorthand": "t"
+        }
+      ]
+    },
+    {
+      "path": "tb bench list",
+      "tier": "experimental",
+      "flags": [
+        {
+          "name": "tasks-dir",
+          "type": "string",
+          "default": "bench/tasks",
+          "shorthand": "t"
+        }
+      ]
+    },
+    {
+      "path": "tb bench report",
+      "tier": "experimental",
+      "flags": [
+        {
+          "name": "input",
+          "type": "string",
+          "default": "",
+          "shorthand": "i"
+        },
+        {
+          "name": "output",
+          "type": "string",
+          "default": "",
+          "shorthand": "o"
+        }
+      ]
+    },
+    {
+      "path": "tb bench run",
+      "tier": "experimental",
+      "flags": [
+        {
+          "name": "ab-config",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "name": "agent",
+          "type": "string",
+          "default": "",
+          "shorthand": "a"
+        },
+        {
+          "name": "fake",
+          "type": "bool",
+          "default": "false"
+        },
+        {
+          "name": "fake-config",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "name": "fixtures-dir",
+          "type": "string",
+          "default": "bench/fixtures",
+          "shorthand": "f"
+        },
+        {
+          "name": "flag",
+          "type": "stringToString",
+          "default": "[]"
+        },
+        {
+          "name": "label",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "name": "output",
+          "type": "string",
+          "default": "",
+          "shorthand": "o"
+        },
+        {
+          "name": "repetitions",
+          "type": "int",
+          "default": "1",
+          "shorthand": "r"
+        },
+        {
+          "name": "task",
+          "type": "stringSlice",
+          "default": "[]"
+        },
+        {
+          "name": "tasks-dir",
+          "type": "string",
+          "default": "bench/tasks",
+          "shorthand": "t"
+        }
+      ]
+    },
+    {
+      "path": "tb blue",
+      "tier": "experimental"
+    },
+    {
+      "path": "tb blue apply",
+      "tier": "experimental",
+      "flags": [
+        {
+          "name": "dry-run",
+          "type": "bool",
+          "default": "false"
+        }
+      ]
+    },
+    {
+      "path": "tb blue check",
+      "tier": "experimental"
+    },
+    {
+      "path": "tb blue list",
+      "tier": "experimental",
+      "flags": [
+        {
+          "name": "area",
+          "type": "string",
+          "default": ""
+        }
+      ]
+    },
+    {
+      "path": "tb blue load",
+      "tier": "experimental",
+      "flags": [
+        {
+          "name": "budget",
+          "type": "int",
+          "default": "0"
+        },
+        {
+          "name": "full",
+          "type": "bool",
+          "default": "false"
+        },
+        {
+          "name": "section",
+          "type": "string",
+          "default": ""
+        }
+      ]
+    },
+    {
+      "path": "tb blue pair",
+      "tier": "experimental"
+    },
+    {
+      "path": "tb blue search",
+      "tier": "experimental",
+      "flags": [
+        {
+          "name": "area",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "name": "limit",
+          "type": "int",
+          "default": "20"
+        }
+      ]
+    },
+    {
+      "path": "tb board",
+      "tier": "experimental"
+    },
+    {
+      "path": "tb board drain",
+      "tier": "experimental"
+    },
+    {
+      "path": "tb board list",
+      "tier": "experimental",
+      "flags": [
+        {
+          "name": "status",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "name": "strategy",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "name": "worker",
+          "type": "string",
+          "default": ""
+        }
+      ]
+    },
+    {
+      "path": "tb board pause",
+      "tier": "experimental"
+    },
+    {
+      "path": "tb board resume",
+      "tier": "experimental"
+    },
+    {
+      "path": "tb board watch",
+      "tier": "experimental",
+      "flags": [
+        {
+          "name": "interval",
+          "type": "duration",
+          "default": "2s"
+        },
+        {
+          "name": "status",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "name": "strategy",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "name": "worker",
+          "type": "string",
+          "default": ""
+        }
+      ]
+    },
+    {
+      "path": "tb bus",
+      "tier": "experimental"
+    },
+    {
+      "path": "tb bus channel",
+      "tier": "experimental"
+    },
+    {
+      "path": "tb bus channel create",
+      "tier": "experimental",
+      "flags": [
+        {
+          "name": "invite-ttl",
+          "type": "duration",
+          "default": "10m0s"
+        },
+        {
+          "name": "lease",
+          "type": "duration",
+          "default": "2m0s"
+        },
+        {
+          "name": "owner",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "name": "ttl",
+          "type": "duration",
+          "default": "0s"
+        }
+      ]
+    },
+    {
+      "path": "tb bus channel extend",
+      "tier": "experimental",
+      "flags": [
+        {
+          "name": "ttl",
+          "type": "duration",
+          "default": "0s"
+        }
+      ]
+    },
+    {
+      "path": "tb bus channel list",
+      "tier": "experimental"
+    },
+    {
+      "path": "tb bus channel show",
+      "tier": "experimental"
+    },
+    {
+      "path": "tb bus claim",
+      "tier": "experimental",
+      "flags": [
+        {
+          "name": "as",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "name": "channel",
+          "type": "string",
+          "default": ""
+        }
+      ]
+    },
+    {
+      "path": "tb bus complete",
+      "tier": "experimental",
+      "flags": [
+        {
+          "name": "as",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "name": "channel",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "name": "epoch",
+          "type": "int64",
+          "default": "0"
+        },
+        {
+          "name": "result",
+          "type": "string",
+          "default": ""
+        }
+      ]
+    },
+    {
+      "path": "tb bus discover",
+      "tier": "experimental",
+      "flags": [
+        {
+          "name": "cwd",
+          "type": "string",
+          "default": ""
+        }
+      ]
+    },
+    {
+      "path": "tb bus heartbeat",
+      "tier": "experimental",
+      "flags": [
+        {
+          "name": "as",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "name": "channel",
+          "type": "string",
+          "default": ""
+        }
+      ]
+    },
+    {
+      "path": "tb bus invite",
+      "tier": "experimental",
+      "flags": [
+        {
+          "name": "name",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "name": "role",
+          "type": "string",
+          "default": "worker"
+        },
+        {
+          "name": "ttl",
+          "type": "duration",
+          "default": "10m0s"
+        }
+      ]
+    },
+    {
+      "path": "tb bus join",
+      "tier": "experimental",
+      "flags": [
+        {
+          "name": "capability",
+          "type": "stringSlice",
+          "default": "[]"
+        },
+        {
+          "name": "card",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "name": "invite",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "name": "model",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "name": "name",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "name": "role",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "name": "session",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "name": "tier",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "name": "vendor",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "name": "wake",
+          "type": "string",
+          "default": ""
+        }
+      ]
+    },
+    {
+      "path": "tb bus log",
+      "tier": "experimental",
+      "flags": [
+        {
+          "name": "limit",
+          "type": "int",
+          "default": "100"
+        },
+        {
+          "name": "thread",
+          "type": "string",
+          "default": ""
+        }
+      ]
+    },
+    {
+      "path": "tb bus recv",
+      "tier": "experimental",
+      "flags": [
+        {
+          "name": "as",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "name": "channel",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "name": "limit",
+          "type": "int",
+          "default": "50"
+        },
+        {
+          "name": "peek",
+          "type": "bool",
+          "default": "false"
+        },
+        {
+          "name": "since",
+          "type": "int64",
+          "default": "0"
+        },
+        {
+          "name": "wait",
+          "type": "duration",
+          "default": "0s"
+        }
+      ]
+    },
+    {
+      "path": "tb bus run",
+      "tier": "experimental",
+      "flags": [
+        {
+          "name": "allow-unsandboxed",
+          "type": "bool",
+          "default": "false"
+        },
+        {
+          "name": "as",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "name": "channel",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "name": "check",
+          "type": "bool",
+          "default": "false"
+        },
+        {
+          "name": "config",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "name": "dry-run",
+          "type": "bool",
+          "default": "false"
+        },
+        {
+          "name": "invite",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "name": "once",
+          "type": "bool",
+          "default": "false"
+        },
+        {
+          "name": "role",
+          "type": "string",
+          "default": ""
+        }
+      ]
+    },
+    {
+      "path": "tb bus send",
+      "tier": "experimental",
+      "flags": [
+        {
+          "name": "as",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "name": "causation",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "name": "channel",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "name": "idempotency-key",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "name": "parent",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "name": "payload",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "name": "thread",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "name": "to",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "name": "ttl",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "name": "type",
+          "type": "string",
+          "default": ""
+        }
+      ]
+    },
+    {
+      "path": "tb bus tree",
+      "tier": "experimental",
+      "flags": [
+        {
+          "name": "all",
+          "type": "bool",
+          "default": "false"
+        },
+        {
+          "name": "limit",
+          "type": "int",
+          "default": "50"
+        },
+        {
+          "name": "thread",
+          "type": "string",
+          "default": ""
+        }
+      ]
+    },
+    {
+      "path": "tb bus watchdog",
+      "tier": "experimental",
+      "flags": [
+        {
+          "name": "dry-run",
+          "type": "bool",
+          "default": "false"
+        }
+      ]
+    },
+    {
+      "path": "tb drift",
+      "tier": "stable",
+      "flags": [
+        {
+          "name": "approved-base",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "name": "approved-sha",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "name": "base",
+          "type": "string",
+          "default": "HEAD~1"
+        },
+        {
+          "name": "head",
+          "type": "string",
+          "default": "HEAD"
+        },
+        {
+          "name": "output",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "name": "require-approved-sha",
+          "type": "bool",
+          "default": "false"
+        },
+        {
+          "name": "ticket",
+          "type": "string",
+          "default": "rd.md"
+        }
+      ]
+    },
+    {
+      "path": "tb egm",
+      "tier": "experimental"
+    },
+    {
+      "path": "tb egm bootstrap",
+      "tier": "experimental",
+      "flags": [
+        {
+          "name": "engine",
+          "type": "string",
+          "default": "deterministic"
+        },
+        {
+          "name": "from",
+          "type": "stringArray",
+          "default": "[]"
+        }
+      ]
+    },
+    {
+      "path": "tb egm brainstorm",
+      "tier": "experimental",
+      "flags": [
+        {
+          "name": "brief",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "name": "from",
+          "type": "stringArray",
+          "default": "[]"
+        },
+        {
+          "name": "out",
+          "type": "string",
+          "default": ""
+        }
+      ]
+    },
+    {
+      "path": "tb egm draft",
+      "tier": "experimental",
+      "flags": [
+        {
+          "name": "body",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "name": "brief",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "name": "engine",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "name": "from",
+          "type": "stringArray",
+          "default": "[]"
+        },
+        {
+          "name": "update",
+          "type": "bool",
+          "default": "false"
+        }
+      ]
+    },
+    {
+      "path": "tb egm drift-report",
+      "tier": "experimental",
+      "flags": [
+        {
+          "name": "at",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "name": "engine",
+          "type": "string",
+          "default": "deterministic"
+        }
+      ]
+    },
+    {
+      "path": "tb egm loop",
+      "tier": "experimental"
+    },
+    {
+      "path": "tb egm loop next",
+      "tier": "experimental",
+      "flags": [
+        {
+          "name": "dry-run",
+          "type": "bool",
+          "default": "false"
+        },
+        {
+          "name": "engine",
+          "type": "string",
+          "default": "auto"
+        },
+        {
+          "name": "reviewers",
+          "type": "stringSlice",
+          "default": "[]"
+        }
+      ]
+    },
+    {
+      "path": "tb egm receipt",
+      "tier": "experimental"
+    },
+    {
+      "path": "tb egm resolve",
+      "tier": "experimental",
+      "flags": [
+        {
+          "name": "contest",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "name": "decline",
+          "type": "stringSlice",
+          "default": "[]"
+        },
+        {
+          "name": "evidence",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "name": "fix",
+          "type": "stringSlice",
+          "default": "[]"
+        },
+        {
+          "name": "force-settle",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "name": "reason",
+          "type": "string",
+          "default": ""
+        }
+      ]
+    },
+    {
+      "path": "tb egm review",
+      "tier": "experimental",
+      "flags": [
+        {
+          "name": "dry-run",
+          "type": "bool",
+          "default": "false"
+        },
+        {
+          "name": "engine",
+          "type": "string",
+          "default": "auto"
+        },
+        {
+          "name": "restart",
+          "type": "bool",
+          "default": "false"
+        },
+        {
+          "name": "reviewers",
+          "type": "stringSlice",
+          "default": "[]"
+        }
+      ]
+    },
+    {
+      "path": "tb egm status",
+      "tier": "experimental",
+      "flags": [
+        {
+          "name": "at",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "name": "strict",
+          "type": "bool",
+          "default": "false"
+        }
+      ]
+    },
+    {
+      "path": "tb graph",
+      "tier": "stable",
+      "flags": [
+        {
+          "name": "enable",
+          "type": "bool",
+          "default": "false"
+        }
+      ]
+    },
+    {
+      "path": "tb graph callers",
+      "tier": "stable",
+      "flags": [
+        {
+          "name": "depth",
+          "type": "int",
+          "default": "1"
+        },
+        {
+          "name": "function",
+          "type": "string",
+          "default": ""
+        }
+      ]
+    },
+    {
+      "path": "tb graph deps",
+      "tier": "stable",
+      "flags": [
+        {
+          "name": "file",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "name": "module",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "name": "transitive",
+          "type": "bool",
+          "default": "false"
+        }
+      ]
+    },
+    {
+      "path": "tb graph explain",
+      "tier": "stable",
+      "flags": [
+        {
+          "name": "limit",
+          "type": "int",
+          "default": "5"
+        }
+      ]
+    },
+    {
+      "path": "tb graph impact",
+      "tier": "stable",
+      "flags": [
+        {
+          "name": "depth",
+          "type": "int",
+          "default": "2"
+        },
+        {
+          "name": "file",
+          "type": "string",
+          "default": ""
+        }
+      ]
+    },
+    {
+      "path": "tb graph index",
+      "tier": "stable",
+      "flags": [
+        {
+          "name": "vectors",
+          "type": "bool",
+          "default": "false"
+        }
+      ]
+    },
+    {
+      "path": "tb graph path",
+      "tier": "stable",
+      "flags": [
+        {
+          "name": "max-depth",
+          "type": "int",
+          "default": "6"
+        }
+      ]
+    },
+    {
+      "path": "tb graph rebuild",
+      "tier": "stable",
+      "flags": [
+        {
+          "name": "vectors",
+          "type": "bool",
+          "default": "false"
+        }
+      ]
+    },
+    {
+      "path": "tb graph search",
+      "tier": "stable",
+      "flags": [
+        {
+          "name": "limit",
+          "type": "int",
+          "default": "20"
+        },
+        {
+          "name": "mode",
+          "type": "string",
+          "default": "lexical"
+        }
+      ]
+    },
+    {
+      "path": "tb graph stats",
+      "tier": "stable"
+    },
+    {
+      "path": "tb guard",
+      "tier": "stable"
+    },
+    {
+      "path": "tb guard check",
+      "tier": "stable",
+      "flags": [
+        {
+          "name": "base",
+          "type": "string",
+          "default": "HEAD~1"
+        },
+        {
+          "name": "head",
+          "type": "string",
+          "default": "HEAD"
+        },
+        {
+          "name": "warn-only",
+          "type": "bool",
+          "default": "false"
+        }
+      ]
+    },
+    {
+      "path": "tb init",
+      "tier": "stable",
+      "flags": [
+        {
+          "name": "global",
+          "type": "bool",
+          "default": "false"
+        },
+        {
+          "name": "write-agents",
+          "type": "bool",
+          "default": "false"
+        },
+        {
+          "name": "write-checks",
+          "type": "bool",
+          "default": "false"
+        }
+      ]
+    },
+    {
+      "path": "tb lab",
+      "tier": "experimental"
+    },
+    {
+      "path": "tb lab down",
+      "tier": "experimental"
+    },
+    {
+      "path": "tb lab list",
+      "tier": "experimental"
+    },
+    {
+      "path": "tb lab logs",
+      "tier": "experimental"
+    },
+    {
+      "path": "tb lab new",
+      "tier": "experimental",
+      "flags": [
+        {
+          "name": "class",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "name": "target",
+          "type": "string",
+          "default": ""
+        }
+      ]
+    },
+    {
+      "path": "tb lab run",
+      "tier": "experimental"
+    },
+    {
+      "path": "tb lab status",
+      "tier": "experimental"
+    },
+    {
+      "path": "tb lab up",
+      "tier": "experimental",
+      "flags": [
+        {
+          "name": "tier",
+          "type": "string",
+          "default": ""
+        }
+      ]
+    },
+    {
+      "path": "tb lab verify",
+      "tier": "experimental"
+    },
+    {
+      "path": "tb mcp",
+      "tier": "stable",
+      "flags": [
+        {
+          "name": "bus-as",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "name": "bus-root",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "name": "bus-state",
+          "type": "string",
+          "default": ""
+        }
+      ]
+    },
+    {
+      "path": "tb mem",
+      "tier": "stable"
+    },
+    {
+      "path": "tb mem add",
+      "tier": "stable",
+      "flags": [
+        {
+          "name": "category",
+          "type": "string",
+          "default": "anti_cheat"
+        },
+        {
+          "name": "immutable",
+          "type": "bool",
+          "default": "false"
+        },
+        {
+          "name": "ref",
+          "type": "string",
+          "default": ""
+        }
+      ]
+    },
+    {
+      "path": "tb mem check",
+      "tier": "stable",
+      "flags": [
+        {
+          "name": "all",
+          "type": "bool",
+          "default": "false"
+        },
+        {
+          "name": "expect-sha",
+          "type": "string",
+          "default": ""
+        }
+      ]
+    },
+    {
+      "path": "tb mem edit",
+      "tier": "stable",
+      "flags": [
+        {
+          "name": "category",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "name": "force",
+          "type": "bool",
+          "default": "false"
+        },
+        {
+          "name": "reason",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "name": "ref",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "name": "rule",
+          "type": "string",
+          "default": ""
+        }
+      ]
+    },
+    {
+      "path": "tb mem init",
+      "tier": "stable"
+    },
+    {
+      "path": "tb mem list",
+      "tier": "stable",
+      "flags": [
+        {
+          "name": "all",
+          "type": "bool",
+          "default": "false"
+        },
+        {
+          "name": "category",
+          "type": "string",
+          "default": ""
+        }
+      ]
+    },
+    {
+      "path": "tb mem retire",
+      "tier": "stable",
+      "flags": [
+        {
+          "name": "force",
+          "type": "bool",
+          "default": "false"
+        },
+        {
+          "name": "reason",
+          "type": "string",
+          "default": ""
+        }
+      ]
+    },
+    {
+      "path": "tb mem search",
+      "tier": "stable",
+      "flags": [
+        {
+          "name": "all",
+          "type": "bool",
+          "default": "false"
+        }
+      ]
+    },
+    {
+      "path": "tb mem show",
+      "tier": "stable"
+    },
+    {
+      "path": "tb merge",
+      "tier": "stable",
+      "flags": [
+        {
+          "name": "allow-sensitive",
+          "type": "bool",
+          "default": "false"
+        },
+        {
+          "name": "dry-run",
+          "type": "bool",
+          "default": "false"
+        },
+        {
+          "name": "force",
+          "type": "bool",
+          "default": "false"
+        },
+        {
+          "name": "into",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "name": "json",
+          "type": "bool",
+          "default": "false"
+        },
+        {
+          "name": "output",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "name": "resolutions",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "name": "strategy",
+          "type": "string",
+          "default": "fail"
+        }
+      ]
+    },
+    {
+      "path": "tb red",
+      "tier": "experimental"
+    },
+    {
+      "path": "tb red explain",
+      "tier": "experimental"
+    },
+    {
+      "path": "tb red list",
+      "tier": "experimental",
+      "flags": [
+        {
+          "name": "area",
+          "type": "string",
+          "default": ""
+        }
+      ]
+    },
+    {
+      "path": "tb red load",
+      "tier": "experimental",
+      "flags": [
+        {
+          "name": "budget",
+          "type": "int",
+          "default": "0"
+        },
+        {
+          "name": "full",
+          "type": "bool",
+          "default": "false"
+        },
+        {
+          "name": "section",
+          "type": "string",
+          "default": ""
+        }
+      ]
+    },
+    {
+      "path": "tb red pair",
+      "tier": "experimental"
+    },
+    {
+      "path": "tb red search",
+      "tier": "experimental",
+      "flags": [
+        {
+          "name": "area",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "name": "limit",
+          "type": "int",
+          "default": "20"
+        }
+      ]
+    },
+    {
+      "path": "tb review",
+      "tier": "stable",
+      "flags": [
+        {
+          "name": "approved-base",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "name": "approved-sha",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "name": "base",
+          "type": "string",
+          "default": "HEAD~1"
+        },
+        {
+          "name": "head",
+          "type": "string",
+          "default": "HEAD"
+        },
+        {
+          "name": "output",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "name": "require-approved-sha",
+          "type": "bool",
+          "default": "false"
+        },
+        {
+          "name": "reviewers",
+          "type": "int",
+          "default": "3"
+        },
+        {
+          "name": "standards",
+          "type": "string",
+          "default": "scope,quality,acceptance"
+        },
+        {
+          "name": "ticket",
+          "type": "string",
+          "default": "rd.md"
+        }
+      ]
+    },
+    {
+      "path": "tb router",
+      "tier": "experimental"
+    },
+    {
+      "path": "tb router config",
+      "tier": "experimental"
+    },
+    {
+      "path": "tb router run",
+      "tier": "experimental",
+      "flags": [
+        {
+          "name": "agent-cmd",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "name": "allow-unsandboxed",
+          "type": "bool",
+          "default": "false"
+        },
+        {
+          "name": "check",
+          "type": "bool",
+          "default": "false"
+        },
+        {
+          "name": "dry-run",
+          "type": "bool",
+          "default": "false"
+        },
+        {
+          "name": "once",
+          "type": "bool",
+          "default": "false"
+        },
+        {
+          "name": "strategy",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "name": "workers",
+          "type": "int",
+          "default": "0"
+        }
+      ]
+    },
+    {
+      "path": "tb router status",
+      "tier": "experimental"
+    },
+    {
+      "path": "tb sandbox",
+      "tier": "stable"
+    },
+    {
+      "path": "tb sandbox check",
+      "tier": "stable"
+    },
+    {
+      "path": "tb sandbox run",
+      "tier": "stable",
+      "flags": [
+        {
+          "name": "allow-unsandboxed",
+          "type": "bool",
+          "default": "false"
+        },
+        {
+          "name": "timeout",
+          "type": "string",
+          "default": "30s"
+        },
+        {
+          "name": "workdir",
+          "type": "string",
+          "default": ""
+        }
+      ]
+    },
+    {
+      "path": "tb stack",
+      "tier": "stable",
+      "flags": [
+        {
+          "name": "approved-base",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "name": "approved-sha",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "name": "base",
+          "type": "string",
+          "default": "HEAD~1"
+        },
+        {
+          "name": "build-cmd",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "name": "check",
+          "type": "stringArray",
+          "default": "[]"
+        },
+        {
+          "name": "coverage-cmd",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "name": "coverage-pattern",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "name": "dry-run",
+          "type": "bool",
+          "default": "false"
+        },
+        {
+          "name": "egm-allow-offline",
+          "type": "bool",
+          "default": "false"
+        },
+        {
+          "name": "egm-doc",
+          "type": "stringArray",
+          "default": "[]"
+        },
+        {
+          "name": "egm-mode",
+          "type": "string",
+          "default": "local"
+        },
+        {
+          "name": "fail-fast",
+          "type": "bool",
+          "default": "false"
+        },
+        {
+          "name": "head",
+          "type": "string",
+          "default": "HEAD"
+        },
+        {
+          "name": "hidden-test-cmd",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "name": "jobs",
+          "type": "int",
+          "default": "0"
+        },
+        {
+          "name": "lint-cmd",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "name": "max-iter",
+          "type": "int",
+          "default": "0"
+        },
+        {
+          "name": "min-coverage",
+          "type": "float64",
+          "default": "0"
+        },
+        {
+          "name": "no-build",
+          "type": "bool",
+          "default": "false"
+        },
+        {
+          "name": "no-check",
+          "type": "stringArray",
+          "default": "[]",
+          "hidden": true,
+          "deprecated": "use --skip-check"
+        },
+        {
+          "name": "no-checks",
+          "type": "bool",
+          "default": "false"
+        },
+        {
+          "name": "no-lint",
+          "type": "bool",
+          "default": "false"
+        },
+        {
+          "name": "no-typecheck",
+          "type": "bool",
+          "default": "false"
+        },
+        {
+          "name": "require-approved-sha",
+          "type": "bool",
+          "default": "false"
+        },
+        {
+          "name": "reviewers",
+          "type": "int",
+          "default": "0"
+        },
+        {
+          "name": "ruler",
+          "type": "string",
+          "default": "tests"
+        },
+        {
+          "name": "skip-check",
+          "type": "stringArray",
+          "default": "[]"
+        },
+        {
+          "name": "standards",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "name": "strict",
+          "type": "bool",
+          "default": "false"
+        },
+        {
+          "name": "test-cmd",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "name": "ticket",
+          "type": "string",
+          "default": "rd.md"
+        },
+        {
+          "name": "timeout",
+          "type": "string",
+          "default": "10m"
+        },
+        {
+          "name": "typecheck-cmd",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "name": "warn-only",
+          "type": "bool",
+          "default": "false"
+        }
+      ]
+    },
+    {
+      "path": "tb ticket",
+      "tier": "stable"
+    },
+    {
+      "path": "tb ticket cancel",
+      "tier": "stable"
+    },
+    {
+      "path": "tb ticket create",
+      "tier": "stable",
+      "flags": [
+        {
+          "name": "accept",
+          "type": "stringArray",
+          "default": "[]"
+        },
+        {
+          "name": "dep",
+          "type": "stringSlice",
+          "default": "[]"
+        },
+        {
+          "name": "description",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "name": "dry-run",
+          "type": "bool",
+          "default": "false"
+        },
+        {
+          "name": "forbid",
+          "type": "stringSlice",
+          "default": "[]"
+        },
+        {
+          "name": "from",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "name": "priority",
+          "type": "int",
+          "default": "0"
+        },
+        {
+          "name": "scope",
+          "type": "stringSlice",
+          "default": "[]"
+        },
+        {
+          "name": "timeout",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "name": "title",
+          "type": "string",
+          "default": ""
+        }
+      ]
+    },
+    {
+      "path": "tb ticket list",
+      "tier": "stable",
+      "flags": [
+        {
+          "name": "deps",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "name": "status",
+          "type": "string",
+          "default": ""
+        }
+      ]
+    },
+    {
+      "path": "tb ticket retry",
+      "tier": "stable"
+    },
+    {
+      "path": "tb ticket show",
+      "tier": "stable"
+    },
+    {
+      "path": "tb vault",
+      "tier": "experimental"
+    },
+    {
+      "path": "tb vault backlinks",
+      "tier": "experimental"
+    },
+    {
+      "path": "tb vault check",
+      "tier": "experimental"
+    },
+    {
+      "path": "tb vault links",
+      "tier": "experimental"
+    },
+    {
+      "path": "tb vault list",
+      "tier": "experimental",
+      "flags": [
+        {
+          "name": "source",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "name": "tag",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "name": "type",
+          "type": "string",
+          "default": ""
+        }
+      ]
+    },
+    {
+      "path": "tb vault new",
+      "tier": "experimental",
+      "flags": [
+        {
+          "name": "body",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "name": "confidence",
+          "type": "float64",
+          "default": "0"
+        },
+        {
+          "name": "dir",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "name": "source",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "name": "tag",
+          "type": "stringSlice",
+          "default": "[]"
+        },
+        {
+          "name": "type",
+          "type": "string",
+          "default": ""
+        }
+      ]
+    },
+    {
+      "path": "tb vault search",
+      "tier": "experimental",
+      "flags": [
+        {
+          "name": "limit",
+          "type": "int",
+          "default": "20"
+        }
+      ]
+    },
+    {
+      "path": "tb vault show",
+      "tier": "experimental"
+    },
+    {
+      "path": "tb verify",
+      "tier": "stable"
+    },
+    {
+      "path": "tb verify run",
+      "tier": "stable",
+      "flags": [
+        {
+          "name": "base",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "name": "build-cmd",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "name": "check",
+          "type": "stringArray",
+          "default": "[]"
+        },
+        {
+          "name": "coverage-cmd",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "name": "coverage-pattern",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "name": "dry-run",
+          "type": "bool",
+          "default": "false"
+        },
+        {
+          "name": "head",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "name": "hidden-test-cmd",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "name": "lint-cmd",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "name": "manifest",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "name": "max-iter",
+          "type": "int",
+          "default": "0"
+        },
+        {
+          "name": "min-coverage",
+          "type": "float64",
+          "default": "0"
+        },
+        {
+          "name": "no-build",
+          "type": "bool",
+          "default": "false"
+        },
+        {
+          "name": "no-check",
+          "type": "stringArray",
+          "default": "[]",
+          "hidden": true,
+          "deprecated": "use --skip-check"
+        },
+        {
+          "name": "no-checks",
+          "type": "bool",
+          "default": "false"
+        },
+        {
+          "name": "no-lint",
+          "type": "bool",
+          "default": "false"
+        },
+        {
+          "name": "no-typecheck",
+          "type": "bool",
+          "default": "false"
+        },
+        {
+          "name": "output",
+          "type": "string",
+          "default": "",
+          "shorthand": "o"
+        },
+        {
+          "name": "ruler",
+          "type": "string",
+          "default": "tests"
+        },
+        {
+          "name": "skip-check",
+          "type": "stringArray",
+          "default": "[]"
+        },
+        {
+          "name": "skip-unavailable",
+          "type": "bool",
+          "default": "true"
+        },
+        {
+          "name": "test-cmd",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "name": "threshold",
+          "type": "float64",
+          "default": "0.95"
+        },
+        {
+          "name": "ticket",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "name": "timeout",
+          "type": "string",
+          "default": "10m"
+        },
+        {
+          "name": "typecheck-cmd",
+          "type": "string",
+          "default": ""
+        }
+      ]
+    },
+    {
+      "path": "tb version",
+      "tier": "stable"
+    },
+    {
+      "path": "tb watchdog",
+      "tier": "experimental"
+    },
+    {
+      "path": "tb watchdog alerts",
+      "tier": "experimental",
+      "flags": [
+        {
+          "name": "kind",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "name": "limit",
+          "type": "int",
+          "default": "0"
+        },
+        {
+          "name": "since",
+          "type": "string",
+          "default": ""
+        }
+      ]
+    },
+    {
+      "path": "tb watchdog kill",
+      "tier": "experimental",
+      "flags": [
+        {
+          "name": "reason",
+          "type": "string",
+          "default": ""
+        }
+      ]
+    },
+    {
+      "path": "tb watchdog status",
+      "tier": "experimental",
+      "flags": [
+        {
+          "name": "worker",
+          "type": "string",
+          "default": ""
+        }
+      ]
+    },
+    {
+      "path": "tb workspace",
+      "tier": "stable",
+      "aliases": [
+        "ws"
+      ]
+    },
+    {
+      "path": "tb workspace create",
+      "tier": "stable",
+      "flags": [
+        {
+          "name": "allow",
+          "type": "stringSlice",
+          "default": "[]"
+        },
+        {
+          "name": "base",
+          "type": "string",
+          "default": "HEAD"
+        },
+        {
+          "name": "forbid",
+          "type": "stringSlice",
+          "default": "[]"
+        }
+      ]
+    },
+    {
+      "path": "tb workspace list",
+      "tier": "stable"
+    },
+    {
+      "path": "tb workspace remove",
+      "tier": "stable"
+    }
+  ],
+  "exit_codes": {
+    "0": "exitOK",
+    "1": "exitFail",
+    "124": "exitTimeout",
+    "127": "exitNotFound",
+    "130": "exitInterrupt",
+    "2": "exitUsage",
+    "3": "egm verdict refusal"
+  }
+}
