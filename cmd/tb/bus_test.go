@@ -332,3 +332,67 @@ func TestBusRunNotifyWakeMismatchCLI(t *testing.T) {
 		t.Fatalf("stderr:\n%s", stderr.String())
 	}
 }
+
+func TestFormatTreeAlignsAndIndents(t *testing.T) {
+	got := formatTree([]bus.TreeNode{
+		{Thread: "TKT-001", State: "claimed", Owner: "agent:claude-main", Epoch: 1, OpenChildren: 1},
+		{Thread: "TKT-001/api", Parent: "TKT-001", Depth: 1, State: "completed", Owner: "agent:codex-1", Epoch: 1},
+		{Thread: "TKT-001/ui", Parent: "TKT-001", Depth: 1, State: "assigned"},
+	})
+	want := "TKT-001        claimed    agent:claude-main  epoch 1  open 1\n" +
+		"  TKT-001/api  completed  agent:codex-1      epoch 1\n" +
+		"  TKT-001/ui   assigned\n"
+	if got != want {
+		t.Fatalf("got:\n%s\nwant:\n%s", got, want)
+	}
+	sub := formatTree([]bus.TreeNode{{Thread: "A/b", Parent: "A", Depth: 1, State: "assigned"}})
+	if strings.HasPrefix(sub, " ") {
+		t.Fatalf("a --thread subtree starts at column 0: %q", sub)
+	}
+}
+
+// send --parent, tree (text and JSON) and the complete warning, through the CLI.
+func TestBusCLIDelegationTree(t *testing.T) {
+	tbBin := buildTB(t)
+	dir := t.TempDir()
+	busCLISetup(t, tbBin, dir)
+	send := func(args ...string) {
+		runBus(t, tbBin, dir, append([]string{"send", "--channel", "fx", "--as", "claude-main", "--to", "role:worker", "--type", "task.assign"}, args...)...)
+	}
+	send("--thread", "TKT-001", "--payload", `{"note":"CLI-SECRET"}`)
+	runBus(t, tbBin, dir, "claim", "--channel", "fx", "--as", "claude-main", "TKT-001")
+	send("--thread", "TKT-001/api", "--parent", "TKT-001")
+
+	text := exec.Command(tbBin, "bus", "tree", "fx")
+	text.Dir = dir
+	out, err := text.CombinedOutput()
+	if err != nil {
+		t.Fatalf("bus tree: %v\n%s", err, out)
+	}
+	if !strings.Contains(string(out), "TKT-001") || !strings.Contains(string(out), "  TKT-001/api") || strings.Contains(string(out), "CLI-SECRET") {
+		t.Fatalf("tree text:\n%s", out)
+	}
+	var tr bus.TreeResult
+	unmarshalOut(t, runBus(t, tbBin, dir, "tree", "fx", "--thread", "TKT-001"), &tr)
+	if len(tr.Nodes) != 2 || tr.Nodes[1].Parent != "TKT-001" || tr.Nodes[0].OpenChildren != 1 {
+		t.Fatalf("tree json: %+v", tr)
+	}
+
+	bad := exec.Command(tbBin, "bus", "send", "--channel", "fx", "--as", "claude-main", "--to", "role:worker",
+		"--type", "task.assign", "--thread", "X", "--parent", "NOPE")
+	bad.Dir = dir
+	if out, err := bad.CombinedOutput(); err == nil || !strings.Contains(string(out), "parent_unknown") {
+		t.Fatalf("unknown parent: %v\n%s", err, out)
+	}
+
+	done := exec.Command(tbBin, "bus", "complete", "--channel", "fx", "--as", "claude-main", "--epoch", "1", "TKT-001")
+	done.Dir = dir
+	var stderr bytes.Buffer
+	done.Stderr = &stderr
+	if err := done.Run(); err != nil {
+		t.Fatalf("complete: %v\n%s", err, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "warning: TKT-001 completed with 1 open children (TKT-001/api)") {
+		t.Fatalf("stderr: %q", stderr.String())
+	}
+}

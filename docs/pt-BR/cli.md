@@ -2,7 +2,7 @@
 
 # Árvore de Comandos do `tb`
 
-Este documento descreve a CLI do toolbelt: comandos **implementados** (espelham `tb --help`) e seções **planejadas** (`tb run`/`proc`/`md`/`agent`, marcadas explicitamente). Em caso de divergência, a CLI Cobra é a fonte da verdade.
+Este documento descreve a CLI do toolbelt: comandos **implementados** (espelham `tb --help`) e seções **planejadas** (`tb run`/`proc`, marcadas explicitamente; `tb md` e `tb agent` saíram). Em caso de divergência, a CLI Cobra é a fonte da verdade.
 
 ## Local-first: sem GitHub
 
@@ -609,118 +609,9 @@ tb lab verify
 
 ---
 
-### `tb md` — TUI Markdown (planejado — Fase 3+)
+### `tb md` e `tb agent` — fora do plano
 
-> **Não implementado, e fora da Fase A do vault** ([ADR-016](adr/016-vault-fase-a.md)): qualquer editor, inclusive o Obsidian, edita o vault; ver [`tb vault`](#tb-vault--vault-markdown-fase-a).
-
-Interface TUI para navegar e editar o vault.
-
-```bash
-tb md [flags] [path]
-
-Flags:
-  --obsidian          Opens in Obsidian instead of the TUI
-  --read-only         Read-only mode
-  --graph             Starts in graph view
-```
-
-**Exemplos:**
-
-```bash
-# Abrir TUI na raiz do vault
-tb md
-
-# Abrir arquivo específico
-tb md vault/facts/auth-design.md
-
-# Abrir no Obsidian
-tb md --obsidian
-
-# Modo somente leitura para agentes
-tb md --read-only
-```
-
-**Atalhos da TUI:**
-
-| Tecla | Ação |
-|-------|------|
-| `j/k` | Navegar lista |
-| `Enter` | Abrir arquivo |
-| `e` | Editar arquivo |
-| `g` | Visualização de grafo |
-| `s` | Buscar |
-| `/` | Filtrar |
-| `b` | Ver backlinks |
-| `l` | Ver links |
-| `q` | Sair |
-| `?` | Ajuda |
-
----
-
-### `tb agent` — Gerenciamento de Agentes (planejado — Fase 3+)
-
-> **Não implementado.** A CLI atual não expõe `tb agent`.
-
-Gerencia agentes na hierarquia.
-
-```bash
-tb agent <subcommand>
-
-Subcommands:
-  spawn     Creates a new agent
-  list      Lists active agents
-  status    Status of a specific agent
-  logs      Agent logs
-  stop      Stops an agent
-  budget    Shows/changes the budget
-  approve   Approves a pending action
-  reject    Rejects a pending action
-```
-
-**`tb agent spawn`:**
-
-```bash
-tb agent spawn [flags]
-
-Flags:
-  --role <role>       Agent role/persona (required)
-  --parent <id>       Parent agent ID
-  --task <task>       Initial task
-  --budget <tokens>   Token budget
-  --timeout <dur>     Maximum timeout
-```
-
-**Exemplos:**
-
-```bash
-# Criar agente worker
-tb agent spawn --role worker-backend --parent supervisor-001 \
-  --task "Implementar endpoint /api/users" \
-  --budget 5000 --timeout 5m
-
-# Listar agentes
-tb agent list
-# ID              ROLE              STATUS     PARENT          TOKENS   UPTIME
-# planner-001     planner           working    -               45000    10m
-# supervisor-001  supervisor        idle       planner-001     18000    8m
-# worker-001      worker-backend    working    supervisor-001  3200     3m
-# worker-002      worker-backend    blocked    supervisor-001  1500     2m
-
-# Ver status detalhado
-tb agent status worker-001
-
-# Ver ações pendentes
-tb agent list --pending
-# ID          ACTION              RESOURCE            REQUESTED_BY    WAITING
-# action-123  file:delete         tests/old.go        worker-001      2m30s
-# action-124  network:external    api.example.com     worker-002      1m15s
-
-# Aprovar ação
-tb agent approve action-123 --reason "Arquivo obsoleto"
-
-# Rejeitar ação
-tb agent reject action-124 --reason "Não autorizado para rede externa"
-```
+> **Saíram, não estão planejados.** O `tb md` (TUI de Markdown) saiu com a Fase A do vault ([ADR-016](adr/016-vault-fase-a.md)): qualquer editor, inclusive o Obsidian, edita o vault; ver [`tb vault`](#tb-vault--vault-markdown-fase-a). O `tb agent` (`spawn --parent`, `list`, `approve`, `reject`, `budget`) saiu pelo [ADR-020](adr/020-agent-hierarchy-a2a.md): um agente é admitido com `tb bus invite` + `tb bus join`, roda com `tb bus run` ou `tb router run` e é acompanhado com `tb watchdog` / `tb bus watchdog`; não há fila de ações pendentes para aprovar. As árvores de delegação no barramento estão especificadas em [specs/agent-hierarchy.md](specs/agent-hierarchy.md).
 
 ---
 
@@ -2094,10 +1985,12 @@ tb bus invite feature-x --role worker
 tb bus invite feature-x --role supervisor --name claude-main
 tb bus join feature-x --invite K7Q2-9XMD --name grok-1 --vendor xai --role worker
 tb bus send --channel feature-x --as claude-main --to role:worker --type task.assign --thread TKT-001 --payload '{"ticket":"TKT-001"}'
+tb bus send --channel feature-x --as claude-main --to role:worker --type task.assign --thread TKT-001/api --parent TKT-001
 tb bus recv --channel feature-x --as grok-1 --wait 20s
 tb bus claim TKT-001 --channel feature-x --as grok-1
 tb bus complete TKT-001 --channel feature-x --as grok-1 --epoch 1 --result '{"verdict":"PASS"}'
 tb bus log feature-x --thread TKT-001
+tb bus tree feature-x
 tb bus channel list
 tb bus channel show feature-x
 tb bus heartbeat --channel feature-x --as grok-1
@@ -2116,13 +2009,14 @@ tb bus discover
 | `channel extend <channel> --ttl D` | humano | redefine a expiração para agora + `D` (`0` = sem expiração); reabre canal expirado mantendo sessões e histórico |
 | `invite <channel> --role R` | humano | convite de uso único com papel fixado (`--ttl`, padrão `10m`); `--name` vincula a um agente e, se ele já estiver no canal, recupera a sessão perdida (token novo) |
 | `join <channel> --invite C` | agente | entra com Agent Card (`--name`, `--vendor`, `--model`, `--tier`, `--wake`, `--session`, `--capability` ou `--card card.json`); `--role` precisa coincidir com o papel do convite; grava a sessão no diretório privado do bus, fora do repositório (`$XDG_STATE_HOME/toolbelt/bus/`, `0600`) |
-| `send` | agente | `--to agent:\|role:\|topic:`, `--type`, `--thread`, `--causation`, `--idempotency-key`, `--ttl`, `--payload` (JSON ou `@arquivo`) |
+| `send` | agente | `--to agent:\|role:\|topic:`, `--type`, `--thread`, `--causation`, `--idempotency-key`, `--ttl`, `--payload` (JSON ou `@arquivo`); `--parent T` (só em `task.assign`) liga a subtarefa à thread `T`, que o remetente precisa deter com claim vivo (o router pode ligar a qualquer pai conhecido): o broker recusa com `parent_unknown`, `parent_not_owned`, `parent_immutable`, `depth_exceeded` (profundidade máx. 3) ou `fanout_exceeded` (máx. 8 filhos abertos), ver [bus-protocolo.md](bus-protocolo.md#árvores-de-delegação) |
 | `recv` | agente | lê e avança o cursor; `--wait` (máx. 25s), `--limit`, `--peek`, `--since` |
 | `claim <thread>` | agente | dono único da thread; imprime o `epoch`; toma um claim liberado ou cujo dono perdeu o lease |
-| `complete <thread>` | dono | `--epoch` (obrigatório, vindo do `claim`), `--result`; publica `task.result` em `topic:board`; `lease_lost` quando o claim trocou de mãos ou foi liberado |
+| `complete <thread>` | dono | `--epoch` (obrigatório, vindo do `claim`), `--result`; publica `task.result` em `topic:board`; `lease_lost` quando o claim trocou de mãos ou foi liberado; completar um pai com filhos abertos funciona e imprime `warning: … completed with N open children (…)` no stderr (`open_children` no `--json`) |
 | `heartbeat` | agente | renova o lease; lista threads seguras (com epochs) e perdidas (com o novo dono) |
 | `watchdog <channel>` | humano | libera claims de agentes não vivos e publica `task.status` `lease_expired` de `system:watchdog` em `topic:board`; `--dry-run` só lista. Não exposto no MCP |
 | `log <channel>` | humano | trilha de auditoria (payload redigido); `--thread`, `--limit` |
+| `tree <channel>` | humano | árvores de delegação montadas por `send --parent`: um nó por linha com estado (`assigned`, `claimed`, `released`, `completed`, `revoked`, `expired`), dono, epoch e filhos abertos; `--thread T` (só essa subárvore), `--all` (também threads sem filhos), `--limit N` (árvores, mais novas primeiro, padrão 50); sem payload, resultado, token nem o `session` do Agent Card; funciona em canal expirado. Só CLI: não exposto via MCP |
 | `run --channel C --as N` | humano | harness B3: espera sem LLM e acorda o agente pelo arquivo de wake (`exec`, `harness` ou `notify`, que avisa o humano para agentes só de GUI); `--once`, `--check`, `--dry-run`, `--invite`, `--role`, `--config`, `--allow-unsandboxed`. Spec: [bus-harness.md](bus-harness.md), [bus-notify-discover.md](bus-notify-discover.md) |
 | `discover` | humano | catálogo só de leitura das CLIs de agente conhecidas no `PATH` e das configs de cliente MCP que rodam `tb mcp` (outros servidores só contados), com próximos passos; não executa nada; `--cwd`, `--json` |
 
@@ -2259,7 +2153,7 @@ Transporte unix/tcp e flags `--socket`/`--port`/`--tls-*` são planejados; hoje 
 | `tb_router_status` | `tb router status` | só leitura de `state.json` |
 | `tb_watchdog_alerts` | `tb watchdog alerts` | `since`, `kind`, `limit` (integer) |
 | `tb_merge` | `tb merge` | `ids` (array), `strategy`, `into`, `force`, `allow_sensitive` (padrão `false`); **dry-run por padrão** — só altera refs com `apply=true` |
-| `tb_bus_join` / `tb_bus_send` / `tb_bus_recv` / `tb_bus_claim` / `tb_bus_complete` / `tb_bus_heartbeat` / `tb_bus_status` | `tb bus …` | identidade presa à conexão após `tb_bus_join` (`channel`, `invite`, `name` + Agent Card); `payload`/`result` como objeto; `tb_bus_complete` exige o `epoch` inteiro; o `tb mcp` manda heartbeat das sessões ligadas em segundo plano; sem tool de watchdog; `wait` string (máx. 25s); criar canal/convite **não** existe via MCP; `tb mcp --bus-as <channel>/<name>` liga a conexão a uma sessão CLI (usado por `tb bus run`) |
+| `tb_bus_join` / `tb_bus_send` / `tb_bus_recv` / `tb_bus_claim` / `tb_bus_complete` / `tb_bus_heartbeat` / `tb_bus_status` | `tb bus …` | identidade presa à conexão após `tb_bus_join` (`channel`, `invite`, `name` + Agent Card); `payload`/`result` como objeto; `tb_bus_complete` exige o `epoch` inteiro e informa `open_children`; `tb_bus_send` aceita um `parent` opcional (só `task.assign`; o broker o checa); sem tool de árvore; o `tb mcp` manda heartbeat das sessões ligadas em segundo plano; sem tool de watchdog; `wait` string (máx. 25s); criar canal/convite **não** existe via MCP; `tb mcp --bus-as <channel>/<name>` liga a conexão a uma sessão CLI (usado por `tb bus run`) |
 | `tb_graph_search` / `tb_graph_callers` / `tb_graph_deps` / `tb_graph_impact` / `tb_graph_explain` / `tb_graph_path` / `tb_graph_index` | `tb graph …` | chamada requer `TB_GRAPH=on`; `depth`/`limit`/`max_depth` integer; `transitive` boolean; `explain` usa `node`, `path` usa `from`/`to`; `mode` no `tb_graph_search` e `vectors` no `tb_graph_index` (veja o [índice vetorial](#índice-vetorial)) |
 
 Schemas tipam `depth`/`limit`/`reviewers`/`max_iter` como integer, `strict`/`warn_only`/`transitive`/`skip_unavailable`/`all` (mem) como boolean, `threshold` como number e `standards` como array de strings; valores string legados ainda são aceitos. Relatórios de verify/review/drift/guard voltam como JSON no `content` (sem código de saída de processo). Listas vazias usam `[]`; `hidden_passed` é `null` se a suíte oculta não se aplica.

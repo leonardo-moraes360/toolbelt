@@ -128,7 +128,7 @@ func TestClaimConfinedMarker(t *testing.T) {
 	}
 }
 
-// AC4: a v2 store migrates to v3 keeping its claims.
+// AC4: a v2 store migrates (to v3, then v4) keeping its claims.
 func TestMigrateV2(t *testing.T) {
 	dir := t.TempDir()
 	s, err := Open(dir)
@@ -139,6 +139,8 @@ func TestMigrateV2(t *testing.T) {
 	for _, q := range []string{
 		`ALTER TABLE claims DROP COLUMN revoked_at`, `ALTER TABLE claims DROP COLUMN revoked_by`,
 		`ALTER TABLE claims DROP COLUMN revoke_reason`, `ALTER TABLE claims DROP COLUMN confinement`,
+		// Back to the v2 shape: the v4 link table and parent column did not exist.
+		`DROP TABLE task_links`, `DROP INDEX messages_assign_thread`, `ALTER TABLE messages DROP COLUMN parent`,
 		`INSERT INTO channels(name, owner, created_at) VALUES ('c', 'o', 1)`,
 		`INSERT INTO claims(channel, thread, owner, claimed_at, epoch) VALUES ('c', 'T', 'agent:o', 1, 3)`,
 		`PRAGMA user_version = 2`,
