@@ -59,6 +59,14 @@ The check is only as strong as the workflow's protection. In ci mode the gate gl
 | `ci_budget` | More documents than `egm.ci.max_docs`, or the step exceeded `egm.max_agent_runs` | Split the PR, or raise the limits in CI's config |
 | `gated_doc_removed` | A gated document was deleted or moved out of the gate | A human reviews the removal |
 
+## 5. Symbol citations and v3 receipts
+
+A document may cite a Go symbol, `internal/x/x.go#Name` or `#Recv.Name` ([Phase C spec](specs/egm-phase-c.md)). Review verifies the symbol exists on the snapshot (a missing or ambiguous name is a `major` finding), and with `egm.receipt.write_v3: true` in your user config the receipt is version 3: it adds `symbols`, the sha256 of each cited symbol's raw bytes. Upgrade the CI's `tb` before anyone enables it: an older tb rejects a v3 receipt as `receipt_invalid`.
+
+- **Freshness:** CI also recomputes each symbol hash at head, never trusting the receipt: a mismatch is `receipt_stale`, a symbol key the document does not cite, or a citation of a receipted source whose key is missing from the receipt, is `receipt_invalid`. `fresh()` certifies the snapshot: a v3 receipt goes `receipt_stale` after any edit to a cited file, but only when the document or its receipt is itself selected by the range; symbol-level scoping (D4) governs `drift-report` and `ci_source_drift` only.
+- **Drift:** for a source cited only through symbols, `ci_source_drift` (and `tb egm drift-report`) reports `symbol_changed` or `symbol_missing` when a cited symbol's bytes change or vanish. An edit elsewhere in the same file is **not** drift: it is listed as `outside_symbols` and the document stays fresh. To get file-level drift back, also cite the file plainly (`internal/x/x.go`). A change to a helper that the cited symbol calls is outside the symbol, so cite the helper too if it matters.
+- **Receipts of version 1 and 2** keep working and are compared by file, as before.
+
 ## Limits
 
 - The fresh round is **one sample**: a `major` that both the local loop and one CI round miss gets merged.

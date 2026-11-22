@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/leonardo-moraes360/toolbelt/internal/graph"
 )
 
 // Drift goldfish (docs/specs/egm-drift-bootstrap.md, B3): for each drifted
@@ -23,7 +25,10 @@ const (
 	DiffNone      = "no_diff"
 
 	diffBlockPrefix = "DIFF:"
-	packetPrefix    = "tb-egmb3-"
+	// symbolBlockPrefix marks the packet block that names a path's changed
+	// symbols (with their line ranges) and the missing ones (R22).
+	symbolBlockPrefix = "SYMBOLS:"
+	packetPrefix      = "tb-egmb3-"
 )
 
 // DriftLLM is a document's drift goldfish outcome.
@@ -117,7 +122,7 @@ func driftLLM(ctx context.Context, repo *Repo, set *Settings, oid string, rep *D
 	ran := 0
 	for i := range rep.Documents {
 		dd := &rep.Documents[i]
-		if dd.Status != DriftDrifted {
+		if dd.Status != DriftDrifted && dd.Status != DriftSymbolChanged && dd.Status != DriftSymbolMissing {
 			continue
 		}
 		if ran >= set.Drift.MaxDocs {
@@ -214,7 +219,7 @@ func (dr *driftRun) packet(ctx context.Context, dd *DriftDoc, text, red, docSHA 
 		pk.llm.Diff = DiffAvailable
 	}
 	used := int64(len(red))
-	for _, p := range dd.Changed {
+	for _, p := range driftPaths(dd) {
 		blocks, why, err := dr.sourceBlocks(ctx, p, old)
 		if err != nil {
 			return nil, err
@@ -236,10 +241,57 @@ func (dr *driftRun) packet(ctx context.Context, dd *DriftDoc, text, red, docSHA 
 				pk.findings = append(pk.findings, *f)
 			}
 		}
+		if sb := symbolBlock(dd, p, blocks[0].Text); sb != nil {
+			blocks = append(blocks, *sb)
+		}
 		pk.blocks = append(pk.blocks, blocks...)
 		pk.docs[p] = ParseDoc(blocks[0].Text, nil)
 	}
 	return pk, nil
+}
+
+// driftPaths lists the sources whose current text goes in the packet: the
+// changed files and the files holding a changed or missing cited symbol.
+func driftPaths(dd *DriftDoc) []string {
+	out := append([]string(nil), dd.Changed...)
+	for _, c := range dd.SymbolsChanged {
+		out = appendNew(out, []string{c.Path})
+	}
+	for _, m := range dd.SymbolsMissing {
+		out = appendNew(out, []string{m.Path})
+	}
+	return out
+}
+
+// symbolBlock names, for path p, the changed cited symbols with their line
+// ranges in cur and the missing ones; nil when p has none (R22).
+func symbolBlock(dd *DriftDoc, p, cur string) *Block {
+	var lines []string
+	var syms []graph.Symbol
+	parsed := false
+	for _, c := range dd.SymbolsChanged {
+		if c.Path != p {
+			continue
+		}
+		if !parsed {
+			syms, _ = graph.GoSymbols([]byte(cur))
+			parsed = true
+		}
+		if sym, got := findSymbol(syms, c.Symbol); got == symFound {
+			lines = append(lines, fmt.Sprintf("changed: %s lines %d-%d", c.Symbol, sym.StartLine, sym.EndLine))
+		} else {
+			lines = append(lines, "changed: "+c.Symbol)
+		}
+	}
+	for _, m := range dd.SymbolsMissing {
+		if m.Path == p {
+			lines = append(lines, fmt.Sprintf("missing: %s (%s)", m.Symbol, m.Reason))
+		}
+	}
+	if len(lines) == 0 {
+		return nil
+	}
+	return &Block{Path: symbolBlockPrefix + p, Text: strings.Join(lines, "\n") + "\n"}
 }
 
 // sourceBlocks reads p at --at (and at the commit when old is set) and
@@ -292,7 +344,7 @@ func (dr *driftRun) usableCommit(ctx context.Context, dd *DriftDoc, text, docSHA
 	if commit == "" {
 		return nil, nil
 	}
-	return dr.commitSources(ctx, rc, commit, dd.Changed), nil
+	return dr.commitSources(ctx, rc, commit, driftPaths(dd)), nil
 }
 
 // receiptCommit resolves the receipt's commit when it holds the receipted

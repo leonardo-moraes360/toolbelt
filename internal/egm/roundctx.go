@@ -167,6 +167,9 @@ func (rc *roundCtx) round(ctx context.Context, planned []ReviewerRun) (*Round, e
 	for _, src := range s.sources.Included {
 		rd.Sources[src.Path] = src.SHA256
 	}
+	if len(s.symbols) > 0 {
+		rd.Symbols = s.symbols
+	}
 	r := &reconciler{st: st, round: n, docRel: s.rel, ran: map[string]bool{
 		checkRefs: true, checkSections: true, checkPlan: true, injectionChecker: true,
 	}}

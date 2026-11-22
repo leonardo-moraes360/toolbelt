@@ -137,7 +137,7 @@ Nada é escrito numa recusa.
 
 Cada `Symbol` tem `Name`, `Kind`, `StartLine`, `EndLine` (a partir de 1, inclusivo) e o `SHA256` dos **bytes crus** do intervalo. O comentário de documentação fica fora do intervalo (editar um comentário não é drift). `_`, `init` e qualquer nome declarado duas vezes no arquivo (um arquivo que não compila) são **ambíguos**. Um erro de parse deixa todos os símbolos daquele arquivo indisponíveis (`unparsed`). Arquivos acima de `max_source_bytes` não passam pelo parse.
 
-> **DECISÃO DO USUÁRIO D3.** Fazer hash dos bytes crus (recomendado: estável entre builds do tb; um reflow só de `gofmt` conta como mudança) ou da saída do `go/printer` (ignora o layout, mas a saída pode mudar entre versões do Go, então dois builds do tb poderiam discordar).
+> **RESOLVIDO D3 (usuário, 2026-11-22): hash dos bytes crus.** Fazer hash dos bytes crus (recomendado: estável entre builds do tb; um reflow só de `gofmt` conta como mudança) ou da saída do `go/printer` (ignora o layout, mas a saída pode mudar entre versões do Go, então dois builds do tb poderiam discordar).
 
 ### Citar um símbolo
 
@@ -152,7 +152,7 @@ O fragmento precisa casar com `^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)
 
 ### Revisão
 
-**R16. Verificação (checker `refs`).** Para cada citação de símbolo cujo arquivo resolve, o tb roda `GoSymbols` no conteúdo do snapshot: um nome ausente dá um achado `refs` em `major` ("symbol `X` not found in `path`"), um ambíguo dá `symbol_ambiguous` em `major`, um arquivo sem parse dá um achado `minor` por arquivo. Determinístico; roda também com `--engine deterministic`. É a "verificação de símbolos no grafo" do ADR-015, feita no snapshot em vez do índice do grafo, então funciona com o grafo desligado e não lê um índice desatualizado.
+**R16. Verificação (checker `refs`).** Para cada citação de símbolo cujo arquivo resolve, o tb roda `GoSymbols` no conteúdo do snapshot: um nome ausente dá um achado `refs` em `major` ("symbol `X` not found in `path`"), um ambíguo dá `symbol_ambiguous` em `major`, um arquivo sem parse dá um achado `nit` por arquivo. Determinístico; roda também com `--engine deterministic`. É a "verificação de símbolos no grafo" do ADR-015, feita no snapshot em vez do índice do grafo, então funciona com o grafo desligado e não lê um índice desatualizado.
 
 **R17. Estado da rodada.** Cada rodada registra `symbols` (`"path#Name"` → sha256) ao lado de `sources` ([state.go:68](../../../internal/egm/state.go)) para cada símbolo citado, resolvido e não ambíguo. Rodadas sem o campo são lidas como "sem base de símbolos".
 
@@ -177,7 +177,7 @@ O fragmento precisa casar com `^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)
 
 Um `source_missing` por arquivo de um caminho com escopo de símbolo continua `source_missing`. Ordem de severidade: `unreadable` > `source_missing` > `symbol_missing` > `drifted` > `symbol_changed` > `sources_differ` > `fresh` > `no_baseline`. O JSON ganha `symbols_changed`, `symbols_missing`, `outside_symbols` (sempre presentes, possivelmente vazios) e sobe `v` para `egm-source-drift/0.2`.
 
-> **DECISÃO DO USUÁRIO D4.** O R20 deixa o drift *menos* conservador para fontes com escopo de símbolo: uma mudança num helper que o símbolo citado chama não é informada. Recomendado: aceitar (citar o arquivo sem fragmento devolve o drift por arquivo, e `outside_symbols` mantém a mudança visível). Alternativa: informar os status de símbolo só como detalhe extra e manter `drifted` para qualquer mudança no arquivo.
+> **RESOLVIDO D4 (usuário, 2026-11-22): uma mudança fora dos símbolos citados é informativa (`outside_symbols`), não drift.** O R20 deixa o drift *menos* conservador para fontes com escopo de símbolo: uma mudança num helper que o símbolo citado chama não é informada. Recomendado: aceitar (citar o arquivo sem fragmento devolve o drift por arquivo, e `outside_symbols` mantém a mudança visível). Alternativa: informar os status de símbolo só como detalhe extra e manter `drifted` para qualquer mudança no arquivo.
 
 **R22. CI e gate local.** O `ci_source_drift` (B1) e o aviso local `sources_changed` usam o R20, então disparam com `symbol_changed` / `symbol_missing` e não com `outside_symbols`. O goldfish de `drift` (`--engine llm`) recebe, para fontes com escopo de símbolo, os intervalos dos símbolos alterados marcados no pacote; fora isso, não muda.
 
@@ -187,7 +187,7 @@ Um `source_missing` por arquivo de um caminho com escopo de símbolo continua `s
 
 **R24. IDs de método com receiver.** Métodos passam a `func:<pkg>.<Recv>.<Name>`; `funcIDs` e `findFunc` usam o nome qualificado, corrigindo a atribuição errada de arestas em [index_go.go:54-76](../../../internal/graph/index_go.go). Os IDs de pacote continuam `pkg:<name>` neste slice (IDs por import path são uma mudança maior).
 
-> **DECISÃO DO USUÁRIO D5.** O R24 muda IDs de nó existentes do grafo (consultas salvas, argumentos de `tb graph path`, testes golden). Entregar no C6 com uma entrada "changed" no CHANGELOG (recomendado), ou manter os IDs antigos e pôr o receiver só no `title`.
+> **RESOLVIDO D5 (usuário, 2026-11-22): a mudança dos IDs de método fica adiada para a C6, pós-1.0; C4 e C5 não tocam nos IDs do grafo.** O R24 muda IDs de nó existentes do grafo (consultas salvas, argumentos de `tb graph path`, testes golden). Entregar no C6 com uma entrada "changed" no CHANGELOG (recomendado), ou manter os IDs antigos e pôr o receiver só no `title`.
 
 ## Escopo dos itens da Fase C do ADR-015
 

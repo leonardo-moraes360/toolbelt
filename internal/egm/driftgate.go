@@ -117,19 +117,15 @@ func (g *driftGate) driftSinceMB(ctx context.Context, mbSet *Settings, d string)
 	}
 	// Fresh at the merge-base: drift already there is not this range's.
 	at := newDriftDoc(d, BaselineReceipt)
-	if err := compareSources(ctx, g.repo, mbSet, g.mb, d, text, rc.Sources, &at); err != nil || at.Status != DriftFresh {
+	if err := compareSources(ctx, g.repo, mbSet, g.mb, d, text, rc.Sources, rc.Symbols, &at); err != nil || at.Status != DriftFresh {
 		return dd, false, err
 	}
 	// Not touched in the range, so the document bytes at head are the same.
 	dd = newDriftDoc(d, BaselineReceipt)
-	if err := compareSources(ctx, g.repo, mbSet, g.head, d, text, rc.Sources, &dd); err != nil {
+	if err := compareSources(ctx, g.repo, mbSet, g.head, d, text, rc.Sources, rc.Symbols, &dd); err != nil {
 		return dd, false, err
 	}
 	return dd, true, nil
-}
-
-func newDriftDoc(doc, base string) DriftDoc {
-	return DriftDoc{Doc: doc, Baseline: base, Changed: []string{}, Missing: []MissingSource{}, Added: []string{}}
 }
 
 // touches: a source candidate of the document, or a path its receipt
@@ -184,6 +180,12 @@ func (g *driftGate) localSourcesChanged(ctx context.Context, selected []string) 
 		var paths []string
 		paths = append(paths, dd.Changed...)
 		paths = append(paths, dd.Added...)
+		for _, c := range dd.SymbolsChanged {
+			paths = append(paths, c.Path)
+		}
+		for _, m := range dd.SymbolsMissing {
+			paths = append(paths, m.Path)
+		}
 		for _, m := range dd.Missing {
 			paths = append(paths, m.Path)
 		}
@@ -241,8 +243,12 @@ func driftWarning(dd *DriftDoc) GateWarning {
 	switch {
 	case len(dd.Missing) > 0:
 		w.Path = dd.Missing[0].Path
+	case len(dd.SymbolsMissing) > 0:
+		w.Path = dd.SymbolsMissing[0].Path + "#" + dd.SymbolsMissing[0].Symbol
 	case len(dd.Changed) > 0:
 		w.Path = dd.Changed[0]
+	case len(dd.SymbolsChanged) > 0:
+		w.Path = dd.SymbolsChanged[0].Path + "#" + dd.SymbolsChanged[0].Symbol
 	case len(dd.Added) > 0:
 		w.Path = dd.Added[0]
 	}

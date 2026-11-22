@@ -66,9 +66,12 @@ type EgmDraft struct {
 }
 
 // EgmReceipt tunes the receipt writer (B3). User-only: a CI pinned to an
-// older tb must be upgraded before receipts move to version 2.
+// older tb must be upgraded before receipts move to version 2 or 3.
 type EgmReceipt struct {
 	WriteV2 bool `yaml:"write_v2,omitempty" json:"write_v2,omitempty"`
+	// WriteV3 writes version 3 (v2 plus symbol hashes, C5); it implies the
+	// v2 commit.
+	WriteV3 bool `yaml:"write_v3,omitempty" json:"write_v3,omitempty"`
 }
 
 // EgmDrift tunes source drift (docs/specs/egm-drift-bootstrap.md, B1).

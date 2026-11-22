@@ -75,6 +75,15 @@ func (fp *fakePrompt) hasBlockPrefix(prefix string) bool {
 	return false
 }
 
+func (fp *fakePrompt) hasBlockText(prefix, sub string) bool {
+	for _, b := range fp.blocks {
+		if strings.HasPrefix(b.path, prefix) && strings.Contains(b.text, sub) {
+			return true
+		}
+	}
+	return false
+}
+
 // document returns the first data block that is the reviewed document,
 // without its line-number prefixes.
 func (fp *fakePrompt) document() (path, text string) {
@@ -233,6 +242,14 @@ func fakePayload(fp *fakePrompt, mode string) (payload string, turns int) {
 	case "require-diff": // drift (B3): valid only when the packet carries a diff
 		if !fp.hasBlockPrefix("DIFF:") {
 			return "no diff block", 1
+		}
+	case "require-symbols": // drift (R22): the packet names a changed symbol with its lines
+		if !fp.hasBlockText("SYMBOLS:", "changed: Foo lines ") {
+			return "no symbol block", 1
+		}
+	case "require-missing-symbols": // drift (R22): the packet names a missing symbol
+		if !fp.hasBlockText("SYMBOLS:", "missing: Foo (deleted)") {
+			return "no missing-symbol block", 1
 		}
 	case "no-nonce":
 		out["nonce"] = "wrong"

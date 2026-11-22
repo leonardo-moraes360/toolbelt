@@ -137,7 +137,7 @@ Nothing is written on a refusal.
 
 Each `Symbol` has `Name`, `Kind`, `StartLine`, `EndLine` (1-based, inclusive) and `SHA256` of the **raw bytes** of the range. The doc comment is outside the range (editing a comment is not drift). `_`, `init`, and any name declared twice in the file (a non-compiling file) are **ambiguous**. A parse error makes every symbol of that file unavailable (`unparsed`). Files over `max_source_bytes` are not parsed.
 
-> **USER DECISION D3.** Hash raw bytes (recommended: stable across tb builds; a pure `gofmt` reflow counts as a change) or `go/printer` output (ignores layout, but its output can change between Go versions, so two tb builds could disagree).
+> **RESOLVED D3 (user, 2026-11-22): hash the raw bytes.** Hash raw bytes (recommended: stable across tb builds; a pure `gofmt` reflow counts as a change) or `go/printer` output (ignores layout, but its output can change between Go versions, so two tb builds could disagree).
 
 ### Citing a symbol
 
@@ -152,7 +152,7 @@ The fragment must match `^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)?$` an
 
 ### Review
 
-**R16. Verification (`refs` checker).** For each symbol citation whose file resolves, tb runs `GoSymbols` on the snapshot content: a missing name gives a `refs` finding at `major` ("symbol `X` not found in `path`"), an ambiguous one `symbol_ambiguous` at `major`, an unparsed file one `minor` finding per file. Deterministic; it runs with `--engine deterministic` too. This is ADR-015's "symbol verification in the graph", done on the snapshot instead of the graph index, so it works with the graph off and cannot read a stale index.
+**R16. Verification (`refs` checker).** For each symbol citation whose file resolves, tb runs `GoSymbols` on the snapshot content: a missing name gives a `refs` finding at `major` ("symbol `X` not found in `path`"), an ambiguous one `symbol_ambiguous` at `major`, an unparsed file one `nit` finding per file. Deterministic; it runs with `--engine deterministic` too. This is ADR-015's "symbol verification in the graph", done on the snapshot instead of the graph index, so it works with the graph off and cannot read a stale index.
 
 **R17. Round state.** Each round records `symbols` (`"path#Name"` → sha256) beside `sources` ([state.go:68](../../internal/egm/state.go)) for every resolved, unambiguous cited symbol. Rounds without the field are read as "no symbol baseline".
 
@@ -177,7 +177,7 @@ The fragment must match `^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)?$` an
 
 A file-level `source_missing` of a symbol-scoped path stays `source_missing`. Severity order: `unreadable` > `source_missing` > `symbol_missing` > `drifted` > `symbol_changed` > `sources_differ` > `fresh` > `no_baseline`. JSON adds `symbols_changed`, `symbols_missing`, `outside_symbols` (always present, possibly empty) and bumps `v` to `egm-source-drift/0.2`.
 
-> **USER DECISION D4.** R20 makes drift *less* conservative for symbol-scoped sources: a change in a helper the cited symbol calls is not reported. Recommended: accept (citing the file plainly restores file-level drift, and `outside_symbols` keeps the change visible). Alternative: report symbol statuses only as extra detail and keep `drifted` for any file change.
+> **RESOLVED D4 (user, 2026-11-22): a change outside the cited symbols is informational (`outside_symbols`), not drift.** R20 makes drift *less* conservative for symbol-scoped sources: a change in a helper the cited symbol calls is not reported. Recommended: accept (citing the file plainly restores file-level drift, and `outside_symbols` keeps the change visible). Alternative: report symbol statuses only as extra detail and keep `drifted` for any file change.
 
 **R22. CI and local gate.** `ci_source_drift` (B1) and the local `sources_changed` warning use R20, so they raise on `symbol_changed` / `symbol_missing` and not on `outside_symbols`. The `drift` goldfish (`--engine llm`) receives, for symbol-scoped sources, the changed symbols' ranges marked in the packet; it is otherwise unchanged.
 
@@ -187,7 +187,7 @@ A file-level `source_missing` of a symbol-scoped path stays `source_missing`. Se
 
 **R24. Receiver-qualified method IDs.** Methods become `func:<pkg>.<Recv>.<Name>`; `funcIDs` and `findFunc` key on the qualified name, fixing the edge misattribution in [index_go.go:54-76](../../internal/graph/index_go.go). Package IDs keep `pkg:<name>` in this slice (import-path IDs are a larger change).
 
-> **USER DECISION D5.** R24 changes existing graph node IDs (saved queries, `tb graph path` arguments, golden tests). Ship it in C6 with a CHANGELOG "changed" entry (recommended), or keep the old IDs and add the receiver only to `title`.
+> **RESOLVED D5 (user, 2026-11-22): the method-ID change is deferred to C6, post-1.0; C4 and C5 do not touch graph IDs.** R24 changes existing graph node IDs (saved queries, `tb graph path` arguments, golden tests). Ship it in C6 with a CHANGELOG "changed" entry (recommended), or keep the old IDs and add the receiver only to `title`.
 
 ## Scope of ADR-015 Phase C items
 
