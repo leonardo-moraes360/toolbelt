@@ -7,14 +7,12 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"os/signal"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"time"
 
+	"github.com/leonardo-moraes360/toolbelt/internal/config"
 	"github.com/leonardo-moraes360/toolbelt/internal/execenv"
-	"github.com/leonardo-moraes360/toolbelt/internal/gitref"
 	"github.com/leonardo-moraes360/toolbelt/internal/guard"
 	"github.com/leonardo-moraes360/toolbelt/internal/log"
 	"github.com/leonardo-moraes360/toolbelt/internal/review"
@@ -49,29 +47,48 @@ type Config struct {
 	DryRun         bool
 	EnvAllow       []string
 	EnvPass        []string
+	// TypecheckCmd and Checks are gate steps after build (R2, R3).
+	TypecheckCmd string
+	Checks       []config.VerifyCheck
+	// TrustedConfig enables R0 in Run/RunRulers: verify's commands are read
+	// from the base ref over this config (-c or global, never the working
+	// tree), then Overrides apply. Nil keeps the commands already in Config.
+	TrustedConfig *config.Config
+	Overrides     *FlagOverrides
+	// Visual configures the visual ruler; nil uses its defaults.
+	Visual *VisualConfig
 }
 
 type Result struct {
-	Verdict         Verdict            `json:"verdict"`
-	Iterations      int                `json:"iterations"`
-	Guard           *guard.CheckResult `json:"guard,omitempty"`
-	BuildRan        bool               `json:"build_ran"`
-	BuildPassed     bool               `json:"build_passed"`
-	LintRan         bool               `json:"lint_ran"`
-	LintPassed      bool               `json:"lint_passed"`
-	VisiblePassed   bool               `json:"visible_passed"`
-	HiddenPassed    *bool              `json:"hidden_passed"`
-	HiddenAvailable bool               `json:"hidden_available"`
-	Reason          string             `json:"reason,omitempty"`
-	Error           string             `json:"error,omitempty"`
-	HeadSHA         string             `json:"head_sha,omitempty"`
-	WorkDir         string             `json:"workdir,omitempty"`
-	Metrics         map[string]string  `json:"metrics,omitempty"`
-	DryRun          bool               `json:"dry_run,omitempty"`
-	Plan            *Plan              `json:"plan,omitempty"`
+	Verdict     Verdict            `json:"verdict"`
+	Iterations  int                `json:"iterations"`
+	Guard       *guard.CheckResult `json:"guard,omitempty"`
+	BuildRan    bool               `json:"build_ran"`
+	BuildPassed bool               `json:"build_passed"`
+	LintRan     bool               `json:"lint_ran"`
+	LintPassed  bool               `json:"lint_passed"`
+	// Typecheck keys are omitempty, unlike lint_ran, so a run without a
+	// typecheck_cmd keeps the pre-ruler JSON keys.
+	TypecheckRan    bool              `json:"typecheck_ran,omitempty"`
+	TypecheckPassed *bool             `json:"typecheck_passed,omitempty"`
+	Checks          []CheckResult     `json:"checks,omitempty"`
+	VisiblePassed   bool              `json:"visible_passed"`
+	HiddenPassed    *bool             `json:"hidden_passed"`
+	HiddenAvailable bool              `json:"hidden_available"`
+	Reason          string            `json:"reason,omitempty"`
+	Error           string            `json:"error,omitempty"`
+	HeadSHA         string            `json:"head_sha,omitempty"`
+	WorkDir         string            `json:"workdir,omitempty"`
+	Metrics         map[string]string `json:"metrics,omitempty"`
+	DryRun          bool              `json:"dry_run,omitempty"`
+	Plan            *Plan             `json:"plan,omitempty"`
 	// FilteredEnv lists the variable names (never values) the env allowlist
 	// removed from the child commands; set only when the verdict is not PASS.
 	FilteredEnv []string `json:"filtered_env,omitempty"`
+	// ConfigSource is "base" or "worktree" when R0 loaded the config.
+	ConfigSource string   `json:"config_source,omitempty"`
+	Warnings     []string `json:"warnings,omitempty"`
+	SkipKind     SkipKind `json:"skip_kind,omitempty"`
 }
 
 type Plan struct {
@@ -80,10 +97,8 @@ type Plan struct {
 }
 
 type cmdCache struct {
-	buildDone bool
-	buildOK   bool
-	lintDone  bool
-	lintOK    bool
+	gates  []*gate
+	checks []*gate
 	// lastFailSig is the failure signature of the previous iteration's tests;
 	// an identical signature means a deterministic failure, so stop retrying.
 	lastFailSig string
@@ -119,50 +134,30 @@ func DefaultConfig(repo string) Config {
 	}
 }
 
+// Run runs the tests ruler alone; its payload and errors are those of
+// RunRulers(ctx, cfg, []string{"tests"}).
 func Run(ctx context.Context, cfg *Config) (*Result, error) {
-	if cfg.MaxIterations == 0 {
-		cfg.MaxIterations = 3
-	}
-	base, head, err := gitref.ResolvePair(cfg.RepoDir, cfg.BaseRef, cfg.HeadRef)
+	ctx, st, cleanup, err := prepareRun(ctx, cfg)
 	if err != nil {
 		return nil, err
 	}
-	cfg.BaseRef = base
-	cfg.HeadRef = head
-	headSHA := head
-	res := &Result{Verdict: VerdictFail, WorkDir: cfg.RepoDir, HeadSHA: headSHA}
+	defer cleanup()
+	return runTests(ctx, st)
+}
 
-	abort, err := applyGuard(cfg, res)
-	if err != nil {
-		return nil, err
+func runTests(ctx context.Context, st *RunState) (*Result, error) {
+	cfg := st.Config
+	res := &Result{
+		Verdict: VerdictFail, WorkDir: st.WorkDir, HeadSHA: st.HeadSHA, Guard: st.Guard,
+		ConfigSource: st.ConfigSource, Warnings: st.Warnings,
 	}
-	if abort {
-		if res.Reason == "" {
-			res.Reason = "guard aborted verify (protected path)"
-			res.Error = res.Reason
-		}
+	if st.GuardAborted {
+		res.Reason = st.GuardReason
+		res.Error = res.Reason
 		return res, nil
 	}
-
-	hw, err := attachHeadWorkDir(cfg.RepoDir, headSHA)
-	if err != nil {
-		return nil, err
-	}
-	defer hw.Cleanup()
-	res.WorkDir = hw.WorkDir
-	res.HeadSHA = hw.HeadSHA
-	if hw.Temporary {
-		var stop context.CancelFunc
-		ctx, stop = signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
-		defer stop()
-	}
-	if hw.DirtyWarn {
-		log.Warn("dirty worktree with head equal to HEAD; build/lint/test may include uncommitted changes",
-			"workdir", hw.WorkDir, "head_sha", hw.HeadSHA)
-	}
-
 	execCfg := *cfg
-	execCfg.RepoDir = hw.WorkDir
+	execCfg.RepoDir = st.WorkDir
 	res.HiddenAvailable = resolveHiddenAvailable(&execCfg)
 
 	if cfg.DryRun {
@@ -184,7 +179,7 @@ func dryRunResult(res *Result, execCfg *Config) *Result {
 }
 
 func runVerifyLoops(ctx context.Context, cfg *Config, res *Result) (*Result, error) {
-	cache := &cmdCache{}
+	cache := &cmdCache{gates: sequentialGates(cfg), checks: checkGates(cfg)}
 	for i := 1; i <= cfg.MaxIterations; i++ {
 		res.Iterations = i
 		passed, stopIter, iterErr := runVerifyIteration(ctx, cfg, res, cache)
@@ -228,8 +223,14 @@ func BuildPlan(cfg *Config) *Plan {
 	if cfg.BuildCmd != "" {
 		cmds["build"] = cfg.BuildCmd
 	}
+	if cfg.TypecheckCmd != "" {
+		cmds["typecheck"] = cfg.TypecheckCmd
+	}
 	if cfg.LintCmd != "" {
 		cmds["lint"] = cfg.LintCmd
+	}
+	for _, c := range cfg.Checks {
+		cmds["check:"+c.Name] = c.Cmd
 	}
 	if cfg.VisibleTest != "" {
 		cmds["test"] = cfg.VisibleTest
@@ -240,26 +241,34 @@ func BuildPlan(cfg *Config) *Plan {
 	return &Plan{Dir: cfg.RepoDir, Commands: cmds}
 }
 
-func applyGuard(cfg *Config, res *Result) (bool, error) {
+// applyGuard runs guard and reports whether a blocking finding aborts
+// verify, with the reason to report.
+func applyGuard(cfg *Config) (gr *guard.CheckResult, abort bool, reason string, err error) {
 	chk := guard.NewChecker(cfg.RepoDir)
-	gr, err := chk.CheckDiff(cfg.BaseRef, cfg.HeadRef, cfg.NameStatusDiff)
+	gr, err = chk.CheckDiff(cfg.BaseRef, cfg.HeadRef, cfg.NameStatusDiff)
 	if err != nil {
-		return false, err
+		return nil, false, "", err
 	}
 	scope := resolveVerifyScope(cfg)
-	res.Guard = gr
-	abort := false
+	reason = "guard aborted verify (protected path)"
 	for i := range gr.Violations {
 		if !guardBlocksVerify(&gr.Violations[i], scope) {
 			continue
 		}
 		abort = true
+		if gr.Violations[i].Type == violationVerifyConfigChanged {
+			reason = "guard aborted verify (verify_config_changed: " + gr.Violations[i].Message + ")"
+		}
 	}
-	if abort {
-		res.Verdict = VerdictFail
+	if !abort {
+		return gr, false, "", nil
 	}
-	return abort, nil
+	return gr, true, reason, nil
 }
+
+// violationVerifyConfigChanged is guard's R0 rule; named here by value so
+// verify does not depend on guard exporting it.
+const violationVerifyConfigChanged guard.ViolationType = "verify_config_changed"
 
 func resolveVerifyScope(cfg *Config) []string {
 	if len(cfg.Scope) > 0 {
@@ -357,13 +366,13 @@ func fileExists(path string) bool {
 }
 
 func runVerifyIteration(ctx context.Context, cfg *Config, res *Result, cache *cmdCache) (passed, stop bool, err error) {
-	preOK, deterministic, preErr := runBuildAndLint(ctx, cfg, res, cache)
+	preOK, preErr := runGates(ctx, cfg, res, cache)
 	if preErr != nil {
 		return false, true, preErr
 	}
 	if !preOK {
-		log.Info("verify iteration failed", "n", res.Iterations, "step", "build_or_lint")
-		return false, deterministic, nil
+		log.Info("verify iteration failed", "n", res.Iterations, "step", "gate")
+		return false, true, nil
 	}
 	visibleOK, out, err := runConfiguredCmd(ctx, cfg, cfg.VisibleTest, "verify.test_cmd")
 	if err != nil {
@@ -415,43 +424,6 @@ func runHiddenStep(ctx context.Context, cfg *Config, res *Result) (ok bool, sig 
 		sig = "\x00hidden\x00" + s
 	}
 	return false, sig, nil
-}
-
-func runBuildAndLint(ctx context.Context, cfg *Config, res *Result, cache *cmdCache) (ok, deterministic bool, err error) {
-	if cfg.BuildCmd != "" {
-		ok, err = runCachedStep(ctx, cfg, res, &cache.buildDone, &cache.buildOK, &res.BuildRan, &res.BuildPassed, cfg.BuildCmd, "verify.build_cmd")
-		if err != nil || !ok {
-			return false, true, err
-		}
-	}
-	if cfg.LintCmd != "" {
-		ok, err = runCachedStep(ctx, cfg, res, &cache.lintDone, &cache.lintOK, &res.LintRan, &res.LintPassed, cfg.LintCmd, "verify.lint_cmd")
-		if err != nil || !ok {
-			return false, true, err
-		}
-	}
-	return true, false, nil
-}
-
-func runCachedStep(ctx context.Context, cfg *Config, res *Result, done, cachedOK, ran, passed *bool, command, key string) (bool, error) {
-	*ran = true
-	if *done {
-		*passed = *cachedOK
-		return *cachedOK, nil
-	}
-	ok, out, runErr := runConfiguredCmd(ctx, cfg, command, key)
-	*done = true
-	*cachedOK = ok && runErr == nil
-	*passed = *cachedOK
-	if runErr != nil {
-		setFailure(res, key, runErr.Error())
-		return false, runErr
-	}
-	if !ok {
-		setFailure(res, key, failReason(key, out))
-		return false, nil
-	}
-	return true, nil
 }
 
 func setFailure(res *Result, step, reason string) {

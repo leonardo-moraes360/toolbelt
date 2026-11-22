@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -38,42 +39,52 @@ func init() {
 	verifyRunCmd.Flags().Int("max-iter", 0, "maximum iterations")
 	verifyRunCmd.Flags().String("timeout", "10m", "timeout")
 	verifyRunCmd.Flags().StringP("output", "o", "", "JSON file")
-	verifyRunCmd.Flags().String("ruler", "tests", "ruler: tests|visual")
+	verifyRunCmd.Flags().String("ruler", "tests", "rulers, comma-separated: tests|visual (visual runs alone; unknown names exit 2)")
 	verifyRunCmd.Flags().String("manifest", "", "screens manifest (.toolbelt/screens.yaml)")
 	verifyRunCmd.Flags().Float64("threshold", 0.95, "visual similarity threshold")
 	verifyRunCmd.Flags().Bool("skip-unavailable", true, "graceful skip (SKIPPED verdict) if browser/refs/screens are unavailable")
 	verifyCmd.AddCommand(verifyRunCmd)
 }
 
-func runVerify(cmd *cobra.Command, args []string) error {
-	ruler, _ := cmd.Flags().GetString("ruler")
-	switch ruler {
-	case "visual":
-		return runVisualVerify(cmd)
-	default:
-		return runTestsVerify(cmd)
-	}
+func init() {
+	verifyRunCmd.Flags().String("typecheck-cmd", "", "typecheck command (empty + explicit flag or --no-typecheck to skip)")
+	verifyRunCmd.Flags().Bool("no-typecheck", false, "skips typecheck_cmd (config)")
+	verifyRunCmd.Flags().StringArray("check", nil, "named check name=cmd (repeatable; adds one or overrides its cmd)")
+	verifyRunCmd.Flags().StringArray("no-check", nil, "skips the named check (repeatable)")
+	verifyRunCmd.Flags().Bool("no-checks", false, "skips every verify.checks entry")
 }
 
-func runTestsVerify(cmd *cobra.Command) error {
-	cwd, err := os.Getwd()
+func runVerify(cmd *cobra.Command, args []string) error {
+	ruler, _ := cmd.Flags().GetString("ruler")
+	names, err := verify.ParseRulers(ruler)
 	if err != nil {
 		return err
 	}
+	cfg, err := verifyRunConfig(cmd)
+	if err != nil {
+		return err
+	}
+	multi, err := verify.RunRulers(context.Background(), &cfg, names)
+	if err != nil {
+		return err
+	}
+	return emitRulersResult(cmd, multi)
+}
+
+// verifyRunConfig builds the run config: R0 (verify section from the base
+// ref over the trusted config) and the flags are applied inside RunRulers.
+func verifyRunConfig(cmd *cobra.Command) (verify.Config, error) {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return verify.Config{}, err
+	}
 	cfg := verify.DefaultConfig(cwd)
+	trusted, err := config.LoadTrusted()
+	if err != nil {
+		return cfg, err
+	}
+	cfg.TrustedConfig = trusted
 	if fileCfg, loadErr := config.Load(); loadErr == nil {
-		if fileCfg.Verify.TestCmd != "" {
-			cfg.VisibleTest = fileCfg.Verify.TestCmd
-		}
-		if fileCfg.Verify.HiddenTestCmd != "" {
-			cfg.HiddenTest = fileCfg.Verify.HiddenTestCmd
-		}
-		if fileCfg.Verify.BuildCmd != "" {
-			cfg.BuildCmd = fileCfg.Verify.BuildCmd
-		}
-		if fileCfg.Verify.LintCmd != "" {
-			cfg.LintCmd = fileCfg.Verify.LintCmd
-		}
 		cfg.EnvAllow = append(cfg.EnvAllow, fileCfg.Env.Allow...)
 		cfg.EnvPass = append(cfg.EnvPass, fileCfg.Env.Pass...)
 	}
@@ -88,85 +99,100 @@ func runTestsVerify(cmd *cobra.Command) error {
 	if v, _ := cmd.Flags().GetString("ticket"); v != "" {
 		cfg.TicketPath = v
 	}
-	if v, _ := cmd.Flags().GetString("test-cmd"); v != "" {
-		cfg.VisibleTest = v
+	overrides, err := verifyFlagOverrides(cmd)
+	if err != nil {
+		return cfg, err
 	}
-	if cmd.Flags().Changed("hidden-test-cmd") {
-		v, _ := cmd.Flags().GetString("hidden-test-cmd")
-		cfg.HiddenTest = v
-	}
-	buildCmd, _ := cmd.Flags().GetString("build-cmd")
-	lintCmd, _ := cmd.Flags().GetString("lint-cmd")
-	noBuild, _ := cmd.Flags().GetBool("no-build")
-	noLint, _ := cmd.Flags().GetBool("no-lint")
-	verify.ApplyCmdOverrides(&cfg, buildCmd, cmd.Flags().Changed("build-cmd"), noBuild, lintCmd, cmd.Flags().Changed("lint-cmd"), noLint)
+	cfg.Overrides = overrides
 	if v, _ := cmd.Flags().GetInt("max-iter"); v > 0 {
 		cfg.MaxIterations = v
 	}
-	dryRun, _ := cmd.Flags().GetBool("dry-run")
-	cfg.DryRun = dryRun
+	cfg.DryRun, _ = cmd.Flags().GetBool("dry-run")
 	timeout, _ := time.ParseDuration(mustStringFlag(cmd, "timeout", "10m"))
 	cfg.Timeout = timeout
-	res, err := verify.Run(context.Background(), &cfg)
-	if err != nil {
-		if verify.IsMissingCommand(err) {
-			return emitMissingCommand(cmd, res, err)
-		}
-		return err
-	}
-	return emitVerifyResult(cmd, res.Verdict, res)
-}
-
-func emitMissingCommand(cmd *cobra.Command, res *verify.Result, err error) error {
-	if res == nil {
-		res = &verify.Result{Verdict: verify.VerdictFail, Error: err.Error()}
-	} else if res.Error == "" {
-		res.Error = err.Error()
-	}
-	outPath, _ := cmd.Flags().GetString("output")
-	if werr := writeVerifyPayload(outPath, res); werr != nil {
-		return werr
-	}
-	if !jsonOutput {
-		fmt.Fprintf(os.Stderr, "Error: %s\n", res.Error)
-	}
-	os.Exit(127)
-	return nil
-}
-
-func runVisualVerify(cmd *cobra.Command) error {
-	cwd, err := os.Getwd()
-	if err != nil {
-		return err
-	}
 	manifest, _ := cmd.Flags().GetString("manifest")
 	threshold, _ := cmd.Flags().GetFloat64("threshold")
 	skipOK, _ := cmd.Flags().GetBool("skip-unavailable")
-	cfg := verify.VisualConfig{
-		Manifest:  manifest,
-		Threshold: threshold,
-		SkipOK:    skipOK,
+	cfg.Visual = &verify.VisualConfig{Manifest: manifest, Threshold: threshold, SkipOK: skipOK}
+	return cfg, nil
+}
+
+// verifyFlagOverrides reads the command flags shared by tb verify run and
+// tb stack: an explicit empty build/lint/typecheck flag disables that step.
+func verifyFlagOverrides(cmd *cobra.Command) (*verify.FlagOverrides, error) {
+	flags := cmd.Flags()
+	str := func(name string) verify.CmdOverride {
+		v, _ := flags.GetString(name)
+		return verify.CmdOverride{Cmd: v, Set: flags.Changed(name)}
 	}
-	rep, err := verify.RunVisual(context.Background(), cwd, cfg)
+	o := &verify.FlagOverrides{
+		TestCmd:       str("test-cmd"),
+		HiddenTestCmd: str("hidden-test-cmd"),
+		BuildCmd:      str("build-cmd"),
+		LintCmd:       str("lint-cmd"),
+		TypecheckCmd:  str("typecheck-cmd"),
+	}
+	o.NoBuild, _ = flags.GetBool("no-build")
+	o.NoLint, _ = flags.GetBool("no-lint")
+	o.NoTypecheck, _ = flags.GetBool("no-typecheck")
+	o.NoChecks, _ = flags.GetBool("no-checks")
+	o.SkipChecks, _ = flags.GetStringArray("no-check")
+	specs, _ := flags.GetStringArray("check")
+	checks, err := parseCheckFlags(specs)
 	if err != nil {
+		return nil, err
+	}
+	o.Checks = checks
+	return o, nil
+}
+
+// parseCheckFlags splits each --check name=cmd at the first '='.
+func parseCheckFlags(specs []string) ([]config.VerifyCheck, error) {
+	checks := make([]config.VerifyCheck, 0, len(specs))
+	for _, spec := range specs {
+		name, cmdLine, ok := strings.Cut(spec, "=")
+		name, cmdLine = strings.TrimSpace(name), strings.TrimSpace(cmdLine)
+		if !ok || name == "" || cmdLine == "" {
+			return nil, &verify.UsageError{Msg: fmt.Sprintf("invalid --check %q: want name=cmd", spec)}
+		}
+		checks = append(checks, config.VerifyCheck{Name: name, Cmd: cmdLine})
+	}
+	return checks, nil
+}
+
+// emitRulersResult prints the payload (single ruler: its own shape) and
+// exits with the composed code. Text mode keeps each ruler's old summary;
+// a missing command prints only the error, as before.
+func emitRulersResult(cmd *cobra.Command, multi *verify.MultiResult) error {
+	outPath, _ := cmd.Flags().GetString("output")
+	if err := writeVerifyPayload(outPath, multi.Payload()); err != nil {
 		return err
 	}
 	if !jsonOutput {
-		printVisualReport(rep)
+		for _, w := range multi.Warnings {
+			fmt.Fprintf(os.Stderr, "Warning: %s\n", w)
+		}
+		for _, rr := range multi.Results {
+			printRulerText(rr)
+		}
 	}
-	return emitVerifyResult(cmd, rep.Verdict, rep)
-}
-
-func emitVerifyResult(cmd *cobra.Command, verdict verify.Verdict, payload any) error {
-	outPath, _ := cmd.Flags().GetString("output")
-	if err := writeVerifyPayload(outPath, payload); err != nil {
-		return err
-	}
-	printTestsSummary(payload)
-	if verifyShouldFail(verdict) {
-		os.Exit(1)
+	if code := multi.ExitCode(); code != 0 {
+		os.Exit(code)
 	}
 	return nil
+}
+
+func printRulerText(rr *verify.RulerResult) {
+	switch p := rr.Payload.(type) {
+	case *verify.VisualReport:
+		printVisualReport(p)
+	case *verify.Result:
+		if rr.ExitCode == 127 {
+			fmt.Fprintf(os.Stderr, "Error: %s\n", p.Error)
+			return
+		}
+		printTestsSummary(p)
+	}
 }
 
 func verifyShouldFail(verdict verify.Verdict) bool {

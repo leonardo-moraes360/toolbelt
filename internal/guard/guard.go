@@ -134,6 +134,11 @@ func (c *Checker) CheckDiff(baseRef, headRef, nameStatus string) (*CheckResult, 
 		}
 		res.Violations = append(res.Violations, c.scanContent(content, cf.path)...)
 	}
+	vcv, err := c.checkVerifyConfig(base, head)
+	if err != nil {
+		return nil, err
+	}
+	res.Violations = append(res.Violations, vcv...)
 	return res, nil
 }
 

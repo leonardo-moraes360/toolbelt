@@ -2,6 +2,7 @@ package registry
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -154,6 +155,21 @@ func registerMemQueryTools() {
 	})
 }
 
+// checksProperty and skipChecksProperty are shared by tb_verify_run and
+// tb_stack (R3, R5).
+var (
+	checksProperty = Property{
+		Type:        "array",
+		Description: "Named checks added or overridden: objects {name, cmd}; name matches [a-z0-9-]{1,32}",
+		Items:       &Property{Type: "object"},
+	}
+	skipChecksProperty = Property{
+		Type:        "array",
+		Description: "Names of verify.checks entries to skip",
+		Items:       &Property{Type: "string"},
+	}
+)
+
 func registerVerifyTools() {
 	Register(&Tool{
 		Name:        "tb_verify_run",
@@ -173,7 +189,12 @@ func registerVerifyTools() {
 				"dry_run":          {Type: "boolean", Description: "Shows the plan without running", Default: false},
 				"max_iter":         {Type: "integer", Description: "Maximum iterations", Default: 0},
 				"timeout":          {Type: "string", Description: "Timeout", Default: "10m"},
-				"ruler":            {Type: "string", Description: "tests|visual", Default: "tests"},
+				"ruler":            {Type: "string", Description: "Rulers, comma-separated: tests|visual (visual runs alone; an unknown name is an error)", Default: "tests"},
+				"typecheck_cmd":    {Type: "string", Description: "Typecheck command (empty to skip)"},
+				"no_typecheck":     {Type: "boolean", Description: "Skips typecheck_cmd", Default: false},
+				"checks":           checksProperty,
+				"skip_checks":      skipChecksProperty,
+				"no_checks":        {Type: "boolean", Description: "Skips every verify.checks entry", Default: false},
 				"manifest":         {Type: "string", Description: "Visual manifest"},
 				"threshold":        {Type: "number", Description: "Threshold visual", Default: 0.95},
 				"skip_unavailable": {Type: "boolean", Description: "Graceful skip if ruler is unavailable", Default: true},
@@ -284,6 +305,12 @@ func registerStackTools() {
 				"lint_cmd":             {Type: "string", Description: "verify: lint command (empty to skip)"},
 				"no_build":             {Type: "boolean", Description: "verify: skips build_cmd", Default: false},
 				"no_lint":              {Type: "boolean", Description: "verify: skips lint_cmd", Default: false},
+				"ruler":                {Type: "string", Description: "verify: rulers, comma-separated (tests; visual is refused here)", Default: "tests"},
+				"typecheck_cmd":        {Type: "string", Description: "verify: typecheck command (empty to skip)"},
+				"no_typecheck":         {Type: "boolean", Description: "verify: skips typecheck_cmd", Default: false},
+				"checks":               checksProperty,
+				"skip_checks":          skipChecksProperty,
+				"no_checks":            {Type: "boolean", Description: "verify: skips every verify.checks entry", Default: false},
 				"dry_run":              {Type: "boolean", Description: "verify: shows the plan without running", Default: false},
 				"max_iter":             {Type: "integer", Description: "verify: maximum iterations", Default: 0},
 				"timeout":              {Type: "string", Description: "verify: timeout", Default: "10m"},
@@ -487,36 +514,53 @@ func handleVerifyRun(ctx context.Context, args map[string]any) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	if StringArg(args, "ruler") == "visual" {
-		return runVerifyVisual(ctx, cwd, args)
+	names, err := verify.ParseRulers(StringArg(args, "ruler"))
+	if err != nil {
+		return nil, err
 	}
-	return runVerifyTests(ctx, cwd, args)
+	cfg, err := verifyConfigFromArgs(cwd, args)
+	if err != nil {
+		return nil, err
+	}
+	multi, err := verify.RunRulers(ctx, &cfg, names)
+	if err != nil {
+		return nil, err
+	}
+	// A missing command stays a tool error, as with verify.Run before.
+	for _, rr := range multi.Results {
+		if res, ok := rr.Payload.(*verify.Result); ok && rr.ExitCode == 127 {
+			return nil, errors.New(res.Error)
+		}
+	}
+	return multi.Payload(), nil
 }
 
-func runVerifyTests(ctx context.Context, cwd string, args map[string]any) (any, error) {
+// verifyConfigFromArgs mirrors tb verify run: R0 and the overrides are
+// applied by verify.RunRulers.
+func verifyConfigFromArgs(cwd string, args map[string]any) (verify.Config, error) {
 	cfg := verify.DefaultConfig(cwd)
-	applyVerifyFileConfig(&cfg)
+	trusted, err := config.LoadTrusted()
+	if err != nil {
+		return cfg, err
+	}
+	cfg.TrustedConfig = trusted
+	if fileCfg, loadErr := config.Load(); loadErr == nil {
+		cfg.EnvAllow = append(cfg.EnvAllow, fileCfg.Env.Allow...)
+		cfg.EnvPass = append(cfg.EnvPass, fileCfg.Env.Pass...)
+	}
 	if v := StringArg(args, "base"); v != "" {
 		cfg.BaseRef = v
 	}
 	if v := StringArg(args, "head"); v != "" {
 		cfg.HeadRef = v
 	}
-	if v := StringArg(args, "test_cmd"); v != "" {
-		cfg.VisibleTest = v
+	o, err := verifyOverridesFromArgs(args)
+	if err != nil {
+		return cfg, err
 	}
-	if v := StringArg(args, "hidden_test_cmd"); v != "" {
-		cfg.HiddenTest = v
-	}
-	verify.ApplyCmdOverrides(
-		&cfg,
-		StringArg(args, "build_cmd"),
-		HasArg(args, "build_cmd"),
-		BoolArg(args, "no_build", false),
-		StringArg(args, "lint_cmd"),
-		HasArg(args, "lint_cmd"),
-		BoolArg(args, "no_lint", false),
-	)
+	// The hidden command only overrides when non-empty, as before.
+	o.HiddenTestCmd.Set = o.HiddenTestCmd.Cmd != ""
+	cfg.Overrides = o
 	cfg.DryRun = BoolArg(args, "dry_run", false)
 	if n := IntArg(args, "max_iter", 0); n > 0 {
 		cfg.MaxIterations = n
@@ -527,46 +571,75 @@ func runVerifyTests(ctx context.Context, cwd string, args map[string]any) (any, 
 	}
 	timeout, err := time.ParseDuration(timeoutStr)
 	if err != nil {
-		return nil, fmt.Errorf("invalid timeout: %w", err)
+		return cfg, fmt.Errorf("invalid timeout: %w", err)
 	}
 	cfg.Timeout = timeout
 	cfg.EnvAllow = append(cfg.EnvAllow, StringSliceArg(args, "env", nil)...)
 	pass, err := toolPassEnv(args)
 	if err != nil {
-		return nil, err
+		return cfg, err
 	}
 	cfg.EnvPass = append(cfg.EnvPass, pass...)
-	return verify.Run(ctx, &cfg)
-}
-
-func applyVerifyFileConfig(cfg *verify.Config) {
-	fileCfg, err := config.Load()
-	if err != nil {
-		return
-	}
-	if fileCfg.Verify.TestCmd != "" {
-		cfg.VisibleTest = fileCfg.Verify.TestCmd
-	}
-	if fileCfg.Verify.HiddenTestCmd != "" {
-		cfg.HiddenTest = fileCfg.Verify.HiddenTestCmd
-	}
-	if fileCfg.Verify.BuildCmd != "" {
-		cfg.BuildCmd = fileCfg.Verify.BuildCmd
-	}
-	if fileCfg.Verify.LintCmd != "" {
-		cfg.LintCmd = fileCfg.Verify.LintCmd
-	}
-	cfg.EnvAllow = append(cfg.EnvAllow, fileCfg.Env.Allow...)
-	cfg.EnvPass = append(cfg.EnvPass, fileCfg.Env.Pass...)
-}
-
-func runVerifyVisual(ctx context.Context, cwd string, args map[string]any) (any, error) {
-	cfg := verify.VisualConfig{
+	cfg.Visual = &verify.VisualConfig{
 		Manifest:  StringArg(args, "manifest"),
 		Threshold: FloatArg(args, "threshold", 0.95),
 		SkipOK:    BoolArg(args, "skip_unavailable", true),
 	}
-	return verify.RunVisual(ctx, cwd, cfg)
+	return cfg, nil
+}
+
+// verifyOverridesFromArgs reads the command arguments shared by
+// tb_verify_run and tb_stack; a present but empty build/lint/typecheck
+// command disables that step.
+func verifyOverridesFromArgs(args map[string]any) (*verify.FlagOverrides, error) {
+	cmdArg := func(key string) verify.CmdOverride {
+		return verify.CmdOverride{Cmd: StringArg(args, key), Set: HasArg(args, key)}
+	}
+	o := &verify.FlagOverrides{
+		TestCmd:       cmdArg("test_cmd"),
+		HiddenTestCmd: cmdArg("hidden_test_cmd"),
+		BuildCmd:      cmdArg("build_cmd"),
+		LintCmd:       cmdArg("lint_cmd"),
+		TypecheckCmd:  cmdArg("typecheck_cmd"),
+		NoBuild:       BoolArg(args, "no_build", false),
+		NoLint:        BoolArg(args, "no_lint", false),
+		NoTypecheck:   BoolArg(args, "no_typecheck", false),
+		SkipChecks:    StringSliceArg(args, "skip_checks", nil),
+		NoChecks:      BoolArg(args, "no_checks", false),
+	}
+	checks, err := checksArg(args)
+	if err != nil {
+		return nil, err
+	}
+	o.Checks = checks
+	return o, nil
+}
+
+// checksArg decodes "checks": an array of {name, cmd} objects.
+func checksArg(args map[string]any) ([]config.VerifyCheck, error) {
+	raw, ok := args["checks"]
+	if !ok || raw == nil {
+		return nil, nil
+	}
+	items, ok := raw.([]any)
+	if !ok {
+		return nil, &verify.UsageError{Msg: "checks must be an array of {name, cmd} objects"}
+	}
+	checks := make([]config.VerifyCheck, 0, len(items))
+	for i, item := range items {
+		obj, ok := item.(map[string]any)
+		if !ok {
+			return nil, &verify.UsageError{Msg: fmt.Sprintf("checks[%d] must be an object {name, cmd}", i)}
+		}
+		name, _ := obj["name"].(string)
+		cmdLine, _ := obj["cmd"].(string)
+		name, cmdLine = strings.TrimSpace(name), strings.TrimSpace(cmdLine)
+		if name == "" || cmdLine == "" {
+			return nil, &verify.UsageError{Msg: fmt.Sprintf("checks[%d] needs a non-empty name and cmd", i)}
+		}
+		checks = append(checks, config.VerifyCheck{Name: name, Cmd: cmdLine})
+	}
+	return checks, nil
 }
 
 func handleReview(_ context.Context, args map[string]any) (any, error) {
@@ -791,6 +864,10 @@ func handleStack(ctx context.Context, args map[string]any) (any, error) {
 	if !filepath.IsAbs(ticket) {
 		ticket = filepath.Join(cwd, ticket)
 	}
+	vo, err := verifyOverridesFromArgs(args)
+	if err != nil {
+		return nil, err
+	}
 	opts := &stack.Options{
 		RepoDir:            cwd,
 		Base:               base,
@@ -811,6 +888,13 @@ func handleStack(ctx context.Context, args map[string]any) (any, error) {
 		LintCmdSet:         HasArg(args, "lint_cmd"),
 		NoBuild:            BoolArg(args, "no_build", false),
 		NoLint:             BoolArg(args, "no_lint", false),
+		Ruler:              StringArg(args, "ruler"),
+		TypecheckCmd:       vo.TypecheckCmd.Cmd,
+		TypecheckCmdSet:    vo.TypecheckCmd.Set,
+		NoTypecheck:        vo.NoTypecheck,
+		Checks:             vo.Checks,
+		SkipChecks:         vo.SkipChecks,
+		NoChecks:           vo.NoChecks,
 		DryRun:             BoolArg(args, "dry_run", false),
 		MaxIter:            IntArg(args, "max_iter", 0),
 		Timeout:            timeout,

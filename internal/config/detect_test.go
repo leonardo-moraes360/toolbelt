@@ -261,20 +261,20 @@ func TestDetectBuildLintCmd(t *testing.T) {
 			wantLint:  "npm run lint",
 		},
 		{
-			name: "npm typecheck when no build script",
+			name: "npm typecheck script is not a build",
 			files: map[string]string{
 				"package.json":      `{"scripts":{"typecheck":"tsc --noEmit","lint":"eslint ."}}`,
 				"package-lock.json": "{}\n",
 			},
-			wantBuild: "npm run typecheck",
+			wantBuild: "",
 			wantLint:  "npm run lint",
 		},
 		{
-			name: "npm type-check when no build or typecheck",
+			name: "npm type-check is not a build",
 			files: map[string]string{
 				"package.json": `{"scripts":{"type-check":"tsc","lint":"next lint"}}`,
 			},
-			wantBuild: "npm run type-check",
+			wantBuild: "",
 			wantLint:  "npm run lint",
 		},
 		{
@@ -337,12 +337,12 @@ func TestDetectBuildLintCmd(t *testing.T) {
 			wantLint:  "uv run ruff check .",
 		},
 		{
-			name: "python mypy when no ruff",
+			name: "python mypy is not a lint fallback",
 			files: map[string]string{
 				"pyproject.toml": "[project]\nname = \"x\"\n[tool.mypy]\nstrict = true\n",
 			},
 			wantBuild: "",
-			wantLint:  "mypy .",
+			wantLint:  "",
 		},
 		{
 			name: "python ruff.toml without tool section",
@@ -411,6 +411,7 @@ func TestInitDetectsToolchain(t *testing.T) {
 		wantTest  string
 		wantBuild string
 		wantLint  string
+		wantType  string
 	}{
 		{
 			name: "npm fixture like express/commander-js",
@@ -446,6 +447,7 @@ func TestInitDetectsToolchain(t *testing.T) {
 			wantTest:  "",
 			wantBuild: "npm run build",
 			wantLint:  "",
+			wantType:  "npm run type-check",
 		},
 		{
 			name: "node typecheck+lint without test clears go default",
@@ -454,8 +456,9 @@ func TestInitDetectsToolchain(t *testing.T) {
 				"package-lock.json": "{}\n",
 			},
 			wantTest:  "",
-			wantBuild: "npm run typecheck",
+			wantBuild: "",
 			wantLint:  "npm run lint",
+			wantType:  "npm run typecheck",
 		},
 		{
 			name: "empty repo without markers clears go default",
@@ -549,6 +552,12 @@ func TestInitDetectsToolchain(t *testing.T) {
 			if loaded.Verify.LintCmd != tt.wantLint {
 				t.Fatalf("verify.lint_cmd = %q, want %q", loaded.Verify.LintCmd, tt.wantLint)
 			}
+			if loaded.Verify.TypecheckCmd != tt.wantType {
+				t.Fatalf("verify.typecheck_cmd = %q, want %q", loaded.Verify.TypecheckCmd, tt.wantType)
+			}
+			if len(loaded.Verify.Checks) != 0 {
+				t.Fatalf("verify.checks = %v, want none without WriteChecks", loaded.Verify.Checks)
+			}
 		})
 	}
 }
@@ -635,5 +644,219 @@ func TestSaveUsesVersionedFileMode(t *testing.T) {
 	}
 	if st.Mode().Perm()&0o044 == 0 {
 		t.Fatalf("config.yaml com modo %v; esperado legível pelo grupo/outros (umask permitindo)", st.Mode().Perm())
+	}
+}
+
+func writeFixture(t *testing.T, root string, files map[string]string) {
+	t.Helper()
+	for name, content := range files {
+		path := filepath.Join(root, name)
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestDetectTypecheckCmd(t *testing.T) {
+	tests := []struct {
+		name  string
+		path  map[string]bool
+		files map[string]string
+		want  string
+	}{
+		{
+			name:  "node typecheck script with pnpm",
+			files: map[string]string{"package.json": `{"scripts":{"typecheck":"tsc --noEmit"}}`, "pnpm-lock.yaml": "x\n"},
+			want:  "pnpm run typecheck",
+		},
+		{
+			name: "node typecheck preferred over tsc",
+			files: map[string]string{
+				"package.json":          `{"scripts":{"typecheck":"vue-tsc"}}`,
+				"tsconfig.json":         "{}\n",
+				"node_modules/.bin/tsc": "#!/bin/sh\n",
+			},
+			want: "npm run typecheck",
+		},
+		{
+			name: "tsconfig with local tsc",
+			files: map[string]string{
+				"package.json":          `{"packageManager":"yarn@4.1.0","scripts":{"test":"jest"}}`,
+				"tsconfig.json":         "{}\n",
+				"node_modules/.bin/tsc": "#!/bin/sh\n",
+			},
+			want: "yarn exec tsc --noEmit",
+		},
+		{
+			name:  "tsconfig without local tsc",
+			path:  map[string]bool{"tsc": true},
+			files: map[string]string{"package.json": `{"scripts":{}}`, "tsconfig.json": "{}\n"},
+			want:  "",
+		},
+		{
+			name:  "mypy in pyproject on PATH",
+			path:  map[string]bool{"mypy": true},
+			files: map[string]string{"pyproject.toml": "[tool.mypy]\nstrict = true\n"},
+			want:  "mypy .",
+		},
+		{
+			name:  "mypy configured but missing",
+			files: map[string]string{"pyproject.toml": "[tool.mypy]\nstrict = true\n"},
+			want:  "",
+		},
+		{
+			name:  "mypy in local venv with uv",
+			files: map[string]string{"pyproject.toml": "[tool.mypy]\n", "uv.lock": "version = 1\n", ".venv/bin/mypy": "#!/bin/sh\n"},
+			want:  "uv run mypy .",
+		},
+		{
+			name:  "mypy.ini",
+			path:  map[string]bool{"mypy": true},
+			files: map[string]string{"mypy.ini": "[mypy]\n"},
+			want:  "mypy .",
+		},
+		{
+			name:  "setup.cfg mypy section",
+			path:  map[string]bool{"mypy": true},
+			files: map[string]string{"setup.cfg": "[metadata]\nname = x\n[mypy]\nstrict = True\n"},
+			want:  "mypy .",
+		},
+		{
+			name:  "pyrightconfig.json",
+			path:  map[string]bool{"pyright": true},
+			files: map[string]string{"pyproject.toml": "[project]\n", "pyrightconfig.json": "{}\n"},
+			want:  "pyright",
+		},
+		{
+			name:  "pyright in pyproject",
+			path:  map[string]bool{"pyright": true},
+			files: map[string]string{"pyproject.toml": "[tool.pyright]\n"},
+			want:  "pyright",
+		},
+		{
+			name:  "python mypy on PATH but not configured",
+			path:  map[string]bool{"mypy": true},
+			files: map[string]string{"pyproject.toml": "[project]\n"},
+			want:  "",
+		},
+		{
+			name:  "go has none",
+			path:  map[string]bool{"mypy": true},
+			files: map[string]string{"go.mod": "module x\n", "mypy.ini": "[mypy]\n"},
+			want:  "",
+		},
+		{
+			name:  "rust has none",
+			files: map[string]string{"Cargo.toml": "[package]\n"},
+			want:  "",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			withLookPath(t, tt.path)
+			root := t.TempDir()
+			writeFixture(t, root, tt.files)
+			if got := DetectTypecheckCmd(root); got != tt.want {
+				t.Fatalf("DetectTypecheckCmd() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func withCargoClippy(t *testing.T, works bool) {
+	t.Helper()
+	orig := cargoClippyWorks
+	cargoClippyWorks = func() bool { return works }
+	t.Cleanup(func() { cargoClippyWorks = orig })
+}
+
+func TestDetectSuggestedChecks(t *testing.T) {
+	tests := []struct {
+		name   string
+		path   map[string]bool
+		clippy bool
+		files  map[string]string
+		want   []VerifyCheck
+	}{
+		{
+			name:  "go with govulncheck",
+			path:  map[string]bool{"govulncheck": true},
+			files: map[string]string{"go.mod": "module x\n"},
+			want:  []VerifyCheck{{Name: "govulncheck", Cmd: "govulncheck ./..."}},
+		},
+		{
+			name:  "go without govulncheck",
+			files: map[string]string{"go.mod": "module x\n"},
+		},
+		{
+			name:   "rust with clippy",
+			clippy: true,
+			files:  map[string]string{"Cargo.toml": "[package]\n"},
+			want:   []VerifyCheck{{Name: "clippy", Cmd: "cargo clippy --all-targets -- -D warnings"}},
+		},
+		{
+			name:  "rust without clippy",
+			files: map[string]string{"Cargo.toml": "[package]\n"},
+		},
+		{
+			name:   "node gets none",
+			path:   map[string]bool{"govulncheck": true},
+			clippy: true,
+			files:  map[string]string{"package.json": "{}\n"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			withLookPath(t, tt.path)
+			withCargoClippy(t, tt.clippy)
+			root := t.TempDir()
+			writeFixture(t, root, tt.files)
+			got := DetectSuggestedChecks(root)
+			if len(got) != len(tt.want) {
+				t.Fatalf("DetectSuggestedChecks() = %v, want %v", got, tt.want)
+			}
+			for i := range got {
+				if got[i] != tt.want[i] {
+					t.Fatalf("DetectSuggestedChecks()[%d] = %v, want %v", i, got[i], tt.want[i])
+				}
+			}
+		})
+	}
+}
+
+func TestInitWithOptions_WriteChecks(t *testing.T) {
+	withLookPath(t, map[string]bool{"go": true, "govulncheck": true})
+	withCargoClippy(t, false)
+
+	for _, write := range []bool{false, true} {
+		root := t.TempDir()
+		writeFixture(t, root, map[string]string{"go.mod": "module x\n"})
+		dir := filepath.Join(root, DefaultConfigDir)
+		res, err := InitWithOptions(dir, InitOptions{WriteChecks: write})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !res.Created || len(res.SuggestedChecks) != 1 || res.ChecksWritten != write {
+			t.Fatalf("write=%v: result %+v", write, res)
+		}
+		loaded := DefaultConfig()
+		if err := loadFromFile(filepath.Join(dir, DefaultConfigFile), loaded); err != nil {
+			t.Fatal(err)
+		}
+		if got := len(loaded.Verify.Checks); (got == 1) != write {
+			t.Fatalf("write=%v: verify.checks = %v", write, loaded.Verify.Checks)
+		}
+
+		// A second run never rewrites config.yaml but still suggests.
+		again, err := InitWithOptions(dir, InitOptions{WriteChecks: true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if again.Created || again.ChecksWritten || len(again.SuggestedChecks) != 1 {
+			t.Fatalf("write=%v: rerun result %+v", write, again)
+		}
 	}
 }
