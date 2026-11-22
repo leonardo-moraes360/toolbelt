@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/leonardo-moraes360/toolbelt/internal/envelope"
 )
@@ -16,7 +17,10 @@ type Tool struct {
 	// Annotations are the MCP behavior hints. Register fills them from the
 	// built-in table (annotations.go) when the tool does not set its own.
 	Annotations *ToolAnnotations `json:"annotations,omitempty"`
-	Handler     ToolHandler      `json:"-"`
+	// Tier is stable or experimental; Register fills it from TierOf and
+	// prefixes the description of an experimental tool with "[experimental]".
+	Tier    string      `json:"-"`
+	Handler ToolHandler `json:"-"`
 }
 
 type InputSchema struct {
@@ -62,6 +66,12 @@ func Default() *Registry {
 func (r *Registry) Register(tool *Tool) {
 	if tool.Annotations == nil {
 		tool.Annotations = annotationsFor(tool.Name)
+	}
+	if tool.Tier == "" {
+		tool.Tier = TierOf(tool.Name)
+	}
+	if tool.Tier == TierExperimental && !strings.HasPrefix(tool.Description, strings.TrimSpace(experimentalMarker)) {
+		tool.Description = experimentalMarker + tool.Description
 	}
 	r.tools[tool.Name] = tool
 }

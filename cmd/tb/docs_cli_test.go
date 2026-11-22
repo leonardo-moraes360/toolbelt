@@ -119,8 +119,8 @@ func TestDocsDescribeRealLocalWorkflow(t *testing.T) {
 	assertDocsLocalTicketWorkflow(t, cliPT+"\n"+readmePT)
 	assertDocsJavascriptCoversTypeScript(t, cli)
 	assertDocsJavascriptCoversTypeScript(t, cliPT)
-	assertDocsGuardStrictDeprecated(t, cli, changelog, "## [Unreleased]")
-	assertDocsGuardStrictDeprecated(t, cliPT, changelogPT, "## [Não Lançado]")
+	assertDocsGuardStrictRemoved(t, cli, changelog, "## [Unreleased]")
+	assertDocsGuardStrictRemoved(t, cliPT, changelogPT, "## [Não Lançado]")
 }
 
 func mustReadFile(t *testing.T, path string) string {
@@ -174,15 +174,18 @@ func assertDocsJavascriptCoversTypeScript(t *testing.T, cli string) {
 	}
 }
 
-func assertDocsGuardStrictDeprecated(t *testing.T, cli, changelog, unreleased string) {
+func assertDocsGuardStrictRemoved(t *testing.T, cli, changelog, unreleased string) {
 	t.Helper()
 	if reGuardStrictExample.MatchString(cli) {
 		t.Error("cli.md must not have an invocable guard ... --strict example")
 	}
 	lower := strings.ToLower(cli)
 	if !strings.Contains(cli, "--strict") ||
-		(!strings.Contains(lower, "deprecat") && !strings.Contains(lower, "deprecia")) {
-		t.Error("cli.md must note that guard --strict is deprecated")
+		(!strings.Contains(lower, "removed in 1.0") && !strings.Contains(lower, "removida na 1.0")) {
+		t.Error("cli.md must say that guard --strict was removed in 1.0")
+	}
+	if n := strings.Count(cli, "`tb guard check` —"); n != 1 {
+		t.Errorf("cli.md documents tb guard check %d times, want 1", n)
 	}
 	pending := changelogSection(changelog, unreleased)
 	if pending == "" {
@@ -190,10 +193,10 @@ func assertDocsGuardStrictDeprecated(t *testing.T, cli, changelog, unreleased st
 	}
 	// After a release is cut the note moves to a published version section.
 	recent := pending + "\n" + changelogReleased(changelog, unreleased)
-	deprec := strings.Contains(strings.ToLower(recent), "deprecat") ||
-		strings.Contains(strings.ToLower(recent), "deprecia")
-	if !strings.Contains(recent, "--strict") || !deprec {
-		t.Errorf("CHANGELOG (%s or a published version) must note the guard --strict deprecation", unreleased)
+	lowerRecent := strings.ToLower(recent)
+	removed := strings.Contains(lowerRecent, "removed") || strings.Contains(lowerRecent, "removid")
+	if !strings.Contains(recent, "--strict") || !removed {
+		t.Errorf("CHANGELOG (%s or a published version) must note the guard --strict removal", unreleased)
 	}
 }
 

@@ -22,7 +22,8 @@ var stackCmd = &cobra.Command{
 Not a branch stack (like Graphite or git-stack): it only orchestrates verify,
 review, drift, guard and/or egm in the given order.
 
-Operations: verify, review, drift, guard, vault, egm, seccheck.
+Operations: verify, review, drift, guard (stable); vault, egm, seccheck
+(experimental).
 egm gates the specs/ADRs (egm.doc_globs) added or modified in
 merge-base(base, head)..head with tb egm status --at head; it is local (state
 lives in $XDG_STATE_HOME), not parallel, and always runs last. With
@@ -59,7 +60,7 @@ func init() {
 	stackCmd.Flags().String("typecheck-cmd", "", "verify: typecheck command (empty + explicit flag or --no-typecheck to skip)")
 	stackCmd.Flags().Bool("no-typecheck", false, "verify: skips typecheck_cmd")
 	stackCmd.Flags().StringArray("check", nil, "verify: named check name=cmd (repeatable; adds one or overrides its cmd)")
-	stackCmd.Flags().StringArray("no-check", nil, "verify: skips the named check (repeatable)")
+	addSkipCheckFlags(stackCmd, "verify: ")
 	stackCmd.Flags().Bool("no-checks", false, "verify: skips every verify.checks entry")
 	addCoverageFlags(stackCmd, "verify: ")
 	stackCmd.Flags().Bool("dry-run", false, "verify: shows the plan (cmds/dir) without executing")

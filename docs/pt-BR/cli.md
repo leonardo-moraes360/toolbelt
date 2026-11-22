@@ -101,6 +101,10 @@ tb  (todo comando de primeiro nível; tier = estabilidade sob o congelamento 1.0
 Removidos (ADR-020, ADR-016): tb agent, tb md. Planejados, não implementados: tb run, tb proc, tb serve.
 ```
 
+**Níveis de estabilidade.** Todo comando e toda ferramenta MCP é `stable` ou `experimental`. No congelamento da 1.0, um comando estável mantém caminho, flags, defaults e códigos de saída, e uma ferramenta estável mantém nome, parâmetros e formato do resultado; ambos só crescem dentro da 1.x. A superfície experimental pode mudar em qualquer minor: a linha de help começa com `(experimental)` e a descrição MCP com `[experimental]`. A coluna `[stable]`/`[experimental]` acima é conferida contra a CLI por um teste. Experimentais: `bus`, `router`, `board`, `watchdog`, `egm`, `vault`, `red`, `blue`, `lab`, `bench`, `merge --strategy prompt` e as ops `egm`, `vault` e `seccheck` do `stack`; ferramentas `tb_bus_*`, `tb_router_status`, `tb_board`, `tb_watchdog_alerts`, `tb_egm_*`, `tb_vault_*`, `tb_red_*`, `tb_blue_*`, `tb_sec_pair`. Uma flag deprecated continua funcionando, oculta do help e com aviso no stderr, até a 2.0 (`--no-check`, ver `tb verify run`).
+
+Regra de nomes do MCP: um parâmetro é a flag da CLI com `-` trocado por `_`, no plural quando a flag é repetível (`--skip-check` vira `skip_checks`, `--egm-doc` vira `egm_docs`); um argumento posicional vira parâmetro nomeado. Uma exceção documentada: `tb_merge` recebe `apply` (default `false`, dry-run) onde a CLI recebe `--dry-run`, porque o agente precisa optar por mover refs. `cwd` é opcional em toda ferramenta que o aceita e o default é o diretório de trabalho do servidor.
+
 ---
 
 ## Comandos Detalhados
@@ -576,7 +580,7 @@ Flags:
   --typecheck-cmd <cmd>  verify: typecheck command (gate step after build)
   --no-typecheck         verify: skips typecheck_cmd
   --check <name=cmd>     verify: adds or overrides a named check (repeatable)
-  --no-check <name>      verify: skips one named check (repeatable)
+  --skip-check <name>    verify: skips one named check (repeatable; --no-check is a hidden deprecated alias until 2.0)
   --no-checks            verify: skips every named check
   --dry-run              verify: shows the plan (cmds/dir) without executing
   --max-iter <n>         verify: max iterations
@@ -667,42 +671,6 @@ tb stack verify guard egm --base origin/main
 tb stack egm --base origin/main --egm-doc docs/adr/015-egm-nativo.md --strict
 tb stack egm --egm-mode ci -c "$RUNNER_TEMP/egm.yaml" --base "$BASE_SHA" --head "$HEAD_SHA"
 ```
-
----
-
-### `tb guard` — Proteções de Segurança (✓ implementado: `check`)
-
-Analisa o diff entre commits em busca de paths protegidos e padrões anti-trapaça.
-
-```bash
-tb guard check [base..head] [flags]
-
-Flags:
-  --base <ref>   Base ref (default: HEAD~1)
-  --head <ref>   Head ref (default: HEAD)
-  --warn-only    Do not fail the exit code on SeverityError (opt-out of the CI-safe default)
-  --strict       Deprecated: failing on SeverityError is already the default; use --warn-only to opt out
-  --json         JSON output (global flag)
-```
-
-Refs que começam com `-` ou SHA inexistente saem com erro claro (sem chamar
-`git` de forma que interprete a ref como opção).
-Por default, exit ≠ 0 quando há `SeverityError` (comportamento estrito).
-`--strict` é **deprecated** (alias sem efeito: o default já falha em
-`SeverityError`); prefira omitir a flag ou usar `--warn-only` para opt-out.
-No modo texto limpo imprime `guard: ok (N rules, 0 violations)` (`N` = regras
-válidas da base + defaults).
-
-**Exemplos:**
-
-```bash
-tb guard check HEAD~1..HEAD
-tb guard check --base HEAD~1 --head HEAD
-tb guard check --warn-only HEAD~1..HEAD
-tb guard check --json HEAD~1..HEAD
-```
-
-> Subcomandos `snapshot`, `verify`, `protect` e `audit` **não existem** na CLI atual — são planejados.
 
 ---
 
@@ -961,7 +929,7 @@ tb egm review docs/specs/x.md --restart   # novo ciclo depois do teto (exige edi
 - **Citações de símbolo (`path.go#Name`, `path.go#Recv.Name`):** uma fonte Go pode ser citada com um fragmento de símbolo, como link ou trecho entre crases; âncoras como `L10` continuam no nível do arquivo. A revisão confere cada símbolo citado nos bytes do snapshot com um parser puro (sem grafo, sem LLM, também com `--engine deterministic`): um nome ausente é um finding `refs` `major`, um ambíguo (`init`, `_` ou declarado duas vezes) um `symbol_ambiguous` `major`, e um arquivo que não faz parse um nit. O intervalo do símbolo começa na declaração, sem o comentário de documentação, e é hasheado como bytes crus. As rodadas guardam os hashes como `symbols`.
 - **Recibo v3 (`egm.receipt.write_v3: true`, só do usuário):** v2 mais `symbols` (`"path#Name"` para sha256, possivelmente vazio); os leitores aceitam 1, 2 e 3, e o CI recalcula cada hash de símbolo no head (divergência é `receipt_stale`; uma chave que o documento nunca cita é `receipt_invalid`).
 - **Drift de símbolo (`drift-report`, `egm-source-drift/0.2`):** uma fonte citada **só** por símbolos é comparada por esses símbolos: `symbol_changed` ou `symbol_missing` (motivo `deleted`, `ambiguous`, `unparsed`, `too_large`) saem com 1, enquanto uma mudança em outro ponto do arquivo vai para `outside_symbols` e o documento continua `fresh`. Um caminho também citado sem fragmento, e qualquer recibo v1/v2 ou rodada sem `symbols`, continua com escopo de arquivo. Severidade: `unreadable` > `source_missing` > `symbol_missing` > `drifted` > `symbol_changed` > `sources_differ` > `fresh` > `no_baseline`. O `ci_source_drift` e o aviso local `sources_changed` seguem a mesma regra.
-- **MCP:** `tb_egm_status` (`cwd`, `doc`, `at`, `strict`), `tb_egm_receipt` (`cwd`, `doc`) e `tb_egm_resolve` (`cwd`, `doc` e as flags do resolve como `fix`, `decline`, `force_settle`, `reason`, `contest`, `evidence`). `cwd` precisa ser absoluto. `review` e `loop next` levam minutos e ficam só na CLI.
+- **MCP:** `tb_egm_status` (`cwd`, `doc`, `at`, `strict`), `tb_egm_receipt` (`cwd`, `doc`) e `tb_egm_resolve` (`cwd`, `doc` e as flags do resolve como `fix`, `decline`, `force_settle`, `reason`, `contest`, `evidence`). `cwd` é opcional (default: o diretório de trabalho do servidor) e precisa ser absoluto quando informado. `review` e `loop next` levam minutos e ficam só na CLI.
 - **Autenticação (claude):** com `ANTHROPIC_API_KEY` ou `CLAUDE_CODE_OAUTH_TOKEN` listada no `egm.env.pass` e preenchida, a chave chega ao goldfish pelo env e nenhum arquivo de credencial é verificado nem copiado (o caso do CI); quem lista `ANTHROPIC_API_KEY` no `egm.env.pass` e a exporta localmente passa a ser cobrado nessa chave, não no login do claude; senão a entrada `claudeAiOauth` de `~/.claude/.credentials.json` é copiada depois da checagem de `expiresAt`.
 - **Config:** lida da config de usuário (`~/.config/toolbelt/config.yaml`, seção `egm:`) ou do `-c`, nunca da config mesclada. O `.toolbelt/config.yaml` do repositório só pode endurecê-la: chaves de execução (`agent_cmd`, `env`, …) são ignoradas com `config_untrusted`, limites só descem, política só sobe.
 - **Git:** lista fechada de chamadas git endurecidas (sem hooks, filtros, fsmonitor, pager nem diff externo); um `.git` com chaves fatais (`include.*`, partial clone, alternates, …) para com exit 2 `hostile_git_dir`.
@@ -1018,7 +986,7 @@ Flags:
   --typecheck-cmd <cmd>    Typecheck command (default: verify.typecheck_cmd; gate step after build, before lint)
   --no-typecheck           Skips typecheck_cmd (config and flag)
   --check <name=cmd>       Adds or overrides a named check (repeatable; name [a-z0-9-]{1,32})
-  --no-check <name>        Skips one named check (repeatable)
+  --skip-check <name>      Skips one named check (repeatable; `--no-check` is a hidden deprecated alias until 2.0)
   --no-checks              Skips every named check (verify.checks)
   --dry-run                Shows the plan (cmds and directory) without executing
   --max-iter <n>           Maximum iterations (default: 3)
@@ -1149,7 +1117,7 @@ de **abortar antes de build/test** depende da origem do `protected_path`:
 | Defaults embutidos (`tests/hidden/*`, `benchmarks/*`, `.toolbelt/thresholds.yaml`, `.toolbelt/guard.yaml`) | **aborta** (FAIL, 0 iterações) | **aborta** | **aborta** |
 | `protected_paths` de `.toolbelt/guard.yaml` na **base** (custom) | reporta como **warning** e **continua** build/test | reporta warning (exceção de Scope) e **continua** | **aborta** |
 
-`tb guard check` (e o alias deprecated `--strict`) trata violações custom como
+`tb guard check` trata violações custom como
 `SeverityError` e falha o exit code por default; use `--warn-only` para opt-out.
 Só o loop de `tb verify run` aplica a exceção acima para não matar o mandate
 quando o manifesto lista o próprio arquivo da tarefa.
@@ -1176,9 +1144,9 @@ entre iterações), e uma falha encerra o verify com `ESCALATE` (a falha é
 determinística para o loop do agente), com o trecho em `reason`. Os checks rodam na
 ordem de `verify.checks`; exit 0 passa, qualquer outro valor reprova o check; um
 executável ausente falha na hora com exit 127. `--check name=cmd` adiciona ou
-sobrescreve um check, `--no-check name` pula um e `--no-checks` pula todos. Um scan
+sobrescreve um check, `--skip-check name` pula um e `--no-checks` pula todos (`--no-check`, a grafia antiga de `--skip-check`, ainda funciona, mas fica oculta e avisa que está deprecated; some na 2.0). Um scan
 que precisa de rede (ex. `govulncheck`) pertence ao CI, ou é pulado localmente com
-`--no-check`.
+`--skip-check`.
 
 Chaves JSON novas, todas `omitempty` (uma execução com a config e as flags de hoje
 imprime as mesmas chaves de antes): `typecheck_ran`, `typecheck_passed`, `checks`
@@ -1226,7 +1194,7 @@ tb verify run --test-cmd "pnpm test" --no-build --no-lint
 tb verify run --build-cmd "pnpm build" --lint-cmd "pnpm lint" --test-cmd "pnpm test"
 tb verify run --dry-run --test-cmd "go test ./..."
 tb verify run --typecheck-cmd "pnpm exec tsc --noEmit" --test-cmd "pnpm test"
-tb verify run --check "vuln=govulncheck ./..." --no-check clippy
+tb verify run --check "vuln=govulncheck ./..." --skip-check clippy
 tb verify run --no-typecheck --no-checks
 ```
 
@@ -1384,7 +1352,7 @@ metrics:
 
 ---
 
-### `tb guard check` — Verificação de Paths Protegidos
+### `tb guard check` — Verificação de Paths Protegidos (✓ implementado, estável)
 
 Verifica mudanças em paths protegidos entre dois commits.
 
@@ -1395,14 +1363,17 @@ Flags:
   --base <ref>          Base ref (default: HEAD~1; ignored if base..head is passed)
   --head <ref>          Head ref (default: HEAD; ignored if base..head is passed)
   --warn-only           Do not fail the exit code on SeverityError (opt-out of the CI-safe default)
-  --strict              Deprecated: failing on SeverityError is already the default (no-op alias; use --warn-only)
   --json                JSON output
 ```
 
+`check` é o único subcomando do guard; o `snapshot`/`verify` da ADR-005 não foram implementados.
+
 Aceita o intervalo posicional `base..head` (forma clássica) ou as flags `--base`/`--head`, alinhadas a `tb review` / `tb drift` / `tb verify`.
 
-Por default, exit ≠ 0 quando há `SeverityError` (CI-safe). `--strict` está
-**deprecated** (substituído pelo default estrito + `--warn-only`). No modo texto
+Por default, exit ≠ 0 quando há `SeverityError` (CI-safe); `--warn-only` faz o opt-out.
+`--strict` foi removida na 1.0 (era um no-op desde que ficou deprecated); o argumento
+`strict` do `tb_guard_check` também. Uma ref que começa com `-` ou um SHA inexistente
+sai com erro claro (a ref nunca é passada ao `git` como opção). No modo texto
 sem violações imprime `guard: ok (N rules, 0 violations)` (`N` = paths protegidos
 válidos carregados: defaults + `.toolbelt/guard.yaml` da **base**; padrões
 inválidos são ignorados e não entram em `rules_checked`).
@@ -2073,28 +2044,26 @@ Flags:
 
 Transporte unix/tcp e flags `--socket`/`--port`/`--tls-*` são planejados; hoje só stdio.
 
-**Ferramentas expostas em `tools/list` / `tools/call`** (36 na v0.0.5; as de grafo aparecem na lista, mas a chamada exige `TB_GRAPH=on`):
+**Ferramentas expostas em `tools/list` / `tools/call`** (52; as de grafo aparecem na lista, mas a chamada exige `TB_GRAPH=on`):
 
 | Tool | Paridade CLI | Notas |
 |------|--------------|-------|
 | `tb_version` | `tb version` | |
-| `tb_echo` | — | smoke |
-| `tb_env` | — | cwd/os/arch |
 | `tb_run` | — | `sh -c` com timeout dentro do sandbox Landlock (ver [sandbox do `tb_run` no MCP](#sandbox-do-tb_run-no-mcp)); env filtrado; args `env`/`pass_env` (arrays); `cwd` precisa estar dentro do repositório |
 | `tb_mem_add` / `tb_mem_list` / `tb_mem_show` / `tb_mem_edit` / `tb_mem_retire` / `tb_mem_search` / `tb_mem_check` / `tb_mem_init` | `tb mem …` | arg opcional `cwd`; `ref`/`all` (boolean; strings legadas ok) onde aplicável |
 | `tb_verify_run` | `tb verify run` | `ruler` (lista separada por vírgulas: `tests`, `coverage`, `visual`); args espelham flags + `env`/`pass_env`, incluindo `coverage_cmd`, `coverage_pattern`, `min_coverage` (número), `typecheck_cmd`, `no_typecheck` (boolean), `checks` (array de `{name, cmd}`), `skip_checks` (array de nomes), `no_checks` (boolean) |
 | `tb_review` | `tb review` | ticket/base/head/approved_sha/approved_base/require_approved_sha/reviewers/standards |
 | `tb_drift` | `tb drift` | retorna `{drift, has_drift, pinned_approval}` (`checked` explícito); `approved_sha`/`approved_base` |
-| `tb_guard_check` | `tb guard check` | `base`/`head` ou `range=A..B`; `strict_fail` por default em SeverityError; `warn_only=true` opt-out; `strict` deprecated (boolean) |
+| `tb_guard_check` | `tb guard check` | `base`/`head` ou `range=A..B`; `strict_fail` por default em SeverityError; `warn_only=true` opt-out |
 | `tb_stack` | `tb stack` | `ops` (array, inclui `egm`, sempre movida para o fim), `base`/`head`, `fail_fast` (boolean), `jobs` (integer), `approved_sha`/`approved_base`/`require_approved_sha`, `env`/`pass_env`, `egm_docs` (array), `strict` (boolean), `egm_mode` (`local`/`ci`), `egm_config` (caminho absoluto, exigido por `ci`), `egm_allow_offline` (boolean); campos do verify `ruler` (`visual` recusada), `coverage_cmd`, `coverage_pattern`, `min_coverage`, `typecheck_cmd`, `no_typecheck`, `checks`, `skip_checks`, `no_checks`; retorna JSON agregado com `warn` |
-| `tb_egm_status` / `tb_egm_resolve` / `tb_egm_receipt` | `tb egm status` / `tb egm resolve` / `tb egm receipt` | `cwd` (absoluto) e `doc`; status aceita `at`/`strict`, resolve aceita `fix`/`decline` (arrays), `force_settle`/`reason`, `contest`/`evidence`; retorna `{report, exit_code}` (receipt acrescenta `receipt`, o caminho gravado) |
-| `tb_vault_list` / `tb_vault_show` / `tb_vault_search` / `tb_vault_links` / `tb_vault_backlinks` / `tb_vault_check` / `tb_vault_new` | `tb vault …` | `cwd` (absoluto); `note` em show/links/backlinks, `query`/`limit` em search, `type`/`tag`/`source` em list; new recebe `title`, `confidence` (obrigatório), `type`, `tags`, `dir`, `body` e grava sempre `source: inferred`; o texto das notas volta dentro de `data` |
+| `tb_egm_status` / `tb_egm_resolve` / `tb_egm_receipt` | `tb egm status` / `tb egm resolve` / `tb egm receipt` | `cwd` opcional (absoluto) e `doc`; status aceita `at`/`strict`, resolve aceita `fix`/`decline` (arrays), `force_settle`/`reason`, `contest`/`evidence`; retorna `{report, exit_code}` (receipt acrescenta `receipt`, o caminho gravado) |
+| `tb_vault_list` / `tb_vault_show` / `tb_vault_search` / `tb_vault_links` / `tb_vault_backlinks` / `tb_vault_check` / `tb_vault_new` | `tb vault …` | `cwd` opcional (absoluto); `note` em show/links/backlinks, `query`/`limit` em search, `type`/`tag`/`source` em list; new recebe `title`, `confidence` (obrigatório), `type`, `tags`, `dir`, `body` e grava sempre `source: inferred`; o texto das notas volta dentro de `data` |
 | `tb_ticket_list` / `tb_ticket_show` | `tb ticket list` / `tb ticket show` | `status`, `deps` / `id`; arg opcional `cwd` |
 | `tb_ticket_create` | `tb ticket create` | `title`, `description`, `scope`/`forbid`/`accept`/`dep` (arrays), `priority` (integer), `timeout`, `dry_run` (boolean) |
 | `tb_board` | `tb board` | `action=list\|pause\|resume\|drain`, `strategy`, `status`, `worker` |
 | `tb_router_status` | `tb router status` | só leitura de `state.json` |
 | `tb_watchdog_alerts` | `tb watchdog alerts` | `since`, `kind`, `limit` (integer) |
-| `tb_merge` | `tb merge` | `ids` (array), `strategy` (`fail`, `last_wins`, `semantic`; `prompt` é recusada com `prompt_cli_only`), `into`, `force`, `allow_sensitive` (padrão `false`); **dry-run por padrão** — só altera refs com `apply=true` |
+| `tb_merge` | `tb merge` | `ids` (array), `strategy` (`fail`, `last_wins`, `semantic`; `prompt` é recusada com `prompt_cli_only`), `into`, `force`, `allow_sensitive` (padrão `false`); **dry-run por padrão** — só altera refs com `apply=true` (a CLI recebe `--dry-run`: a única exceção documentada à regra de nomes, porque o agente precisa optar por mover refs) |
 | `tb_bus_join` / `tb_bus_send` / `tb_bus_recv` / `tb_bus_claim` / `tb_bus_complete` / `tb_bus_heartbeat` / `tb_bus_status` | `tb bus …` | identidade presa à conexão após `tb_bus_join` (`channel`, `invite`, `name` + Agent Card); `payload`/`result` como objeto; `tb_bus_complete` exige o `epoch` inteiro e informa `open_children`; `tb_bus_send` aceita um `parent` opcional (só `task.assign`; o broker o checa); sem tool de árvore; o `tb mcp` manda heartbeat das sessões ligadas em segundo plano; sem tool de watchdog; `wait` string (máx. 25s); criar canal/convite **não** existe via MCP; `tb mcp --bus-as <channel>/<name>` liga a conexão a uma sessão CLI (usado por `tb bus run`) |
 | `tb_graph_search` / `tb_graph_callers` / `tb_graph_deps` / `tb_graph_impact` / `tb_graph_explain` / `tb_graph_path` / `tb_graph_index` | `tb graph …` | chamada requer `TB_GRAPH=on`; `depth`/`limit`/`max_depth` integer; `transitive` boolean; `explain` usa `node`, `path` usa `from`/`to`; `mode` no `tb_graph_search` e `vectors` no `tb_graph_index` (veja o [índice vetorial](#índice-vetorial)) |
 

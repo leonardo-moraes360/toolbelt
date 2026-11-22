@@ -113,7 +113,7 @@ It also reads verify's commands from the base ref, so the change under test cann
   ```
 
 - Each check is a gate step, run after lint, in order, once per run. Exit 0 passes; anything else fails the check, which ends verify with `ESCALATE` like any gate step.
-- Flags: `--check name=cmd` (repeatable, adds or overrides one), `--no-check name` (repeatable), `--no-checks`. MCP: `checks` (array of `{name, cmd}`), `skip_checks` (array of names) and `no_checks` (boolean, all). `tb stack` the same.
+- Flags: `--check name=cmd` (repeatable, adds or overrides one), `--skip-check name` (repeatable; renamed from `--no-check` in 1.0, which stays as a hidden deprecated alias until 2.0), `--no-checks`. MCP: `checks` (array of `{name, cmd}`), `skip_checks` (array of names) and `no_checks` (boolean, all). `tb stack` the same.
 - JSON: `checks: [{name, passed, reason?}]`, `omitempty`.
 - A missing executable fails fast with exit 127, like the other commands. A check cannot mark itself non-blocking or "unavailable" in Phase A: a scan that needs the network (govulncheck) belongs in CI, or is skipped locally with `--no-check` (Q1).
 - `tb init` suggests, never adds silently: with `--write-checks`, it adds `govulncheck` (Go, if on `PATH`) and `clippy` (Rust, if `cargo clippy -V` works). Without the flag it prints the suggestion.

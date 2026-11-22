@@ -147,7 +147,7 @@ func TestMergeFlagsChecksOverrides(t *testing.T) {
 	cfg = DefaultConfig("/r")
 	err := MergeFlags(&cfg, vc, &FlagOverrides{SkipChecks: []string{"zzz"}})
 	if !IsUsageError(err) {
-		t.Fatalf("unknown --no-check: err=%v", err)
+		t.Fatalf("unknown skipped check: err=%v", err)
 	}
 	cfg = DefaultConfig("/r")
 	if err := MergeFlags(&cfg, nil, &FlagOverrides{Checks: []config.VerifyCheck{{Name: "Bad_Name", Cmd: "x"}}}); err == nil {

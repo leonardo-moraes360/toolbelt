@@ -33,8 +33,6 @@ var (
 // TestAllToolsAnnotated fails when a registered tool is missing here.
 var toolAnnotations = map[string]ToolAnnotations{
 	"tb_version": annReadOnly,
-	"tb_echo":    annReadOnly,
-	"tb_env":     annReadOnly,
 	"tb_run":     annExec,
 
 	// MCP graph queries never reindex; they report stale:true instead.

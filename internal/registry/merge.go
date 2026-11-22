@@ -13,7 +13,7 @@ import (
 func init() {
 	Register(&Tool{
 		Name:        "tb_merge",
-		Description: "Merges done tickets into a target branch (parity with tb merge). Dry-run by default; only updates refs with apply:true",
+		Description: "Merges done tickets into a target branch (parity with tb merge). Dry-run by default; only updates refs with apply:true. This is the one place an MCP parameter is not the CLI flag: the CLI takes --dry-run, but an agent must opt in to moving refs",
 		InputSchema: &InputSchema{
 			Type: "object",
 			Properties: map[string]Property{
@@ -22,7 +22,7 @@ func init() {
 				"into":            {Type: "string", Description: "Target branch (default: current branch)"},
 				"force":           {Type: "boolean", Description: "Re-merges tickets that were already merged", Default: false},
 				"allow_sensitive": {Type: "boolean", Description: "Allows applying tickets that change hooks/.toolbelt/workflows/.gitmodules/gitlinks/.gitattributes", Default: false},
-				"apply":           {Type: "boolean", Description: "Actually applies the merge (without this it is a dry-run)", Default: false},
+				"apply":           {Type: "boolean", Description: "Actually applies the merge (without this it is a dry-run); the CLI inverts this as --dry-run", Default: false},
 				"cwd":             {Type: "string", Description: "Repository directory"},
 			},
 			Required: []string{"ids"},

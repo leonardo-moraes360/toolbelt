@@ -3,7 +3,6 @@ package registry
 import (
 	"context"
 	"fmt"
-	"path/filepath"
 
 	"github.com/leonardo-moraes360/toolbelt/internal/vault"
 )
@@ -11,7 +10,7 @@ import (
 // vault MCP tools (docs/specs/vault.md, R18): note text comes back inside
 // "data" objects, redacted; tb_vault_new always writes source: inferred.
 func registerVaultTools() {
-	cwd := Property{Type: "string", Description: "Absolute directory inside the repository; the vault is found from it"}
+	cwd := Property{Type: "string", Description: "Absolute directory inside the repository; the vault is found from it (default: the server's working directory)"}
 	note := Property{Type: "string", Description: "Note path (with or without .md) or a link like a, [[a]], a#heading"}
 	Register(&Tool{
 		Name:        "tb_vault_list",
@@ -20,7 +19,7 @@ func registerVaultTools() {
 			"cwd": cwd, "type": {Type: "string", Description: "Only notes of this type"},
 			"tag":    {Type: "string", Description: "Only notes with this tag"},
 			"source": {Type: "string", Description: "Only notes with this source (manual, extracted, inferred)"},
-		}, Required: []string{"cwd"}},
+		}, Required: nil},
 		Handler: func(_ context.Context, args map[string]any) (any, error) {
 			return withVault(args, func(v *vault.Vault) (any, error) {
 				return v.List(vault.Filter{Type: StringArg(args, "type"), Tag: StringArg(args, "tag"), Source: StringArg(args, "source")})
@@ -30,7 +29,7 @@ func registerVaultTools() {
 	Register(&Tool{
 		Name:        "tb_vault_show",
 		Description: "Shows a vault note: metadata, data{title, tags, aliases, body}, links and backlinks (parity with tb vault show)",
-		InputSchema: &InputSchema{Type: "object", Properties: map[string]Property{"cwd": cwd, "note": note}, Required: []string{"cwd", "note"}},
+		InputSchema: &InputSchema{Type: "object", Properties: map[string]Property{"cwd": cwd, "note": note}, Required: []string{"note"}},
 		Handler: func(_ context.Context, args map[string]any) (any, error) {
 			return withVault(args, func(v *vault.Vault) (any, error) { return v.Show(StringArg(args, "note")) })
 		},
@@ -41,7 +40,7 @@ func registerVaultTools() {
 		InputSchema: &InputSchema{Type: "object", Properties: map[string]Property{
 			"cwd": cwd, "query": {Type: "string", Description: "Text to find"},
 			"limit": {Type: "integer", Description: "Maximum hits", Default: 20},
-		}, Required: []string{"cwd", "query"}},
+		}, Required: []string{"query"}},
 		Handler: func(_ context.Context, args map[string]any) (any, error) {
 			return withVault(args, func(v *vault.Vault) (any, error) {
 				return v.Search(StringArg(args, "query"), IntArg(args, "limit", 20))
@@ -51,7 +50,7 @@ func registerVaultTools() {
 	Register(&Tool{
 		Name:        "tb_vault_links",
 		Description: "Lists a note's outgoing wikilinks with state ok, broken, ambiguous, broken_fragment, attachment, missing_attachment (parity with tb vault links)",
-		InputSchema: &InputSchema{Type: "object", Properties: map[string]Property{"cwd": cwd, "note": note}, Required: []string{"cwd", "note"}},
+		InputSchema: &InputSchema{Type: "object", Properties: map[string]Property{"cwd": cwd, "note": note}, Required: []string{"note"}},
 		Handler: func(_ context.Context, args map[string]any) (any, error) {
 			return withVault(args, func(v *vault.Vault) (any, error) { return v.Links(StringArg(args, "note")) })
 		},
@@ -59,7 +58,7 @@ func registerVaultTools() {
 	Register(&Tool{
 		Name:        "tb_vault_backlinks",
 		Description: "Lists the notes that link to a note (parity with tb vault backlinks)",
-		InputSchema: &InputSchema{Type: "object", Properties: map[string]Property{"cwd": cwd, "note": note}, Required: []string{"cwd", "note"}},
+		InputSchema: &InputSchema{Type: "object", Properties: map[string]Property{"cwd": cwd, "note": note}, Required: []string{"note"}},
 		Handler: func(_ context.Context, args map[string]any) (any, error) {
 			return withVault(args, func(v *vault.Vault) (any, error) { return v.Backlinks(StringArg(args, "note")) })
 		},
@@ -67,7 +66,7 @@ func registerVaultTools() {
 	Register(&Tool{
 		Name:        "tb_vault_check",
 		Description: "Validates the vault; exit_code 1 on broken or ambiguous links, bad frontmatter or oversized notes (parity with tb vault check)",
-		InputSchema: &InputSchema{Type: "object", Properties: map[string]Property{"cwd": cwd}, Required: []string{"cwd"}},
+		InputSchema: &InputSchema{Type: "object", Properties: map[string]Property{"cwd": cwd}, Required: nil},
 		Handler: func(_ context.Context, args map[string]any) (any, error) {
 			return withVault(args, func(v *vault.Vault) (any, error) { return v.Check() })
 		},
@@ -83,15 +82,15 @@ func registerVaultTools() {
 			"tags":       {Type: "array", Description: "Tags matching ^[a-z0-9][a-z0-9/_-]*$", Items: &Property{Type: "string"}},
 			"dir":        {Type: "string", Description: "Subdirectory of the vault"},
 			"body":       {Type: "string", Description: "Markdown body after the title heading"},
-		}, Required: []string{"cwd", "title", "confidence"}},
+		}, Required: []string{"title", "confidence"}},
 		Handler: handleVaultNew,
 	})
 }
 
 func withVault(args map[string]any, fn func(*vault.Vault) (any, error)) (any, error) {
-	cwd := StringArg(args, "cwd")
-	if !filepath.IsAbs(cwd) {
-		return nil, fmt.Errorf("cwd must be an absolute path")
+	cwd, err := absToolCWD(args)
+	if err != nil {
+		return nil, err
 	}
 	v, err := vault.Open(cwd)
 	if err != nil {

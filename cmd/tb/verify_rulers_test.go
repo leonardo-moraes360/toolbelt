@@ -188,9 +188,9 @@ func TestVerifyCLIChecksOverrideAndSkip(t *testing.T) {
 		t.Fatalf("--check override: exit=%d %+v", code, res)
 	}
 
-	out, _, code = runTBIsolated(t, tbBin, dir, append(base, "--no-check", "cfg-bad")...)
+	out, _, code = runTBIsolated(t, tbBin, dir, append(base, "--skip-check", "cfg-bad")...)
 	if res := decodeResult(t, out); code != 0 || res.Verdict != verify.VerdictPass || len(res.Checks) != 0 {
-		t.Fatalf("--no-check: exit=%d %+v", code, res)
+		t.Fatalf("--skip-check: exit=%d %+v", code, res)
 	}
 
 	out, _, code = runTBIsolated(t, tbBin, dir, append(base, "--no-checks")...)
@@ -199,12 +199,28 @@ func TestVerifyCLIChecksOverrideAndSkip(t *testing.T) {
 	}
 
 	for _, bad := range [][]string{
-		{"--no-check", "nope"}, {"--check", "missing-equals"},
+		{"--skip-check", "nope"}, {"--check", "missing-equals"},
 		{"--check", "Bad_Name=true"}, {"--check", "dup=true", "--check", "dup=false"},
 	} {
 		if _, stderr, code := runTBIsolated(t, tbBin, dir, append(base, bad...)...); code != 2 {
 			t.Fatalf("%v: exit=%d want 2\n%s", bad, code, stderr)
 		}
+	}
+}
+
+// --no-check is the hidden deprecated spelling of --skip-check until 2.0.
+func TestVerifyCLINoCheckAliasWarns(t *testing.T) {
+	if testing.Short() {
+		t.Skip()
+	}
+	tbBin := buildTB(t)
+	dir := rulersRepo(t, "verify:\n  test_cmd: \"true\"\n  checks:\n    - name: cfg-bad\n      cmd: \"false\"\n")
+	out, stderr, code := runTBIsolated(t, tbBin, dir, "verify", "run", "--json", "--max-iter", "1", "--no-check", "cfg-bad")
+	if res := decodeResult(t, out); code != 0 || res.Verdict != verify.VerdictPass || len(res.Checks) != 0 {
+		t.Fatalf("--no-check alias: exit=%d %+v", code, res)
+	}
+	if !strings.Contains(stderr, "use --skip-check") {
+		t.Fatalf("--no-check alias: no deprecation warning: %q", stderr)
 	}
 }
 

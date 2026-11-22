@@ -30,7 +30,7 @@ const (
 	SkipUnavailable SkipKind = "unavailable"
 )
 
-// UsageError is a caller mistake (bad --ruler, unknown --no-check); the CLI
+// UsageError is a caller mistake (bad --ruler, unknown skipped check); the CLI
 // maps it to exit code 2.
 type UsageError struct {
 	Msg string

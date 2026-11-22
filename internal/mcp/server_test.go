@@ -146,7 +146,7 @@ func TestToolsListSchemaTypes(t *testing.T) {
 		"tb_graph_deps":    {"transitive": "boolean"},
 		"tb_graph_explain": {"limit": "integer"},
 		"tb_graph_path":    {"max_depth": "integer"},
-		"tb_guard_check":   {"strict": "boolean"},
+		"tb_guard_check":   {"warn_only": "boolean"},
 		"tb_review":        {"reviewers": "integer", "standards": "array"},
 	}
 	for toolName, props := range want {

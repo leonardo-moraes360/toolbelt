@@ -16,13 +16,13 @@ import (
 
 func init() {
 	rootCmd.AddCommand(mergeCmd)
-	mergeCmd.Flags().String("strategy", "fail", "Conflict strategy: fail (default), last_wins, semantic or prompt")
+	mergeCmd.Flags().String("strategy", "fail", "Conflict strategy: fail (default), last_wins, semantic or prompt (experimental)")
 	mergeCmd.Flags().Bool("dry-run", false, "Integrates in a temporary worktree, reports and discards")
 	mergeCmd.Flags().String("output", "", "Writes the target..integrated diff to this .patch file without moving refs")
 	mergeCmd.Flags().String("into", "", "Target branch (default: current branch)")
 	mergeCmd.Flags().Bool("force", false, "Allows redoing the merge of already merged tickets")
 	mergeCmd.Flags().Bool("allow-sensitive", false, "Allows applying tickets that change hooks, .toolbelt, workflows, .gitmodules, gitlinks or .gitattributes")
-	mergeCmd.Flags().String("resolutions", "", "Replays a prompt receipt (ID printed by the proposal) instead of calling the agent; prompt only")
+	mergeCmd.Flags().String("resolutions", "", "Replays a prompt receipt (ID printed by the proposal) instead of calling the agent; prompt only (experimental)")
 	mergeCmd.Flags().Bool("json", false, "JSON output")
 }
 
