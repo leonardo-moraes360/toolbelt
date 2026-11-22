@@ -45,6 +45,15 @@ A tag with an `-rc.N` suffix publishes a GitHub **prerelease** that is never mar
 
 The stability and deprecation rules that apply from 1.0 are in [the freeze list, section 3](specs/release-1.0.md#3-freeze-list): a deprecated item keeps working, hidden from help and with a stderr warning, until 2.0.
 
+## Contract freeze
+
+The 1.x contract is snapshotted, so a change to it is a visible diff and never an accident:
+
+- `cmd/tb/testdata/contract/cli.json`: every command path, its flags (type, default, shorthand, hidden, deprecated), the `tier` annotation, and the exit-code table.
+- `internal/registry/testdata/contract/mcp.json`: the MCP `tools/list` (name, description, input schema, annotations), each tool's `tier` and result envelope kind, and every `internal/envelope` kind.
+
+`TestCLIContract` and `TestMCPContract` run in the normal `go test ./...` (and so in CI, including the `-race` job) and fail on any difference. If the change is intended, regenerate with `go test ./cmd/tb/ -run TestCLIContract -update` and `go test ./internal/registry/ -run TestMCPContract -update`, and commit the diff. A diff in an entry whose tier is `stable` is a breaking change under semver: removing or changing it needs the [deprecation cycle](specs/release-1.0.md#3-freeze-list) and a major release, while adding to it is a minor change. `TestExitCodeTableMatchesDocs` keeps the exit-code table in `docs/cli.md` and `docs/pt-BR/cli.md` equal to the constants.
+
 ## Native artifacts (ADR-018)
 
 Every binary is built with cgo and the vendored llama.cpp ([ADR-018](adr/018-cgo-componentes-nativos.md)), tag `embednative`, CPU-only:
