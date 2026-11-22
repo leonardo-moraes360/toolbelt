@@ -77,7 +77,7 @@ func (fw *fpWalker) visit(path string, info os.FileInfo, err error) error {
 		}
 		return nil
 	}
-	if info.Size() > fw.opts.MaxFileBytes || len(indexersFor(path, fw.opts)) == 0 {
+	if !info.Mode().IsRegular() || info.Size() > fw.opts.MaxFileBytes || len(indexersFor(path, fw.opts)) == 0 {
 		return nil
 	}
 	rel, _ := filepath.Rel(fw.root, path)
@@ -114,12 +114,12 @@ func (fw *fpWalker) addVault(vs *vaultState) error {
 
 func (s *Store) CheckStale(root string, opts *BuildOptions) (bool, error) {
 	s.mu.RLock()
-	fp := ""
+	fp, version := "", 0
 	if s.index != nil {
-		fp = s.index.Fingerprint
+		fp, version = s.index.Fingerprint, s.index.Version
 	}
 	s.mu.RUnlock()
-	if fp == "" {
+	if fp == "" || version != IndexVersion {
 		return true, nil
 	}
 	cur, err := SourceFingerprint(root, opts)
@@ -127,6 +127,14 @@ func (s *Store) CheckStale(root string, opts *BuildOptions) (bool, error) {
 		return false, err
 	}
 	return cur != fp, nil
+}
+
+// FormatOutdated reports a loaded, non-empty index written under an older
+// node ID scheme, as opposed to one whose files merely changed.
+func (s *Store) FormatOutdated() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.index != nil && s.index.Fingerprint != "" && s.index.Version != IndexVersion
 }
 
 func (s *Store) Stale() bool {

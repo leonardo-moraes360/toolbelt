@@ -12,13 +12,13 @@ Sequência: `make install` → `tb init --write-agents` → `tb mem init` → `t
 
 | # | Comando | Esperado | Obtido | Sev. |
 |---|---------|----------|--------|------|
-| 1 | `tb init` | `lint_cmd` só se o binário existir no PATH (como `test_cmd`) | grava `golangci-lint run` sem checar PATH; `verify run` falha com `comando não encontrado` | média |
+| 1 | `tb init` | `lint_cmd` só se o binário existir no PATH (como `test_cmd`) | grava `golangci-lint run` sem checar PATH; `verify run` falha com `comando não encontrado` | média — **corrigido em `b73010e`** (reverificado em 2026-11-22: `tb init` sem `golangci-lint` no PATH grava `go vet ./...`) |
 | 2 | `tb verify run --json` | em FAIL/ESCALATE, indicar qual teste/pacote falhou | só `visible_passed: false` + `ESCALATE` após 3 iterações; sem trecho da saída — precisei rodar `go test` à mão | alta |
 | 3 | `tb verify run` | — | 3 iterações (~20s) re-rodando a mesma suíte determinística sem mudança de código entre elas | baixa |
 | 4 | `go test ./...` (suite do tb) | passa independente do git do host | `internal/review` falha com `init.defaultBranch=main`: `git checkout master` hardcoded (`review_test.go:1279,1326,1407`) | média |
 | 5 | `tb init --write-agents` | — | `agent_docs.yaml` registra `sources: [AGENTS.md]` — o arquivo que o próprio init acabou de semear (auto-referência) | baixa |
 | 6 | `tb mem edit --ref` | mensagem de erro coerente com o aceito | erro lista só `docs/adr/…`/`docs/decisions/…`, mas `docs/en/adr/…` é aceito; sem forma de limpar `ref` (precisei `retire` + `add`) | baixa |
-| 7 | `tb init` | arquivos versionáveis com modo padrão | `config.yaml`/`invariants.yaml` criados `0600` | baixa |
+| 7 | `tb init` | arquivos versionáveis com modo padrão | `config.yaml`/`invariants.yaml` criados `0600` | baixa — **corrigido em `b73010e`** (reverificado em 2026-11-22: `config.yaml`, `agent_docs.yaml`, `invariants.yaml` são `0644`) |
 | 8 | `tb graph index` | — | ok: 3960 nós / 14746 arestas em 0,16s; 2940 nós são `section` de docs (PT + EN duplicados) — avaliar ruído na busca | info |
 | 9 | `tb mcp` | — | ok: 22 tools no `tools/list` | info |
 
@@ -31,7 +31,7 @@ Assinatura/Rekor **não** verificados (sem `cosign`); `gh attestation verify` in
 | # | Comando | Esperado | Obtido | Sev. |
 |---|---------|----------|--------|------|
 | 2 | `tb verify run --json` | causa da falha no JSON | **resolvido**: `reason`/`error` trazem a saída do `test_cmd` | — |
-| 10 | `tb verify run --json` | trecho com as linhas `--- FAIL` | `reason` truncado pelo início (`[no test files]`, `ok …`); falhas de pacotes posteriores somem no `…` | média |
+| 10 | `tb verify run --json` | trecho com as linhas `--- FAIL` | `reason` truncado pelo início (`[no test files]`, `ok …`); falhas de pacotes posteriores somem no `…` | média — **corrigido em `610146d`** (`excerpt` mantém as linhas `--- FAIL`/`FAIL` primeiro; teste em `e869e43`; reverificado em 2026-11-22) |
 | 11 | `tb init` + `TestDocsEnglishMirrorComplete` | `--write-agents`/bootstrap não quebra a suíte | criar `docs/campo/*.md` sem par em `docs/en/` quebra `go test` — invariante de docs PT/EN pega pelo teste, não pelo `tb guard` | info |
 | 12 | `tb verify run --dry-run` | — | ok: `verdict: SKIPPED` + plano | info |
 
@@ -59,8 +59,8 @@ Bootstrap do zero numa worktree (`config.yaml`/`agent_docs.yaml`/`invariants.yam
 |---|---------|----------|--------|------|
 | 1 | `tb init` | `lint_cmd` só se o binário existir no PATH | **persiste** na v0.0.5: grava `golangci-lint run` sem `golangci-lint` no PATH; voltei a `go vet ./...` à mão. **Corrigido em b73010e** (`detectGoLintCmd` checa o PATH e cai para `go vet ./...`; `TestDetectLintCmd_GolangciMissingFromPath` cobre) | média |
 | 3 | `tb verify run` | — | **resolvido**: 1 iteração (~15s), `PASS` | — |
-| 7 | `tb init` / `tb mem init` | arquivos versionáveis com modo padrão | **persiste**: `config.yaml`, `agent_docs.yaml`, `invariants.yaml` criados `0600` | baixa |
-| 17 | `tb init` numa `git worktree` | padrões de estado local ignorados pelo git | grava em `.git/worktrees/<wt>/info/exclude`, que o git não lê (só `$GIT_COMMON_DIR/info/exclude`); aqui o `.gitignore` mascara, mas em repo sem `.gitignore` o estado local aparece no `git status` | média |
+| 7 | `tb init` / `tb mem init` | arquivos versionáveis com modo padrão | **persiste**: `config.yaml`, `agent_docs.yaml`, `invariants.yaml` criados `0600` | baixa — **corrigido em `b73010e`** |
+| 17 | `tb init` numa `git worktree` | padrões de estado local ignorados pelo git | grava em `.git/worktrees/<wt>/info/exclude`, que o git não lê (só `$GIT_COMMON_DIR/info/exclude`); aqui o `.gitignore` mascara, mas em repo sem `.gitignore` o estado local aparece no `git status` | média — **corrigido em `b73010e`** (reverificado em 2026-11-22: a partir de uma worktree, os padrões vão para `$GIT_COMMON_DIR/info/exclude`) |
 | 18 | `tb init` (dicas de AGENTS.md/CLAUDE.md) | só comandos | extraiu como dica um comentário de dentro de fence `bash` (`# make install sobrescreve…`) e `golangci-lint` solto da prosa | baixa |
 | 19 | `tb init` | — | ok: config nova já traz a seção `router:` com os padrões da Fase 3 | info |
 | 20 | `tb graph index` / `tb graph search "bus harness wake"` | função à frente de seções de docs | 4567 nós / 19328 arestas em 0,17s; 4 seções de `docs/` (PT + EN) antes de `func:busrun.wake` — mesmo ruído do #8 | baixa |
@@ -110,12 +110,14 @@ apontando para ele. Flags do goldfish: `-p --output-format json --tools "" --str
 
 ## 2026-11-22 — backlog de estabilidade (nota, não correção)
 
-Encontrado ao especificar o drift por símbolo ([egm Fase C](../specs/egm-phase-c.md)); nenhum comando `tb graph` foi rodado. Os dois vêm do indexador Go em `internal/graph/index_go.go` e ficam registrados para o slice do grafo (C6), sem correção:
+Encontrado ao especificar o drift por símbolo ([egm Fase C](../specs/egm-phase-c.md)); nenhum comando `tb graph` foi rodado. Os dois vêm do indexador Go em `internal/graph/index_go.go` e ficaram registrados para o slice do grafo (C6) e foram **corrigidos em `7b3bd7e`** (quebra de IDs de nó gravados, `graph.json` `version` 2):
 
 - Métodos perdem o receptor no ID (`func:<pkg>.<name>`, linha 52) e `funcIDs` usa só o nome (linha 54), então `(A) Name` e `(B) Name` no mesmo pacote viram um nó e as arestas de chamada do segundo são atribuídas ao primeiro.
 - IDs de pacote são `pkg:<name>` (linha 34), então vários pacotes chamados `main` (todo `cmd/*`) viram um só nó.
 
-O `tb egm` não depende de nenhum dos dois: seus símbolos têm escopo de arquivo.
+Correção: pacotes são `pkg:<import path>` e métodos `func:<import path>.<Recv>.<Nome>`. O `tb egm` não depende de nenhum dos dois: seus símbolos têm escopo de arquivo.
+
+Mesmo commit: a varredura do grafo não segue mais symlink nem bloqueia em FIFO (leitores compartilhados com o índice vetorial; vault spec Q5).
 
 ## 2026-11-21 — índice vetorial V1 (`tb graph index --vectors`, build local `embednative`, all-MiniLM-L6-v2 Q8_0)
 
