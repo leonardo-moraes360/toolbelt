@@ -1,0 +1,48 @@
+{
+  "strategy": "fail",
+  "target": "main",
+  "start_sha": "<sha>",
+  "tickets": [
+    {
+      "id": "TKT-001",
+      "branch": "work/tkt-001",
+      "commits": 1,
+      "files": [
+        "shared.txt"
+      ]
+    },
+    {
+      "id": "TKT-002",
+      "branch": "work/tkt-002",
+      "commits": 1,
+      "files": [
+        "shared.txt"
+      ]
+    }
+  ],
+  "files": [
+    {
+      "path": "shared.txt",
+      "tickets": [
+        "TKT-001",
+        "TKT-002"
+      ],
+      "status": "conflict"
+    }
+  ],
+  "conflicts": [
+    {
+      "file": "shared.txt",
+      "ticket": "TKT-002",
+      "commit": "<sha>",
+      "others": [
+        "TKT-001"
+      ],
+      "resolution": ""
+    }
+  ],
+  "dry_run": false,
+  "applied": false,
+  "no_changes": false,
+  "sensitive": []
+}

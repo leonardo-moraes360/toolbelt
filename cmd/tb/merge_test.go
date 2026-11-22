@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/leonardo-moraes360/toolbelt/internal/merge"
 	"github.com/leonardo-moraes360/toolbelt/internal/ticket"
 )
 
@@ -113,5 +114,24 @@ func mergeCLIApplyLastWins(t *testing.T, bin, dir string) {
 	}
 	if b, _ := os.ReadFile(filepath.Join(dir, "x.txt")); string(b) != "dois\n" {
 		t.Fatalf("x.txt = %q", b)
+	}
+}
+
+// The fail/last_wins table must not change when strategies are added.
+func TestMergeTableGolden(t *testing.T) {
+	r := &merge.Result{
+		Strategy: merge.StrategyLastWins, Target: "main", StartSHA: "aaaaaaaabbbbbbbb", ResultSHA: "ccccccccdddddddd", DryRun: true,
+		Tickets:   []merge.TicketInfo{{ID: "TKT-001"}, {ID: "TKT-002"}},
+		Files:     []merge.File{{Path: "shared.txt", Tickets: []string{"TKT-001", "TKT-002"}, Status: "last_wins"}},
+		Conflicts: []merge.Conflict{{File: "shared.txt", Ticket: "TKT-002", Commit: "1234567890abcdef", Others: []string{"TKT-001"}, Resolution: "last_wins"}},
+	}
+	got := captureStdout(t, func() { printMergeTable(r) })
+	want := "merge TKT-001 TKT-002 -> main (last_wins) [dry-run]\n" +
+		"FILE        TICKETS          STATUS\n" +
+		"shared.txt  TKT-001,TKT-002  last_wins\n" +
+		"conflict: shared.txt (TKT-002, commit 12345678; also: TKT-001) - resolved by last_wins\n" +
+		"result: ccccccccdddddddd (start aaaaaaaa)\n"
+	if got != want {
+		t.Fatalf("table drifted:\n%q\nwant:\n%q", got, want)
 	}
 }
