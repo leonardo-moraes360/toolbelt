@@ -88,8 +88,8 @@ invariants:
       immutable: false
     - id: inv-1795019844137842036
       category: mandate
-      rule: 'No-CGO binary (CGO_ENABLED=0): SQLite via modernc.org/sqlite; never add a dependency that needs CGO'
-      ref: docs/adr/003-sqlite-fts5-grafo.md
+      rule: cgo only for the vendored, allowlisted native code of ADR-018/019 (the llama.cpp shim); SQLite stays pure Go (modernc.org/sqlite); never add any other dependency that needs cgo
+      ref: docs/adr/018-cgo-componentes-nativos.md
       added_at: 2026-11-18T16:37:24.137842637Z
       immutable: false
     - id: inv-1795019844139802108
