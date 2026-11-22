@@ -251,7 +251,7 @@ tb bus recv --channel feature-x --as grok-1 --wait 20s
 - [x] Vault Markdown compatível com Obsidian, Fase A (`tb vault`, [ADR-016](adr/016-vault-fase-a.md), [spec](specs/vault.md)): notas com frontmatter e wikilinks, `new`/`list`/`show`/`search`/`links`/`backlinks`/`check`, tools MCP, `tb stack vault`, nós no grafo; Q4 (fixture dourada conferida no Obsidian real) aberta
 - [x] Reimplementação do Elephant-Goldfish Model, Fase A (`tb egm`, [ADR-015](adr/015-egm-nativo.md) aceito): spike R0; engines determinística e `llm`, árbitro, gate no `tb stack` (`status --at`) e tools MCP
 - [ ] Próximas fases do `tb egm`: Fase C (`draft`, `brainstorm`, drift por símbolo); a Fase B (`drift-report` e `bootstrap`, [spec](specs/egm-drift-bootstrap.md)) está implementada, partes com LLM incluídas; a Fase A.2 (CI como fronteira de confiança, [spec](specs/egm-trust.md)) está implementada; item 8 do R0 em aberto
-- [ ] Componentes opcionais em Rust para inferência local
+- [x] Inferência local: coberta pelo llama.cpp vendorizado num filho em sandbox ([ADR-018](../adr/018-cgo-componentes-nativos.md), [ADR-019](../adr/019-cpu-v3-embedding.md)); um componente em Rust continua possível atrás do mesmo protocolo do filho, se um dia for preciso
 - [ ] Rulers adicionais para `tb verify`
 - [ ] `tb merge` estratégias `prompt` / `semantic`
 
