@@ -11,6 +11,11 @@ import (
 
 func TestEveryCommandHasATier(t *testing.T) {
 	applyTiers(rootCmd)
+	for name := range commandTiers {
+		if c, _, err := rootCmd.Find([]string{name}); err != nil || c == rootCmd || c.Name() != name {
+			t.Errorf("commandTiers lists %q, which is not a command", name)
+		}
+	}
 	var walk func(c *cobra.Command, path string)
 	walk = func(c *cobra.Command, path string) {
 		for _, sub := range c.Commands() {
@@ -27,6 +32,9 @@ func TestEveryCommandHasATier(t *testing.T) {
 			case tierExperimental:
 				if !strings.HasPrefix(sub.Short, experimentalTag) {
 					t.Errorf("%s is experimental but its help line does not start with %q: %q", p, experimentalTag, sub.Short)
+				}
+				if sub.Long != "" && !strings.HasPrefix(sub.Long, experimentalTag) {
+					t.Errorf("%s is experimental but its long help does not start with %q", p, experimentalTag)
 				}
 			default:
 				t.Errorf("%s has no stability tier: add its top-level command to commandTiers", p)

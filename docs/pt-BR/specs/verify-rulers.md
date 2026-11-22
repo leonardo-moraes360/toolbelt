@@ -113,7 +113,7 @@ Ela também lê os comandos do verify a partir da ref base, para que a mudança 
   ```
 
 - Cada check é um passo de gate, rodado depois do lint, em ordem, uma vez por execução. Saída 0 passa; qualquer outra reprova o check, o que termina o verify com `ESCALATE` como qualquer passo de gate.
-- Flags: `--check name=cmd` (repetível, acrescenta ou sobrepõe um), `--no-check name` (repetível), `--no-checks`. MCP: `checks` (array de `{name, cmd}`), `skip_checks` (array de nomes) e `no_checks` (booleano, todos). O `tb stack` igual.
+- Flags: `--check name=cmd` (repetível, acrescenta ou sobrepõe um), `--skip-check name` (repetível; renomeada de `--no-check` na 1.0, que continua como alias oculto deprecated até a 2.0), `--no-checks`. MCP: `checks` (array de `{name, cmd}`), `skip_checks` (array de nomes) e `no_checks` (booleano, todos). O `tb stack` igual.
 - JSON: `checks: [{name, passed, reason?}]`, `omitempty`.
 - Um executável ausente falha rápido com saída 127, como os outros comandos. Na Fase A, um check não pode se marcar como não bloqueante nem "indisponível": um scan que precisa de rede (govulncheck) pertence ao CI, ou é pulado localmente com `--no-check` (Q1).
 - O `tb init` sugere, nunca acrescenta em silêncio: com `--write-checks`, acrescenta `govulncheck` (Go, se estiver no `PATH`) e `clippy` (Rust, se `cargo clippy -V` funcionar). Sem a flag, imprime a sugestão.

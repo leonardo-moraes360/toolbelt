@@ -186,10 +186,12 @@ func applyCheckOverrides(cfg *Config, o *FlagOverrides) error {
 		}
 		cfg.Checks = append(cfg.Checks, add)
 	}
-	for _, name := range o.SkipChecks {
+	skip := slices.Clone(o.SkipChecks)
+	slices.Sort(skip)
+	for _, name := range slices.Compact(skip) {
 		i := slices.IndexFunc(cfg.Checks, func(c config.VerifyCheck) bool { return c.Name == name })
 		if i < 0 {
-			return &UsageError{Msg: fmt.Sprintf("--skip-check %q: no such check", name)}
+			return &UsageError{Msg: fmt.Sprintf("skip check %q: no such check", name)}
 		}
 		cfg.Checks = slices.Delete(cfg.Checks, i, i+1)
 	}

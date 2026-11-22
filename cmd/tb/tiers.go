@@ -58,6 +58,9 @@ func stampTier(c *cobra.Command, tier string) {
 	if tier == tierExperimental && !strings.HasPrefix(c.Short, experimentalTag) {
 		c.Short = experimentalTag + c.Short
 	}
+	if tier == tierExperimental && c.Long != "" && !strings.HasPrefix(c.Long, experimentalTag) {
+		c.Long = experimentalTag + c.Long
+	}
 	for _, sub := range c.Commands() {
 		stampTier(sub, tier)
 	}

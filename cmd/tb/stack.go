@@ -22,7 +22,8 @@ var stackCmd = &cobra.Command{
 Not a branch stack (like Graphite or git-stack): it only orchestrates verify,
 review, drift, guard and/or egm in the given order.
 
-Operations: verify, review, drift, guard, vault, egm, seccheck.
+Operations: verify, review, drift, guard (stable); vault, egm, seccheck
+(experimental).
 egm gates the specs/ADRs (egm.doc_globs) added or modified in
 merge-base(base, head)..head with tb egm status --at head; it is local (state
 lives in $XDG_STATE_HOME), not parallel, and always runs last. With

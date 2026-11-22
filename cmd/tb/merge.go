@@ -22,7 +22,7 @@ func init() {
 	mergeCmd.Flags().String("into", "", "Target branch (default: current branch)")
 	mergeCmd.Flags().Bool("force", false, "Allows redoing the merge of already merged tickets")
 	mergeCmd.Flags().Bool("allow-sensitive", false, "Allows applying tickets that change hooks, .toolbelt, workflows, .gitmodules, gitlinks or .gitattributes")
-	mergeCmd.Flags().String("resolutions", "", "Replays a prompt receipt (ID printed by the proposal) instead of calling the agent; prompt only")
+	mergeCmd.Flags().String("resolutions", "", "Replays a prompt receipt (ID printed by the proposal) instead of calling the agent; prompt only (experimental)")
 	mergeCmd.Flags().Bool("json", false, "JSON output")
 }
 
