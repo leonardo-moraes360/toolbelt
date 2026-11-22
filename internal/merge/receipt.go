@@ -137,6 +137,9 @@ func writeReceipt(top string, rc *Receipt) (*ReceiptRef, error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, err
 	}
+	if err := secureStateDir(dir); err != nil {
+		return nil, err
+	}
 	sweepReceipts(dir, time.Now())
 	b, err := json.MarshalIndent(rc, "", "  ")
 	if err != nil {

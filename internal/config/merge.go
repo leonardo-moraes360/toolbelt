@@ -35,6 +35,9 @@ type MergePrompt struct {
 	MaxNovelLines  *int   `yaml:"max_novel_lines,omitempty"`
 }
 
+// maxRegionLinesCap bounds the quadratic line diff of one region.
+const maxRegionLinesCap = 10000
+
 func DefaultMergeConfig() MergeConfig {
 	return MergeConfig{
 		Semantic: MergeSemantic{MaxRegionLines: 2000, MaxFileBytes: 1 << 20},
@@ -60,6 +63,7 @@ func (m *MergeConfig) Validate() error {
 		msg string
 	}{
 		{m.Semantic.MaxRegionLines < 1, "merge.semantic.max_region_lines must be >= 1"},
+		{m.Semantic.MaxRegionLines > maxRegionLinesCap, "merge.semantic.max_region_lines must be <= 10000"},
 		{m.Semantic.MaxFileBytes < 1, "merge.semantic.max_file_bytes must be >= 1"},
 		{m.Prompt.MaxFiles < 1, "merge.prompt.max_files must be >= 1"},
 		{m.Prompt.ContextLines < 0, "merge.prompt.context_lines must be >= 0"},

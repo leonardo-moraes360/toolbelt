@@ -275,6 +275,14 @@ func TestLoadUserMergeDefaultsAndValidation(t *testing.T) {
 	if _, err := LoadUser(""); err == nil {
 		t.Fatal("attempts 0 must be refused")
 	}
+	writeFile(t, global, "merge:\n  semantic:\n    max_region_lines: 10001\n")
+	if _, err := LoadUser(""); err == nil {
+		t.Fatal("max_region_lines above 10000 must be refused")
+	}
+	writeFile(t, global, "merge:\n  semantic:\n    max_region_lines: 10000\n")
+	if _, err := LoadUser(""); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestRepoMergeKeys(t *testing.T) {
