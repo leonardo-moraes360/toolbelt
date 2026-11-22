@@ -8,6 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/leonardo-moraes360/toolbelt/internal/envelope"
 	"github.com/leonardo-moraes360/toolbelt/internal/router"
 )
 
@@ -29,7 +30,7 @@ var watchdogStatusCmd = &cobra.Command{
 		rep, err := router.LoadStatus(root)
 		if errors.Is(err, router.ErrNoState) {
 			if jsonOutput {
-				return printJSON(map[string]any{"status": "none"})
+				return emitJSONIndent(envelope.Watchdog, map[string]any{"status": "none"})
 			}
 			fmt.Println("No router has run in this repository (use `tb router run`).")
 			return nil
@@ -62,7 +63,7 @@ var watchdogStatusCmd = &cobra.Command{
 			}
 		}
 		if jsonOutput {
-			return printJSON(map[string]any{"router": rep, "alerts": counts})
+			return emitJSONIndent(envelope.Watchdog, map[string]any{"router": rep, "alerts": counts})
 		}
 		renderRouterStatus(rep, worker)
 		if len(counts) == 0 {
@@ -103,7 +104,7 @@ var watchdogAlertsCmd = &cobra.Command{
 			return err
 		}
 		if jsonOutput {
-			return printJSON(alerts)
+			return emitJSONIndent(envelope.WatchdogAlerts, alerts)
 		}
 		if len(alerts) == 0 {
 			fmt.Println("No alerts.")
@@ -160,7 +161,7 @@ var watchdogKillCmd = &cobra.Command{
 			return err
 		}
 		if jsonOutput {
-			return printJSON(map[string]any{"worker": worker, "ticket": ticketID, "reason": reason, "request": path})
+			return emitJSONIndent(envelope.Watchdog, map[string]any{"worker": worker, "ticket": ticketID, "reason": reason, "request": path})
 		}
 		fmt.Printf("Kill request sent: %s (%s). The router applies it on the next tick.\n", worker, ticketID)
 		if strings.HasPrefix(worker, "b") {

@@ -2301,25 +2301,53 @@ closed unless `sandbox.allow_unsandboxed: true`. The result carries
 
 ---
 
+## JSON Envelopes
+
+Every JSON document `tb` prints on stdout with `--json`, and every MCP tool result body, has a top-level string field `v` = `<kind>/<major>.<minor>`. A minor bump adds fields; any other change bumps the major. Consumers must ignore unknown fields. The CLI and the matching MCP tool emit the same kind. The kinds are defined in one place, `internal/envelope`.
+
+| Kind | Producer |
+|------|----------|
+| `error/1.0` | the error body (see below); MCP tool errors |
+| `version/1.0` | `tb version`, `tb_version` |
+| `init/1.0` | `tb init` |
+| `mem/1.0` | `tb mem *`, `tb_mem_*` (a list is `{"v", "invariants": [...]}`) |
+| `verify/1.0` | `tb verify run`, `tb_verify_run` |
+| `guard/1.0` | `tb guard check`, `tb_guard_check` |
+| `review/1.0`, `drift/1.0`, `stack/1.0` | `tb review`, `tb drift`, `tb stack` and their tools |
+| `sandbox-run/1.0`, `sandbox-check/1.0` | `tb sandbox run`, `tb_run`; `tb sandbox check` |
+| `graph-<op>/1.0` | `tb graph search\|callers\|deps\|impact\|explain\|path\|stats\|index\|rebuild`, `tb_graph_*` |
+| `ticket/1.0`, `ticket-list/1.0` | `tb ticket *`, `tb_ticket_*` (a list is `{"v", "tickets": [...]}`) |
+| `workspace/1.0` | `tb workspace *` (a list is `{"v", "workspaces": [...]}`) |
+| `merge/1.0` | `tb merge`, `tb_merge` |
+
+Experimental commands stamp `board/1.0`, `router/1.0`, `router-status/1.0`, `watchdog/1.0` and `watchdog-alerts/1.0` by the same rule (not frozen; `tb watchdog alerts` and `tb_watchdog_alerts` are `{"v", "alerts": [...]}`; `tb_router_status` is `router-status/1.0`); the bus, egm, vault, red, blue, lab and bench outputs are not stamped yet. Envelopes that already carried a `v` keep it at their own version (`bus/0.1`, `bus-wake/0.1`, `bus-discover/0.1`, `router-task/0.1`, `egm-source-drift/0.2`, `egm-draft/0.1`, `egm-brainstorm/0.1`).
+
+On-disk files use an integer `version` instead: `.toolbelt/graph.json` (derived cache: a file without `version` or with another one is discarded and rebuilt by the next `tb graph index`, or reported `stale: true` over MCP) and `.toolbelt/tickets/TKT-*.yaml` (optional `version: 1`, absent means 1; a newer version is refused, never rewritten: because tickets are loaded together, one ticket with a newer version makes every ticket command that scans the directory fail, with an error naming the file and its version, until `tb` is upgraded).
+
 ## Errors and Usage
 
-- Expected domain/runtime errors (`RunE`, e.g. missing required business flag, git failure, missing file) exit with **exit ≠ 0** and a stderr message **without** a Cobra `Usage` dump.
-- Genuine **flag** or **args** parse errors (unknown flag, `ExactArgs`/`MinimumNArgs`, etc.) keep `Usage` on stderr to guide invocation.
-- An unknown subcommand at any level (e.g. `tb mem nao-existe`, `tb bench nope`) exits with **exit ≠ 0** and error `unknown command "…"`, instead of printing help with exit 0.
+- Expected domain/runtime errors (`RunE`, e.g. missing required business flag, git failure, missing file) exit with **exit 1** and a stderr message **without** a Cobra `Usage` dump.
+- Genuine **flag** or **args** parse errors (unknown flag, `ExactArgs`/`MinimumNArgs`, a missing required flag, etc.) exit with **exit 2** and keep `Usage` on stderr to guide invocation.
+- An unknown subcommand at any level (e.g. `tb mem nao-existe`, `tb bench nope`) exits with **exit 2** and error `unknown command "…"`, instead of printing help with exit 0.
+- With `--json`, an error is also printed on stdout as one `error/1.0` document, `{"v": "error/1.0", "error": "<message>", "reason": "<code>", "exit_code": <n>}`; the text message stays on stderr. `reason` is `usage` for exit 2, `command_not_found` for exit 127, the command's own reason where it has one (egm, vault), otherwise `error`. A command that already printed its result document and then fails (`tb mem check`, `tb merge`) does not add a second one. Over MCP a tool error is `isError: true` whose text is the same body (`reason` is the `code:` prefix of the message when it has one, `tool_not_found` with exit code 2 for an unknown tool, otherwise `error` with exit code 1).
 - Git failures in `guard` / `review` / `drift` / `verify` (and in the `stack` that stacks them) do **not** show only `exit status 128/129`: the message includes git stderr, the missing ref (`ref missing: …`), and a `git fetch origin <ref>` hint. For a relative ref (`HEAD~2`, `main^`) the hint is about short history instead (single-commit repo or shallow clone: `--base <sha>` or `git fetch --deepen=1`).
 - `--approved-sha` equal to the base (empty `base..approved` range) does not dump `git range-diff` usage; exits with a clear message about the invalid range.
 
 ## Exit Codes
 
-The current CLI does not use a stable table of codes 2–7. In practice:
+The table is stable (1.x may add codes, never change a meaning).
 
 | Code | Meaning |
 |------|---------|
-| 0 | Success (`PASS`/`SKIPPED` in verify; guard without `SeverityError` or with `--warn-only`) |
-| ≠0 (typically 1) | Parse/domain error, `FAIL`/`ESCALATE` in verify, `SeverityError` in guard, unknown subcommand |
-| 2 | `tb verify run`: invalid `--ruler` (unknown name, or `visual` combined with another ruler); nothing runs |
-| 127 | `tb verify run`: `test_cmd` / `build_cmd` / `typecheck_cmd` / `lint_cmd` / a named check / `hidden_test_cmd` not found (or not executable / `ErrNotFound`); with `--json` emits the `verify.Result` envelope with an `error` field |
-| child exit | `tb sandbox run` propagates the process exit code when ≠ 0 and without timeout |
+| 0 | Success: `PASS`/`SKIPPED` in verify; guard without `SeverityError` or with `--warn-only`; a check that passed |
+| 1 | The check ran and failed (`FAIL`/`ESCALATE` in verify, `SeverityError` in guard, vault check, egm `FAIL`), or a runtime error after work started |
+| 2 | Usage error or refusal before any work: bad flag or argument, unknown subcommand, missing required flag, invalid `--ruler`/`--check` (`tb verify run`, `tb stack`), egm/vault refusal reasons |
+| 3 | `tb egm`: the verdict does not allow the operation (`receipt` is refused unless `PASS`/`PASS_PARTIAL`) |
+| 124 | `tb sandbox run`: the child hit `--timeout` (with `--json` too; the document has `timed_out: true`) |
+| 127 | A configured command was not found or is not executable: `tb verify run` (`test_cmd` / `build_cmd` / `typecheck_cmd` / `lint_cmd` / a named check / `hidden_test_cmd`; with `--json` it emits the `verify.Result` envelope with an `error` field) and the `tb sandbox run` command (not found, or not executable; the `error/1.0` body has `reason: "command_not_found"`, the same for a bare name and a path) |
+| 130 | Interrupted by SIGINT/SIGTERM (`tb mcp`; `tb sandbox run` when canceled) |
+| child | `tb sandbox run` exits with the child's non-zero code, with or without `--json` (a child killed by signal `n` exits `128+n`, and the document has `signal`, e.g. `"SIGKILL"`) |
+| max | `tb stack` exits with the highest exit code among its steps |
 
 When the configured verify command does not exist/is not executable, verify fails immediately (no retries) and the `tb` process exits **127**.
 

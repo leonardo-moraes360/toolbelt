@@ -2,12 +2,12 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 
 	"github.com/spf13/cobra"
 
+	"github.com/leonardo-moraes360/toolbelt/internal/envelope"
 	"github.com/leonardo-moraes360/toolbelt/internal/graph"
 	"github.com/leonardo-moraes360/toolbelt/internal/vecsearch"
 )
@@ -47,7 +47,7 @@ func runVectorSearch(cmd *cobra.Command, s *graph.Store, mode, query string, lim
 		return err
 	}
 	if jsonOutput {
-		return json.NewEncoder(os.Stdout).Encode(map[string]any{
+		return emitJSON(envelope.GraphSearch, map[string]any{
 			"stale":         s.Stale(),
 			"mode":          mode,
 			"stale_vectors": res.StaleVectors,

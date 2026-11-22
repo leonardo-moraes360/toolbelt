@@ -435,3 +435,33 @@ func TestControlConcurrentPauseDrainKeepsBoth(t *testing.T) {
 		}
 	}
 }
+
+func TestFormatVersion(t *testing.T) {
+	s := newStore(t)
+	created, err := s.Create(&Ticket{Title: "v"})
+	if err != nil || created.Version != FormatVersion {
+		t.Fatalf("create: %v %+v", err, created)
+	}
+	raw, err := os.ReadFile(s.Path(created.ID))
+	if err != nil || !strings.Contains(string(raw), "version: 1") {
+		t.Fatalf("version not written: %v\n%s", err, raw)
+	}
+
+	// A file with no version (every pre-1.0 ticket) is version 1.
+	legacy := strings.Replace(string(raw), "version: 1\n", "", 1)
+	if err := os.WriteFile(s.Path(created.ID), []byte(legacy), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := s.Get(created.ID); err != nil || got.Title != "v" {
+		t.Fatalf("legacy ticket: %v %+v", err, got)
+	}
+
+	// A newer one is refused, not rewritten.
+	newer := strings.Replace(string(raw), "version: 1\n", "version: 2\n", 1)
+	if err := os.WriteFile(s.Path(created.ID), []byte(newer), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Get(created.ID); err == nil || !strings.Contains(err.Error(), "newer") {
+		t.Fatalf("newer version must be refused: %v", err)
+	}
+}

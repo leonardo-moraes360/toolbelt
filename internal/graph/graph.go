@@ -126,6 +126,11 @@ func (s *Store) Load() error {
 	if err := json.Unmarshal(data, &idx); err != nil {
 		return err
 	}
+	if idx.Version != IndexVersion {
+		// An empty index has no fingerprint, so it reads as stale.
+		s.index = &Index{}
+		return nil
+	}
 	s.index = &idx
 	return nil
 }

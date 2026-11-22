@@ -274,7 +274,7 @@ func TestVerifyCLIBaseEqualsHeadDirtyWarns(t *testing.T) {
 // fixture.
 var preRulersRunKeys = []string{
 	"build_passed", "build_ran", "guard", "head_sha", "hidden_available", "hidden_passed",
-	"iterations", "lint_passed", "lint_ran", "verdict", "visible_passed", "workdir",
+	"iterations", "lint_passed", "lint_ran", "v", "verdict", "visible_passed", "workdir",
 }
 
 func topLevelKeys(t *testing.T, out string) []string {
@@ -292,7 +292,7 @@ func topLevelKeys(t *testing.T, out string) []string {
 }
 
 // G5: no -c, a committed repo config and no new flags give the same JSON
-// keys and verdict as before this slice.
+// keys (plus the envelope "v") and verdict as before this slice.
 func TestVerifyCLIGoldenCommittedConfigUnchanged(t *testing.T) {
 	if testing.Short() {
 		t.Skip()

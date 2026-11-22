@@ -337,3 +337,21 @@ func mustWrite(t *testing.T, path, content string) {
 		t.Fatal(err)
 	}
 }
+
+func TestLoadDiscardsIndexWithoutVersion(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "graph.json")
+	old := `{"root":"/r","nodes":[{"id":"n","type":"file","title":"n","source":"x","confidence":1}],"edges":[],"fingerprint":"abc"}`
+	if err := os.WriteFile(path, []byte(old), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	s := NewStore(path)
+	if err := s.Load(); err != nil {
+		t.Fatalf("an index without version must load, not fail: %v", err)
+	}
+	if len(s.Index().Nodes) != 0 || s.Index().Fingerprint != "" {
+		t.Fatalf("unversioned index must be discarded: %+v", s.Index())
+	}
+	if stale, err := s.CheckStale(t.TempDir(), nil); err != nil || !stale {
+		t.Fatalf("discarded index must read stale: %v %v", stale, err)
+	}
+}

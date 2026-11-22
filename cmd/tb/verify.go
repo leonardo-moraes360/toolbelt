@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
@@ -11,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/leonardo-moraes360/toolbelt/internal/config"
+	"github.com/leonardo-moraes360/toolbelt/internal/envelope"
 	"github.com/leonardo-moraes360/toolbelt/internal/verify"
 )
 
@@ -246,15 +246,7 @@ func writeVerifyPayload(outPath string, payload any) error {
 	if outPath == "" && !jsonOutput {
 		return nil
 	}
-	data, err := json.MarshalIndent(payload, "", "  ")
-	if err != nil {
-		return err
-	}
-	if outPath != "" {
-		return os.WriteFile(outPath, data, 0o600)
-	}
-	fmt.Println(string(data))
-	return nil
+	return emitJSONOrFile(envelope.Verify, payload, outPath)
 }
 
 func printTestsSummary(payload any) {

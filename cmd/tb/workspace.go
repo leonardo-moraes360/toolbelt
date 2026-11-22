@@ -1,12 +1,12 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 
 	"github.com/spf13/cobra"
 
+	"github.com/leonardo-moraes360/toolbelt/internal/envelope"
 	"github.com/leonardo-moraes360/toolbelt/internal/workspace"
 )
 
@@ -37,7 +37,7 @@ var wsCreateCmd = &cobra.Command{
 			return err
 		}
 		if jsonOutput {
-			return json.NewEncoder(os.Stdout).Encode(ws)
+			return emitJSON(envelope.Workspace, ws)
 		}
 		fmt.Printf("workspace %s at %s\n", ws.ID, ws.Path)
 		return nil
@@ -58,7 +58,7 @@ var wsListCmd = &cobra.Command{
 			return err
 		}
 		if jsonOutput {
-			return json.NewEncoder(os.Stdout).Encode(list)
+			return emitJSON(envelope.Workspace, list)
 		}
 		for _, w := range list {
 			fmt.Printf("%s\t%s\n", w.ID, w.Path)
