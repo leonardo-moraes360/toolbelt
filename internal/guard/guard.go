@@ -110,7 +110,7 @@ func (c *Checker) CheckDiff(baseRef, headRef, nameStatus string) (*CheckResult, 
 		Violations:   []Violation{},
 	}
 	for _, cf := range parseDiff(diff) {
-		if cf.deleted && isTestFile(cf.path) {
+		if cf.testRemoved {
 			res.Violations = append(res.Violations, Violation{
 				Type: ViolationTestDeletion, File: cf.path, Message: "test removed", Severity: SeverityError,
 			})
@@ -201,9 +201,14 @@ func validProtectedPattern(pattern string) bool {
 	return err == nil
 }
 
+// changed is one path of the diff. deleted paths are not content-scanned;
+// testRemoved marks a test file that is gone (deleted, or renamed to a
+// non-test path). A rename source is deleted but not testRemoved when the
+// destination is still a test file.
 type changed struct {
-	path    string
-	deleted bool
+	path        string
+	deleted     bool
+	testRemoved bool
 }
 
 func (c *Checker) gitDiff(base, head string) (string, error) {
@@ -265,12 +270,15 @@ func parseDiff(diff string) []changed {
 			if len(parts) < 3 {
 				continue
 			}
-			out = append(out,
-				changed{path: parts[1], deleted: true},
-				changed{path: parts[2]},
-			)
+			if strings.HasPrefix(status, "R") {
+				out = append(out, changed{
+					path: parts[1], deleted: true,
+					testRemoved: isTestFile(parts[1]) && !isTestFile(parts[2]),
+				})
+			}
+			out = append(out, changed{path: parts[2]})
 		case status == "D":
-			out = append(out, changed{path: parts[1], deleted: true})
+			out = append(out, changed{path: parts[1], deleted: true, testRemoved: isTestFile(parts[1])})
 		default:
 			out = append(out, changed{path: parts[1]})
 		}

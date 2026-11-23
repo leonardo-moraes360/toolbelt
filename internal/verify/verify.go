@@ -268,7 +268,13 @@ func applyGuard(cfg *Config) (gr *guard.CheckResult, abort bool, reason string, 
 	}
 	scope := resolveVerifyScope(cfg)
 	reason = "guard aborted verify (protected path)"
+	// With -c the repository config is never read, so a change to its
+	// verify: section cannot affect the run; guard still reports it.
+	ignoreConfigChange := cfg.TrustedConfig != nil && config.File() != ""
 	for i := range gr.Violations {
+		if ignoreConfigChange && gr.Violations[i].Type == violationVerifyConfigChanged {
+			continue
+		}
 		if !guardBlocksVerify(&gr.Violations[i], scope) {
 			continue
 		}

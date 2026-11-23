@@ -1165,7 +1165,9 @@ consegue reescrever o próprio gate (ex. `test_cmd: true`). Flags e argumentos M
 continuam sobrescrevendo, já que vêm de quem chama. O guard compara a seção
 `verify:` no base e no head: uma diferença é um achado de erro
 `verify_config_changed` que aborta o verify como um hit em path protegido, listando
-as chaves alteradas; as outras seções do arquivo seguem livres. Uma config que é symlink
+as chaves alteradas (com `-c` o arquivo do repositório não é lido, então o verify
+não aborta por isso; o achado continua no relatório do guard e na seção `guard` do
+resultado); as outras seções do arquivo seguem livres. Uma config que é symlink
 no base ou no head é comparada pelo texto do alvo: qualquer mudança é um achado
 `verify_config_changed` (`verify`; não dá para fazer o parse). Um arquivo malformado no
 base é o achado de aviso `verify_config_unreadable` (o guard e execuções com `-c` seguem

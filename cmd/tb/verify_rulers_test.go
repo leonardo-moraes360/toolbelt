@@ -259,6 +259,34 @@ func TestVerifyCLIConfigEditAbortsAndBaseWins(t *testing.T) {
 	}
 }
 
+// With -c the repository config is not read, so a committed edit of its
+// verify: section does not abort verify; guard still reports it.
+func TestVerifyCLIConfigEditWithDashCProceeds(t *testing.T) {
+	if testing.Short() {
+		t.Skip()
+	}
+	tbBin := buildTB(t)
+	dir := rulersRepo(t, "verify:\n  test_cmd: \"true\"\n")
+	writeRepoConfig(t, dir, "verify:\n  test_cmd: \"false\"\n")
+	gitCommitAll(t, dir, "migrate verify config")
+	cfgPath := filepath.Join(t.TempDir(), "ci.yaml")
+	writeTestFile(t, cfgPath, "verify:\n  test_cmd: \"true\"\n")
+	out, stderr, code := runTBIsolated(t, tbBin, dir, "-c", cfgPath, "verify", "run", "--json", "--max-iter", "1", "--ticket", "rd.md")
+	res := decodeResult(t, out)
+	if code != 0 || res.Verdict != verify.VerdictPass {
+		t.Fatalf("with -c verify must proceed: exit=%d %+v\n%s", code, res, stderr)
+	}
+	found := false
+	if res.Guard != nil {
+		for _, v := range res.Guard.Violations {
+			found = found || string(v.Type) == "verify_config_changed"
+		}
+	}
+	if !found {
+		t.Fatalf("guard must still report verify_config_changed: %+v", res.Guard)
+	}
+}
+
 // R0: with base == HEAD, a dirty edit of the committed file is ignored too.
 func TestVerifyCLIBaseEqualsHeadDirtyWarns(t *testing.T) {
 	if testing.Short() {

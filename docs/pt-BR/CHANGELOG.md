@@ -9,6 +9,10 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Não Lançado]
 
+### Corrigido
+- `tb verify` / `tb stack` não abortam mais por `verify_config_changed` quando rodam com `-c`: o `.toolbelt/config.yaml` do repositório não é lido nesse caso, então uma mudança na seção `verify:` não afeta a execução, e um PR que migra a config de verify pode chegar a PASS. O achado continua no relatório do guard e na seção `guard` do resultado; sem `-c` (e via MCP, que não tem `-c`) o verify continua abortando
+- `tb guard` não reporta mais todos os arquivos de um diretório movido como `test removed`: renomear não é remover teste, e uma cópia nunca remove a origem. Um arquivo de teste renomeado para um caminho que não é de teste (`foo_test.go` para `foo_test.go.bak`) continua sendo `test_deletion`, um arquivo protegido renomeado continua sendo `protected_path` na origem, e a varredura de conteúdo vale para o destino
+
 ## [1.0.0-rc.3] - 2026-11-22
 
 ### Corrigido
