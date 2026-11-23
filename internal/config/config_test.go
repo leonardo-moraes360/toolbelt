@@ -354,15 +354,9 @@ func TestUnknownKeysWarnedNotFatal(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := buf.String()
-	for _, want := range []string{
-		"unknown config key defaults (ignored)",
-		"unknown config key graph.auto_index (ignored)",
-		"unknown config key verify.checks.bogus (ignored)",
-		"unknown config key logging (ignored)",
-	} {
-		if strings.Count(got, want) != 1 {
-			t.Errorf("want exactly one %q in:\n%s", want, got)
-		}
+	want := "warning: " + path + ": 4 unknown config keys ignored: defaults, graph.auto_index, logging, verify.checks.bogus ("
+	if strings.Count(got, "\n") != 1 || !strings.Contains(got, want) {
+		t.Errorf("want one line containing %q, got:\n%s", want, got)
 	}
 	if strings.Contains(got, "index_on_change") {
 		t.Errorf("known key reported:\n%s", got)
@@ -431,7 +425,7 @@ func TestUnknownKeysDedupAcrossPathSpellings(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if n := strings.Count(buf.String(), "unknown config key logging"); n != 1 {
+	if n := strings.Count(buf.String(), "unknown config key ignored: logging"); n != 1 {
 		t.Errorf("warned %d times, want 1:\n%s", n, buf.String())
 	}
 }
