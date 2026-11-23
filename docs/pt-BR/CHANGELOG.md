@@ -9,6 +9,8 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Não Lançado]
 
+## [1.0.0-rc.4] - 2026-11-23
+
 ### Corrigido
 - Chaves de config desconhecidas (p.ex. as removidas no 1.0 que ficaram numa config gerada por um `tb init` antigo) agora geram uma única linha no stderr por arquivo por execução listando todas, em vez de uma linha por chave
 - `tb verify` / `tb stack` não abortam mais por `verify_config_changed` quando rodam com um `-c` fora do repositório: o `.toolbelt/config.yaml` do repositório não é lido nesse caso, então uma mudança na seção `verify:` não afeta a execução, e um PR que migra a config de verify pode chegar a PASS. O achado continua no relatório do guard e na seção `guard` do resultado, e a etapa `guard` do `tb stack` ainda falha por ele. Sem `-c`, ou com um `-c` dentro do repositório (a mudança pode editá-lo), o verify continua abortando, também via servidor MCP iniciado assim (`tb -c <arquivo> mcp`; um humano o iniciou)

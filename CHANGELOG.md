@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0-rc.4] - 2026-11-23
+
 ### Fixed
 - Unknown config keys (e.g. the keys removed in 1.0 left in a config written by an older `tb init`) now print one stderr line per file per run listing all of them, instead of one line per key
 - `tb verify` / `tb stack` no longer abort on `verify_config_changed` when run with a `-c` file outside the repository: the repository `.toolbelt/config.yaml` is not read at all then, so a change to its `verify:` section cannot affect the run, and a PR that migrates the verify config can reach PASS. The finding stays in guard's report and the result's `guard` section, and the `guard` step of `tb stack` still fails on it. Without `-c`, or with a `-c` file inside the repository (the change can edit it), verify still aborts, also over an MCP server started that way (`tb -c <file> mcp`; a human launched it)
