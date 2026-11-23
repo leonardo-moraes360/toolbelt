@@ -310,11 +310,11 @@ func configOutsideRepo(repoDir, file string) bool {
 	if err != nil {
 		return false
 	}
-	real, err := filepath.EvalSymlinks(abs)
+	resolved, err := filepath.EvalSymlinks(abs)
 	if err != nil {
 		return false
 	}
-	rel, err := filepath.Rel(top, real)
+	rel, err := filepath.Rel(top, resolved)
 	if err != nil {
 		return false
 	}
