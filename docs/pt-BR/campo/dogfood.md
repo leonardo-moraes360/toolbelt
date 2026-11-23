@@ -112,8 +112,8 @@ apontando para ele. Flags do goldfish: `-p --output-format json --tools "" --str
 
 | # | Comando | Esperado | Real | Sev. |
 |---|---------|----------|------|------|
-| 59 | `tb -c ci.yaml verify run` / `tb stack` em um PR que migra `verify:` no `.toolbelt/config.yaml` | com `-c` a config do repositório não é lida, então a mudança é inofensiva e o verify pode dar PASS | abortava por `verify_config_changed`, então nenhum PR assim conseguia PASS | high — **corrigido em `fix/rc3-field`** (o achado segue no guard; sem `-c` ainda aborta) |
-| 60 | `tb guard check` / `tb verify run` após `git mv server-go server` | testes movidos não são remoções | todo arquivo de teste movido reportado como `test removed` (`test_deletion`): origens de rename eram marcadas como removidas | high — **corrigido em `fix/rc3-field`** (`foo_test.go` para um caminho que não é de teste ainda conta) |
+| 59 | `tb -c ci.yaml verify run` / `tb stack` em um PR que migra `verify:` no `.toolbelt/config.yaml` | com um `-c` fora do repositório a config do repositório não é lida, então a mudança é inofensiva e o verify pode dar PASS | abortava por `verify_config_changed`, então nenhum PR assim conseguia PASS | high — **corrigido em `fix/rc3-field`** (o achado segue no guard; sem `-c` ou com `-c` dentro do repo ainda aborta) |
+| 60 | `tb guard check` / `tb verify run` após `git mv server-go server` | testes movidos não são remoções | todo arquivo de teste movido reportado como `test removed` (`test_deletion`): origens de rename eram marcadas como removidas | high — **corrigido em `fix/rc3-field`** (só movimentos equivalentes são isentos; `foo_test.go` para `_foo_test.go`, `testdata/` ou `.bak` ainda conta) |
 
 ## 2026-11-22 — backlog de estabilidade (nota, não correção)
 

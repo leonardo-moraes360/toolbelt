@@ -212,7 +212,7 @@ type changed struct {
 }
 
 func (c *Checker) gitDiff(base, head string) (string, error) {
-	out, err := git.Output(c.repoDir, "diff", "--name-status", "--end-of-options", base+".."+head)
+	out, err := git.Output(c.repoDir, "diff", "--name-status", "-z", "-M", "--end-of-options", base+".."+head)
 	return string(out), err
 }
 
@@ -255,43 +255,94 @@ func gitErrLower(err error) string {
 	return ""
 }
 
+// parseDiff reads `git diff --name-status`: the NUL-separated form of -z
+// (paths verbatim) or, when the input has no NUL, the tab-separated text form.
 func parseDiff(diff string) []changed {
 	var out []changed
+	if strings.Contains(diff, "\x00") {
+		f := strings.Split(strings.TrimRight(diff, "\x00"), "\x00")
+		for i := 0; i < len(f); {
+			status := f[i]
+			n := 2
+			if strings.HasPrefix(status, "R") || strings.HasPrefix(status, "C") {
+				n = 3
+			}
+			if i+n > len(f) {
+				break
+			}
+			out = appendChange(out, status, f[i+1:i+n])
+			i += n
+		}
+		return out
+	}
 	s := bufio.NewScanner(strings.NewReader(diff))
 	for s.Scan() {
-		line := s.Text()
-		parts := strings.Split(line, "\t")
+		parts := strings.Split(s.Text(), "\t")
 		if len(parts) < 2 {
 			continue
 		}
-		status := parts[0]
-		switch {
-		case strings.HasPrefix(status, "R") || strings.HasPrefix(status, "C"):
-			if len(parts) < 3 {
-				continue
-			}
-			if strings.HasPrefix(status, "R") {
-				out = append(out, changed{
-					path: parts[1], deleted: true,
-					testRemoved: isTestFile(parts[1]) && !isTestFile(parts[2]),
-				})
-			}
-			out = append(out, changed{path: parts[2]})
-		case status == "D":
-			out = append(out, changed{path: parts[1], deleted: true, testRemoved: isTestFile(parts[1])})
-		default:
-			out = append(out, changed{path: parts[1]})
-		}
+		out = appendChange(out, parts[0], parts[1:])
 	}
 	return out
+}
+
+func appendChange(out []changed, status string, paths []string) []changed {
+	switch {
+	case strings.HasPrefix(status, "R") || strings.HasPrefix(status, "C"):
+		if len(paths) < 2 {
+			return out
+		}
+		if strings.HasPrefix(status, "R") {
+			out = append(out, changed{
+				path: paths[0], deleted: true,
+				testRemoved: isTestFile(paths[0]) && !equivalentTestMove(paths[0], paths[1]),
+			})
+		}
+		return append(out, changed{path: paths[1]})
+	case status == "D":
+		return append(out, changed{path: paths[0], deleted: true, testRemoved: isTestFile(paths[0])})
+	default:
+		return append(out, changed{path: paths[0]})
+	}
+}
+
+var jsFamilyExt = map[string]bool{".js": true, ".jsx": true, ".ts": true, ".tsx": true, ".mjs": true, ".cjs": true}
+
+// equivalentTestMove reports whether a renamed test file is still a test the
+// toolchain will pick up at its destination: same language, still a test by
+// the same kind of rule, and no path segment that tools skip.
+func equivalentTestMove(src, dst string) bool {
+	if !isTestFile(dst) {
+		return false
+	}
+	if isTestBase(src) && !isTestBase(dst) {
+		return false
+	}
+	se, de := strings.ToLower(filepath.Ext(src)), strings.ToLower(filepath.Ext(dst))
+	if se != de && !(jsFamilyExt[se] && jsFamilyExt[de]) {
+		return false
+	}
+	for _, seg := range strings.Split(filepath.ToSlash(dst), "/") {
+		switch {
+		case seg == "testdata" || seg == "vendor" || seg == "node_modules",
+			strings.HasPrefix(seg, "_"), strings.HasPrefix(seg, "."):
+			return false
+		}
+	}
+	return true
+}
+
+func isTestBase(path string) bool {
+	b := filepath.Base(path)
+	return strings.HasSuffix(b, "_test.go") || isJSTestPath(path)
 }
 
 func isTestFile(path string) bool {
 	b := filepath.Base(path)
 	p := filepath.ToSlash(path)
 	return strings.HasSuffix(b, "_test.go") ||
-		strings.Contains(p, "/tests/") ||
-		strings.Contains(p, "/test/") ||
+		strings.Contains("/"+p, "/tests/") ||
+		strings.Contains("/"+p, "/test/") ||
 		isJSTestPath(p)
 }
 

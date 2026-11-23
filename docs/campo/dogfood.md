@@ -112,8 +112,8 @@ pointing to it. Goldfish flags: `-p --output-format json --tools "" --strict-mcp
 
 | # | Command | Expected | Actual | Sev. |
 |---|---------|----------|--------|------|
-| 59 | `tb -c ci.yaml verify run` / `tb stack` on a PR that migrates `verify:` in `.toolbelt/config.yaml` | with `-c` the repository config is not read, so the change is harmless and verify can PASS | aborted on `verify_config_changed`, so no such PR could ever get PASS | high — **fixed in `fix/rc3-field`** (finding still reported by guard; without `-c` still aborts) |
-| 60 | `tb guard check` / `tb verify run` after `git mv server-go server` | moved tests are not deletions | every moved test file reported `test removed` (`test_deletion`): rename sources were marked deleted | high — **fixed in `fix/rc3-field`** (`foo_test.go` to a non-test path still counts) |
+| 59 | `tb -c ci.yaml verify run` / `tb stack` on a PR that migrates `verify:` in `.toolbelt/config.yaml` | with a `-c` file outside the repository the repository config is not read, so the change is harmless and verify can PASS | aborted on `verify_config_changed`, so no such PR could ever get PASS | high — **fixed in `fix/rc3-field`** (finding still reported by guard; without `-c` or with an in-repo `-c` still aborts) |
+| 60 | `tb guard check` / `tb verify run` after `git mv server-go server` | moved tests are not deletions | every moved test file reported `test removed` (`test_deletion`): rename sources were marked deleted | high — **fixed in `fix/rc3-field`** (only equivalent moves are exempt; `foo_test.go` to `_foo_test.go`, `testdata/` or `.bak` still counts) |
 
 ## 2026-11-22 — stability backlog (note, not a fix)
 

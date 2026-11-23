@@ -564,7 +564,7 @@ func gitUnifiedDiff(repo, base, head string) (string, error) {
 }
 
 func gitNameStatus(repo, base, head string) (string, error) {
-	out, err := git.Output(repo, "diff", "--name-status", "--end-of-options", base+"..."+head)
+	out, err := git.Output(repo, "diff", "--name-status", "-z", "-M", "--end-of-options", base+"..."+head)
 	if err != nil {
 		return "", err
 	}

@@ -14,6 +14,7 @@ import (
 
 	"github.com/leonardo-moraes360/toolbelt/internal/config"
 	"github.com/leonardo-moraes360/toolbelt/internal/execenv"
+	"github.com/leonardo-moraes360/toolbelt/internal/git"
 	"github.com/leonardo-moraes360/toolbelt/internal/guard"
 	"github.com/leonardo-moraes360/toolbelt/internal/log"
 	"github.com/leonardo-moraes360/toolbelt/internal/review"
@@ -268,9 +269,11 @@ func applyGuard(cfg *Config) (gr *guard.CheckResult, abort bool, reason string, 
 	}
 	scope := resolveVerifyScope(cfg)
 	reason = "guard aborted verify (protected path)"
-	// With -c the repository config is never read, so a change to its
-	// verify: section cannot affect the run; guard still reports it.
-	ignoreConfigChange := cfg.TrustedConfig != nil && config.File() != ""
+	// A -c file outside the repository means the repository config is never
+	// read, so a change to its verify: section cannot affect the run; guard
+	// still reports it. A -c file inside the repository can be edited by the
+	// change itself, so it keeps the abort.
+	ignoreConfigChange := cfg.TrustedConfig != nil && configOutsideRepo(cfg.RepoDir, config.File())
 	for i := range gr.Violations {
 		if ignoreConfigChange && gr.Violations[i].Type == violationVerifyConfigChanged {
 			continue
@@ -287,6 +290,35 @@ func applyGuard(cfg *Config) (gr *guard.CheckResult, abort bool, reason string, 
 		return gr, false, "", nil
 	}
 	return gr, true, reason, nil
+}
+
+// configOutsideRepo reports whether the -c file lies outside the repository
+// top level once symlinks are resolved; any error counts as inside.
+func configOutsideRepo(repoDir, file string) bool {
+	if file == "" {
+		return false
+	}
+	out, err := git.Output(repoDir, "rev-parse", "--show-toplevel")
+	if err != nil {
+		return false
+	}
+	top, err := filepath.EvalSymlinks(strings.TrimSpace(string(out)))
+	if err != nil {
+		return false
+	}
+	abs, err := filepath.Abs(file)
+	if err != nil {
+		return false
+	}
+	real, err := filepath.EvalSymlinks(abs)
+	if err != nil {
+		return false
+	}
+	rel, err := filepath.Rel(top, real)
+	if err != nil {
+		return false
+	}
+	return rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
 // violationVerifyConfigChanged is guard's R0 rule; named here by value so

@@ -566,3 +566,47 @@ func TestParseDiffCopyKeepsSource(t *testing.T) {
 		t.Fatalf("copy must only report the destination: %#v", got)
 	}
 }
+
+func TestLooseRenamesOfTestsAreDeletions(t *testing.T) {
+	for _, c := range []struct{ src, dst string }{
+		{"x/foo_test.go", "x/_foo_test.go"},
+		{"x/bar_test.go", "x/testdata/bar_test.go"},
+		{"x/baz_test.go", "x/test/baz_test.go.off"},
+	} {
+		dir := setupRepo(t)
+		_ = os.MkdirAll(filepath.Join(dir, filepath.Dir(c.src)), 0o755)
+		_ = os.MkdirAll(filepath.Join(dir, filepath.Dir(c.dst)), 0o755)
+		_ = os.WriteFile(filepath.Join(dir, c.src), []byte("package x\n"), 0o644)
+		base := commitAll(t, dir, "base")
+		gitMv(t, dir, c.src, c.dst)
+		head := commitAll(t, dir, "move")
+		res, err := NewChecker(dir).Check(base, head)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !hasViolation(res, ViolationTestDeletion, c.src) {
+			t.Errorf("%s -> %s must count as test deletion: %#v", c.src, c.dst, res.Violations)
+		}
+	}
+}
+
+func TestNonASCIITestDeletionDetected(t *testing.T) {
+	dir := setupRepo(t)
+	_ = os.WriteFile(filepath.Join(dir, "ação_test.go"), []byte("package x\n"), 0o644)
+	_ = os.MkdirAll(filepath.Join(dir, "tests"), 0o755)
+	_ = os.WriteFile(filepath.Join(dir, "tests", "a.py"), []byte("x\n"), 0o644)
+	base := commitAll(t, dir, "base")
+	_ = os.Remove(filepath.Join(dir, "ação_test.go"))
+	_ = os.RemoveAll(filepath.Join(dir, "tests"))
+	head := commitAll(t, dir, "del")
+	res, err := NewChecker(dir).Check(base, head)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasViolation(res, ViolationTestDeletion, "ação_test.go") {
+		t.Errorf("non-ASCII test deletion missed: %#v", res.Violations)
+	}
+	if !hasViolation(res, ViolationTestDeletion, "tests/a.py") {
+		t.Errorf("top-level tests/ deletion missed: %#v", res.Violations)
+	}
+}

@@ -1145,9 +1145,11 @@ defaults (with `-c`, only that file; see below), never from the working tree, so
 rewrite its own gate (e.g. `test_cmd: true`). Flags and MCP arguments still
 override, since they come from the caller. Guard compares the `verify:` section at
 base and head: a difference is an error finding `verify_config_changed` that aborts
-verify like a protected-path hit, listing the changed keys (with `-c` the repository
+verify like a protected-path hit, listing the changed keys (with `-c` pointing outside the repository top level the repository
 file is not read at all, so verify does not abort on it; the finding stays in the
-guard report and the `guard` section of the result); other sections of the
+guard report and the `guard` section of the result, and the `guard` step of
+`tb stack` still fails on it. A `-c` file inside the repository can be edited by the
+change, so it aborts as without `-c`; `tb -c <file> mcp` takes the same path as the CLI); other sections of the
 file stay unrestricted. A symlinked config at base or head is compared by its target
 text: any change is a `verify_config_changed` finding (`verify`; it cannot be parsed).
 A malformed file at base is the warning finding `verify_config_unreadable` (guard and
