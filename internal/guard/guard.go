@@ -306,20 +306,12 @@ func appendChange(out []changed, status string, paths []string) []changed {
 	}
 }
 
-var jsFamilyExt = map[string]bool{".js": true, ".jsx": true, ".ts": true, ".tsx": true, ".mjs": true, ".cjs": true}
-
-// equivalentTestMove reports whether a renamed test file is still a test the
-// toolchain will pick up at its destination: same language, still a test by
-// the same kind of rule, and no path segment that tools skip.
+// equivalentTestMove reports whether a renamed test file is a pure directory
+// move: same basename, still a test at its destination, and no path segment
+// that tools skip. Any other rename of a test file can disable it (build
+// constraints, test name patterns, collection rules) and counts as removal.
 func equivalentTestMove(src, dst string) bool {
-	if !isTestFile(dst) {
-		return false
-	}
-	if isTestBase(src) && !isTestBase(dst) {
-		return false
-	}
-	se, de := strings.ToLower(filepath.Ext(src)), strings.ToLower(filepath.Ext(dst))
-	if se != de && !(jsFamilyExt[se] && jsFamilyExt[de]) {
+	if filepath.Base(src) != filepath.Base(dst) || !isTestFile(dst) {
 		return false
 	}
 	for _, seg := range strings.Split(filepath.ToSlash(dst), "/") {
@@ -330,11 +322,6 @@ func equivalentTestMove(src, dst string) bool {
 		}
 	}
 	return true
-}
-
-func isTestBase(path string) bool {
-	b := filepath.Base(path)
-	return strings.HasSuffix(b, "_test.go") || isJSTestPath(path)
 }
 
 func isTestFile(path string) bool {

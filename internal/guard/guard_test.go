@@ -610,3 +610,26 @@ func TestNonASCIITestDeletionDetected(t *testing.T) {
 		t.Errorf("top-level tests/ deletion missed: %#v", res.Violations)
 	}
 }
+
+func TestRenamesChangingBasenameAreDeletions(t *testing.T) {
+	for _, c := range []struct{ src, dst string }{
+		{"x/foo_test.go", "x/foo_windows_test.go"},
+		{"web/a.test.ts", "web/a.test.off.ts"},
+		{"tests/test_foo.py", "tests/foo_disabled.py"},
+		{"src/test/FooTest.java", "src/test/Foo.java"},
+	} {
+		dir := setupRepo(t)
+		_ = os.MkdirAll(filepath.Join(dir, filepath.Dir(c.src)), 0o755)
+		_ = os.WriteFile(filepath.Join(dir, c.src), []byte("package x\n"), 0o644)
+		base := commitAll(t, dir, "base")
+		gitMv(t, dir, c.src, c.dst)
+		head := commitAll(t, dir, "rename")
+		res, err := NewChecker(dir).Check(base, head)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !hasViolation(res, ViolationTestDeletion, c.src) {
+			t.Errorf("%s -> %s must count as test deletion: %#v", c.src, c.dst, res.Violations)
+		}
+	}
+}

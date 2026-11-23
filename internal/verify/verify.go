@@ -314,11 +314,28 @@ func configOutsideRepo(repoDir, file string) bool {
 	if err != nil {
 		return false
 	}
-	rel, err := filepath.Rel(top, resolved)
+	return !insideDir(top, resolved)
+}
+
+// insideDir walks up from file's directory and reports whether any ancestor
+// is the same directory as top (os.SameFile, so case-insensitive filesystems
+// cannot fool it). Errors count as inside.
+func insideDir(top, file string) bool {
+	topInfo, err := os.Stat(top)
 	if err != nil {
-		return false
+		return true
 	}
-	return rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator))
+	for dir := filepath.Dir(file); ; {
+		info, err := os.Stat(dir)
+		if err != nil || os.SameFile(topInfo, info) {
+			return true
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return false
+		}
+		dir = parent
+	}
 }
 
 // violationVerifyConfigChanged is guard's R0 rule; named here by value so
