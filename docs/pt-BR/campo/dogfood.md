@@ -108,6 +108,13 @@ apontando para ele. Flags do goldfish: `-p --output-format json --tools "" --str
 | 41 | `tb egm review docs/specs/vault.md --engine deterministic` | só problemas reais | 2 findings reais de `required-sections` (`## Non-goals` e `## Technical plan` não batem com a caixa do padrão) e 6 reais de `plan-files-listed` (arquivos de teste escritos sem o diretório). Mas 6 majors de `refs-exist` apontam para caminhos que a spec planeja criar ou que são do Obsidian (`.obsidian`, `.trash`, `internal/vault/testdata/obsidian`), e uma spec antes da implementação não converge sem recusá-los um a um. Além disso, o `plan-files-listed` só lê a primeira tabela depois do heading do plano: dividir o plano em uma tabela por fatia transformou 16 arquivos `Create` em findings de `refs-exist` | minor |
 | 42 | `tb bus discover` (2026-11-20, build local) | o `.mcp.json` deste repositório aponta para um `tb` conhecido | a entrada `toolbelt` roda um `tb` puro, então `same_tb` é `null`: o cliente o resolve no próprio `PATH`, que aqui é a release em `~/go/bin` (v0.0.8), não o build local em teste. É intencional (o CLAUDE.md manda testar com `./bin/tb`), mas o discover deixa a ambiguidade visível | info |
 
+## 2026-11-23 — achados de campo, projeto paprika no `v1.0.0-rc.3` (corrigidos em `fix/rc3-field`)
+
+| # | Comando | Esperado | Real | Sev. |
+|---|---------|----------|------|------|
+| 59 | `tb -c ci.yaml verify run` / `tb stack` em um PR que migra `verify:` no `.toolbelt/config.yaml` | com um `-c` fora do repositório a config do repositório não é lida, então a mudança é inofensiva e o verify pode dar PASS | abortava por `verify_config_changed`, então nenhum PR assim conseguia PASS | high — **corrigido em `fix/rc3-field`** (o achado segue no guard; sem `-c` ou com `-c` dentro do repo ainda aborta) |
+| 60 | `tb guard check` / `tb verify run` após `git mv server-go server` | testes movidos não são remoções | todo arquivo de teste movido reportado como `test removed` (`test_deletion`): origens de rename eram marcadas como removidas | high — **corrigido em `fix/rc3-field`** (só movimentos puros de diretório, mesmo basename, são isentos; qualquer rename que mude o basename ou caia em `testdata/` etc. ainda conta) |
+
 ## 2026-11-22 — backlog de estabilidade (nota, não correção)
 
 Encontrado ao especificar o drift por símbolo ([egm Fase C](../specs/egm-phase-c.md)); nenhum comando `tb graph` foi rodado. Os dois vêm do indexador Go em `internal/graph/index_go.go` e ficaram registrados para o slice do grafo (C6) e foram **corrigidos em `7b3bd7e`** (quebra de IDs de nó gravados, `graph.json` `version` 2):

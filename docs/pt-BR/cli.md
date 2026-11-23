@@ -1165,7 +1165,11 @@ consegue reescrever o próprio gate (ex. `test_cmd: true`). Flags e argumentos M
 continuam sobrescrevendo, já que vêm de quem chama. O guard compara a seção
 `verify:` no base e no head: uma diferença é um achado de erro
 `verify_config_changed` que aborta o verify como um hit em path protegido, listando
-as chaves alteradas; as outras seções do arquivo seguem livres. Uma config que é symlink
+as chaves alteradas (com `-c` apontando para fora do topo do repositório o arquivo do repositório
+não é lido, então o verify não aborta por isso; o achado continua no relatório do guard
+e na seção `guard` do resultado, e a etapa `guard` do `tb stack` ainda falha por ele.
+Um `-c` dentro do repositório pode ser editado pela mudança, então aborta como sem `-c`;
+`tb -c <arquivo> mcp` segue o mesmo caminho da CLI); as outras seções do arquivo seguem livres. Uma config que é symlink
 no base ou no head é comparada pelo texto do alvo: qualquer mudança é um achado
 `verify_config_changed` (`verify`; não dá para fazer o parse). Um arquivo malformado no
 base é o achado de aviso `verify_config_unreadable` (o guard e execuções com `-c` seguem
@@ -2362,8 +2366,8 @@ Arquivo de configuração local em `.toolbelt/config.yaml` (global:
 alternativo.
 
 Uma chave que o `tb` não conhece (erro de digitação, ou chave removida antes do 1.0) é ignorada: cada
-arquivo imprime no stderr uma linha por chave assim, uma vez por execução, com o caminho completo
-(`warning: .toolbelt/config.yaml: unknown config key graph.auto_index (ignored)`). Nunca é erro, então
+arquivo imprime no stderr uma única linha por execução listando todas essas chaves (ordenadas, com o caminho completo)
+(`warning: .toolbelt/config.yaml: 2 unknown config keys ignored: graph.auto_index, logging (…)`). Nunca é erro, então
 arquivos antigos continuam carregando. Chaves removidas: `defaults.*`, `sandbox.allow_net`,
 `sandbox.cpu_limit`, `sandbox.mem_limit`, `sandbox.time_limit`, `graph.auto_index`,
 `graph.infer_relations`, `vault.sync_on_change` e `logging.*`; eram lidas do arquivo mas nenhum comando as

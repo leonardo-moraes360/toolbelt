@@ -507,3 +507,129 @@ func TestMatchGlobDoubleStarAndCase(t *testing.T) {
 		t.Fatal("[unclosed deveria ser inválido")
 	}
 }
+
+func gitMv(t *testing.T, dir, from, to string) {
+	t.Helper()
+	c := exec.Command("git", "mv", from, to)
+	c.Dir = dir
+	if out, err := c.CombinedOutput(); err != nil {
+		t.Fatalf("git mv: %v\n%s", err, out)
+	}
+}
+
+func hasViolationType(res *CheckResult, typ ViolationType) bool {
+	for _, v := range res.Violations {
+		if v.Type == typ {
+			return true
+		}
+	}
+	return false
+}
+
+func TestDirectoryRenameIsNotTestDeletion(t *testing.T) {
+	dir := setupRepo(t)
+	_ = os.MkdirAll(filepath.Join(dir, "server-go", "tests"), 0o755)
+	_ = os.WriteFile(filepath.Join(dir, "server-go", "a_test.go"), []byte("package x\n"), 0o644)
+	_ = os.WriteFile(filepath.Join(dir, "server-go", "tests", "b.go"), []byte("package x\n"), 0o644)
+	base := commitAll(t, dir, "base")
+	gitMv(t, dir, "server-go", "server")
+	head := commitAll(t, dir, "move")
+
+	res, err := NewChecker(dir).Check(base, head)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hasViolationType(res, ViolationTestDeletion) {
+		t.Fatalf("rename of tests is not a deletion: %#v", res.Violations)
+	}
+}
+
+func TestRenameTestToNonTestIsDeletion(t *testing.T) {
+	dir := setupRepo(t)
+	_ = os.WriteFile(filepath.Join(dir, "foo_test.go"), []byte("package x\n"), 0o644)
+	base := commitAll(t, dir, "base")
+	gitMv(t, dir, "foo_test.go", "foo_test.go.bak")
+	head := commitAll(t, dir, "disable")
+
+	res, err := NewChecker(dir).Check(base, head)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasViolation(res, ViolationTestDeletion, "foo_test.go") {
+		t.Fatalf("test renamed to non-test must count as deletion: %#v", res.Violations)
+	}
+}
+
+func TestParseDiffCopyKeepsSource(t *testing.T) {
+	got := parseDiff("C100\ta_test.go\tb_test.go\n")
+	if len(got) != 1 || got[0].path != "b_test.go" || got[0].deleted || got[0].testRemoved {
+		t.Fatalf("copy must only report the destination: %#v", got)
+	}
+}
+
+func TestLooseRenamesOfTestsAreDeletions(t *testing.T) {
+	for _, c := range []struct{ src, dst string }{
+		{"x/foo_test.go", "x/_foo_test.go"},
+		{"x/bar_test.go", "x/testdata/bar_test.go"},
+		{"x/baz_test.go", "x/test/baz_test.go.off"},
+	} {
+		dir := setupRepo(t)
+		_ = os.MkdirAll(filepath.Join(dir, filepath.Dir(c.src)), 0o755)
+		_ = os.MkdirAll(filepath.Join(dir, filepath.Dir(c.dst)), 0o755)
+		_ = os.WriteFile(filepath.Join(dir, c.src), []byte("package x\n"), 0o644)
+		base := commitAll(t, dir, "base")
+		gitMv(t, dir, c.src, c.dst)
+		head := commitAll(t, dir, "move")
+		res, err := NewChecker(dir).Check(base, head)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !hasViolation(res, ViolationTestDeletion, c.src) {
+			t.Errorf("%s -> %s must count as test deletion: %#v", c.src, c.dst, res.Violations)
+		}
+	}
+}
+
+func TestNonASCIITestDeletionDetected(t *testing.T) {
+	dir := setupRepo(t)
+	_ = os.WriteFile(filepath.Join(dir, "ação_test.go"), []byte("package x\n"), 0o644)
+	_ = os.MkdirAll(filepath.Join(dir, "tests"), 0o755)
+	_ = os.WriteFile(filepath.Join(dir, "tests", "a.py"), []byte("x\n"), 0o644)
+	base := commitAll(t, dir, "base")
+	_ = os.Remove(filepath.Join(dir, "ação_test.go"))
+	_ = os.RemoveAll(filepath.Join(dir, "tests"))
+	head := commitAll(t, dir, "del")
+	res, err := NewChecker(dir).Check(base, head)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasViolation(res, ViolationTestDeletion, "ação_test.go") {
+		t.Errorf("non-ASCII test deletion missed: %#v", res.Violations)
+	}
+	if !hasViolation(res, ViolationTestDeletion, "tests/a.py") {
+		t.Errorf("top-level tests/ deletion missed: %#v", res.Violations)
+	}
+}
+
+func TestRenamesChangingBasenameAreDeletions(t *testing.T) {
+	for _, c := range []struct{ src, dst string }{
+		{"x/foo_test.go", "x/foo_windows_test.go"},
+		{"web/a.test.ts", "web/a.test.off.ts"},
+		{"tests/test_foo.py", "tests/foo_disabled.py"},
+		{"src/test/FooTest.java", "src/test/Foo.java"},
+	} {
+		dir := setupRepo(t)
+		_ = os.MkdirAll(filepath.Join(dir, filepath.Dir(c.src)), 0o755)
+		_ = os.WriteFile(filepath.Join(dir, c.src), []byte("package x\n"), 0o644)
+		base := commitAll(t, dir, "base")
+		gitMv(t, dir, c.src, c.dst)
+		head := commitAll(t, dir, "rename")
+		res, err := NewChecker(dir).Check(base, head)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !hasViolation(res, ViolationTestDeletion, c.src) {
+			t.Errorf("%s -> %s must count as test deletion: %#v", c.src, c.dst, res.Violations)
+		}
+	}
+}

@@ -1145,7 +1145,11 @@ defaults (with `-c`, only that file; see below), never from the working tree, so
 rewrite its own gate (e.g. `test_cmd: true`). Flags and MCP arguments still
 override, since they come from the caller. Guard compares the `verify:` section at
 base and head: a difference is an error finding `verify_config_changed` that aborts
-verify like a protected-path hit, listing the changed keys; other sections of the
+verify like a protected-path hit, listing the changed keys (with `-c` pointing outside the repository top level the repository
+file is not read at all, so verify does not abort on it; the finding stays in the
+guard report and the `guard` section of the result, and the `guard` step of
+`tb stack` still fails on it. A `-c` file inside the repository can be edited by the
+change, so it aborts as without `-c`; `tb -c <file> mcp` takes the same path as the CLI); other sections of the
 file stay unrestricted. A symlinked config at base or head is compared by its target
 text: any change is a `verify_config_changed` finding (`verify`; it cannot be parsed).
 A malformed file at base is the warning finding `verify_config_unreadable` (guard and
@@ -2338,8 +2342,8 @@ Local configuration file at `.toolbelt/config.yaml` (global:
 `~/.config/toolbelt/config.yaml`). The `-c/--config` flag points to an alternate YAML.
 
 A key `tb` does not know (a typo, or a key removed before 1.0) is ignored: each file prints
-one stderr line per such key, once per run, with the full key path
-(`warning: .toolbelt/config.yaml: unknown config key graph.auto_index (ignored)`). It is never an
+one stderr line per run listing all such keys (sorted, with full key paths)
+(`warning: .toolbelt/config.yaml: 2 unknown config keys ignored: graph.auto_index, logging (…)`). It is never an
 error, so old files keep loading. Removed keys: `defaults.*`, `sandbox.allow_net`, `sandbox.cpu_limit`,
 `sandbox.mem_limit`, `sandbox.time_limit`, `graph.auto_index`, `graph.infer_relations`,
 `vault.sync_on_change` and `logging.*`; they were parsed but no command read them, so they enforced nothing.

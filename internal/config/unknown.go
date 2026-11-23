@@ -21,8 +21,9 @@ var warnOut io.Writer = os.Stderr
 // in a single command and each run would repeat the same lines.
 var warnedFiles sync.Map
 
-// warnUnknownKeys prints one stderr line per key of a config file that Config
-// does not know, with its full path. It never fails: an old file with a
+// warnUnknownKeys prints one stderr line per config file listing the sorted
+// keys (full paths) that Config does not know; one line keeps an old file from
+// flooding every command. It never fails: an old file with a
 // removed key keeps loading and the key is ignored.
 func warnUnknownKeys(path string, data []byte) {
 	key := path
@@ -39,9 +40,18 @@ func warnUnknownKeys(path string, data []byte) {
 	if yaml.Unmarshal(data, &doc) != nil || len(doc.Content) == 0 {
 		return
 	}
-	for _, key := range unknownKeys(doc.Content[0], reflect.TypeOf(Config{}), "") {
-		fmt.Fprintf(warnOut, "warning: %s: unknown config key %s (ignored)\n", path, key)
+	keys := unknownKeys(doc.Content[0], reflect.TypeOf(Config{}), "")
+	if len(keys) == 0 {
+		return
 	}
+	slices.Sort(keys)
+	keys = slices.Compact(keys)
+	noun := "keys"
+	if len(keys) == 1 {
+		noun = "key"
+	}
+	fmt.Fprintf(warnOut, "warning: %s: %d unknown config %s ignored: %s (keys removed in 1.0 are listed in docs/cli.md#configuration; delete them from the file)\n",
+		path, len(keys), noun, strings.Join(keys, ", "))
 }
 
 // unknownKeys walks a YAML node against a struct type by its yaml tags.

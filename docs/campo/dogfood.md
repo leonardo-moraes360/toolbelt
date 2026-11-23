@@ -108,6 +108,13 @@ pointing to it. Goldfish flags: `-p --output-format json --tools "" --strict-mcp
 | 41 | `tb egm review docs/specs/vault.md --engine deterministic` | only real problems | 2 real `required-sections` findings (`## Non-goals` and `## Technical plan` do not match the standard's casing) and 6 real `plan-files-listed` ones (test files written without their directory). But 6 `refs-exist` majors point at paths the spec plans to create or that belong to Obsidian (`.obsidian`, `.trash`, `internal/vault/testdata/obsidian`), and a pre-implementation spec cannot converge without declining them one by one. Also, `plan-files-listed` only reads the first table after the plan heading: splitting the plan into one table per slice turned 16 `Create` files into `refs-exist` findings | minor |
 | 42 | `tb bus discover` (2026-11-20, local build) | this repository's `.mcp.json` points at a known `tb` | the `toolbelt` entry runs a bare `tb`, so `same_tb` is `null`: the client resolves it on its own `PATH`, which here is the `~/go/bin` release (v0.0.8), not the local build under test. Intended (CLAUDE.md says to test with `./bin/tb`), but discover makes the ambiguity visible | info |
 
+## 2026-11-23 — field findings, paprika project on `v1.0.0-rc.3` (fixed in `fix/rc3-field`)
+
+| # | Command | Expected | Actual | Sev. |
+|---|---------|----------|--------|------|
+| 59 | `tb -c ci.yaml verify run` / `tb stack` on a PR that migrates `verify:` in `.toolbelt/config.yaml` | with a `-c` file outside the repository the repository config is not read, so the change is harmless and verify can PASS | aborted on `verify_config_changed`, so no such PR could ever get PASS | high — **fixed in `fix/rc3-field`** (finding still reported by guard; without `-c` or with an in-repo `-c` still aborts) |
+| 60 | `tb guard check` / `tb verify run` after `git mv server-go server` | moved tests are not deletions | every moved test file reported `test removed` (`test_deletion`): rename sources were marked deleted | high — **fixed in `fix/rc3-field`** (only pure directory moves, same basename, are exempt; any rename that changes the basename or lands in `testdata/` etc. still counts) |
+
 ## 2026-11-22 — stability backlog (note, not a fix)
 
 Found while specifying symbol-level drift ([egm Phase C](../specs/egm-phase-c.md)); no `tb graph` command was run. Both come from the Go indexer in `internal/graph/index_go.go` and were tracked for the graph slice (C6) and are **fixed in `7b3bd7e`** (breaking for stored node IDs, `graph.json` `version` 2):

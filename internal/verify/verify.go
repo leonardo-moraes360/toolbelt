@@ -14,6 +14,7 @@ import (
 
 	"github.com/leonardo-moraes360/toolbelt/internal/config"
 	"github.com/leonardo-moraes360/toolbelt/internal/execenv"
+	"github.com/leonardo-moraes360/toolbelt/internal/git"
 	"github.com/leonardo-moraes360/toolbelt/internal/guard"
 	"github.com/leonardo-moraes360/toolbelt/internal/log"
 	"github.com/leonardo-moraes360/toolbelt/internal/review"
@@ -268,7 +269,15 @@ func applyGuard(cfg *Config) (gr *guard.CheckResult, abort bool, reason string, 
 	}
 	scope := resolveVerifyScope(cfg)
 	reason = "guard aborted verify (protected path)"
+	// A -c file outside the repository means the repository config is never
+	// read, so a change to its verify: section cannot affect the run; guard
+	// still reports it. A -c file inside the repository can be edited by the
+	// change itself, so it keeps the abort.
+	ignoreConfigChange := cfg.TrustedConfig != nil && configOutsideRepo(cfg.RepoDir, config.File())
 	for i := range gr.Violations {
+		if ignoreConfigChange && gr.Violations[i].Type == violationVerifyConfigChanged {
+			continue
+		}
 		if !guardBlocksVerify(&gr.Violations[i], scope) {
 			continue
 		}
@@ -281,6 +290,52 @@ func applyGuard(cfg *Config) (gr *guard.CheckResult, abort bool, reason string, 
 		return gr, false, "", nil
 	}
 	return gr, true, reason, nil
+}
+
+// configOutsideRepo reports whether the -c file lies outside the repository
+// top level once symlinks are resolved; any error counts as inside.
+func configOutsideRepo(repoDir, file string) bool {
+	if file == "" {
+		return false
+	}
+	out, err := git.Output(repoDir, "rev-parse", "--show-toplevel")
+	if err != nil {
+		return false
+	}
+	top, err := filepath.EvalSymlinks(strings.TrimSpace(string(out)))
+	if err != nil {
+		return false
+	}
+	abs, err := filepath.Abs(file)
+	if err != nil {
+		return false
+	}
+	resolved, err := filepath.EvalSymlinks(abs)
+	if err != nil {
+		return false
+	}
+	return !insideDir(top, resolved)
+}
+
+// insideDir walks up from file's directory and reports whether any ancestor
+// is the same directory as top (os.SameFile, so case-insensitive filesystems
+// cannot fool it). Errors count as inside.
+func insideDir(top, file string) bool {
+	topInfo, err := os.Stat(top)
+	if err != nil {
+		return true
+	}
+	for dir := filepath.Dir(file); ; {
+		info, err := os.Stat(dir)
+		if err != nil || os.SameFile(topInfo, info) {
+			return true
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return false
+		}
+		dir = parent
+	}
 }
 
 // violationVerifyConfigChanged is guard's R0 rule; named here by value so
