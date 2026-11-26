@@ -48,6 +48,9 @@ Esta é uma compilação de fontes primárias que podem influenciar o desenho do
 | [OpenHands](https://arxiv.org/abs/2407.16741) | Wang et al. | 2024 | paper | Plataforma aberta com sandbox Docker e event stream; referência de runtime. | sandbox · benchmark | média |
 | [Executable Code Actions Elicit Better LLM Agents (CodeAct)](https://arxiv.org/abs/2402.01030) | Wang et al. | 2024 | paper | Ações como código em vez de JSON: menos turnos e mais composição. | protocolo · mem/ctx | média |
 | [An LLM Compiler for Parallel Function Calling](https://arxiv.org/abs/2312.04511) | Kim et al. | 2023 | paper | Planeja chamadas de ferramenta como DAG e executa em paralelo; menos latência. | router | média |
+| [paperclip](https://github.com/paperclipai/paperclip) | Paperclip AI | 2026 | repo | Plano de controle para times de agentes: watchdog que revisa uma árvore de trabalho parada uma vez por fingerprint de parada, estado de execução seguro entre releases, guarda de prompt injection em camadas, preset de baixa confiança. Revisão do tb em [paperclip.md](paperclip.md). | bus · router · egm | alta |
+| [alethe-orchestrate-skill](https://github.com/Kc1t/alethe-orchestrate-skill) · [alethe-agents](https://github.com/Kc1t/alethe-agents) | Kc1t | 2026 | repo | Roteamento por tier + profile, playbooks YAML (cascade, review-gate, best-of-n), `outcome.json` por worker, quota guard local; mapa dos eventos stream-json do `claude -p`. Revisão do tb em [alethe-cma.md](alethe-cma.md). | router · bus · bench | alta |
+| [CMA: plan big, execute small](https://github.com/anthropics/claude-cookbooks/blob/main/managed_agents/CMA_plan_big_execute_small.ipynb) | Anthropic | 2026 | notebook | Orquestrador forte sem tools, workers baratos: 84–98% do input cobrado na tarifa do worker; método de rigor equivalente para comparar solo vs. delegado. Revisão do tb em [alethe-cma.md](alethe-cma.md). | router · bench | média |
 
 ---
 

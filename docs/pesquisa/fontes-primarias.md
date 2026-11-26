@@ -48,6 +48,9 @@ This is a compilation of primary sources that may influence toolbelt's design. W
 | [OpenHands](https://arxiv.org/abs/2407.16741) | Wang et al. | 2024 | paper | Open platform with Docker sandbox and event stream; runtime reference. | sandbox · benchmark | medium |
 | [Executable Code Actions Elicit Better LLM Agents (CodeAct)](https://arxiv.org/abs/2402.01030) | Wang et al. | 2024 | paper | Actions as code instead of JSON: fewer turns and more composition. | protocol · mem/ctx | medium |
 | [An LLM Compiler for Parallel Function Calling](https://arxiv.org/abs/2312.04511) | Kim et al. | 2023 | paper | Plans tool calls as a DAG and executes in parallel; less latency. | router | medium |
+| [paperclip](https://github.com/paperclipai/paperclip) | Paperclip AI | 2026 | repo | Control plane for agent teams: task watchdog that reviews a stopped work tree once per stop fingerprint, upgrade-safe run state, layered prompt-injection guard, low-trust preset. tb review in [paperclip.md](paperclip.md). | bus · router · egm | high |
+| [alethe-orchestrate-skill](https://github.com/Kc1t/alethe-orchestrate-skill) · [alethe-agents](https://github.com/Kc1t/alethe-agents) | Kc1t | 2026 | repo | Tier + profile routing, YAML playbooks (cascade, review-gate, best-of-n), per-worker `outcome.json`, local quota guard; map of `claude -p` stream-json events. tb review in [alethe-cma.md](alethe-cma.md). | router · bus · bench | high |
+| [CMA: plan big, execute small](https://github.com/anthropics/claude-cookbooks/blob/main/managed_agents/CMA_plan_big_execute_small.ipynb) | Anthropic | 2026 | notebook | Strong orchestrator without tools, cheap workers: 84–98% of input billed at worker rate; matched-rigor method for comparing solo vs. delegated. tb review in [alethe-cma.md](alethe-cma.md). | router · bench | medium |
 
 ---
 
