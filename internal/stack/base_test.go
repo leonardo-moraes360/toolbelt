@@ -3,7 +3,9 @@ package stack
 import (
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -13,6 +15,13 @@ func branchRepo(t *testing.T) (dir, mainTip string) {
 	t.Helper()
 	dir = gitRepo(t)
 	runGit(t, dir, "checkout", "-q", "-B", "main")
+	// git init's branch depends on init.defaultBranch (master on CI runners):
+	// leave main as the only default-branch candidate.
+	for _, b := range defaultBranchCandidates {
+		if b != "main" && !strings.Contains(b, "/") {
+			_ = exec.Command("git", "-C", dir, "branch", "-q", "-D", b).Run()
+		}
+	}
 	for _, c := range []string{"m1", "m2"} {
 		writeFile(t, filepath.Join(dir, c+".txt"), c+"\n")
 		runGit(t, dir, "add", "-A")
@@ -72,7 +81,7 @@ func TestStackBaseOnDefaultBranchFallsBackToParent(t *testing.T) {
 
 func TestStackBaseWithoutDefaultBranchFallsBackToParent(t *testing.T) {
 	dir, _ := branchRepo(t)
-	runGit(t, dir, "branch", "-q", "-m", "main", "trunk")
+	runGit(t, dir, "branch", "-q", "-m", "main", "not-a-default-branch")
 	shared := prepareBase(t, &Options{RepoDir: dir})
 	if want := revParse(t, dir, "HEAD~1"); shared.Base != want || shared.BaseSource != BaseSourceParent {
 		t.Fatalf("base=%s source=%s, want HEAD~1 %s", shared.Base, shared.BaseSource, want)
