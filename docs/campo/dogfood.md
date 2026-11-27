@@ -108,6 +108,22 @@ pointing to it. Goldfish flags: `-p --output-format json --tools "" --strict-mcp
 | 41 | `tb egm review docs/specs/vault.md --engine deterministic` | only real problems | 2 real `required-sections` findings (`## Non-goals` and `## Technical plan` do not match the standard's casing) and 6 real `plan-files-listed` ones (test files written without their directory). But 6 `refs-exist` majors point at paths the spec plans to create or that belong to Obsidian (`.obsidian`, `.trash`, `internal/vault/testdata/obsidian`), and a pre-implementation spec cannot converge without declining them one by one. Also, `plan-files-listed` only reads the first table after the plan heading: splitting the plan into one table per slice turned 16 `Create` files into `refs-exist` findings | minor |
 | 42 | `tb bus discover` (2026-11-20, local build) | this repository's `.mcp.json` points at a known `tb` | the `toolbelt` entry runs a bare `tb`, so `same_tb` is `null`: the client resolves it on its own `PATH`, which here is the `~/go/bin` release (v0.0.8), not the local build under test. Intended (CLAUDE.md says to test with `./bin/tb`), but discover makes the ambiguity visible | info |
 
+## 2026-11-27 — `v1.0.0-rc.4` soak (paprika field addenda 2026-11-24/25 + re-check)
+
+Sources: [paprika.md](paprika.md) addenda of 2026-11-24 and 2026-11-25 (rc.3 and rc.4 sessions) and a re-check of #60 with the installed rc.4. No new `high` on rc.4.
+
+| # | Command | Expected | Actual | Sev. |
+|---|---------|----------|--------|------|
+| 61 | `tb guard check HEAD~1..HEAD` after `git mv server-go server` (60 test files, 30 with `t.Skip`), installed rc.4 | no deletion findings | ok for #60: 0 `test_deletion`. But 30 `test_skip` warnings, one per untouched `t.Skip()` in a moved file: guard scans every line of a touched file, not only added lines (paprika 2026-11-25 saw the same after stripping comments) | medium — open, 1.0.x (warning only, never fails the gate) |
+| 62 | `tb stack verify guard --ticket rd.md` on a multi-commit branch, no `--base` | the branch is checked as a whole | the default base was `HEAD~1`: only the last commit was checked; the full range needed a separate `tb guard check <merge-base>..HEAD` (paprika 2026-11-25, rc.3) | medium — **fixed in `fix/rc5-stack-base`** (default base: ticket `base_commit`, else merge-base with the default branch, else `HEAD~1`; JSON `base`, `base_source`) |
+| 63 | `tb bus invite <channel> --name cursor-N` (×3) | the output names the bound agent | `invite: 1SV8-XMNH (channel paprika-3, role worker, …)` without the name; the mapping comes from loop order (paprika 2026-11-23/24, rc.4) | medium — open, 1.0.x (additive) |
+| 64 | `tb bus join` without `--wake` when a wake file exists for the name | `join` takes the wake file's adapter, or warns | defaults to `--wake manual`; `run` then shows `wake_mismatch`, and fixing it needs a fresh invite and a second join (paprika 2026-11-24, rc.4) | medium — open, 1.0.x |
+| 65 | `tb bus send` of 10 `task.assign` with `deps` in a loop | the `deps` warning (B2) is clear | clear, but printed once per send, 10 times (paprika 2026-11-24, rc.4) | low — open |
+| 66 | `tb guard check` on an intentional removal of tests (`bench/`) | a way to declare it in the ticket | only `test_deletion` (error); proved by hand by counting tests before and after. Proposal: `allow_test_deletion: [glob]` in the rd.md frontmatter (paprika 2026-11-25) | medium — open, 1.1 (new ticket field) |
+| 67 | `tb guard` with no subcommand | run the default diff check | prints the help; the check is `tb guard check` (paprika 2026-11-25) | low — open |
+| 68 | `bench:` in `.toolbelt/config.yaml` pointing at a removed directory | a warning | nothing complained (paprika 2026-11-25) | low — open |
+| 69 | `tb bus channel list` with closed and expired channels | closed ones hidden | still listed next to smoke channels; no `channel close` or `list --open` (paprika 2026-11-24, rc.4) | low — open, 1.1 |
+
 ## 2026-11-23 — field findings, paprika project on `v1.0.0-rc.3` (fixed in `fix/rc3-field`)
 
 | # | Command | Expected | Actual | Sev. |

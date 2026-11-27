@@ -306,7 +306,7 @@ func registerStackTools() {
 					Items:       &Property{Type: "string"},
 				},
 				"cwd":                  {Type: "string", Description: "Repository directory"},
-				"base":                 {Type: "string", Description: "Ref base", Default: "HEAD~1"},
+				"base":                 {Type: "string", Description: "Ref base (default: the ticket's base_commit, else the merge-base with the default branch, else HEAD~1)"},
 				"head":                 {Type: "string", Description: "Ref head", Default: "HEAD"},
 				"fail_fast":            {Type: "boolean", Description: "Cancels the remaining steps on the first failure", Default: false},
 				"jobs":                 {Type: "integer", Description: "Concurrency limit (0=number of CPUs, max 32; 1=serial)", Default: 0},
@@ -874,9 +874,6 @@ func handleStack(ctx context.Context, args map[string]any) (any, error) {
 		return nil, err
 	}
 	base := StringArg(args, "base")
-	if base == "" {
-		base = "HEAD~1"
-	}
 	head := StringArg(args, "head")
 	if head == "" {
 		head = "HEAD"

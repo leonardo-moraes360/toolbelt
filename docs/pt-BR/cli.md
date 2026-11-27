@@ -558,7 +558,7 @@ operações de verificação/revisão com contexto compartilhado.
 tb stack <op> [<op>...] [flags]
 
 Flags:
-  --base <ref>           Shared base ref (default: HEAD~1; validated/resolved)
+  --base <ref>           Shared base ref (default: see below; validated/resolved)
   --head <ref>           Shared head ref (default: HEAD; validated/resolved)
   --fail-fast            Cancel remaining steps via context on the first failure
   --jobs <n>             Concurrency limit (default: CPU count, max 32; 1 = serial)
@@ -594,6 +594,16 @@ Flags:
   --env <KEY>            (global) extra allowlist for stacked verify
   --pass-env <KEY>       (global) explicit secret opt-in for verify
 ```
+
+**Base padrão.** Sem `--base`, a base é, nesta ordem: o `base_commit` do ticket;
+o merge-base de `--head` com a branch padrão (a primeira que existir entre
+`origin/HEAD`, `origin/main`, `origin/master`, `main`, `master`), para que a
+branch seja checada inteira e não só o último commit; `HEAD~1` quando o head já
+está na branch padrão, não existe branch padrão ou os históricos não têm relação.
+Um `--base HEAD~1` explícito mantém o sentido antigo (o `base_commit` do ticket
+ainda vence; sem merge-base). O JSON informa o SHA resolvido em `base` e a origem
+em `base_source` (`flag`, `ticket`, `merge-base`, `parent`). O mesmo padrão vale
+para o MCP `tb_stack` sem `base`. Antes do 1.0.0-rc.5 o padrão era sempre `HEAD~1`.
 
 Sem operação, ou com operação desconhecida, sai com erro curto listando as ops
 válidas (`verify`, `review`, `drift`, `guard`, `egm`) — sem dump de `Usage`.

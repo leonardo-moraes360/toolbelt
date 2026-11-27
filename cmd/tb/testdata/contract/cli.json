@@ -1644,7 +1644,7 @@
         {
           "name": "base",
           "type": "string",
-          "default": "HEAD~1"
+          "default": ""
         },
         {
           "name": "build-cmd",
