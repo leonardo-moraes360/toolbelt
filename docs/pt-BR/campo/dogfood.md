@@ -108,6 +108,22 @@ apontando para ele. Flags do goldfish: `-p --output-format json --tools "" --str
 | 41 | `tb egm review docs/specs/vault.md --engine deterministic` | só problemas reais | 2 findings reais de `required-sections` (`## Non-goals` e `## Technical plan` não batem com a caixa do padrão) e 6 reais de `plan-files-listed` (arquivos de teste escritos sem o diretório). Mas 6 majors de `refs-exist` apontam para caminhos que a spec planeja criar ou que são do Obsidian (`.obsidian`, `.trash`, `internal/vault/testdata/obsidian`), e uma spec antes da implementação não converge sem recusá-los um a um. Além disso, o `plan-files-listed` só lê a primeira tabela depois do heading do plano: dividir o plano em uma tabela por fatia transformou 16 arquivos `Create` em findings de `refs-exist` | minor |
 | 42 | `tb bus discover` (2026-11-20, build local) | o `.mcp.json` deste repositório aponta para um `tb` conhecido | a entrada `toolbelt` roda um `tb` puro, então `same_tb` é `null`: o cliente o resolve no próprio `PATH`, que aqui é a release em `~/go/bin` (v0.0.8), não o build local em teste. É intencional (o CLAUDE.md manda testar com `./bin/tb`), mas o discover deixa a ambiguidade visível | info |
 
+## 2026-11-27 — soak do `v1.0.0-rc.4` (adendos de campo do paprika de 2026-11-24/25 + reconferência)
+
+Fontes: adendos de 2026-11-24 e 2026-11-25 em [paprika.md](paprika.md) (sessões em rc.3 e rc.4) e uma reconferência do #60 com o rc.4 instalado. Nenhum `high` novo no rc.4.
+
+| # | Comando | Esperado | Real | Sev. |
+|---|---------|----------|------|------|
+| 61 | `tb guard check HEAD~1..HEAD` após `git mv server-go server` (60 arquivos de teste, 30 com `t.Skip`), rc.4 instalado | nenhum achado de remoção | ok para o #60: 0 `test_deletion`. Mas 30 avisos `test_skip`, um por `t.Skip()` intocado num arquivo movido: o guard varre todas as linhas de um arquivo tocado, não só as adicionadas (o paprika viu o mesmo em 2026-11-25 ao tirar comentários) | medium — aberto, 1.0.x (só aviso, nunca reprova o gate) |
+| 62 | `tb stack verify guard --ticket rd.md` numa branch com vários commits, sem `--base` | a branch é checada inteira | a base padrão era `HEAD~1`: só o último commit era checado; o range completo precisava de um `tb guard check <merge-base>..HEAD` à parte (paprika 2026-11-25, rc.3) | medium — **corrigido em `fix/rc5-stack-base`** (base padrão: `base_commit` do ticket, senão merge-base com a branch padrão, senão `HEAD~1`; JSON `base`, `base_source`) |
+| 63 | `tb bus invite <canal> --name cursor-N` (×3) | a saída nomeia o agente vinculado | `invite: 1SV8-XMNH (channel paprika-3, role worker, …)` sem o nome; o mapeamento vem da ordem do loop (paprika 2026-11-23/24, rc.4) | medium — aberto, 1.0.x (aditivo) |
+| 64 | `tb bus join` sem `--wake` quando existe wake file para o nome | o `join` usa o adaptador do wake file, ou avisa | assume `--wake manual`; o `run` então mostra `wake_mismatch`, e corrigir exige convite novo e segundo join (paprika 2026-11-24, rc.4) | medium — aberto, 1.0.x |
+| 65 | `tb bus send` de 10 `task.assign` com `deps` num loop | o aviso de `deps` (B2) é claro | claro, mas sai uma vez por send, 10 vezes (paprika 2026-11-24, rc.4) | low — aberto |
+| 66 | `tb guard check` numa remoção intencional de testes (`bench/`) | um jeito de declarar no ticket | só `test_deletion` (erro); provado à mão contando os testes antes e depois. Proposta: `allow_test_deletion: [glob]` no frontmatter do rd.md (paprika 2026-11-25) | medium — aberto, 1.1 (campo novo no ticket) |
+| 67 | `tb guard` sem subcomando | roda a checagem padrão do diff | mostra a ajuda; a checagem é `tb guard check` (paprika 2026-11-25) | low — aberto |
+| 68 | `bench:` no `.toolbelt/config.yaml` apontando para um diretório removido | um aviso | nada reclamou (paprika 2026-11-25) | low — aberto |
+| 69 | `tb bus channel list` com canais fechados e expirados | fechados ocultos | ainda listados junto dos canais de smoke; sem `channel close` nem `list --open` (paprika 2026-11-24, rc.4) | low — aberto, 1.1 |
+
 ## 2026-11-23 — achados de campo, projeto paprika no `v1.0.0-rc.3` (corrigidos em `fix/rc3-field`)
 
 | # | Comando | Esperado | Real | Sev. |

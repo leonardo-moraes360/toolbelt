@@ -2,7 +2,7 @@
 
 # 1.0.0 readiness plan — spec
 
-Status: **draft** (2026-11-22). Owner decisions in [§6](#6-decisions-for-the-owner) are open.
+Status: **draft** (2026-11-22; updated 2026-11-27 for `v1.0.0-rc.5`, see G6 and O20). Owner decisions in [§6](#6-decisions-for-the-owner) are settled.
 
 ## 1. Scope
 
@@ -187,6 +187,8 @@ Scope: `internal/graph/{index_go,index_common}.go` and the other indexers' ID he
 | G4 | should | bilingual or Portuguese user messages (`internal/egm/roundctx.go:89`, `review.go:222`) | English only; tests updated |
 | G5 | should | re-check dogfood #1, #7, #17 (marked open; audit says fixed) and field round-2 N1, N3, N4 (playwright-mcp, pydantic-ai notes) | each row says `fixed in <sha>` or stays open with a G-item; docs updated in both languages |
 
+| G6 | blocker | `tb stack` / MCP `tb_stack` default base ([dogfood](../campo/dogfood.md) #62, paprika 2026-11-25) | without `--base`: ticket `base_commit`, else merge-base with the default branch, else `HEAD~1`; JSON `base` and `base_source`; explicit `--base HEAD~1` unchanged. Changes a frozen default (O20), so it must land before 1.0: fixed in `fix/rc5-stack-base`, released as `v1.0.0-rc.5` (the soak restarts) |
+
 G1 and G2 touch the same package but different files; run G2 first (small). G3–G5 are independent.
 
 ### Track B — bus (owner field session, 2026-11-22)
@@ -266,7 +268,7 @@ R3 lands after S1–S3, S7 and J1 (it snapshots their result). R1, R2, R4, R6 ru
 | C — CI and flakes | tests + workflows | 5 | 2 | 1 | — |
 | J — exit codes and envelopes | output and result structs | 4 | 3 | 1 | — |
 | S — CLI/MCP surface | flag decls, registry schemas, tiers | 4 | 3 | — | — |
-| G — field bugs | graph IDs/reader, verify reason, egm strings | 2 | 3 | — | — |
+| G — field bugs | graph IDs/reader, verify reason, egm strings, stack base | 3 | 3 | — | — |
 | B — bus | bus, busrun, `mcp.go` bind, version | 1 | 5 | 1 | 3 |
 | K — config | `internal/config`, init | 1 | 2 | — | — |
 | D — docs | README, arquitetura, ADRs, cli.md tree, site | 3 | 4 | 1 | — |
@@ -284,7 +286,7 @@ Order across tracks: C, G, B, K, D start at once. J and S start at once but seri
 
 ## 6. Decisions for the owner
 
-Status: all recommendations O1–O19 approved by the owner on 2026-11-22.
+Status: all recommendations O1–O19 approved by the owner on 2026-11-22; O20 approved on 2026-11-27.
 
 | # | Decision | Recommendation | Rationale |
 |---|----------|----------------|-----------|
@@ -307,6 +309,7 @@ Status: all recommendations O1–O19 approved by the owner on 2026-11-22.
 | O17 | Existing `v` kinds at `0.x` (`bus/0.1`, …): bump to `1.0` at the freeze? | keep their numbers | they version schemas, not releases; stored messages in `bus.db` keep matching |
 | O18 | `tb stack` on uncommitted changes (dogfood #13): in 1.0? | defer to 1.1; document that `stack` compares commits | it is a new input mode, not a fix |
 | O19 | rc soak length (E8) | 7 days, at least one rc | the owner is the main user; a week covers a full work cycle on this repository |
+| O20 | `tb stack` default base: keep `HEAD~1` or use the merge-base with the default branch (G6)? | merge-base, `HEAD~1` as fallback; ships as `v1.0.0-rc.5` | with `HEAD~1` a multi-commit branch passes the gate on its last commit only; after 1.0 changing a flag default is breaking. Also, `main` had a non-docs commit (#189) after rc.4, so §7.5 needed a new rc anyway |
 
 ## 7. Release steps
 

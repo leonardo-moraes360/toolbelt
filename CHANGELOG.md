@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0-rc.5] - 2026-11-27
+
+### Changed
+- BREAKING: `tb stack` without `--base` (and MCP `tb_stack` without `base`) no longer defaults to `HEAD~1`. The base is the ticket's `base_commit` when it has one (as before), else the merge-base of `--head` with the default branch (the first of `origin/HEAD`, `origin/main`, `origin/master`, `main`, `master` that exists), so a branch is checked as a whole and not only its last commit; `HEAD~1` remains the fallback when head is already on the default branch, no default branch exists, or the histories are unrelated. An explicit `--base HEAD~1` keeps its old meaning. The stack JSON gains `base` (resolved SHA) and `base_source` (`flag`, `ticket`, `merge-base`, `parent`). The CLI flag default and the MCP schema default change accordingly (contract snapshots updated). Field finding: dogfood #62
+- Dependencies: `golang.org/x/sys` minor bump (#189)
+
+### Docs
+- Dogfood: the `v1.0.0-rc.4` soak (#61–#69, no new `high`); release-1.0 spec gains G6 and decision O20
+
 ## [1.0.0-rc.4] - 2026-11-23
 
 ### Fixed

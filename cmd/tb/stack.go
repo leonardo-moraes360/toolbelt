@@ -36,12 +36,16 @@ Read-only stages (guard, drift, review, vault, seccheck) run in parallel; verify
 (build/test). The JSON output preserves the requested order. --jobs N limits concurrency
 (default = number of CPUs, max 32; --jobs 1 = serial). --fail-fast cancels the others
 via context. The output is always a single aggregated JSON.
+Without --base, the base is the ticket's base_commit, else the merge-base of
+--head with the default branch (origin/HEAD, origin/main, origin/master, main,
+master: the first that exists), else HEAD~1 (head on the default branch, no
+default branch, unrelated histories). The JSON says which: base, base_source.
 Without an operation, exits with a short error listing the valid ops (no Usage dump).`,
 	RunE: runStack,
 }
 
 func init() {
-	stackCmd.Flags().String("base", "HEAD~1", "shared base ref")
+	stackCmd.Flags().String("base", "", "shared base ref (default: the ticket's base_commit, else the merge-base with the default branch, else HEAD~1)")
 	stackCmd.Flags().String("head", "HEAD", "shared head ref")
 	stackCmd.Flags().Bool("fail-fast", false, "cancels the remaining stages on the first failure")
 	stackCmd.Flags().Int("jobs", 0, "concurrency limit (0=number of CPUs, max 32; 1=serial)")

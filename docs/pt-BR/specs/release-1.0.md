@@ -2,7 +2,7 @@
 
 # Plano de prontidão da 1.0.0 — spec
 
-Status: **rascunho** (2026-11-22). As decisões do dono em [§6](#6-decisões-para-o-dono) estão em aberto.
+Status: **rascunho** (2026-11-22; atualizado em 2026-11-27 para o `v1.0.0-rc.5`, ver G6 e O20). As decisões do dono em [§6](#6-decisões-para-o-dono) estão resolvidas.
 
 ## 1. Escopo
 
@@ -187,6 +187,8 @@ Escopo: `internal/graph/{index_go,index_common}.go` e os helpers de ID dos outro
 | G4 | should | mensagens ao usuário bilíngues ou em português (`internal/egm/roundctx.go:89`, `review.go:222`) | só inglês; testes atualizados |
 | G5 | should | reconferir os dogfood #1, #7, #17 (marcados abertos; a auditoria diz corrigidos) e N1, N3, N4 da rodada 2 de campo (notas playwright-mcp, pydantic-ai) | cada linha diz `fixed in <sha>` ou fica aberta com um item G; docs atualizados nas duas línguas |
 
+| G6 | blocker | base padrão do `tb stack` / MCP `tb_stack` ([dogfood](../campo/dogfood.md) #62, paprika 2026-11-25) | sem `--base`: `base_commit` do ticket, senão merge-base com a branch padrão, senão `HEAD~1`; JSON `base` e `base_source`; `--base HEAD~1` explícito sem mudança. Muda um padrão congelado (O20), então precisa entrar antes da 1.0: corrigido em `fix/rc5-stack-base`, lançado como `v1.0.0-rc.5` (o soak recomeça) |
+
 G1 e G2 tocam o mesmo pacote, mas arquivos diferentes; rode G2 primeiro (pequeno). G3–G5 são independentes.
 
 ### Trilha B — bus (sessão de campo do dono, 2026-11-22)
@@ -266,7 +268,7 @@ R3 entra depois de S1–S3, S7 e J1 (fotografa o resultado deles). R1, R2, R4, R
 | C — CI e flakes | testes + workflows | 5 | 2 | 1 | — |
 | J — códigos de saída e envelopes | structs de saída e de resultado | 4 | 3 | 1 | — |
 | S — superfície CLI/MCP | declarações de flags, esquemas do registry, níveis | 4 | 3 | — | — |
-| G — bugs de campo | IDs/leitor do grafo, reason do verify, strings do egm | 2 | 3 | — | — |
+| G — bugs de campo | IDs/leitor do grafo, reason do verify, strings do egm, base do stack | 3 | 3 | — | — |
 | B — bus | bus, busrun, bind do `mcp.go`, versão | 1 | 5 | 1 | 3 |
 | K — config | `internal/config`, init | 1 | 2 | — | — |
 | D — docs | README, arquitetura, ADRs, árvore do cli.md, site | 3 | 4 | 1 | — |
@@ -284,7 +286,7 @@ Ordem entre trilhas: C, G, B, K, D começam já. J e S começam já, mas se seri
 
 ## 6. Decisões para o dono
 
-Status: todas as recomendações O1–O19 aprovadas pelo dono em 2026-11-22.
+Status: todas as recomendações O1–O19 aprovadas pelo dono em 2026-11-22; O20 aprovada em 2026-11-27.
 
 | # | Decisão | Recomendação | Motivo |
 |---|---------|--------------|--------|
@@ -307,6 +309,7 @@ Status: todas as recomendações O1–O19 aprovadas pelo dono em 2026-11-22.
 | O17 | Kinds `v` existentes em `0.x` (`bus/0.1`, …): subir para `1.0` no congelamento? | manter os números | versionam esquemas, não releases; mensagens guardadas no `bus.db` continuam batendo |
 | O18 | `tb stack` sobre mudanças não commitadas (dogfood #13): na 1.0? | adiar para a 1.1; documentar que o `stack` compara commits | é um modo de entrada novo, não uma correção |
 | O19 | Duração do período de uso do rc (E8) | 7 dias, pelo menos um rc | o dono é o principal usuário; uma semana cobre um ciclo completo de trabalho neste repositório |
+| O20 | Base padrão do `tb stack`: manter `HEAD~1` ou usar o merge-base com a branch padrão (G6)? | merge-base, com `HEAD~1` como último recurso; sai como `v1.0.0-rc.5` | com `HEAD~1` uma branch com vários commits passa no gate só pelo último commit; depois da 1.0 mudar o padrão de uma flag é breaking. Além disso, o `main` recebeu um commit que não é só docs (#189) depois do rc.4, então o §7.5 já exigia um rc novo |
 
 ## 7. Passos da release
 

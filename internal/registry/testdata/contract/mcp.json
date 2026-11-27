@@ -1414,8 +1414,7 @@
           },
           "base": {
             "type": "string",
-            "description": "Ref base",
-            "default": "HEAD~1"
+            "description": "Ref base (default: the ticket's base_commit, else the merge-base with the default branch, else HEAD~1)"
           },
           "build_cmd": {
             "type": "string",

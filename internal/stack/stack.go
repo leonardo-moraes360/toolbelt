@@ -139,9 +139,11 @@ type Loaders struct {
 }
 
 type Shared struct {
-	RepoDir    string
-	Base       string
-	Head       string
+	RepoDir string
+	Base    string
+	Head    string
+	// BaseSource says where Base came from (BaseSource* constants).
+	BaseSource string
 	FileConfig *config.Config
 
 	Diff       string
@@ -174,8 +176,13 @@ type StepResult struct {
 }
 
 type Result struct {
-	OK              bool         `json:"ok"`
-	Warn            bool         `json:"warn,omitempty"`
+	OK   bool `json:"ok"`
+	Warn bool `json:"warn,omitempty"`
+	// Base is the resolved base SHA and BaseSource where it came from:
+	// flag, ticket, merge-base or parent (HEAD~1). Empty when the refs
+	// could not be resolved.
+	Base            string       `json:"base,omitempty"`
+	BaseSource      string       `json:"base_source,omitempty"`
 	Steps           []StepResult `json:"steps"`
 	TotalDurationMs float64      `json:"total_duration_ms"`
 }
@@ -279,6 +286,7 @@ func Run(ctx context.Context, opts *Options) (*Result, error) {
 	}
 
 	out := runWaves(ctx, opts, shared, jobs)
+	out.Base, out.BaseSource = shared.Base, shared.BaseSource
 	for i := range out.Steps {
 		out.Warn = out.Warn || out.Steps[i].Warn
 	}
@@ -481,7 +489,7 @@ func Prepare(ctx context.Context, opts *Options) (*Shared, error) {
 	if err != nil {
 		return nil, err
 	}
-	base, head, err := resolveStackRefs(repo, opts)
+	base, head, baseSource, err := resolveStackRefs(repo, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -490,7 +498,7 @@ func Prepare(ctx context.Context, opts *Options) (*Shared, error) {
 		loaders = defaultLoaders()
 	}
 
-	shared := &Shared{RepoDir: repo, Base: base, Head: head}
+	shared := &Shared{RepoDir: repo, Base: base, Head: head, BaseSource: baseSource}
 	if fileCfg, err := config.Load(); err == nil {
 		shared.FileConfig = fileCfg
 	}
@@ -521,28 +529,24 @@ func resolveRepoDir(repo string) (string, error) {
 	return os.Getwd()
 }
 
-func resolveStackRefs(repo string, opts *Options) (base, head string, err error) {
-	base = opts.Base
-	if base == "" {
-		base = "HEAD~1"
-	}
+func resolveStackRefs(repo string, opts *Options) (base, head, source string, err error) {
 	head = opts.Head
 	if head == "" {
 		head = "HEAD"
 	}
-	base = resolveEffectiveBase(repo, base, opts.Ticket)
+	base, source = resolveEffectiveBase(repo, opts.Base, head, opts.Ticket)
 	base, head, err = gitref.ResolvePair(repo, base, head)
 	if err != nil {
-		return "", "", err
+		return "", "", "", err
 	}
 	if opts.ApprovedSHA != "" {
 		approved, resolveErr := gitref.Resolve(repo, opts.ApprovedSHA)
 		if resolveErr != nil {
-			return "", "", fmt.Errorf("approved-sha: %w", resolveErr)
+			return "", "", "", fmt.Errorf("approved-sha: %w", resolveErr)
 		}
 		opts.ApprovedSHA = approved
 	}
-	return base, head, nil
+	return base, head, source, nil
 }
 
 func defaultLoaders() *Loaders {
@@ -931,16 +935,66 @@ func resolveTicket(repo, ticket string) string {
 	return filepath.Join(repo, ticket)
 }
 
-func resolveEffectiveBase(repo, base, ticket string) string {
-	if base != "HEAD~1" {
-		return base
+// Where the stack's base came from (Result.BaseSource).
+const (
+	BaseSourceFlag      = "flag"
+	BaseSourceTicket    = "ticket"
+	BaseSourceMergeBase = "merge-base"
+	BaseSourceParent    = "parent"
+)
+
+// defaultBranchCandidates are tried in order; the first one that resolves
+// is the default branch.
+var defaultBranchCandidates = []string{"origin/HEAD", "origin/main", "origin/master", "main", "master"}
+
+// resolveEffectiveBase picks the base. An explicit ref other than HEAD~1
+// is used as is. Otherwise the ticket's base_commit wins; then, only when
+// no base was given at all, the merge-base of head with the default
+// branch, so a branch is checked as a whole and not only its last commit;
+// HEAD~1 is the last resort (head on the default branch, no default branch,
+// unrelated histories). An explicit HEAD~1 keeps its old meaning: the
+// ticket's base_commit still wins, and no merge-base is looked up.
+func resolveEffectiveBase(repo, base, head, ticket string) (ref, source string) {
+	if base != "" && base != gitref.DefaultBase {
+		return base, BaseSourceFlag
 	}
 	path := resolveTicket(repo, ticketOrDefault(ticket))
-	t, err := review.LoadTicket(path)
-	if err != nil || t == nil || t.BaseCommit == "" {
-		return base
+	if t, err := review.LoadTicket(path); err == nil && t != nil && t.BaseCommit != "" {
+		return t.BaseCommit, BaseSourceTicket
 	}
-	return t.BaseCommit
+	if base == "" {
+		if mb, ok := defaultBranchMergeBase(repo, head); ok {
+			return mb, BaseSourceMergeBase
+		}
+	}
+	return gitref.DefaultBase, BaseSourceParent
+}
+
+// defaultBranchMergeBase returns the merge-base of head with the first
+// default-branch candidate that exists. ok is false when none exists, the
+// histories are unrelated, or head is already on that branch (the
+// merge-base is head itself, which would check an empty diff).
+func defaultBranchMergeBase(repo, head string) (string, bool) {
+	headSHA, err := gitref.Resolve(repo, head)
+	if err != nil {
+		return "", false
+	}
+	for _, ref := range defaultBranchCandidates {
+		refSHA, err := gitref.Resolve(repo, ref)
+		if err != nil {
+			continue
+		}
+		out, err := git.Output(repo, "merge-base", "--end-of-options", refSHA, headSHA)
+		if err != nil {
+			return "", false
+		}
+		mb := strings.TrimSpace(string(out))
+		if mb == "" || mb == headSHA {
+			return "", false
+		}
+		return mb, true
+	}
+	return "", false
 }
 
 func ExitCode(res *Result) int {
