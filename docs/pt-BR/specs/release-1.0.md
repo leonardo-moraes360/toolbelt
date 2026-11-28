@@ -187,7 +187,7 @@ Escopo: `internal/graph/{index_go,index_common}.go` e os helpers de ID dos outro
 | G4 | should | mensagens ao usuário bilíngues ou em português (`internal/egm/roundctx.go:89`, `review.go:222`) | só inglês; testes atualizados |
 | G5 | should | reconferir os dogfood #1, #7, #17 (marcados abertos; a auditoria diz corrigidos) e N1, N3, N4 da rodada 2 de campo (notas playwright-mcp, pydantic-ai) | cada linha diz `fixed in <sha>` ou fica aberta com um item G; docs atualizados nas duas línguas |
 
-| G6 | blocker | base padrão do `tb stack` / MCP `tb_stack` ([dogfood](../campo/dogfood.md) #62, paprika 2026-11-25) | sem `--base`: `base_commit` do ticket, senão merge-base com a branch padrão, senão `HEAD~1`; JSON `base` e `base_source`; `--base HEAD~1` explícito sem mudança. Muda um padrão congelado (O20), então precisa entrar antes da 1.0: corrigido em `fix/rc5-stack-base`, lançado como `v1.0.0-rc.5` (o soak recomeça) |
+| G6 | blocker | base padrão do `tb stack` / MCP `tb_stack` ([dogfood](../campo/dogfood.md) #62, paprika 2026-11-25) | sem `--base`: `base_commit` do ticket, senão merge-base com a branch padrão, senão `HEAD~1`; JSON `base` e `base_source`; `--base HEAD~1` explícito sem mudança. Muda um padrão congelado (O20), então precisa entrar antes da 1.0: corrigido em `fix/rc5-stack-base`; a tag `v1.0.0-rc.5` parou no gate de advisories (dogfood #70), então sai como `v1.0.0-rc.6` com o llama.cpp b12658 (o soak recomeça) |
 
 G1 e G2 tocam o mesmo pacote, mas arquivos diferentes; rode G2 primeiro (pequeno). G3–G5 são independentes.
 

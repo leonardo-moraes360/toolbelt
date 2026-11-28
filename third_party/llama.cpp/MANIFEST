@@ -1,8 +1,8 @@
 # Vendored llama.cpp subset (ADR-018). Written by scripts/vendor-llama.sh;
 # do not edit by hand. Check: scripts/vendor-llama.sh --check
 upstream: https://github.com/ggml-org/llama.cpp
-tag: b12600
-commit: 29b52d398b294509746ec0a3f28948a3107c0213
-tarball_sha256: 54515583887dfc429ca995551554b52caaf2d1301e5de2b8659f56df9c62ad2d
-subset_sha256: e33000ade6fc436d8f0d8b7c6ac9c48b81a35d27b0b29343ff2e0eec50b9a67d
+tag: b12658
+commit: 03813c56e47f6cd7a9b9bc2ad8edcebed88ce342
+tarball_sha256: bad8484091c673e440e69647af47b66061fd6b94c89ee5b2773fdbdbf4e0da15
+subset_sha256: 96433140366a36c43ae82026464ade0007fd6724f8a225da9f2c2a7ea1cc7ea6
 license: MIT

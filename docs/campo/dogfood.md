@@ -108,7 +108,7 @@ pointing to it. Goldfish flags: `-p --output-format json --tools "" --strict-mcp
 | 41 | `tb egm review docs/specs/vault.md --engine deterministic` | only real problems | 2 real `required-sections` findings (`## Non-goals` and `## Technical plan` do not match the standard's casing) and 6 real `plan-files-listed` ones (test files written without their directory). But 6 `refs-exist` majors point at paths the spec plans to create or that belong to Obsidian (`.obsidian`, `.trash`, `internal/vault/testdata/obsidian`), and a pre-implementation spec cannot converge without declining them one by one. Also, `plan-files-listed` only reads the first table after the plan heading: splitting the plan into one table per slice turned 16 `Create` files into `refs-exist` findings | minor |
 | 42 | `tb bus discover` (2026-11-20, local build) | this repository's `.mcp.json` points at a known `tb` | the `toolbelt` entry runs a bare `tb`, so `same_tb` is `null`: the client resolves it on its own `PATH`, which here is the `~/go/bin` release (v0.0.8), not the local build under test. Intended (CLAUDE.md says to test with `./bin/tb`), but discover makes the ambiguity visible | info |
 
-## 2026-11-27 — `v1.0.0-rc.4` soak (paprika field addenda 2026-11-24/25 + re-check)
+## 2026-11-27 — `v1.0.0-rc.4` soak (paprika field addenda 2026-11-24/25 + re-check) and the rc.5 release
 
 Sources: [paprika.md](paprika.md) addenda of 2026-11-24 and 2026-11-25 (rc.3 and rc.4 sessions) and a re-check of #60 with the installed rc.4. No new `high` on rc.4.
 
@@ -123,6 +123,7 @@ Sources: [paprika.md](paprika.md) addenda of 2026-11-24 and 2026-11-25 (rc.3 and
 | 67 | `tb guard` with no subcommand | run the default diff check | prints the help; the check is `tb guard check` (paprika 2026-11-25) | low — open |
 | 68 | `bench:` in `.toolbelt/config.yaml` pointing at a removed directory | a warning | nothing complained (paprika 2026-11-25) | low — open |
 | 69 | `tb bus channel list` with closed and expired channels | closed ones hidden | still listed next to smoke channels; no `channel close` or `list --open` (paprika 2026-11-24, rc.4) | low — open, 1.1 |
+| 70 | `git push origin v1.0.0-rc.5` (release workflow, 2026-11-28) | the release publishes as a prerelease | stopped at the advisory gate (`scripts/native-advisories.sh`) before building: CVE-2026-137057 (grammar parser, vendored and compiled) and CVE-2026-137567 (RPC server, not vendored), both published on 2026-11-25/26 against b12600. The gate worked as designed (fail-closed, daily job red since 2026-11-26 too). Fixed by vendoring b12658 and tagging rc.6 | info — the daily `native-advisories` job had been red for two days before the tag; nothing pointed at it |
 
 ## 2026-11-23 — field findings, paprika project on `v1.0.0-rc.3` (fixed in `fix/rc3-field`)
 

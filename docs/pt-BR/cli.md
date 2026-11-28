@@ -2207,10 +2207,10 @@ tb --version
 #   built:  unknown
 #   go:     go1.22.2
 #   os:     linux/amd64
-#   embed:  llama.cpp b12600 (29b52d398b29)
+#   embed:  llama.cpp b12658 (03813c56e47f)
 
 tb version --json
-# {"version":"dev","commit":"unknown","build_time":"unknown","modified":false,"go_version":"go1.22.2","embed":"llama.cpp b12600 (29b52d398b29)"}
+# {"version":"dev","commit":"unknown","build_time":"unknown","modified":false,"go_version":"go1.22.2","embed":"llama.cpp b12658 (03813c56e47f)"}
 ```
 
 `modified` é `true` quando o binário foi compilado de uma árvore com mudanças não commitadas. Um build sem `-ldflags` (`go build`, `go install`) pega `version`, `commit`, `build_time` e `modified` da build info que o toolchain do Go embute (`Main.Version`, `vcs.revision`, `vcs.time`, `vcs.modified`) em vez de `dev`/`unknown`; uma árvore fora de uma versão de módulo com tag continua `dev`. **Para um hook que compara dois binários: compare `version` e `commit` (e `modified`), nunca um hash do módulo ou do binário.**

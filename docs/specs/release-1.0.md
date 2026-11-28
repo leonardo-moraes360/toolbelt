@@ -187,7 +187,7 @@ Scope: `internal/graph/{index_go,index_common}.go` and the other indexers' ID he
 | G4 | should | bilingual or Portuguese user messages (`internal/egm/roundctx.go:89`, `review.go:222`) | English only; tests updated |
 | G5 | should | re-check dogfood #1, #7, #17 (marked open; audit says fixed) and field round-2 N1, N3, N4 (playwright-mcp, pydantic-ai notes) | each row says `fixed in <sha>` or stays open with a G-item; docs updated in both languages |
 
-| G6 | blocker | `tb stack` / MCP `tb_stack` default base ([dogfood](../campo/dogfood.md) #62, paprika 2026-11-25) | without `--base`: ticket `base_commit`, else merge-base with the default branch, else `HEAD~1`; JSON `base` and `base_source`; explicit `--base HEAD~1` unchanged. Changes a frozen default (O20), so it must land before 1.0: fixed in `fix/rc5-stack-base`, released as `v1.0.0-rc.5` (the soak restarts) |
+| G6 | blocker | `tb stack` / MCP `tb_stack` default base ([dogfood](../campo/dogfood.md) #62, paprika 2026-11-25) | without `--base`: ticket `base_commit`, else merge-base with the default branch, else `HEAD~1`; JSON `base` and `base_source`; explicit `--base HEAD~1` unchanged. Changes a frozen default (O20), so it must land before 1.0: fixed in `fix/rc5-stack-base`; the `v1.0.0-rc.5` tag stopped at the advisory gate (dogfood #70), so it ships as `v1.0.0-rc.6` with llama.cpp b12658 (the soak restarts) |
 
 G1 and G2 touch the same package but different files; run G2 first (small). G3–G5 are independent.
 
