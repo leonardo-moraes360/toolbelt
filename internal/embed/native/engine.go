@@ -10,8 +10,8 @@ import "errors"
 // third_party/llama.cpp/MANIFEST.
 const (
 	EngineName   = "llama.cpp"
-	EngineTag    = "b12600"
-	EngineCommit = "29b52d398b294509746ec0a3f28948a3107c0213"
+	EngineTag    = "b12658"
+	EngineCommit = "03813c56e47f6cd7a9b9bc2ad8edcebed88ce342"
 )
 
 // Errors of Open and Embed, by shim status.

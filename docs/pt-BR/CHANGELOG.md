@@ -9,6 +9,11 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ## [Não Lançado]
 
+## [1.0.0-rc.6] - 2026-11-28
+
+### Segurança
+- O llama.cpp vendorizado sobe do b12600 para o b12658 (`03813c56e47f`; `MANIFEST`, campo `embed` do `tb version`). Corrige a CVE-2026-137057 (underflow de inteiro no parser de gramática, `src/llama-grammar.cpp`, que é vendorizado e compilado, embora o tb nunca monte um sampler de gramática) e a CVE-2026-137567 (escrita fora dos limites no servidor RPC do ggml, que não é vendorizado). A tag `v1.0.0-rc.5` parou no gate de advisories do workflow de release por causa dessas duas e não publicou nada; o rc.6 leva as mudanças do rc.5. Nenhuma mudança no shim nem na API: `include/` é igual nas duas tags; os testes de embed, a checagem de smoke e a avaliação de recall passam
+
 ## [1.0.0-rc.5] - 2026-11-27
 
 ### Alterado

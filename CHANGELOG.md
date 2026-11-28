@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0-rc.6] - 2026-11-28
+
+### Security
+- Vendored llama.cpp bumped from b12600 to b12658 (`03813c56e47f`; `MANIFEST`, `tb version` `embed`). It fixes CVE-2026-137057 (integer underflow in the grammar parser, `src/llama-grammar.cpp`, which is vendored and compiled, although tb never builds a grammar sampler) and CVE-2026-137567 (out-of-bounds write in the ggml RPC server, not vendored). The `v1.0.0-rc.5` tag stopped at the release workflow's advisory gate on these two and published nothing; rc.6 carries rc.5's changes. No shim or API change: `include/` is unchanged between the two tags; the embed tests, the smoke check and the recall evaluation pass
+
 ## [1.0.0-rc.5] - 2026-11-27
 
 ### Changed

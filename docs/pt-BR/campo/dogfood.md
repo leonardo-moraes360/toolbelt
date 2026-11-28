@@ -108,7 +108,7 @@ apontando para ele. Flags do goldfish: `-p --output-format json --tools "" --str
 | 41 | `tb egm review docs/specs/vault.md --engine deterministic` | só problemas reais | 2 findings reais de `required-sections` (`## Non-goals` e `## Technical plan` não batem com a caixa do padrão) e 6 reais de `plan-files-listed` (arquivos de teste escritos sem o diretório). Mas 6 majors de `refs-exist` apontam para caminhos que a spec planeja criar ou que são do Obsidian (`.obsidian`, `.trash`, `internal/vault/testdata/obsidian`), e uma spec antes da implementação não converge sem recusá-los um a um. Além disso, o `plan-files-listed` só lê a primeira tabela depois do heading do plano: dividir o plano em uma tabela por fatia transformou 16 arquivos `Create` em findings de `refs-exist` | minor |
 | 42 | `tb bus discover` (2026-11-20, build local) | o `.mcp.json` deste repositório aponta para um `tb` conhecido | a entrada `toolbelt` roda um `tb` puro, então `same_tb` é `null`: o cliente o resolve no próprio `PATH`, que aqui é a release em `~/go/bin` (v0.0.8), não o build local em teste. É intencional (o CLAUDE.md manda testar com `./bin/tb`), mas o discover deixa a ambiguidade visível | info |
 
-## 2026-11-27 — soak do `v1.0.0-rc.4` (adendos de campo do paprika de 2026-11-24/25 + reconferência)
+## 2026-11-27 — soak do `v1.0.0-rc.4` (adendos de campo do paprika de 2026-11-24/25 + reconferência) e o release do rc.5
 
 Fontes: adendos de 2026-11-24 e 2026-11-25 em [paprika.md](paprika.md) (sessões em rc.3 e rc.4) e uma reconferência do #60 com o rc.4 instalado. Nenhum `high` novo no rc.4.
 
@@ -123,6 +123,7 @@ Fontes: adendos de 2026-11-24 e 2026-11-25 em [paprika.md](paprika.md) (sessões
 | 67 | `tb guard` sem subcomando | roda a checagem padrão do diff | mostra a ajuda; a checagem é `tb guard check` (paprika 2026-11-25) | low — aberto |
 | 68 | `bench:` no `.toolbelt/config.yaml` apontando para um diretório removido | um aviso | nada reclamou (paprika 2026-11-25) | low — aberto |
 | 69 | `tb bus channel list` com canais fechados e expirados | fechados ocultos | ainda listados junto dos canais de smoke; sem `channel close` nem `list --open` (paprika 2026-11-24, rc.4) | low — aberto, 1.1 |
+| 70 | `git push origin v1.0.0-rc.5` (workflow de release, 2026-11-28) | o release publica como prerelease | parou no gate de advisories (`scripts/native-advisories.sh`) antes do build: CVE-2026-137057 (parser de gramática, vendorizado e compilado) e CVE-2026-137567 (servidor RPC, não vendorizado), as duas publicadas em 2026-11-25/26 contra o b12600. O gate funcionou como previsto (fail-closed; o job diário também estava vermelho desde 2026-11-26). Corrigido vendorizando o b12658 e taggeando o rc.6 | info — o job diário `native-advisories` estava vermelho havia dois dias antes da tag; nada apontava para ele |
 
 ## 2026-11-23 — achados de campo, projeto paprika no `v1.0.0-rc.3` (corrigidos em `fix/rc3-field`)
 
